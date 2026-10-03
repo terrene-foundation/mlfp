@@ -13,9 +13,19 @@ This chapter is a self-contained reference that you can read cover-to-cover or
 dip into when you need a refresher. Every formula is derived from first
 principles, every derivation is followed by a worked numerical example, and
 every concept is connected to the Kailash engines that implement it in practice.
-The running dataset is Singapore HDB resale prices, supplemented by small
-synthetic A/B tests and one causal inference case based on the 2021 ABSD
-cooling measures.
+The running dataset is the course's HDB resale file
+(`mlfp01/hdb_resale.parquet`, 50,150 transactions, 2015–2024), supplemented by
+the course's simulated four-arm e-commerce experiment
+(`mlfp02/experiment_data.parquet`) and a simulated panel for a _hypothetical_
+cooling measure (Lesson 2.7).
+
+> **About the data.** The HDB file is a teaching extract laid out like the
+> public resale records, not the official price series: it contains
+> deliberately dirty rows (sentinel prices of $10 and $9,000,000, leases that
+> start after the sale, typos such as `O7 TO 09`), and its prices show no
+> market trend from 2015 to 2024. Every number quoted from it in this chapter
+> is a fact about the course file, not about the Singapore housing market.
+> The experiment file and the cooling-measure panel are fully simulated.
 
 ---
 
@@ -553,29 +563,46 @@ This matters in ML because we constantly deal with biased samples:
 - **Survey data** over-samples people willing to respond.
 - **Medical trial data** over-samples people sick enough to seek care.
 
-The correction is to either debias the sample explicitly (using inverse
-propensity weights, which we'll meet in Lesson 2.7) or to use a
-different sampling scheme that avoids the bias in the first place.
+The correction is to either debias the sample explicitly (for example
+with inverse propensity weights — a reference-material topic beyond this
+module) or to use a different sampling scheme that avoids the bias in the
+first place.
 
 ## The Kailash Engine — ExperimentTracker
 
 `ExperimentTracker` is kailash-ml's experiment metadata store. It
-doesn't run the statistics itself — that's your code, or other engines —
-but it records every parameter, metric, and artifact so experiments are
+doesn't run the statistics itself — that's your code — but it records
+every parameter, metric, and artifact so experiments are
 **reproducible** and **comparable** months later.
 
+The tracker is asynchronous: you create it with
+`await ExperimentTracker.create(store_url=...)`, open a run with
+`async with tracker.track(experiment=..., run_name=...) as run`, and
+`await` every logging call. Outside a notebook, wrap the steps in an
+`async def` and start it with `asyncio.run(...)`. Every lesson in this
+chapter uses the same pattern.
+
 ```python
+import asyncio
+
 from kailash_ml import ExperimentTracker
 
-tracker = ExperimentTracker()
+prior, sensitivity, specificity = 0.005, 0.90, 0.98
+evidence = sensitivity * prior + (1 - specificity) * (1 - prior)
+posterior = sensitivity * prior / evidence  # 0.184: computed by YOUR code
 
-with tracker.start_run(name="covid_ART_bayesian_update") as run:
-    run.log_param("prior_prevalence", 0.005)
-    run.log_param("sensitivity", 0.90)
-    run.log_param("specificity", 0.98)
 
-    posterior = 0.90 * 0.005 / (0.90 * 0.005 + 0.02 * 0.995)
-    run.log_metric("posterior_prob_covid_given_positive", posterior)
+async def log_bayes_update() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_bayes", run_name="covid_art") as run:
+        await run.log_params({"prior_prevalence": prior,
+                              "sensitivity": sensitivity,
+                              "specificity": specificity})
+        await run.log_metrics({"posterior_covid_given_positive": posterior})
+    await tracker.close()
+
+
+asyncio.run(log_bayes_update())
 ```
 
 Why is this worth doing for such a simple calculation? Because in a week
@@ -587,18 +614,20 @@ from here on.
 
 ## Worked Example — Full Bayesian Update on HDB Prices
 
-Suppose you are a housing analyst at a Singapore bank. Before looking at
-any data, your manager says "4-room HDB flats in 2024 cost about
+Suppose you are a housing analyst at a bank. Before looking at any
+data, your manager says "4-room HDB flats in 2024 cost about
 SGD 500,000, give or take SGD 25,000." This is a prior belief:
 
 ```
 μ ~ N(μ₀, σ₀²),   μ₀ = 500_000,   σ₀ = 25_000
 ```
 
-You then pull `n = 1000` recent 4-room transactions from data.gov.sg. The
-sample mean is `x̄ = 540_000` with sample standard deviation `s = 80_000`.
-Treating the individual observations as Normal with known variance `σ² =
-s² = 6.4e9`, we can use the **Normal-Normal conjugate update**.
+You then pull every 2024 4-room transaction from the course's HDB file
+and drop the 10 sentinel prices (outside SGD 100K–2M) that the file
+deliberately contains. That leaves `n = 2_054` sales with sample mean
+`x̄ = 849_626` and sample standard deviation `s = 102_826`. Treating the
+individual observations as Normal with known variance
+`σ² = s² ≈ 1.0573e10`, we can use the **Normal-Normal conjugate update**.
 
 **Derivation.** If `μ ~ N(μ₀, σ₀²)` and each observation
 `xᵢ ~ N(μ, σ²)` (independent given `μ`), then the posterior is:
@@ -614,41 +643,51 @@ where:
 Plug in numbers:
 
 ```
-1/σ₀² = 1 / (25_000²)     = 1 / 625_000_000       = 1.6e-9
-n/σ²  = 1000 / 6.4e9      = 1.5625e-7
-1/σₙ² = 1.6e-9 + 1.5625e-7 ≈ 1.5785e-7
-σₙ²   ≈ 6.335e6
-σₙ    ≈ 2517
+1/σ₀² = 1 / (25_000²)          = 1.6e-9
+n/σ²  = 2_054 / 1.0573e10      ≈ 1.9427e-7
+1/σₙ² = 1.6e-9 + 1.9427e-7     ≈ 1.9587e-7
+σₙ²   ≈ 5.1055e6
+σₙ    ≈ 2_260
 
-μ₀/σ₀²    = 500_000 × 1.6e-9   = 0.0008
-n × x̄/σ² = 1000 × 540_000 / 6.4e9 = 0.084375
-sum       = 0.085175
+μ₀/σ₀²    = 500_000 × 1.6e-9            = 0.0008
+n × x̄/σ² = 2_054 × 849_626 / 1.0573e10 ≈ 0.16505
+sum       ≈ 0.16585
 
-μₙ = σₙ² × 0.085175 = 6.335e6 × 0.085175 ≈ 539_573
+μₙ = σₙ² × 0.16585 ≈ 5.1055e6 × 0.16585 ≈ 846_770
 ```
 
-So after seeing the data, your posterior mean is about **SGD 539,573**
-with standard deviation about **SGD 2,517**. Three observations:
+So after seeing the data, your posterior mean is about **SGD 846,770**
+with standard deviation about **SGD 2,260**. Four observations:
 
-1. The posterior is pulled almost all the way to the data, because with
-   `n = 1000` the data dominates the prior. This is exactly the
-   **Bernstein-von Mises phenomenon**: with enough data, any reasonable
-   prior converges to the same posterior.
-2. The posterior standard deviation (2,517) is much smaller than either
+1. The data carry about 99% of the weight (`(n/σ²) / (1/σₙ²) ≈ 0.992`),
+   so the posterior lands close to the sample mean. With enough data,
+   any prior that does not rule out the truth is overwhelmed — the
+   **Bernstein-von Mises phenomenon**.
+2. "Close" is not "identical": the prior still pulls the posterior
+   about SGD 2,900 below `x̄`, more than one posterior standard deviation.
+   That is because the manager's prior (500K ± 25K) sits 14 prior
+   standard deviations away from what the market file shows. A confident
+   prior that badly contradicts the data is itself a finding — tell the
+   manager their mental model is out of date. With a vaguer prior
+   (`σ₀ = 100_000`, as Exercise 1 uses) the pull shrinks to about SGD 180.
+3. The posterior standard deviation (2,260) is much smaller than either
    the prior (25,000) or the sample standard deviation of individual
-   prices (80,000). Averaging lots of samples sharpens our estimate of
+   prices (102,826). Averaging lots of samples sharpens our estimate of
    the _mean_, even though individual prices stay noisy.
-3. The 95% **credible interval** (the Bayesian analog of a confidence
-   interval) is `μₙ ± 1.96 × σₙ ≈ [534,640, 544,506]`. You can literally
-   say "I'm 95% sure the true mean is in this range" — which, as we'll
-   see in Lesson 2.2, you _cannot_ say about a frequentist CI.
+4. The 95% **credible interval** (the Bayesian analog of a confidence
+   interval) is `μₙ ± 1.96 × σₙ ≈ [842,342, 851,199]`. Given the model
+   and the prior, you can say "there is a 95% probability the true mean
+   is in this range" — which, as we'll see in Lesson 2.2, you _cannot_
+   say about a frequentist CI.
 
-Code:
+Code (it reproduces every number above):
 
 ```python
+import asyncio
+
 import numpy as np
-from kailash_ml import ExperimentTracker, ModelVisualizer
 import polars as pl
+from kailash_ml import ExperimentTracker
 
 from shared import MLFPDataLoader
 
@@ -657,10 +696,11 @@ hdb = loader.load("mlfp01", "hdb_resale.parquet")
 
 prices = (
     hdb.filter(pl.col("flat_type") == "4 ROOM")
-       .filter(pl.col("month").str.to_date("%Y-%m") >= pl.date(2024, 1, 1))
-       ["resale_price"].to_numpy().astype(float)
+    .filter(pl.col("month").str.to_date("%Y-%m") >= pl.date(2024, 1, 1))
+    .filter(pl.col("resale_price").is_between(100_000, 2_000_000))  # drop sentinels
+    ["resale_price"].to_numpy().astype(float)
 )
-n = len(prices)
+n = len(prices)  # 2,054
 x_bar = prices.mean()
 s = prices.std(ddof=1)
 
@@ -675,20 +715,25 @@ print(f"posterior sd    = {post_sd:,.0f}")
 print(f"95% credible IV = [{post_mean - 1.96*post_sd:,.0f}, "
       f"{post_mean + 1.96*post_sd:,.0f}]")
 
-with ExperimentTracker().start_run(name="hdb_bayes_update") as run:
-    run.log_param("prior_mu0", mu0)
-    run.log_param("prior_sigma0", sigma0)
-    run.log_param("sample_size", n)
-    run.log_metric("posterior_mean", post_mean)
-    run.log_metric("posterior_sd", post_sd)
+
+async def log_update() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_hdb_bayes", run_name="normal_normal") as run:
+        await run.log_params({"prior_mu0": mu0, "prior_sigma0": sigma0, "sample_size": n})
+        await run.log_metrics({"posterior_mean": float(post_mean),
+                               "posterior_sd": float(post_sd)})
+    await tracker.close()
+
+
+asyncio.run(log_update())
 ```
 
-The `ModelVisualizer` overlay of prior, likelihood, and posterior
-(which the exercise walks through) shows three curves: a wide bell
-centred at 500K (prior), a narrow bell centred at 540K (likelihood of
-the sample mean), and an even narrower bell that almost perfectly
-overlaps the likelihood (posterior). The visual makes clear that the
-data has overwhelmed the prior.
+Plot the three densities on one axis (Exercise 1 does this with plotly):
+a wide bell centred at 500K (prior), a narrow bell centred at 849.6K (the
+likelihood of the sample mean), and an equally narrow bell centred at
+846.8K (posterior). The picture shows both facts at once — the data
+dominate, yet the posterior sits visibly to the prior's side of the
+likelihood.
 
 ## Try It Yourself
 
@@ -1239,56 +1284,92 @@ finite samples:
 
 ## The Kailash Engine — ExperimentTracker + ModelVisualizer
 
-For MLE work we use two engines in combination. `ExperimentTracker`
-logs the parameters and metrics; `ModelVisualizer` renders the
-log-likelihood curve so you can see whether the maximum is sharp
-(lots of information) or flat (not much).
+For MLE work you write the log-likelihood and maximise it yourself
+(here with `scipy.optimize`); the engines show and record the result.
+`ModelVisualizer().histogram(...)` draws the data the model is fitted
+to, and `ExperimentTracker` logs the estimates. `ModelVisualizer` has
+no line-chart method, so the log-likelihood curve is drawn with plotly
+directly (as the exercises do). The example fits a Normal to quarterly
+GDP growth from the course's economic-indicators file — the Lesson 2.2
+exercise — and draws the **profile log-likelihood** of `μ`: for each
+candidate `μ`, `σ` is re-fitted (`σ̂²(μ) = mean((x − μ)²)`) before the
+log-likelihood is evaluated. A sharp peak means lots of information
+about `μ`; a flat one means little.
 
 ```python
-from kailash_ml import ExperimentTracker, ModelVisualizer
-from scipy import stats
+import asyncio
+
 import numpy as np
+import plotly.graph_objects as go
+from scipy import optimize, stats
+from kailash_ml import ExperimentTracker, ModelVisualizer
 
-x = prices  # from the HDB dataset
+from shared import MLFPDataLoader
 
-mu_grid = np.linspace(x.mean() - 3 * x.std(ddof=1) / np.sqrt(len(x)),
-                      x.mean() + 3 * x.std(ddof=1) / np.sqrt(len(x)),
-                      200)
-loglik = [stats.norm.logpdf(x, loc=mu, scale=x.std(ddof=0)).sum()
-          for mu in mu_grid]
+econ = MLFPDataLoader().load("mlfp01", "economic_indicators.csv")
+g = econ["gdp_growth_pct"].drop_nulls().to_numpy()  # n = 101
 
-viz = ModelVisualizer()
-viz.line(mu_grid, loglik, xlabel="mu", ylabel="log-likelihood",
-         title="Log-likelihood for HDB mean price")
 
-with ExperimentTracker().start_run(name="hdb_mle_normal") as run:
-    run.log_param("n", len(x))
-    run.log_metric("mu_mle", float(x.mean()))
-    run.log_metric("sigma_mle", float(x.std(ddof=0)))
-    run.log_metric("fisher_info", float(len(x) / x.var()))
+def nll(p):  # p = (mu, log_sigma) so sigma stays positive
+    return -stats.norm.logpdf(g, p[0], np.exp(p[1])).sum()
+
+
+res = optimize.minimize(nll, x0=[0.0, 0.0], method="BFGS")
+mu_hat, sigma_hat = res.x[0], np.exp(res.x[1])  # 3.90, 4.07 (= mean, /n SD)
+fisher_n = len(g) / sigma_hat**2                  # information about mu
+se_mu = 1 / np.sqrt(fisher_n)                     # 0.405
+
+mu_grid = np.linspace(mu_hat - 4 * se_mu, mu_hat + 4 * se_mu, 200)
+profile = [stats.norm.logpdf(g, m, np.sqrt(np.mean((g - m) ** 2))).sum()
+           for m in mu_grid]
+fig_ll = go.Figure(go.Scatter(x=mu_grid, y=profile, mode="lines"))
+fig_ll.update_layout(title="Profile log-likelihood of mu (GDP growth, %)",
+                     xaxis_title="mu", yaxis_title="log-likelihood")
+fig_data = ModelVisualizer().histogram(
+    econ, "gdp_growth_pct", bins=30,
+    title=f"GDP growth: MLE mu={mu_hat:.2f}, sigma={sigma_hat:.2f}")
+
+
+async def log_mle() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_mle", run_name="gdp_normal") as run:
+        await run.log_params({"n": len(g), "distribution": "normal"})
+        await run.log_metrics({"mu_mle": float(mu_hat), "sigma_mle": float(sigma_hat),
+                               "fisher_info_mu": float(fisher_n), "se_mu": float(se_mu)})
+    await tracker.close()
+
+
+asyncio.run(log_mle())
 ```
 
 ## Worked Example — MLE, Fisher Information, and a Confidence Interval
 
-Use the same 4-room HDB data (2024) as Lesson 2.1. Suppose `n = 1000`,
-`x̄ = 540_000`, `s = 80_000`.
+Use the same 2024 4-room HDB data as Lesson 2.1 (sentinel prices
+removed): `n = 2_054`, `x̄ = 849_626`, `s = 102_826`.
 
-**MLE of `μ`:** `540_000` (the sample mean).
+**MLE of `μ`:** `849_626` (the sample mean).
 
-**MLE of `σ²`:** roughly `s² × (n − 1) / n ≈ 80_000² × 0.999 ≈ 6.395e9`.
+**MLE of `σ²`:** `s² × (n − 1) / n ≈ 1.0573e10 × 0.99951 ≈ 1.0568e10`,
+so `σ̂_MLE ≈ 102_801`.
 
-**Fisher information (per-parameter `μ`):** `n / σ² ≈ 1000 / 6.4e9 ≈
-1.5625e-7`.
+**Fisher information about `μ`:** `I_n = n / σ̂² ≈ 2_054 / 1.0568e10 ≈
+1.944e-7`.
 
-**Cramér-Rao bound on `Var(μ̂)`:** `1 / I_n ≈ 6.4e6`, so
-`SE(μ̂) ≈ √6.4e6 ≈ 2530`.
+**Cramér-Rao bound on `Var(μ̂)`:** `1 / I_n ≈ 5.145e6`, so
+`SE(μ̂) ≈ √5.145e6 ≈ 2_268`.
 
-**95% CI for `μ`:** `540_000 ± 1.96 × 2530 ≈ [535_042, 544_958]`.
+**95% CI for `μ`:** `849_626 ± 1.96 × 2_268 ≈ [845_181, 854_072]`.
 
-Compare to Lesson 2.1's posterior credible interval, which was
-`[534_640, 544_506]`. The frequentist CI and the Bayesian credible
-interval are almost identical because the data dominates the prior.
-Bernstein-von Mises in action.
+Compare to Lesson 2.1's posterior credible interval,
+`[842_342, 851_199]`. The two intervals have almost the same width
+(2,268 vs 2,260 standard error) because the data carry about 99% of the
+information — but the credible interval is shifted about SGD 2,900
+toward the manager's badly-placed prior. Re-run the update with the
+vaguer prior `σ₀ = 100_000` and the posterior mean moves to 849,447: the
+two intervals then nearly coincide. That is Bernstein-von Mises in
+action — and a reminder that "the data dominate" is a statement about
+the _weights_, not a guarantee that a confident, wrong prior does no
+harm.
 
 ## Try It Yourself
 
@@ -1526,8 +1607,10 @@ Hypothesis testing frames inference as a decision problem. You have:
 - **Test statistic `T`.** A function of the data whose distribution
   under `H₀` is known (at least approximately).
 - **Significance level `α`.** The probability of rejecting `H₀` when
-  it is actually true. Common choices: `α = 0.05` (social science),
-  `α = 0.01`, or `α = 5 × 10⁻⁷` (physics "five sigma").
+  it is actually true. Common choices: `α = 0.10`, `0.05` and `0.01`
+  (business and social science), `α = 0.0005` (some laboratory
+  sciences — about 3.5 standard errors, two-sided), or `α ≈ 3 × 10⁻⁷`
+  (particle physics "five sigma", one-sided).
 
 You compute `T` from the data, compare it to its distribution under
 `H₀`, and compute a **p-value**: the probability, under `H₀`, of
@@ -1537,8 +1620,8 @@ observing a test statistic at least as extreme as the one you saw.
 
 > ⚠ **Pitfall — The single most common statistical mistake.** A
 > p-value is **NOT** the probability that `H₀` is true. It is **NOT**
-> the probability that your finding is false. It is **NOT** `1 −
-P(H₁ is true)`. Do not say any of these things.
+> the probability that your finding is false. It is **NOT**
+> `1 − P(H₁ is true)`. Do not say any of these things.
 
 The correct interpretation:
 
@@ -1585,11 +1668,12 @@ power 0.80 (`β = 0.20`). Then `z_(0.975) ≈ 1.96` and `z_(0.80) ≈
 ```
 n ≈ 2 × ((1.96 + 0.84) × 80_000 / 10_000)²
   ≈ 2 × (2.8 × 8)²
-  ≈ 2 × 501.8
-  ≈ 1003 per group
+  ≈ 2 × 501.76
+  ≈ 1003.5 → round UP to 1,004 per group
 ```
 
-You need about 1000 flats per group, or 2000 total, to detect a
+Sample sizes always round up (1,003 per group would fall just short of
+80% power). You need 1,004 flats per group, or 2,008 total, to detect a
 10K difference with 80% power. If you only have 200 flats per
 group, you cannot reasonably expect to detect that effect — the
 experiment is _underpowered_.
@@ -1611,6 +1695,23 @@ Normal.
 is from the hypothesised value, measured in SGD. The denominator is
 the standard error of the sample mean, also in SGD. The ratio is
 _unitless_: how many standard errors away is our estimate?
+
+### One-tailed vs two-tailed tests
+
+The alternative hypothesis decides which tail(s) count as "extreme".
+
+- **Two-tailed** (`H₁: μ ≠ μ₀`): a big deviation in _either_ direction
+  is evidence against `H₀`. `p = 2 × P(T ≥ |t|)`. This is the default.
+- **One-tailed** (`H₁: μ > μ₀`, or `μ < μ₀`): only one direction counts.
+  `p = P(T ≥ t)` for "greater than". For the same `t`, the one-tailed
+  p-value is half the two-tailed one.
+
+Choose the tail **before** seeing the data, and only when an effect in
+the other direction would genuinely lead to the same decision as no
+effect. Switching to one-tailed after seeing the data, to halve the
+p-value, is a form of p-hacking. Example: a one-sample test with
+`t = 1.80` and 60 degrees of freedom has one-tailed `p ≈ 0.038`
+(significant at 5%) but two-tailed `p ≈ 0.077` (not significant).
 
 ### Two-sample t-test
 
@@ -1683,24 +1784,27 @@ are significant.
 ## The Kailash Engine — ExperimentTracker for A/B Tests
 
 A well-run A/B test logs everything: sample sizes, effect size,
-p-value, CI, power, and any adjustments for multiple testing.
-`ExperimentTracker` is built for this.
+p-value, CI, power, and any adjustments for multiple testing. You
+compute the bootstrap and the permutation test yourself (NumPy);
+`ExperimentTracker` records the inputs and results so the analysis can
+be audited and re-run.
 
 ```python
-from kailash_ml import ExperimentTracker
-from scipy import stats
+import asyncio
+
 import numpy as np
+from kailash_ml import ExperimentTracker
 
-group_a = np.array([...])   # control conversions: 0 or 1
-group_b = np.array([...])   # treatment conversions
+# The worked example below: 50,000 visitors per arm, 2,255 vs 2,510 conversions
+group_a = np.r_[np.ones(2_255), np.zeros(50_000 - 2_255)]  # control: 1 = converted
+group_b = np.r_[np.ones(2_510), np.zeros(50_000 - 2_510)]  # treatment
+p_a, p_b = group_a.mean(), group_b.mean()
+diff = p_b - p_a  # 0.0051
 
-p_a = group_a.mean()
-p_b = group_b.mean()
-diff = p_b - p_a
-
-# Bootstrap CI for the difference
 rng = np.random.default_rng(42)
-B = 10_000
+B = 2_000  # use 10,000 for a final report
+
+# Bootstrap CI: resample each arm with replacement, recompute the difference
 diffs = np.empty(B)
 for b in range(B):
     a_star = rng.choice(group_a, len(group_a), replace=True)
@@ -1708,26 +1812,36 @@ for b in range(B):
     diffs[b] = b_star.mean() - a_star.mean()
 ci_lo, ci_hi = np.quantile(diffs, [0.025, 0.975])
 
-# Permutation test p-value
+# Permutation test: under H0 the labels are exchangeable
 pool = np.concatenate([group_a, group_b])
-obs = diff
 perm_diffs = np.empty(B)
 for b in range(B):
     rng.shuffle(pool)
     perm_diffs[b] = pool[len(group_a):].mean() - pool[:len(group_a)].mean()
-p_val = float(np.mean(np.abs(perm_diffs) >= np.abs(obs)))
+# (+1)/(B+1) counts the observed split itself, so p is never reported as 0
+p_val = (np.sum(np.abs(perm_diffs) >= abs(diff)) + 1) / (B + 1)
+print(f"diff={diff:.4f}  95% CI=[{ci_lo:.4f}, {ci_hi:.4f}]  permutation p={p_val:.4f}")
 
-with ExperimentTracker().start_run(name="homepage_ab_test") as run:
-    run.log_param("test_type", "permutation")
-    run.log_param("alpha", 0.05)
-    run.log_param("n_bootstrap", B)
-    run.log_metric("p_a", float(p_a))
-    run.log_metric("p_b", float(p_b))
-    run.log_metric("diff", float(diff))
-    run.log_metric("ci_lo", float(ci_lo))
-    run.log_metric("ci_hi", float(ci_hi))
-    run.log_metric("p_value", p_val)
+
+async def log_ab_test() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_ab", run_name="homepage_test") as run:
+        await run.log_params({"test_type": "permutation", "alpha": 0.05, "n_resamples": B})
+        await run.log_metrics({"p_a": float(p_a), "p_b": float(p_b), "diff": float(diff),
+                               "ci_lo": float(ci_lo), "ci_hi": float(ci_hi),
+                               "p_value": float(p_val)})
+    await tracker.close()
+
+
+asyncio.run(log_ab_test())
 ```
+
+It prints `diff=0.0051  95% CI=[0.0026, 0.0078]  permutation p=0.0005`.
+The bootstrap CI matches the analytic CI in the worked example below.
+The permutation p-value is `1/2001`: none of the 2,000 shuffled splits
+was as extreme as the real one, so 0.0005 is the _smallest_ p-value this
+many permutations can report — the true value is smaller (the z-test
+gives 0.00015). Report it as "p < 0.001", never as "p = 0".
 
 Three months later, if someone asks "what was the CI on our homepage
 test?", the tracker has it. If someone wants to re-run with a
@@ -1735,20 +1849,11 @@ different `α`, the parameters are right there.
 
 ## Worked Example — Full A/B Analysis
 
-**Setup.** 10,000 visitors split evenly between two homepage
-variants. Variant A has 451 conversions (4.51%). Variant B has 502
-conversions (5.02%). Is this real?
+**Setup.** 100,000 visitors split evenly between two homepage
+variants (50,000 per arm). Variant A has 2,255 conversions (4.51%);
+variant B has 2,510 (5.02%). Is the difference real?
 
 **Step 1: Point estimate.**
-
-```
-p_a = 451 / 5000 = 0.0902         NO wait, we said 10k split evenly
-```
-
-Let me redo the setup: 5000 per group. Then `p_a = 451/5000 =
-0.0902 = 9.02%`. That's high for a homepage. Let's make it
-realistic: 50_000 per group, 2255 conversions for A (4.51%) and
-2510 for B (5.02%).
 
 ```
 p_a = 2255/50000 = 0.0451
@@ -1781,16 +1886,20 @@ p = 2 × (1 − Φ(3.78)) ≈ 0.00016
 Highly significant. The observed difference would occur under
 `H₀` less than 2 times in 10,000.
 
-**Step 4: Power analysis.** What minimum effect could we have
-detected at 80% power with these sample sizes?
+**Step 4: Power analysis.** What minimum effect could this design
+detect at 80% power with these sample sizes?
 
 ```
 MDE ≈ (1.96 + 0.84) × se_diff ≈ 2.8 × 0.001348 ≈ 0.00378
 ```
 
-We could reliably detect differences of about 0.38 percentage
-points or larger. The observed 0.51 exceeds this, so the test
-was well-powered.
+The design could reliably detect differences of about 0.38 percentage
+points or larger. This is a property of the _design_ (sample size,
+baseline variance, α, power) and belongs in the plan before launch: had
+the true lift been 0.2 points, a non-significant result would have
+been uninformative, not evidence of "no effect". Do not compute power
+after the fact from the observed effect — that number adds nothing to
+the p-value.
 
 **Step 5: Interpret.** Variant B converts about 0.51 percentage
 points better than A (95% CI [0.25, 0.77]). p < 0.001. With 50K
@@ -1798,9 +1907,10 @@ per arm, this is a well-powered test that is very unlikely to be
 a fluke. **Recommendation:** roll out B. But remember the
 **effect size** matters as much as significance — a 0.51
 percentage-point lift at $10 per conversion and 100K weekly
-visitors is roughly 510 × 2 × $10 = $10,200 per week. If the new
-variant costs $50K to build, ROI is about 5 weeks. Significance
-alone does not tell you that.
+visitors is 100,000 × 0.0051 = 510 extra conversions, or
+510 × $10 = $5,100 per week. If the new variant costs $50K to build,
+it pays back in about 10 weeks — and at the CI's lower end (0.25
+points) in about 20. Significance alone does not tell you that.
 
 ## Try It Yourself
 
@@ -1815,9 +1925,12 @@ from this list, compute the median, repeat 10_000 times, take the
 `(58 + 60)/2 = 59`. The bootstrap distribution of the median will
 be concentrated near 59 but with significant spread because the
 median for small samples is a discrete statistic (it jumps
-between sample values). Expect a CI roughly like `[52, 65]`.
-Notice the CI is asymmetric — the outlier at 95 shifts some
-bootstrap medians upward.
+between sample values). With `np.random.default_rng(42)` and 10,000
+resamples the percentile CI is `[51.5, 66]` — roughly symmetric around 59. Notice what is _missing_: the outlier at 95 barely moves the
+bootstrap medians (it only matters when it is drawn five or more
+times), which is exactly why the median is called a robust
+statistic. A bootstrap CI for the _mean_ of the same data would be
+pulled upward by that outlier.
 
 **Problem 2 — One-sample t-test.** A new HDB valuation model
 predicts prices with an average error of SGD 25,000 on 25 flats,
@@ -1871,13 +1984,13 @@ z_(0.975) ≈ 1.96, z_(0.90) ≈ 1.28
 
 n ≈ 2 × ((1.96 + 1.28)² × 0.0979) / 0.02²
   ≈ 2 × (10.498 × 0.0979) / 0.0004
-  ≈ 2 × 1.028 / 0.0004
-  ≈ 5140 per group
+  ≈ 2 × 1.0277 / 0.0004
+  ≈ 5138.6 → 5,139 per group (round up)
 ```
 
-(Approximately — formulas vary slightly.) You need roughly 5000
-per group. If you have 10K visitors a week, you're running a
-week-long experiment.
+(Formulas that use separate variances for the two arms give a
+slightly different answer.) You need about 5,140 per group, or 10,280
+in total — a little over a week if you have 10K visitors a week.
 
 **Problem 5 — Interpret a p-value.** A colleague says, "The test
 returned p = 0.03. So there's only a 3% chance our result is wrong."
@@ -2044,7 +2157,8 @@ start prevents weeks of post-hoc confusion.
   individual patterns. Always prefer transaction-level when
   possible.
 - **Leakage.** Future information sneaking into the training
-  set. We'll cover this formally in Lesson 2.7.
+  set. We'll cover this formally in Lesson 2.8 (point-in-time
+  correctness).
 
 ### Clean DataOps architecture
 
@@ -2060,10 +2174,12 @@ A production-grade experimentation pipeline looks like:
    `ExperimentTracker`) consume these metrics through a
    well-defined interface, never by reaching into the raw tables.
 
-Kailash's `FeatureStore` and `ExperimentTracker` together
-implement this architecture out of the box. You get schema
-validation, versioning, and lineage for free — provided you use
-the engines instead of rolling your own ETL.
+Two Kailash engines cover parts of this architecture. `FeatureStore`
+(Lesson 2.8) holds typed feature tables keyed by entity and event
+time, each materialisation stamped with a schema version and a lineage
+hash. `ExperimentTracker` sits on the connector side: every analysis
+run records its parameters and results. Transfer and event processing
+remain your pipeline's job.
 
 ### Sample Ratio Mismatch (SRM)
 
@@ -2081,8 +2197,9 @@ single most common experiment-ruining bug. Causes include:
 - Logging loss on one variant.
 - Eligibility checks run on different data in each arm.
 
-Detection is a chi-squared goodness-of-fit test. Under the
-expected split `p_A : p_B = 0.5 : 0.5`:
+Detection is a chi-squared goodness-of-fit test of the observed counts
+against the counts the **design** promised. For a 50/50 design the
+expected split is `p_A : p_B = 0.5 : 0.5`:
 
 ```
 expected_A = n × 0.5
@@ -2102,57 +2219,101 @@ the critical value is about 10.83.
 chi² = (52_000 − 50_000)² / 50_000 + (48_000 − 50_000)² / 50_000
      = 4_000_000 / 50_000 + 4_000_000 / 50_000
      = 80 + 80
-     = 160
+     = 160          (p ≈ 2 × 10⁻³⁶)
 ```
 
 That's way above 10.83. SRM is confirmed — your experiment is
 broken. Do not interpret the treatment effect. Fix the
 assignment pipeline and re-run.
 
+**Unequal designs: test against the design, not 50/50.** Many
+experiments split traffic unevenly. The course's experiment file
+(`mlfp02/experiment_data.parquet`, 500,000 simulated users) was
+_designed_ as four arms at 40% / 35% / 15% / 10% (control,
+treatment_a, treatment_b, variant_c). The observed counts are:
+
+| Arm         | Designed share | Expected | Observed | χ² contribution |
+| ----------- | -------------- | -------- | -------- | --------------- |
+| control     | 40%            | 200,000  | 188,732  | 635             |
+| treatment_a | 35%            | 175,000  | 165,413  | 525             |
+| treatment_b | 15%            | 75,000   | 70,855   | 229             |
+| variant_c   | 10%            | 50,000   | 75,000   | 12,500          |
+
+With 3 degrees of freedom, χ² ≈ 13,889 is an unmistakable SRM, and
+almost all of it comes from **variant_c**, which received 50% more
+users than designed. Its results cannot be trusted, and nothing ships
+until the assignment bug is found.
+
+Now look at the pair the course actually analyses, control vs
+treatment_a. Their designed ratio is 40 : 35, so control's expected
+share of the pair is 0.40 / 0.75 ≈ 0.533. Against that, χ² = 0.24 and
+p ≈ 0.62: this pair was split exactly as designed, which is why
+Exercises 3, 4 and 7 analyse control vs treatment_a. Had you tested the
+same pair against a default 50/50, you would get χ² ≈ 1,535 — a false
+alarm caused purely by using the wrong expected split.
+
 > ⚠ **Pitfall — Rationalising SRM.** "It's only a 4% difference,
 > probably fine." No. A 4% difference at `n = 100K` is
 > overwhelming evidence of a broken pipeline. The threshold for
-> SRM panic is a p-value below 0.001, _not_ below 0.05.
+> SRM panic is a p-value below 0.001, _not_ below 0.05. And an SRM is
+> a stop sign, not a footnote: a report that flags SRM and then
+> recommends "ship" is self-contradictory.
 
 ## The Kailash Engine — ExperimentTracker for Design
 
-`ExperimentTracker` has explicit support for experiment design:
-you record the hypothesis, the power analysis, the randomisation
-scheme, and the SRM check as metadata on the experiment, _before_
-you look at any outcome data.
+`ExperimentTracker` does not design experiments, but it is the right
+place to **commit** the design: the allocation, `α`, power and SRM
+threshold are logged as parameters _before_ anyone looks at an outcome
+metric, and the SRM checks are logged next to them. The example runs
+both SRM checks above on the real experiment file.
 
 ```python
-from kailash_ml import ExperimentTracker
+import asyncio
+
 from scipy import stats
+from kailash_ml import ExperimentTracker
 
-tracker = ExperimentTracker()
-with tracker.start_run(name="homepage_bogo_banner") as run:
-    # Design-time parameters
-    run.log_param("hypothesis",
-                  "BOGO banner increases 14d spend by >= SGD 5/customer")
-    run.log_param("primary_metric", "spend_14d_per_customer")
-    run.log_param("randomization", "user_id_hash_bucket")
-    run.log_param("alpha", 0.05)
-    run.log_param("power", 0.80)
-    run.log_param("mde_sgd", 5.0)
-    run.log_param("baseline_std_sgd", 35.0)
-    # Computed sample size for Welch's t-test:
-    n_per_arm = 2 * ((1.96 + 0.84) * 35 / 5) ** 2
-    run.log_param("n_per_arm_planned", int(n_per_arm))
-    run.log_param("duration_days", 14)
+from shared import MLFPDataLoader
 
-    # After launch, log the actual assignment and SRM check:
-    observed_a, observed_b = 52_000, 48_000
-    expected = (observed_a + observed_b) / 2
-    chi2 = ((observed_a - expected)**2 + (observed_b - expected)**2) / expected
-    p_srm = 1 - stats.chi2.cdf(chi2, df=1)
-    run.log_metric("srm_chi2", float(chi2))
-    run.log_metric("srm_p_value", float(p_srm))
-    if p_srm < 0.001:
-        run.log_param("srm_status", "FAIL — stop analysis")
-    else:
-        run.log_param("srm_status", "PASS")
+# Design, fixed BEFORE launch: four arms with an unequal split
+DESIGN = {"control": 0.40, "treatment_a": 0.35, "treatment_b": 0.15, "variant_c": 0.10}
+ALPHA, POWER, SRM_ALPHA = 0.05, 0.80, 0.001
+
+exp = MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
+counts = dict(exp.group_by("experiment_group").len().iter_rows())
+n = sum(counts.values())
+
+# 1. Whole experiment against the DESIGNED allocation (never a default 50/50)
+observed = [counts[arm] for arm in DESIGN]
+expected = [n * share for share in DESIGN.values()]
+chi2_all, p_all = stats.chisquare(observed, f_exp=expected)
+
+# 2. The pair we analyse, against its own designed ratio 40:35
+n_c, n_t = counts["control"], counts["treatment_a"]
+w_c = DESIGN["control"] / (DESIGN["control"] + DESIGN["treatment_a"])
+chi2_pair, p_pair = stats.chisquare([n_c, n_t], f_exp=[w_c * (n_c + n_t), (1 - w_c) * (n_c + n_t)])
+print(f"all arms: chi2={chi2_all:,.0f} -> {'SRM: stop' if p_all < SRM_ALPHA else 'ok'}")
+print(f"control vs treatment_a: chi2={chi2_pair:.2f}, p={p_pair:.2f}"
+      f" -> {'SRM: stop' if p_pair < SRM_ALPHA else 'ok'}")
+
+
+async def log_design() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_ab", run_name="design_and_srm") as run:
+        await run.log_params({"allocation": str(DESIGN), "alpha": ALPHA, "power": POWER,
+                              "srm_alpha": SRM_ALPHA, "analysed_pair": "control_vs_treatment_a"})
+        await run.log_metrics({"srm_chi2_all_arms": float(chi2_all),
+                               "srm_p_all_arms": float(p_all),
+                               "srm_chi2_pair": float(chi2_pair),
+                               "srm_p_pair": float(p_pair)})
+    await tracker.close()
+
+
+asyncio.run(log_design())
 ```
+
+It prints `all arms: chi2=13,889 -> SRM: stop` and
+`control vs treatment_a: chi2=0.24, p=0.62 -> ok`.
 
 The magic of logging the design _before_ the results is that you
 cannot be tempted to rationalise after the fact. The hypothesis,
@@ -2181,7 +2342,7 @@ customer = SGD 80, SD = 35. We want to detect `δ = 5` with
 `α = 0.05` and power 0.80.
 
 ```
-n_per_arm ≈ 2 × ((1.96 + 0.84) × 35 / 5)² ≈ 2 × 19.6² ≈ 768
+n_per_arm ≈ 2 × ((1.96 + 0.84) × 35 / 5)² ≈ 2 × 19.6² ≈ 768.3 → 769
 ```
 
 Round up to 1000 per arm for safety margin. With about 500
@@ -2222,8 +2383,8 @@ chi² = (1500² + 1500²) / 100_000 = 4_500_000 / 100_000 = 45
 Investigate.
 
 **Problem 2 — Underpowered test.** You have 100 users per arm
-and want to detect a 1% lift on a 10% baseline conversion. Can
-you do it at `α = 0.05`, power 0.80?
+and want to detect a 1-percentage-point lift on a 10% baseline
+conversion (10% → 11%). Can you do it at `α = 0.05`, power 0.80?
 
 _Solution._ Pooled `p ≈ 0.105`, `σ² ≈ 0.094`.
 
@@ -2233,6 +2394,10 @@ n ≈ 2 × (2.8² × 0.094) / 0.01² ≈ 2 × 0.737 / 0.0001 ≈ 14_740
 
 You need roughly 15,000 per arm, not 100. The test is hopelessly
 underpowered. Either run much longer or redesign the hypothesis.
+(The formula already gives the size of _each_ arm — do not halve it.
+At an 8% baseline the same 1-point lift needs
+`2 × (1.960 + 0.842)² × 0.08 × 0.92 / 0.01² ≈ 11,554` per arm, the
+example the Lesson 2.4 slides use.)
 
 **Problem 3 — Hypothesis critique.** Rewrite this bad hypothesis:
 "We want to see if the new checkout flow is better."
@@ -2263,11 +2428,11 @@ _Solution._
 
 ```
 Required n per arm ≈ 2 × (2.8² × 0.05 × 0.95) / 0.005²
-                  ≈ 2 × 0.372 / 0.000025
-                  ≈ 29_760
+                  ≈ 2 × 0.3724 / 0.000025
+                  ≈ 29_792
 ```
 
-So ~60K users total, or 12 days at 5000/day. 14 days works with
+So ~59,600 users total, or 12 days at 5000/day. 14 days works with
 a small margin. If you added a weekend effect buffer, you might
 push to 21 days.
 
@@ -2276,8 +2441,9 @@ push to 21 days.
 - **Lesson 2.3** supplies the statistical machinery.
 - **Lesson 2.7** explains how CUPED reduces the sample size
   required for a given power.
-- **Module 4** uses experiment tracking for hyperparameter
-  sweeps, where the "variants" are model configurations.
+- **Module 3 (Lesson 3.7)** uses experiment tracking for
+  hyperparameter search, where the "variants" are model
+  configurations.
 - **Module 6** uses the same design discipline for prompt
   optimisation and RLHF reward model selection.
 

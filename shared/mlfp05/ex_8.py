@@ -4,7 +4,8 @@
 Shared infrastructure for Exercise 8 — Reinforcement Learning.
 
 Contains: CartPole setup, reward plotting helpers, ExperimentTracker/ModelRegistry
-setup, custom environment base class, evaluation utilities.
+setup, replay buffer + DQN network, evaluation utilities, and the RL
+diagnostic checkpoint (kailash_ml RLDiagnostics).
 Technique-specific code does NOT belong here.
 """
 from __future__ import annotations
@@ -70,7 +71,7 @@ def make_cartpole() -> tuple[gym.Env, int, int]:
 
 
 async def _setup_engines():
-    """Open kailash-ml 1.1.1 tracker + registry. 5-tuple preserved."""
+    """Open the kailash-ml tracker + registry. Returns a 5-tuple."""
     # Schema-conflict workaround (kailash-ml 1.5.x): ExperimentTracker
     # and ModelRegistry use incompatible _kml_model_versions schemas.
     # Route them to separate sqlite files until upstream fixes the conflict.

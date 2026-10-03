@@ -9,7 +9,7 @@
 #   - Distinguish full / tied / diag / spherical covariance types
 #   - Count parameters for each type and see the complexity jump
 #   - Run the same BIC sweep across all four types and pick a winner
-#   - Explain why spherical GMM is just soft K-means
+#   - Explain how K-means relates to a spherical GMM (and where it differs)
 #   - Recognise when a simpler cov type is a better business choice
 #
 # PREREQUISITES: 02_sklearn_gmm.py
@@ -21,7 +21,7 @@
 #   2. Build — compare_cov_types helper
 #   3. Train — fit all four cov types at the BIC-optimal K
 #   4. Visualise — BIC per covariance type
-#   5. Apply — Grab fraud-pattern segmentation (Singapore)
+#   5. Apply — Singapore ride/payments fraud-pattern segmentation
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -51,7 +51,11 @@ tracker, exp_name = setup_engines()
 #   full:      each component has its own full covariance (most flexible)
 #   tied:      all components share one covariance (same shape, diff centre)
 #   diag:      each component has a diagonal covariance (axis-aligned)
-#   spherical: each component has a scalar variance (equivalent to K-means)
+#   spherical: each component has a scalar variance (perfect spheres).
+#              Soft K-means = spherical GMM with ONE shared variance and
+#              equal weights; hard K-means is the limit as it -> 0.
+# Nesting: full ⊃ {tied, diag} ⊃ spherical — tied vs diag parameter
+# counts depend on K and d, so they are not ordered.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -131,6 +135,9 @@ assert len(cov_results) == 4, "should have 4 covariance types"
 assert (
     cov_results["full"]["n_params"] > cov_results["spherical"]["n_params"]
 ), "full covariance must have more parameters than spherical"
+n_params = {ct: v["n_params"] for ct, v in cov_results.items()}
+assert n_params["full"] == max(n_params.values()), "full is the most flexible family"
+assert n_params["spherical"] == min(n_params.values()), "spherical is the most constrained"
 assert best_cov in cov_results, "best cov must be one of the fitted types"
 print("\n[ok] Checkpoint 1 passed — all four cov types fitted and ranked by BIC")
 
@@ -156,9 +163,10 @@ print("[ok] Checkpoint 2 passed — covariance comparison chart written")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Grab fraud-pattern segmentation (Singapore)
+# TASK 5 — APPLY: Ride/payments fraud-pattern segmentation (Singapore)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Grab processes ~6M daily transactions across SEA. The risk
+# SCENARIO: A Singapore-based ride, food and payments platform processes
+# (assume) ~6M daily transactions across SEA. The risk
 # team must separate normal activity from fraud patterns — stolen-card
 # testing, promo abuse, driver collusion — WITHOUT labels.
 #
@@ -168,15 +176,15 @@ print("[ok] Checkpoint 2 passed — covariance comparison chart written")
 #   amount + odd hour + new card" moves together. Capturing the
 #   rotation needs full covariance.
 #
-# BUSINESS IMPACT (from Grab risk disclosures):
+# BUSINESS IMPACT (illustrative assumptions, not reported figures):
 #   - ~24,000 daily fraud attempts
 #   - Current rules-based recall: ~70% => ~S$612K/day = S$223M/year losses
-#   - Full-cov GMM on fraud clusters lifts recall ~6 points
+#   - Assume a full-cov GMM on fraud clusters lifts recall ~6 points
 #   - => ~S$44.7M/year in avoided losses vs <S$20K/year extra compute
 #   - Return: >2,000x.
 
 print("\n" + "=" * 70)
-print("  APPLY — Grab fraud pattern segmentation")
+print("  APPLY — Fraud pattern segmentation")
 print("=" * 70)
 print(
     f"At BIC-optimal K={best_k}, covariance winner: {best_cov}. "
@@ -221,7 +229,7 @@ print(f"  [tracked] covariance comparison logged to {exp_name}\n")
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — engine wraps GMM; covariance type is your call
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1's ClusteringEngine wraps GaussianMixture but exposes
+# kailash-ml's ClusteringEngine wraps GaussianMixture but exposes
 # only `n_clusters` + `algorithm='gmm'` — covariance_type is sklearn's
 # default ('full'). For production deployments needing diag/tied/spherical,
 # pass `covariance_type=...` via **kwargs.
@@ -255,13 +263,20 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Four cov shapes: full > tied > diag > spherical
+  [x] Four covariance shapes, nested as full ⊃ {tied, diag} ⊃ spherical
   [x] Parameter count scales with d^2 (full) down to a scalar (spherical)
   [x] BIC automatically trades flexibility against parsimony
-  [x] Grab fraud scenario: full-cov unlocks ~S$44.7M/year in blocked losses
+  [x] K-means = spherical GMM with one shared variance and equal weights,
+      in the limit as that variance -> 0
+  [x] Fraud scenario: full-cov is worth an illustrative ~S$44.7M/year
+      in blocked losses by capturing rotated fraud patterns
 
-  Next: 04_mixture_of_experts.py — soft vs hard assignments, and the
-  bridge from GMMs to modern LLM routing.
+  KEY INSIGHT: 'Full' is not always better. When features are already
+  roughly independent, diagonal covariance fits just as well with a
+  fraction of the parameters — BIC will tell you which is which.
+
+  Next: 04_mixture_of_experts.py — soft vs hard assignments in the
+  wild, and the bridge from GMMs to modern LLM routing.
 """
 )
 

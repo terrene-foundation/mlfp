@@ -10,7 +10,7 @@
 #   - Verify the Shapley additivity axiom (SHAP sum + base = model output)
 #   - Rank features globally by mean |SHAP|
 #   - Read dependence plots to find the SIGN of each feature's effect
-#   - Apply: Singapore MAS Model Risk Management audit trail
+#   - Apply: a model-risk audit pack for a Singapore retail bank
 #
 # PREREQUISITES:
 #   - MLFP03 Exercise 4 (LightGBM training)
@@ -23,15 +23,14 @@
 #   2. Build — TreeExplainer on the trained LightGBM credit model
 #   3. Train — no training; we EXPLAIN a pre-trained model
 #   4. Visualise — additivity check + global importance ranking
-#   5. Apply — MAS Model Risk Management compliance pack
+#   5. Apply — model-risk audit pack (illustrative bank)
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
+import plotly.graph_objects as go
 from dotenv import load_dotenv
-
-from kailash_ml import ModelVisualizer
 
 from shared.mlfp03.ex_6 import (
     OUTPUT_DIR,
@@ -62,6 +61,17 @@ load_dotenv()
 # For a general model, exact Shapley takes O(2^F) — infeasible. TreeSHAP
 # (Lundberg & Lee 2018) exploits tree structure to compute exact Shapley
 # in O(TLD²) where T=trees, L=max leaves, D=max depth. That's what we use.
+#
+# WHAT IS "THE MODEL OUTPUT" HERE? For a LightGBM classifier TreeSHAP
+# explains the RAW score — the log-odds z, where P(default) = sigmoid(z).
+# So additivity reads: base value + Σ φ_i = z (log-odds), NOT the
+# probability. Comparing SHAP sums with predict_proba is a classic bug.
+#
+# WHY shap.TreeExplainer AND NOT kailash-ml's ModelExplainer: ModelExplainer
+# wraps shap.Explainer with a background sample (interventional TreeSHAP).
+# On this LightGBM model, in kailash-ml 2.2.2, that path fails shap's own
+# additivity check, so this exercise uses path-dependent TreeSHAP directly
+# (shared.mlfp03.ex_6.build_shap_explainer) and verifies additivity itself.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -80,35 +90,34 @@ auc = bundle["auc"]
 print_section("TreeSHAP: Global Feature Attribution for Credit Default")
 print(f"Model AUC-ROC:   {auc:.4f}")
 print(f"SHAP shape:      {shap_vals.shape}  (samples x features)")
-print(f"Expected value:  {expected_value:.4f}  (base-rate log-odds)")
+print(f"Expected value:  {expected_value:.4f}  (average raw score, in log-odds)")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 3 — "TRAIN" = explain the trained model (SHAP has no training)
 # ════════════════════════════════════════════════════════════════════════
-# Verify the additivity axiom on 10 samples: φ.sum() + E[f(x)] ≈ f(x)
+# Verify the additivity axiom on EVERY test row: E[f(x)] + Σφ = f(x), where
+# f(x) is the raw log-odds score (predict(..., raw_score=True)).
 
-print_section("Additivity Verification (first 10 samples)", char="─")
-print(f"{'Sample':>8} {'SHAP sum':>12} {'Model out':>12} {'|Gap|':>10} {'Pass':>6}")
-print("─" * 52)
+raw_scores = model.predict(X_test, raw_score=True)
+shap_totals = shap_vals.sum(axis=1) + expected_value
+additivity_gaps = np.abs(shap_totals - raw_scores)
+mean_gap = float(additivity_gaps.mean())
 
-additivity_errors: list[float] = []
-for i in range(min(10, len(shap_vals))):
-    shap_sum = shap_vals[i].sum() + expected_value
-    model_out = model.predict_proba(X_test[i : i + 1])[:, 1][0]
-    gap = abs(shap_sum - model_out)
-    additivity_errors.append(gap)
-    passed = "ok" if gap < 0.1 else "~"
-    print(f"{i:>8} {shap_sum:>12.4f} {model_out:>12.4f} {gap:>10.6f} {passed:>6}")
-
-mean_gap = float(np.mean(additivity_errors))
-print(f"\nMean additivity gap: {mean_gap:.6f}")
+print_section("Additivity Verification (log-odds)", char="─")
+print(f"{'Sample':>8} {'base+ΣSHAP':>12} {'raw score':>12} {'P(default)':>11} {'|Gap|':>10}")
+print("─" * 58)
+for i in range(5):
+    p_default = 1.0 / (1.0 + np.exp(-raw_scores[i]))
+    print(f"{i:>8} {shap_totals[i]:>12.4f} {raw_scores[i]:>12.4f} {p_default:>11.4f} {additivity_gaps[i]:>10.2e}")
+print(f"\nMean |gap| over {len(raw_scores):,} rows: {mean_gap:.2e}")
 
 # ── Checkpoint 1 ────────────────────────────────────────────────────────
 assert shap_vals.shape == (
     X_test.shape[0],
     X_test.shape[1],
 ), "Task 3: SHAP shape must be (n_samples, n_features)"
+assert mean_gap < 1e-6, "Task 3: base value + sum of SHAP must equal the raw log-odds"
 # INTERPRETATION: Additivity means every feature gets credit for EXACTLY
 # its contribution to this prediction. Unlike gain-based importance
 # (which is a global average), SHAP decomposes each individual prediction
@@ -126,12 +135,23 @@ print_section("Global Feature Importance (mean |SHAP|)")
 print(f"{'Rank':>4} {'Feature':<30} {'mean|SHAP|':>12}")
 print("─" * 60)
 for rank, (name, imp) in enumerate(importance_ranking[:15], 1):
-    bar = "#" * int(imp * 200)
+    bar = "#" * min(int(imp * 100), 60)
     print(f"{rank:>4} {name:<30} {imp:>12.4f}  {bar}")
 
-viz = ModelVisualizer()
-fig = viz.feature_importance(model, feature_names, top_n=15)
-fig.update_layout(title="SHAP Feature Importance — Singapore Credit Default")
+top15 = importance_ranking[:15]
+fig = go.Figure(
+    go.Bar(
+        x=[imp for _, imp in reversed(top15)],
+        y=[name for name, _ in reversed(top15)],
+        orientation="h",
+        marker_color="#6366f1",
+    )
+)
+fig.update_layout(
+    title="Global importance: mean |SHAP| (log-odds) — Singapore credit default",
+    xaxis_title="mean |SHAP value| (average shift in log-odds)",
+    height=520,
+)
 html_out = OUTPUT_DIR / "ex6_01_shap_global_importance.html"
 fig.write_html(str(html_out))
 print(f"\nSaved: {html_out}")
@@ -159,32 +179,33 @@ print("\n[ok] Checkpoint 2 — global SHAP importance computed\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Singapore MAS Model Risk Management Compliance Pack
+# TASK 5 — APPLY: A Model-Risk Audit Pack (illustrative bank)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Tier-1 Singapore retail bank (call it "SG Retail Bank")
-# deploys this LightGBM model as a pre-approval filter for unsecured
-# personal loans. The Monetary Authority of Singapore's 2021 Model Risk
-# Management guideline (MAS Consultation Paper P015-2021) requires:
+# SCENARIO (illustrative): a Singapore retail bank deploys this LightGBM
+# model as a pre-approval filter for unsecured personal loans. Its model-
+# risk team (and supervisory guidance such as the MAS FEAT principles,
+# which call for transparency in AI-driven decisions) expects:
 #
 #   1. A documented feature-contribution audit for every production model
-#   2. Per-application explanation delivered to customers upon request
-#   3. Quarterly review of the top-N drivers of declined decisions
+#   2. A per-application explanation available when a customer asks
+#   3. A periodic review of the top drivers of declined decisions
 #
-# Why SHAP is the right tool here:
-#   - TreeSHAP is EXACT for LightGBM (no approximation uncertainty)
-#   - Additivity gives regulators a defensible decomposition of every score
-#   - Global importance ranking satisfies the quarterly review requirement
+# Why SHAP fits:
+#   - TreeSHAP is exact for LightGBM (no sampling noise)
+#   - Additivity — which you just verified to ~1e-6 — makes every score
+#     decomposable: base value + contributions = the model's log-odds
+#   - The global ranking is the input to the periodic driver review
 #
-# BUSINESS IMPACT:
-#   - A full SHAP pipeline costs ~1 engineer-week to deploy once (S$8,000)
-#   - MAS fines for unexplained adverse credit decisions run S$100,000+
-#     per instance (public censure + remediation cost)
-#   - Without SHAP, a single customer complaint that reaches the Financial
-#     Industry Disputes Resolution Centre (FIDReC) costs S$12,000 in legal
-#     and reputational remediation (FIDReC average 2023)
-#   - At a typical 40,000 declined applications/year, a 0.1% complaint
-#     rate = 40 complaints/year. Avoiding just 10 of those via documented
-#     SHAP explanations saves S$120,000/year. 15x payback in year 1.
+# BUSINESS VALUE (illustrative assumptions — replace with your own):
+#   if documented explanations let the bank resolve even a handful of
+#   escalated complaints a year without external dispute resolution, a
+#   one-off pipeline costing a few engineer-weeks pays for itself.
+
+top3 = ", ".join(name for name, _ in importance_ranking[:3])
+print_section("Audit-pack summary (computed)", char="─")
+print(f"  Model AUC-ROC:              {auc:.4f}")
+print(f"  Additivity (mean |gap|):    {mean_gap:.2e} log-odds")
+print(f"  Top-3 global drivers:       {top3}")
 #
 # LIMITATION: SHAP attributes the MODEL output. If the model is biased,
 # SHAP explains the bias rather than eliminating it. That's why Exercise
@@ -198,10 +219,10 @@ print_section("WHAT YOU'VE MASTERED")
 print(
     """
   [x] Built a TreeSHAP explainer against a trained LightGBM credit model
-  [x] Verified the Shapley additivity axiom on real predictions
+  [x] Verified the Shapley additivity axiom against the raw log-odds
   [x] Ranked features globally by mean |SHAP|
   [x] Read the sign of each feature's effect via SHAP-value correlation
-  [x] Mapped the pipeline onto a concrete MAS compliance scenario
+  [x] Mapped the pipeline onto a bank's model-risk audit pack
 
   KEY INSIGHT: SHAP is not "yet another feature importance". It is the
   unique attribution method that satisfies the four Shapley axioms, and

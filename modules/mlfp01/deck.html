@@ -487,13 +487,14 @@ Transition: "Let us dig deeper into what the data actually contains."
       <pre><code class="language-python"># Statistical summary of every column
 print(df.describe())
 
-# Output (abridged):
-# statistic   month      mean_temperature_c  total_rainfall_mm
-# count       12         12.0                12.0
-# mean        null       27.47               171.75
-# std         null       0.62                40.10
-# min         April      26.5                108.0
-# max         September  28.3                254.0</code></pre>
+# Output (abridged; temp = mean_temperature_c,
+#         rain = total_rainfall_mm):
+#        month      temp   rain
+# count  12         12.0   12.0
+# mean   null       27.47  171.75
+# std    null       0.62   40.10
+# min    April      26.5   108.0
+# max    September  28.3   254.0</code></pre>
     </div>
     <div class="col">
       <h3>What describe() Tells You</h3>
@@ -1255,12 +1256,16 @@ towns = df["town"].unique().sort().to_list()
 
 # Loop and build summaries
 results = []
-for town in towns[:5]:  # first 5 alphabetically
+# first 5 towns alphabetically
+for town in towns[:5]:
     summary = district_summary(df, town)
-    top = summary.row(0, named=True)  # priciest flat type
-    results.append({"town": town, "top_type": top["flat_type"],
-                    "avg": top["avg_price"]})
-    print(f"{town}: {top['flat_type']} avg ${top['avg_price']:,.0f}")
+    # row 0 = the priciest flat type
+    top = summary.row(0, named=True)
+    flat, avg = top["flat_type"], top["avg_price"]
+    results.append(
+        {"town": town, "top_type": flat,
+         "avg": avg})
+    print(f"{town}: {flat} avg ${avg:,.0f}")
 
 # Convert to DataFrame
 report = pl.DataFrame(results)
@@ -1459,7 +1464,8 @@ one_year_ago = today - timedelta(days=365)
 print(f"One year ago: {one_year_ago:%Y-%m-%d}")
 
 config_path = Path("config.json")
-config_path.write_text(json.dumps({"town": "BISHAN"}))
+settings = {"town": "BISHAN"}
+config_path.write_text(json.dumps(settings))
 with open(config_path) as f:
     config = json.load(f)
 print(config["town"])  # BISHAN</code></pre>
@@ -1951,7 +1957,8 @@ Transition: "Now let us look at lazy frames for performance."
   <span class="marker marker-advanced">ADVANCED</span>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python">path = MLFPDataLoader().load_raw("mlfp01", "hdb_resale.parquet")
+      <pre><code class="language-python">path = MLFPDataLoader().load_raw(
+    "mlfp01", "hdb_resale.parquet")
 
 # Eager: executes immediately
 df = pl.read_parquet(path)
@@ -2333,16 +2340,20 @@ Transition: "Let us see how Kailash ModelVisualizer simplifies this."
 
 viz = ModelVisualizer()
 
-fig = viz.histogram(df, "resale_price",
-    bins=40, title="Price Distribution")
+fig = viz.histogram(
+    df, "resale_price", bins=40,
+    title="Price Distribution")
 fig.show()
 
-fig = viz.scatter(df, "floor_area_sqm",
+fig = viz.scatter(
+    df, "floor_area_sqm",
     "resale_price", color="flat_type",
     title="Floor Area vs Price")
 
-fig = viz.box_plot(df, "resale_price",
-    group_by="flat_type", title="Price by Flat Type")</code></pre>
+fig = viz.box_plot(
+    df, "resale_price",
+    group_by="flat_type",
+    title="Price by Flat Type")</code></pre>
       </div>
       <div class="col">
         <ul>
@@ -2566,19 +2577,22 @@ Transition: "What if the default thresholds are wrong?"
     <div class="col">
       <pre><code class="language-python">from kailash_ml import AlertConfig
 
+# comments show each default
 config = AlertConfig(
-    high_null_pct_threshold=0.02,     # default 0.05
-    skewness_threshold=2.0,           # default 2.0
-    high_correlation_threshold=0.95,  # default 0.9
-    high_cardinality_ratio=0.9,       # default 0.9
-    zero_pct_threshold=0.5,           # default 0.5
-    imbalance_ratio_threshold=0.1,    # default 0.1
-    duplicate_pct_threshold=0.0,      # default 0.0
-    constant_threshold=1,  # unique values; default 1
+    high_null_pct_threshold=0.02,    # 0.05
+    skewness_threshold=2.0,          # 2.0
+    high_correlation_threshold=0.95, # 0.9
+    high_cardinality_ratio=0.9,      # 0.9
+    zero_pct_threshold=0.5,          # 0.5
+    imbalance_ratio_threshold=0.1,   # 0.1
+    duplicate_pct_threshold=0.0,     # 0.0
+    # a count of unique values, not a share
+    constant_threshold=1,            # 1
 )
 
 profile = run_profile(df, alert_config=config)
-# now also: high_nulls on remaining_lease (2.9%)</code></pre>
+# now also: high_nulls on remaining_lease
+# (2.9% null)</code></pre>
     </div>
     <div class="col">
       <h3>8 Alert Types</h3>
@@ -2615,7 +2629,8 @@ Transition: "DataExplorer can also compare two datasets."
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python">from shared import run_compare  # wraps DataExplorer.compare()
+      <pre><code class="language-python"># wraps DataExplorer.compare()
+from shared import run_compare
 
 df_clean = (
     df.unique()  # drop duplicate rows
@@ -2623,13 +2638,15 @@ df_clean = (
             .is_between(50_000, 3_000_000))
 )
 
-result = run_compare(df, df_clean)  # a dict
+result = run_compare(df, df_clean)  # dict
 print(result["shape_comparison"])
-# {'rows_a': 50150, 'rows_b': 49750, ...}
+# {'rows_a': 50150,
+#  'rows_b': 49750, ...}
 
 for d in result["column_deltas"]:
     if d["column"] == "resale_price":
-        print(d["mean_delta"], d["std_delta"])
+        print(d["mean_delta"],
+              d["std_delta"])
 # about -21,479 and -244,897</code></pre>
     </div>
     <div class="col">
@@ -2663,7 +2680,8 @@ Transition: "Let us add error handling."
   <div class="columns">
     <div class="col">
       <pre><code class="language-python">try:
-    df = loader.load("mlfp01", "economic_indicators.csv")
+    df = loader.load(
+        "mlfp01", "economic_indicators.csv")
     profile = run_profile(df)
     print(f"Profiled {df.shape[0]} rows")
 except FileNotFoundError:
@@ -2908,19 +2926,18 @@ Transition: "Now let us automate cleaning with PreprocessingPipeline."
       <div class="col">
         <pre><code class="language-python">from kailash_ml import PreprocessingPipeline
 
-pipeline = PreprocessingPipeline()  # no arguments
+pipeline = PreprocessingPipeline()  # no args
 result = pipeline.setup(
-    data=train_rows,                # features + target
+    data=train_rows,  # incl. target
     target="fare_sgd",
     imputation_strategy="median",
     categorical_encoding="onehot",
-    normalize=True,
-)
-print(result.task_type)             # 'regression'
+    normalize=True)
+print(result.task_type)  # regression
 print(result.train_data.shape,
       result.test_data.shape)
-
-test_ready = pipeline.transform(test_rows)</code></pre>
+test_ready = pipeline.transform(
+    test_rows)</code></pre>
       </div>
       <div class="col">
         <h3>What setup() Automates</h3>
@@ -2929,8 +2946,7 @@ test_ready = pipeline.transform(test_rows)</code></pre>
           <li><strong>Missing imputation</strong> (mean/median/...)</li>
           <li><strong>Categorical encoding</strong> (one-hot)</li>
           <li><strong>Numeric scaling</strong> (z-score)</li>
-          <li><strong>Train/test split</strong> (<code>train_size=0.8</code>)</li>
-          <li>Optional: outlier removal, PCA</li>
+          <li><strong>Train/test split</strong> (<code>train_size=0.8</code>); optional outlier removal, PCA</li>
         </ul>
       </div>
     </div>

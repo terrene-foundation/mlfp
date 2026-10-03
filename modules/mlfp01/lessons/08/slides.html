@@ -429,13 +429,11 @@ test_ready = pipeline.transform(test_rows)                       # (9509, 44)
 <section>
   <h2>Step 5: Visualise demand by hour</h2>
   <pre><code class="language-python" data-trim>
-hourly = (
-    df.group_by("hour")
-    .agg(pl.len().alias("trips"))
-    .sort("hour")
-)   # 1,917 to 2,054 trips in every hour
+hourly = df.group_by("hour").agg(
+    pl.len().alias("trips")).sort("hour")
+# 1,917 to 2,054 trips in every hour
   </code></pre>
-  <figure style="text-align: center; margin-top: 1em;">
+  <figure style="text-align: center; margin-top: 0.5em;">
     <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
       <!-- Hourly trip counts from the cleaned course data: nearly flat -->
       <line x1="60" y1="170" x2="700" y2="170" stroke="#94A3B8" stroke-width="1"/>

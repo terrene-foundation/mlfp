@@ -40,3 +40,13 @@
 - Lesson 3.8: registry stages staging/shadow/production/archived; drift monitor own DB; KS 0.001; t* 0.130 on the model card; rollback via promote_model; 11 gates + human sign-off; Module 4 completes the Foundation Certificate.
 - Lesson notes + textbook pages still describe the old 3.1 target and old 3.3 leaderboard → S3/S4.
 - Snippet checker: raw `<=` inside HTML code is stripped as a tag → write `&lt;=` (HTML-correct anyway).
+
+---
+# Additions from the deck shard (S2a, merged 8f6e256e)
+- Deck assessment slide = 4 auto-graded tasks (20/25/25/30) — S5 redesign must update it if marks change.
+- "Always churn" baseline: accuracy 0.745, F1 0.854, AUC 0.5. Stacking/blending via EnsembleEngine ≈ 0.79 AUC.
+- TrainingPipeline accepts split_strategy="stratified_kfold" but scores only the first fold — say so.
+- Brier score is NOT a pure calibration measure. Nested-CV fits = 5×(5K+1). No Free Lunch = Wolpert (1996).
+- Owner questions: spec still says "Quiz + ML pipeline project" and HDB-based 3.1/3.2 exercises (intent, not stack).
+- X-PP: shared/mlfp03 ex_2.load_credit_data, ex_3.build_train_test_split, ex_7.prepare_credit_frames still fit preprocessing on all rows before splitting — fix in the cross-cutting integration shard.
+- Upstream: EnsembleEngine.stack/blend crash unless base models are pre-fitted; TrainingPipeline silently skips average_precision; LocalRuntime.execute() without a context manager → DeprecationWarning.

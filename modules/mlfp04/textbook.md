@@ -860,7 +860,7 @@ You should now be able to:
 
 ## Why This Matters
 
-The retail customer dataset in Lesson 4.1 had twelve features. That is manageable. A genomics dataset might have 20,000 features (one per gene). A text dataset encoded with bag-of-words might have 50,000 features (one per unique word). You cannot visualise 20,000 dimensions. You cannot cluster effectively in 50,000 dimensions — the curse of dimensionality makes distance metrics meaningless when most of the volume of a high-dimensional hypercube is concentrated in its corners. You need to reduce the number of dimensions while preserving as much of the data's structure as possible.
+The customer dataset in Lesson 4.1 had seven behavioural features. That is manageable. A genomics dataset might have 20,000 features (one per gene). A text dataset encoded with bag-of-words might have 50,000 features (one per unique word). You cannot visualise 20,000 dimensions. You cannot cluster effectively in 50,000 dimensions — the curse of dimensionality makes distance metrics meaningless when most of the volume of a high-dimensional hypercube is concentrated in its corners. You need to reduce the number of dimensions while preserving as much of the data's structure as possible.
 
 Dimensionality reduction is not just a visualisation trick. It is feature extraction. The new, lower-dimensional features are combinations of the original features that capture the most important variation in the data. PCA, the simplest and most widely used method, finds the directions of maximum variance. Those directions are often interpretable: the first principal component of a housing dataset might capture "overall quality" (size, location, condition all moving together), and the second might capture the "urban vs suburban" trade-off (small-but-central versus large-but-remote). The reduced features can then be fed into any downstream model.
 
@@ -924,9 +924,9 @@ $$\hat{\mathbf{X}} = \mathbf{Z} \mathbf{V}_k^T + \bar{\mathbf{X}}$$
 
 The reconstruction error is:
 
-$$\|\tilde{\mathbf{X}} - \hat{\tilde{\mathbf{X}}}\|_F^2 = \sum_{i=k+1}^{p} \lambda_i$$
+$$\|\tilde{\mathbf{X}} - \hat{\tilde{\mathbf{X}}}\|_F^2 = \sum_{i=k+1}^{p} \sigma_i^2 = (n-1) \sum_{i=k+1}^{p} \lambda_i$$
 
-This is the sum of the discarded eigenvalues — the variance that the reduced representation cannot capture.
+The squared error is the sum of the discarded squared singular values — equivalently, $(n-1)$ times the sum of the discarded covariance eigenvalues, because $\lambda_i = \sigma_i^2/(n-1)$. Divided by the $n \times p$ entries of the matrix, the mean squared reconstruction error per entry is $\frac{n-1}{n} \cdot \frac{1}{p} \sum_{i>k} \lambda_i$: the discarded variance, spread over the features. As a fraction of the total variance it is $1 - \text{VE}(k)$. Drill 4 checks this to many decimal places.
 
 ### FOUNDATIONS: Component loadings
 
@@ -936,15 +936,36 @@ The loadings are the entries of the eigenvectors $\mathbf{v}_k$. Each loading te
 
 t-SNE (t-distributed Stochastic Neighbour Embedding) is a non-linear dimensionality reduction method designed for visualisation. It preserves local structure: points that are close in high-dimensional space remain close in the 2D embedding. It does this by defining a probability distribution over pairs of points in high-dimensional space (based on Gaussian distances) and a corresponding distribution in the low-dimensional embedding (based on a Student's t-distribution), then minimising the KL divergence between them.
 
-Key properties: t-SNE is excellent for visualisation but not suitable for feature extraction. It is non-deterministic (different runs produce different embeddings), it has no inverse transform (you cannot map new points back), and it does not preserve global structure (distances between distant clusters are not meaningful). The perplexity parameter controls the effective number of neighbours and typically ranges from 5 to 50.
+Key properties: t-SNE is excellent for visualisation but not suitable for feature extraction. It is non-deterministic (different runs produce different embeddings), it cannot place new points on an existing map without refitting (no `transform()`, and no inverse), and it does not preserve global structure (distances between distant clusters are not meaningful). The perplexity parameter controls the effective number of neighbours and typically ranges from 5 to 50.
 
 ### FOUNDATIONS: UMAP
 
-UMAP (Uniform Manifold Approximation and Projection) is similar to t-SNE in spirit but grounded in a different mathematical framework (topological data analysis). It is faster than t-SNE, produces more reproducible results, preserves more global structure, and — crucially — supports an inverse transform and can be used for feature extraction, not just visualisation. UMAP has become the default non-linear dimensionality reduction method in practice.
+UMAP (Uniform Manifold Approximation and Projection) is similar to t-SNE in spirit but grounded in a different mathematical framework (a fuzzy nearest-neighbour graph, motivated by topological data analysis). It is usually faster than t-SNE on large data and tends to keep more of the coarse arrangement of the data, and — unlike t-SNE — a fitted UMAP model can `transform()` new points, so it can be used for feature extraction, not just visualisation (it also offers an approximate `inverse_transform`). It shares t-SNE's main caveat: distances *between* well-separated groups and the apparent sizes of groups in a UMAP plot are not reliable, so never read "cluster A is twice as far from B as from C" off the picture. Results depend on `n_neighbors` (local versus global emphasis) and `min_dist` (how tightly points pack), and on the random seed. UMAP has become a common default for non-linear reduction in practice.
 
 ### ADVANCED: Kernel PCA
 
-Standard PCA finds linear projections. Kernel PCA first maps the data into a higher-dimensional feature space via a kernel function (RBF, polynomial), then performs PCA in that space. This captures non-linear structure without explicitly computing the high-dimensional mapping — the kernel trick. Kernel PCA is less commonly used in practice than t-SNE or UMAP, but it has the advantage of having a well-defined reconstruction pre-image.
+Standard PCA finds linear projections. Kernel PCA first maps the data into a higher-dimensional feature space via a kernel function (RBF, polynomial), then performs PCA in that space. This captures non-linear structure without explicitly computing the high-dimensional mapping — the kernel trick. Unlike PCA, kernel PCA has **no exact inverse**: a point in the implicit feature space generally has no exact pre-image in the input space (the "pre-image problem"), so reconstructing input-space points needs an approximation — fixed-point iteration, or scikit-learn's `KernelPCA(fit_inverse_transform=True)`, which learns an approximate inverse map by kernel ridge regression. Kernel PCA also needs the $n \times n$ kernel matrix, which limits it to a few thousand rows (Exercise 3.2 subsamples for this reason).
+
+### FOUNDATIONS: Other manifold learners — a reference table
+
+PCA, kernel PCA, t-SNE and UMAP are the methods you will use most. Three classical manifold learners are worth recognising; all are in `sklearn.manifold` and all scale poorly beyond tens of thousands of points.
+
+| Method | What it preserves | When to reach for it | Main limitation |
+| --- | --- | --- | --- |
+| MDS (multidimensional scaling) | All pairwise distances, as well as possible | Visualising a given distance or dissimilarity matrix (e.g. survey similarity ratings) | $O(n^2)$ memory; with Euclidean distances, classical MDS equals PCA |
+| Isomap | Geodesic distances — shortest paths along a $k$-nearest-neighbour graph | Data lying on one smooth, "unrolled" manifold (the classic Swiss roll) | Breaks if the neighbour graph short-circuits across folds or is disconnected; sensitive to noise |
+| LLE (locally linear embedding) | Each point's reconstruction from its neighbours by linear weights | Smooth manifolds where local patches are nearly flat | Sensitive to $k$ and noise; can collapse points; no reliable global layout |
+
+### THEORY: Intrinsic dimension
+
+Data can live in $p$ ambient dimensions but vary along only $d \ll p$ independent directions; $d$ is its **intrinsic dimension**. A thousand photographs of a face rotating on a turntable have millions of pixel values each, but one intrinsic degree of freedom: the angle. Knowing $d$ tells you how far you can reduce without losing real structure. Two estimates are common:
+
+- **PCA thresholds** — the number of components needed to reach 90% or 95% of the variance. This counts *linear* dimensions, so it overestimates $d$ for curved manifolds (a Swiss roll needs all 3 principal components but is intrinsically 2-dimensional).
+- **The nearest-neighbour MLE of Levina and Bickel (2004).** Let $T_j(\mathbf{x})$ be the distance from $\mathbf{x}$ to its $j$-th nearest neighbour. If the data are locally uniform on a $d$-dimensional manifold, the number of neighbours within radius $r$ grows like $r^d$, and the maximum-likelihood estimate at $\mathbf{x}$ is
+
+$$\hat{m}_k(\mathbf{x}) = \left[ \frac{1}{k-1} \sum_{j=1}^{k-1} \log \frac{T_k(\mathbf{x})}{T_j(\mathbf{x})} \right]^{-1}$$
+
+averaged over the points (and, for stability, over several $k$). It is non-linear: it reports about 2 for a Swiss roll and about 8 for an 8-dimensional Gaussian cloud. Exact duplicate rows give $T_j = 0$ and must be removed first. The worked example estimates it for the customer data.
 
 ## Mathematical Foundations
 
@@ -968,68 +989,125 @@ This is the eigenvalue equation. The variance of the projection is $\mathbf{w}^T
 
 The Eckart-Young-Mirsky theorem states that the best rank-$k$ approximation of a matrix (in the Frobenius norm) is given by its truncated SVD. Since PCA is equivalent to truncated SVD, the PCA reconstruction is the best possible linear reconstruction with $k$ dimensions. No other linear method can achieve lower reconstruction error with the same number of components.
 
-## The Kailash Engine: ModelVisualizer (dimensionality reduction plots)
+## The Kailash Engine: DimReductionEngine
+
+`DimReductionEngine.reduce()` runs PCA, NMF (Lesson 4.6), t-SNE or UMAP behind one call and returns a result object with the embedding (`transformed`), the explained-variance ratio and the reconstruction error. `variance_analysis()` gives the numbers for a scree plot without choosing $k$ first. Kernel PCA, Isomap and LLE are not in the engine — use scikit-learn for those (Exercise 3.2 and 3.5). `ModelVisualizer` has no scree-plot helper; plot the cumulative variance with plotly directly.
 
 ```python
-from kailash_ml import ModelVisualizer
+import plotly.graph_objects as go
+import polars as pl
+from shared import MLFPDataLoader
+from kailash_ml.engines.dim_reduction import DimReductionEngine
 
-viz = ModelVisualizer()
-# Scree plot
-fig_scree = viz.line(
-    scree_df, x="component", y="variance_explained",
-    title="PCA Scree Plot"
-)
-# Loadings heatmap
-fig_loadings = viz.heatmap(
-    loadings_df, title="PCA Component Loadings"
-)
+FEATURES = ["total_revenue", "order_count", "avg_order_value",
+            "days_since_last_order", "customer_tenure_days",
+            "satisfaction_score", "num_returns"]
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X = customers.select(FEATURES).drop_nulls().sample(3000, seed=42)
+X = X.select((pl.all() - pl.all().mean()) / pl.all().std())
+
+reducer = DimReductionEngine()  # algorithms: pca | nmf | tsne | umap
+pca_res = reducer.reduce(X, algorithm="pca", n_components=5)
+print([round(v, 3) for v in pca_res.explained_variance_ratio])
+print(f"variance lost with 5 components: {pca_res.reconstruction_error:.3f}")
+
+scree = reducer.variance_analysis(X)
+fig = go.Figure(go.Scatter(y=scree["cumulative_variance"], mode="lines+markers"))
+fig.update_layout(title="PCA scree (cumulative variance)",
+                  xaxis_title="component", yaxis_title="cumulative variance")
+fig.write_html("pca_scree.html")
+
+umap_res = reducer.reduce(X, algorithm="umap", n_components=2, seed=42)
+xy = umap_res.transformed  # 2-D coordinates to plot
 ```
 
-## Worked Example: PCA, t-SNE, and UMAP on E-Commerce Data
+On this 3,000-customer sample the five ratios are about 0.26, 0.23, 0.15, 0.14 and 0.14. Note what the engine calls `reconstruction_error`: the *fraction of variance discarded*, $1 - \text{VE}(k)$ (here about 0.08), not the squared error in the units of the data.
+
+## Worked Example: PCA, t-SNE, and UMAP on E-Commerce Customers
+
+PCA is cheap, so it runs on all 50,000 customers. t-SNE, UMAP and the neighbourhood-based quality score are $O(n^2)$ or close to it, so they run on a 3,000-customer sample.
 
 ```python
+import numpy as np
+import polars as pl
 from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
+from sklearn.manifold import TSNE, trustworthiness
+from sklearn.neighbors import NearestNeighbors
 import umap
 
-loader = MLFPDataLoader()
-df = loader.load("mlfp04", "sg_ecommerce_features.csv")
-feature_cols = [c for c in df.columns if c != "customer_id"]
-X = df.select(feature_cols).to_numpy()
-X_scaled = StandardScaler().fit_transform(X)
+from shared import MLFPDataLoader
 
-# PCA
+FEATURES = ["total_revenue", "order_count", "avg_order_value",
+            "days_since_last_order", "customer_tenure_days",
+            "satisfaction_score", "num_returns"]
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X = customers.select(FEATURES).drop_nulls().to_numpy().astype(np.float64)
+X_scaled = (X - X.mean(axis=0)) / X.std(axis=0)
+
+# PCA on all 50,000 customers
 pca = PCA()
 X_pca = pca.fit_transform(X_scaled)
-
-# Scree plot data
 cum_var = np.cumsum(pca.explained_variance_ratio_)
-for i, cv in enumerate(cum_var[:10]):
-    print(f"PC{i+1}: cumulative variance = {cv:.3f}")
+for i, (ev, cv) in enumerate(zip(pca.explained_variance_, cum_var)):
+    print(f"PC{i + 1}: eigenvalue = {ev:.3f}   cumulative variance = {cv:.3f}")
 
-# 4 components explain ~80% of variance
-pca_4 = PCA(n_components=4)
-X_pca_4 = pca_4.fit_transform(X_scaled)
-
-# Loadings interpretation
-loadings = pca.components_[:4]
-for i in range(4):
-    top_features = np.argsort(np.abs(loadings[i]))[-3:][::-1]
-    print(f"PC{i+1} top features: {[feature_cols[j] for j in top_features]}")
-
-# t-SNE
-tsne = TSNE(n_components=2, perplexity=30, random_state=42)
-X_tsne = tsne.fit_transform(X_scaled)
-
-# UMAP
-reducer = umap.UMAP(n_components=2, random_state=42)
-X_umap = reducer.fit_transform(X_scaled)
-
-# Reconstruction error
-X_reconstructed = pca_4.inverse_transform(X_pca_4)
-recon_error = np.mean((X_scaled - X_reconstructed) ** 2)
-print(f"Reconstruction MSE with 4 components: {recon_error:.4f}")
+# Loadings: which features drive the first three components?
+for i in range(3):
+    top = np.argsort(np.abs(pca.components_[i]))[::-1][:3]
+    print(f"PC{i + 1}: " + ", ".join(f"{FEATURES[j]} ({pca.components_[i][j]:+.2f})" for j in top))
 ```
+
+| Component | Eigenvalue | Cumulative variance |
+| --- | --- | --- |
+| PC1 | 1.86 | 26.5% |
+| PC2 | 1.59 | 49.3% |
+| PC3 | 1.01 | 63.7% |
+| PC4 | 1.00 | 78.0% |
+| PC5 | 0.99 | 92.2% |
+| PC6 | 0.41 | 98.0% |
+| PC7 | 0.14 | 100% |
+
+Five components are needed to pass 90% of the variance and six to pass 95%. The loadings explain why. PC1 loads on `avg_order_value` (+0.71) and `total_revenue` (+0.65): a **spend** axis. PC2 loads equally on `days_since_last_order` and `customer_tenure_days` (+0.71 each): a **customer-age** axis — long-standing customers are also the ones who last ordered long ago. Those two correlated pairs are the only real redundancy in the data. PC3–PC5 have eigenvalues of almost exactly 1.0: for standardised data that is the signature of features that are essentially uncorrelated with everything else (order count, satisfaction and returns), so each needs a component of its own. There is no sharp scree elbow — this dataset is genuinely about five-dimensional, not two-dimensional.
+
+```python
+# Reconstruction error with 4 components, checked against the eigenvalue formula
+pca_4 = PCA(n_components=4)
+X_recon = pca_4.inverse_transform(pca_4.fit_transform(X_scaled))
+n, p = X_scaled.shape
+mse = np.mean((X_scaled - X_recon) ** 2)
+predicted = (n - 1) / n * pca.explained_variance_[4:].sum() / p
+print(f"Reconstruction MSE (4 components): {mse:.4f}   predicted: {predicted:.4f}")
+
+# Intrinsic dimension: Levina-Bickel nearest-neighbour MLE on a 2,000-row sample
+rng = np.random.default_rng(42)
+X_id = X_scaled[rng.choice(n, 2000, replace=False)]
+
+def levina_bickel(X, k=20):
+    dist, _ = NearestNeighbors(n_neighbors=k + 1).fit(X).kneighbors(X)
+    T = dist[:, 1:]                      # drop each point's distance to itself
+    ok = np.all(T > 0, axis=1)           # duplicates would give log(0)
+    return float((1.0 / np.log(T[ok, k - 1][:, None] / T[ok, : k - 1]).mean(axis=1)).mean())
+
+print("Intrinsic dimension:", {k: round(levina_bickel(X_id, k), 1) for k in (10, 20, 30)})
+```
+
+The measured mean squared error with four components is 0.2204, matching the formula $\frac{n-1}{n} \cdot \frac{1}{p}\sum_{i>4}\lambda_i$ to four decimals: four components lose 22% of the (unit) variance of each standardised feature on average, the same as $1 - 0.780$. The Levina–Bickel estimate is about 5 (5.2, 4.9 and 4.8 for $k = 10, 20, 30$), agreeing with the five components PCA needed for 90%.
+
+```python
+# t-SNE and UMAP on a 3,000-customer sample, judged by trustworthiness
+idx = rng.choice(n, 3000, replace=False)
+X_s = X_scaled[idx]
+
+emb = {
+    "PCA (2D)": PCA(n_components=2).fit_transform(X_s),
+    "t-SNE": TSNE(n_components=2, perplexity=30, random_state=42).fit_transform(X_s),
+    "UMAP": umap.UMAP(n_components=2, random_state=42).fit_transform(X_s),
+}
+for name, Z in emb.items():
+    print(f"{name:<9} trustworthiness = {trustworthiness(X_s, Z, n_neighbors=10):.3f}")
+```
+
+Trustworthiness asks whether a point's neighbours *in the 2-D picture* were also its neighbours in the original 7-D space (1.0 = no false neighbours; about 0.5 = a random layout). PCA squeezed into two dimensions scores about 0.79 — it keeps only 49% of the variance, so many points that look close in the plot are not. t-SNE scores about 0.99 and UMAP about 0.97: both are far more faithful *locally*. That is exactly their job. It does not make their global layout trustworthy, and it does not make them feature extractors: the t-SNE map cannot embed a new customer without refitting.
 
 ## Try It Yourself
 
@@ -1041,18 +1119,18 @@ print(f"Reconstruction MSE with 4 components: {recon_error:.4f}")
 X_centred = X_scaled - X_scaled.mean(axis=0)
 cov = X_centred.T @ X_centred / (len(X_centred) - 1)
 eigenvalues, eigenvectors = np.linalg.eigh(cov)
-idx = np.argsort(eigenvalues)[::-1]
-eigenvalues = eigenvalues[idx]
-eigenvectors = eigenvectors[:, idx]
+idx_sorted = np.argsort(eigenvalues)[::-1]
+eigenvalues = eigenvalues[idx_sorted]
+eigenvectors = eigenvectors[:, idx_sorted]
 X_my_pca = X_centred @ eigenvectors[:, :2]
 
-# Compare with sklearn
 pca_sk = PCA(n_components=2)
 X_sk_pca = pca_sk.fit_transform(X_scaled)
-# Signs may differ; compare absolute correlation
+print("Eigenvalues match sklearn:", np.allclose(eigenvalues[:2], pca_sk.explained_variance_))
+# The sign of an eigenvector is arbitrary, so compare up to sign
 for i in range(2):
     corr = np.abs(np.corrcoef(X_my_pca[:, i], X_sk_pca[:, i])[0, 1])
-    print(f"PC{i+1} correlation: {corr:.6f}")  # Should be ~1.0
+    print(f"PC{i + 1} |correlation| with sklearn: {corr:.6f}")  # 1.000000
 ```
 
 **Drill 2.** Compute PCA using SVD instead of eigendecomposition. Verify that the singular values squared divided by $(n-1)$ equal the eigenvalues from Drill 1.
@@ -1062,59 +1140,63 @@ for i in range(2):
 ```python
 U, S, Vt = np.linalg.svd(X_centred, full_matrices=False)
 eigenvalues_from_svd = S**2 / (len(X_centred) - 1)
-print("Eigenvalues match:", np.allclose(eigenvalues[:len(S)], eigenvalues_from_svd))
+print("Eigenvalues match:", np.allclose(eigenvalues, eigenvalues_from_svd))
+print("Directions match (up to sign):",
+      np.allclose(np.abs(Vt), np.abs(eigenvectors.T), atol=1e-6))
 ```
 
-**Drill 3.** Run t-SNE with perplexity values of 5, 30, and 100 on the e-commerce dataset. How does perplexity affect the visual appearance of the clusters? Which perplexity produces the clearest separation?
+**Drill 3.** Run t-SNE with perplexity values of 5, 30, and 100 on the 3,000-customer sample. How does perplexity change the picture? Which setting preserves neighbourhoods best?
 
 **Solution:**
 
 ```python
 for perp in [5, 30, 100]:
-    tsne = TSNE(n_components=2, perplexity=perp, random_state=42)
-    X_tsne = tsne.fit_transform(X_scaled)
-    print(f"Perplexity={perp}: spread range x=[{X_tsne[:,0].min():.1f}, {X_tsne[:,0].max():.1f}]")
+    Z = TSNE(n_components=2, perplexity=perp, random_state=42).fit_transform(X_s)
+    tw = trustworthiness(X_s, Z, n_neighbors=10)
+    print(f"perplexity={perp:>3}: trustworthiness={tw:.3f}  "
+          f"x-range=[{Z[:, 0].min():.0f}, {Z[:, 0].max():.0f}]")
 ```
 
-Low perplexity (5) creates tight, fragmented clusters. High perplexity (100) creates a more uniform spread with less local structure. Perplexity 30 is typically the best compromise.
+Perplexity is roughly the number of neighbours each point "pays attention to". Low perplexity (5) produces many small, tight fragments and the widest spread; high perplexity (100) produces a smoother, more compact map that reflects broader structure. All three keep local neighbourhoods well (trustworthiness 0.988, 0.993 and 0.990 at 10 neighbours for perplexity 5, 30 and 100); the x-range shrinks from about ±100 to about ±40 as perplexity grows. There is no single "clearest" setting — clusters that appear at one perplexity and vanish at another are a warning that the structure is not robust. Always look at more than one.
 
-**Drill 4.** Demonstrate that PCA reconstruction error equals the sum of discarded eigenvalues. Compute PCA with $k=2$ components, reconstruct, compute MSE, and compare with $\sum_{i=3}^{p} \lambda_i / p$.
+**Drill 4.** Demonstrate that PCA reconstruction error equals the discarded eigenvalues. Compute PCA with $k = 2$ components, reconstruct, and compare the squared Frobenius error with $(n-1)\sum_{i=3}^{p} \lambda_i$.
 
 **Solution:**
 
 ```python
 pca_2 = PCA(n_components=2)
-X_pca_2 = pca_2.fit_transform(X_scaled)
-X_recon = pca_2.inverse_transform(X_pca_2)
-mse = np.mean((X_scaled - X_recon)**2)
-discarded = eigenvalues[2:].sum() / X_scaled.shape[1]
-print(f"MSE: {mse:.6f}, Sum(discarded)/p: {discarded:.6f}")
-# These should be approximately equal
+X_recon2 = pca_2.inverse_transform(pca_2.fit_transform(X_scaled))
+frob_sq = np.sum((X_scaled - X_recon2) ** 2)
+predicted_sq = (len(X_scaled) - 1) * eigenvalues[2:].sum()
+print(f"||X - X_hat||_F^2 = {frob_sq:,.2f}   (n-1) * sum(discarded eigenvalues) = {predicted_sq:,.2f}")
+print(f"Mean squared error per entry: {frob_sq / X_scaled.size:.6f}")
 ```
 
-**Drill 5.** Apply UMAP to the e-commerce data with `n_components=3` (not 2). Feed the 3D UMAP embedding into K-means with $K=4$. Compare the silhouette score of clustering in the original high-dimensional space versus the 3D UMAP space. Which is higher? Why?
+The two numbers agree to rounding. Forgetting the factor $(n-1)$ — comparing the squared error with the bare sum of eigenvalues — is off by a factor of about 50,000 here, which is why the definition of $\lambda_i$ (eigenvalues of the covariance matrix, already divided by $n-1$) matters.
+
+**Drill 5.** Apply UMAP with `n_components=3` to the 3,000-customer sample. Run K-means with $K = 4$ in the original 7-D space and in the 3-D UMAP space, and compare the silhouette scores. Which is higher? Does that mean UMAP "found better clusters"? Check trustworthiness too.
 
 **Solution:**
 
 ```python
-reducer_3d = umap.UMAP(n_components=3, random_state=42)
-X_umap_3d = reducer_3d.fit_transform(X_scaled)
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 
-km_orig = KMeans(n_clusters=4, random_state=42).fit(X_scaled)
-km_umap = KMeans(n_clusters=4, random_state=42).fit(X_umap_3d)
+X_umap_3d = umap.UMAP(n_components=3, random_state=42).fit_transform(X_s)
+km_orig = KMeans(n_clusters=4, n_init=10, random_state=42).fit(X_s)
+km_umap = KMeans(n_clusters=4, n_init=10, random_state=42).fit(X_umap_3d)
 
-sil_orig = silhouette_score(X_scaled, km_orig.labels_)
-sil_umap = silhouette_score(X_umap_3d, km_umap.labels_)
-print(f"Silhouette (original): {sil_orig:.3f}")
-print(f"Silhouette (UMAP 3D): {sil_umap:.3f}")
+print(f"Silhouette (original 7-D): {silhouette_score(X_s, km_orig.labels_):.3f}")
+print(f"Silhouette (UMAP 3-D):     {silhouette_score(X_umap_3d, km_umap.labels_):.3f}")
+print(f"UMAP 3-D trustworthiness:  {trustworthiness(X_s, X_umap_3d, n_neighbors=10):.3f}")
 ```
 
-UMAP often produces a higher silhouette score because it concentrates cluster structure into fewer dimensions, making clusters more compact and well-separated in the reduced space.
+The silhouette in UMAP space (about 0.40) is far higher than in the original space (about 0.16), and the 3-D embedding is locally faithful (trustworthiness about 0.99). The silhouette gain is still a property of UMAP, not of the customers: UMAP deliberately pulls neighbouring points together and pushes the rest apart, so almost any K-means partition of its output looks well separated. A silhouette computed in the embedding answers "how blob-like is this picture?", not "how much real cluster structure is there?". Judge an embedding by neighbourhood preservation (trustworthiness) and judge clusters in the original feature space — this is why Exercise 3 ranks reducers by trustworthiness. Clustering on UMAP output can still be useful (BERTopic does it in Lesson 4.6), but the silhouette gain is not evidence for it.
 
 ## Cross-References
 
 - **Module 2, Lesson 2.5** introduced linear algebra concepts. PCA is the direct application of eigendecomposition to data analysis.
-- **Lesson 4.1** used clustering on the original features. Combining PCA or UMAP with clustering often produces better results than clustering on raw features.
+- **Lesson 4.1** used clustering on the original features. Reducing with PCA before clustering can remove noise dimensions; clustering on UMAP output inflates internal scores (Drill 5), so judge the resulting clusters in the original feature space.
 - **Lesson 4.7** introduces matrix factorisation. PCA is matrix factorisation via SVD; collaborative filtering is matrix factorisation via ALS. The connection is deep.
 - **Module 5, Lesson 5.1** will use autoencoders for non-linear dimensionality reduction — a neural-network generalisation of PCA.
 
@@ -1126,7 +1208,9 @@ You should now be able to:
 - Explain the SVD connection and why SVD is preferred computationally.
 - Read a scree plot and choose the number of components.
 - Interpret component loadings in domain terms.
-- Distinguish when to use PCA (feature extraction), t-SNE (visualisation only), and UMAP (both).
+- Distinguish when to use PCA (feature extraction), t-SNE (visualisation only), and UMAP (both, with care), and name the classical alternatives (MDS, Isomap, LLE).
+- Estimate intrinsic dimension with PCA thresholds and the Levina–Bickel nearest-neighbour estimator.
+- Judge an embedding by neighbourhood preservation (trustworthiness), not by clustering scores computed inside it.
 - Compute reconstruction error and explain what information is lost.
 
 ---

@@ -58,8 +58,9 @@ By the end of this module you will be able to:
    technique in modern online experimentation) and derive
    `Var(Y_adj) = Var(Y)(1 - ρ²)` from scratch.
 8. **Make causal claims** from observational data using Difference-in-
-   Differences and the parallel-trends assumption, and know when propensity
-   methods are preferred.
+   Differences, test the parallel-trends assumption, and know where
+   propensity-score methods (reference material beyond this module)
+   fit in.
 9. **Integrate everything** into a capstone statistical analysis that loads
    data, engineers features, runs tests, builds a model, and presents
    findings to a non-technical audience.
@@ -99,9 +100,10 @@ Every lesson follows a consistent structure:
    kailash-ml platform. Every lesson is tied to at least one engine
    (`ExperimentTracker`, `FeatureEngineer`, `FeatureStore`,
    `ModelVisualizer`).
-5. **Worked Example** — a full end-to-end problem using real Singapore
-   data. You can run the code locally; imports and dataset names match
-   `shared.MLFPDataLoader`.
+5. **Worked Example** — a full end-to-end problem on the course data
+   files, loaded with `shared.MLFPDataLoader`. Run the code from the
+   repository root (so the loader finds `data/`); every output quoted
+   in the text was produced by the code shown.
 6. **Try It Yourself** — three to five practice problems with solutions
    at the end of each section. The solutions are written out, not just
    answers, so you can compare your reasoning step by step.
@@ -4021,99 +4023,134 @@ Module 2 — probability, estimation, testing, regression,
 logistic regression, and causal inference — and produce a
 _useful_ answer.
 
-This final lesson walks through a complete end-to-end project
-on Singapore HDB data. The narrative is: **"What drives HDB
-resale prices, and are price changes between years driven by
-flat characteristics or by market dynamics?"**
+### Choose a project
+
+Every option uses a dataset already in the course data folder:
+
+- **Option A — HDB resale valuation** (`mlfp01/hdb_resale.parquet`).
+  Typed features, point-in-time retrieval, regression with lineage.
+  Exercise 8 walks through it step by step, and it is the path this
+  lesson follows.
+- **Option B — Singapore economic indicators**
+  (`mlfp01/economic_indicators.csv`). Model GDP growth from trade
+  balance, unemployment and inflation.
+- **Option C — Experiment design and analysis**
+  (`mlfp02/experiment_data.parquet`). SRM against the designed split,
+  CUPED, and a defended ship / no-ship decision on a four-arm
+  experiment with one broken arm.
+
+The guiding question for Option A: **"What drives HDB resale prices in
+the course file, and how well does a model trained on the past predict
+next year's sales?"**
 
 ## The Full Pipeline
 
-### Step 1 — Load and explore
+### Step 1 — Load, describe, validate
+
+Profile the raw file with `DataExplorer` (through the course's
+`run_profile` helper, which runs the async `profile()` for you), then
+apply explicit validation rules. The file contains impossible rows on
+purpose: leases that start after the sale (so more than 99 years
+remain) and sentinel prices.
+
+### Step 2 — Engineer features
+
+`FeatureEngineer.generate` proposes candidate features from a typed
+schema (here temporal parts of the sale date and an
+area × lease interaction); `FeatureEngineer.select` ranks them against
+the target and keeps the best `top_k`.
 
 ```python
 import polars as pl
-from kailash_ml import DataExplorer
-from shared import MLFPDataLoader
+from kailash_ml import FeatureEngineer, FeatureField, FeatureSchema
 
-loader = MLFPDataLoader()
-hdb = loader.load("mlfp01", "hdb_resale.parquet")
+from shared import MLFPDataLoader, run_profile
+from shared.mlfp02.ex_8 import compute_v1_features, load_hdb_resale, validate_v1_features
 
-DataExplorer().explore(hdb, target="resale_price")
+# Step 1 - describe: profile the raw file, then apply the validation rules
+hdb = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+profile = run_profile(hdb)
+print(f"{profile.n_rows:,} rows, {len(profile.alerts)} profile alerts")
+valid, violations = validate_v1_features(compute_v1_features(load_hdb_resale()))
+print(violations)  # rule -> number of rows breaking it
+print(f"{hdb.height - valid.height:,} rows removed, {valid.height:,} kept")
+
+# Step 2 - engineer: temporal + interaction candidates, then keep the best
+df = valid.with_columns(pl.col("transaction_date").cast(pl.Datetime))
+schema = FeatureSchema(
+    name="hdb_capstone", entity_id_column="transaction_id",
+    features=[FeatureField("floor_area_sqm", "float64"),
+              FeatureField("remaining_lease_years", "float64"),
+              FeatureField("transaction_date", "datetime")])
+fe = FeatureEngineer(max_features=10)
+generated = fe.generate(df, schema, strategies=["temporal", "interactions"])
+selected = fe.select(generated.data, generated, target="resale_price", top_k=3)
+print([c for c in generated.data.columns if c not in df.columns])
+print(selected.selected_columns)
 ```
 
-The explorer prints schema, summary stats, missing counts, and
-target distribution. Use it to catch typos, out-of-range
-values, and imbalanced categories before modelling.
+On the course file: the profile raises 7 alerts; the rules remove
+3,536 rows (3,298 leases starting after the sale, 251 sentinel prices,
+some rows breaking both), leaving 46,614. `generate` adds
+`floor_area_sqm_x_remaining_lease_years` and the `transaction_date`
+month, day-of-week and hour parts; `select` keeps `floor_area_sqm`
+(importance 0.88), the area × lease interaction (0.05) and the sale
+month (0.03). The hour of a monthly date is constant — a generated
+feature with zero importance is exactly what selection is for.
 
-### Step 2 — Feature engineering
+### Step 3 — Hypothesise
 
-Temporal features (month, quarter, year), geographic features
-(distance to CBD, proximity to nearest MRT), and interaction
-terms (area × central) are the first round. See Module 3 for
-a systematic approach; here we prototype.
+Write three hypotheses, each testable with the data you have:
 
-```python
-from kailash_ml import FeatureEngineer
+1. _"Floor area is the strongest predictor of price, controlling
+   for storey, lease and town."_
+2. _"Town matters: after controlling for flat characteristics, the
+   town dummies are jointly significant."_
+3. _"Remaining lease affects price non-linearly: the squared lease
+   term is significant."_
 
-engineer = FeatureEngineer()
-hdb_feat = engineer.add_temporal(hdb, date_col="month")
-hdb_feat = engineer.add_distance_to_point(
-    hdb_feat, lat_col="lat", lon_col="lon",
-    point_lat=1.2833, point_lon=103.8500, name="dist_to_raffles_km"
-)
-```
+### Step 4 — Test and model
 
-### Step 3 — Hypothesis
+Fit the Lesson 2.5 regression (floor area, storey midpoint, remaining
+lease, town dummies with Ang Mo Kio as base) and read the tests:
 
-Write three hypotheses, each testable:
+- **H1:** `floor_area_sqm` has `t ≈ 525`; no other predictor comes
+  close. Supported.
+- **H2:** an F-test comparing the model with and without the 26 town
+  dummies gives `F ≈ 405` on (26, 46,583) df, p < 0.001. Supported.
+- **H3:** adding `remaining_lease_years²` gives a squared-term
+  `t ≈ −1.16` (p = 0.25). Not supported _in this file_ — report it as
+  a null result, not as "no effect in the market".
 
-1. _"Floor area is the single strongest predictor of price,
-   controlling for lease and location."_
-2. _"The 2021 cooling measures reduced investment-segment
-   growth by at least SGD 10K."_
-3. _"Remaining lease affects price non-linearly: the last 30
-   years of lease lose value faster than the middle 30."_
+### Step 5 — Check for leakage, then evaluate out of time
 
-### Step 4 — Tests
+A valuation model will be used on _future_ sales, so evaluate it that
+way: train only on what was known at a cutoff date, and test on what
+came after. Doing this by hand is error-prone; the `FeatureStore` makes
+it structural (next section). Two leakage traps to avoid:
 
-- Hypothesis 1: fit a multivariate OLS, look at the t-statistic
-  on `floor_area_sqm` and the partial R² contribution.
-- Hypothesis 2: DiD with treated = investment, control =
-  first-time buyers.
-- Hypothesis 3: fit a regression with `remaining_lease` and
-  `remaining_lease²`; check if the squared term is significant.
-
-### Step 5 — Model
-
-```python
-from kailash_ml import TrainingPipeline
-
-pipeline = TrainingPipeline(task="regression", estimator="ols")
-pipeline.fit(hdb_feat.select([
-    "floor_area_sqm", "remaining_lease_years", "dist_to_raffles_km",
-    "storey_mid", "year", "flat_type", "town"
-]).to_pandas(),
-    hdb_feat["resale_price"].to_numpy())
-
-print(pipeline.summary())
-```
+- **Target leakage.** A feature computed from the row's own price —
+  for example a town median that _includes_ the current month — leaks
+  the answer into the inputs. Exercise 8.3 builds town features from
+  the six months _before_ each sale only.
+- **Time leakage.** Fitting on 2024 sales and then "predicting" 2023
+  sales uses the future to explain the past. A point-in-time read
+  prevents it.
 
 ### Step 6 — Interpret
 
-Write a two-paragraph narrative for a non-technical audience:
+Write a short narrative for a non-technical audience, using only
+numbers your analysis produced:
 
-> "Floor area is the biggest driver of HDB resale prices: each
-> additional square metre adds about SGD 3,200, all else
-> equal. Location matters almost as much — being 1 km closer to
-> Raffles is worth SGD 15K. Remaining lease has a non-linear
-> effect: flats with less than 30 years of lease lose value
-> sharply, consistent with CPF loan-eligibility rules.
->
-> "The December 2021 ABSD hike reduced investment-segment
-> price growth by SGD 18K relative to the first-time-buyer
-> control group (95% CI [SGD 12K, SGD 24K], p < 0.001). The
-> policy had a measurable cooling effect on the targeted
-> segment without dampening first-time-buyer prices."
+> "Floor area is by far the biggest driver of resale prices in this
+> data: each additional square metre is associated with about
+> SGD 9,100 more, all else equal. Location matters too — flats in
+> Bishan, Queenstown and Toa Payoh sell for roughly SGD 130,000 more
+> than comparable flats in Ang Mo Kio. Storey and remaining lease
+> show no detectable effect in this dataset. Even a simple model
+> using only floor area and lease, trained on 2023 sales, explains 83%
+> of the variation in 2024 prices, so the relationship holds up on
+> sales the model has never seen."
 
 ### Step 7 — Present
 
@@ -4123,55 +4160,120 @@ A good final report has:
    do.
 2. **Chart 1:** coefficient plot with 95% CIs, sorted by
    magnitude. Labels in plain English.
-3. **Chart 2:** DiD event-study plot showing both groups' means
-   over time, vertical line at treatment date.
-4. **Methodology appendix.** Data sources, assumptions, checks
-   run (SRM, pre-trends, residual diagnostics).
+3. **Chart 2:** predicted vs actual (or residuals) for the
+   out-of-time test year. For a policy question (Option C, or a
+   DiD extension), an event-study plot of both groups' means over
+   time with a vertical line at the treatment date.
+4. **Methodology appendix.** Data sources, validation rules and
+   rows removed, assumptions, checks run (SRM, pre-trends, residual
+   diagnostics, point-in-time cutoff).
 
 ## Kailash Engines — Full Integration
 
+### Point-in-time correctness with the FeatureStore
+
+A `FeatureSchema` (from `kailash_ml.features`) is a typed contract: an
+entity id, an **event timestamp**, and typed fields. `materialize`
+writes a frame to the store (an idempotent upsert keyed by entity and
+time, stamped with a version and lineage hash). `get_features(schema,
+timestamp=cutoff)` then returns only rows stamped **at or before** the
+cutoff — the store, not your discipline, guarantees that a model
+"trained in December 2023" sees nothing from 2024.
+
+The block below materialises the 2023–2024 sales (about 10,000 rows),
+takes the end-of-2023 snapshot as the training set and the 2024 rows as
+an out-of-time test set, fits OLS on the snapshot, and logs the run.
+Two practical notes: use the `kailash_ml.features.FeatureSchema` here
+(the top-level `kailash_ml.FeatureSchema` used by `FeatureEngineer`
+above is a different class that `FeatureStore` rejects), and give
+DataFlow an **absolute** sqlite path. Materialising writes row by row,
+so allow several minutes.
+
 ```python
-from kailash_ml import (
-    DataExplorer, PreprocessingPipeline, FeatureEngineer,
-    FeatureStore, FeatureSchema, TrainingPipeline,
-    ExperimentTracker, ModelVisualizer
+import asyncio
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import polars as pl
+from dataflow import DataFlow
+from kailash_ml import ExperimentTracker, ModelVisualizer
+from kailash_ml.features import FeatureField, FeatureGroup, FeatureSchema, FeatureStore
+
+from shared.mlfp02.ex_8 import compute_v1_features, load_hdb_resale, validate_v1_features
+
+# 1. Validate (drops the 3,536 impossible rows), keep 2023-2024
+valid, violations = validate_v1_features(compute_v1_features(load_hdb_resale()))
+recent = valid.filter(pl.col("transaction_date") >= pl.date(2023, 1, 1))
+
+# 2. Typed contract: entity id + event time + typed fields
+schema = FeatureSchema(
+    name="mlfp02_hdb_capstone",
+    fields=(
+        FeatureField("floor_area_sqm", "float64"),
+        FeatureField("remaining_lease_years", "float64"),
+        FeatureField("resale_price", "float64"),
+    ),
+    entity_id_column="transaction_id",
+    timestamp_column="transaction_date",
+)
+frame = recent.select(
+    pl.col("transaction_id").cast(pl.Int64),
+    pl.col("transaction_date").cast(pl.Datetime("us")),
+    *[pl.col(f.name).cast(pl.Float64) for f in schema.fields],
 )
 
-# 1. Schema
-schema = FeatureSchema({
-    "resale_price": {"dtype": "float", "description": "SGD"},
-    "floor_area_sqm": {"dtype": "float", "min": 20, "max": 300},
-    "remaining_lease_years": {"dtype": "float", "min": 0, "max": 99},
-    "dist_to_raffles_km": {"dtype": "float", "min": 0},
-    "town": {"dtype": "categorical"},
-})
+# DataFlow needs an ABSOLUTE sqlite path: a relative "sqlite:///x.db" fails on write
+STORE_URL = f"sqlite:///{Path('mlfp02_capstone.db').resolve()}"
 
-# 2. Feature store
-store = FeatureStore()
-store.register_schema("mlfp02_hdb", schema)
-store.ingest("mlfp02_hdb", hdb_feat)
 
-# 3. Retrieve with as-of (prevents leakage)
-features_2024 = store.get_features("mlfp02_hdb", as_of="2024-12-31")
+async def materialise_and_snapshot(cutoff: datetime) -> tuple[pl.DataFrame, pl.DataFrame]:
+    store = FeatureStore(DataFlow(STORE_URL), default_tenant_id="_single")
+    await store.materialize(FeatureGroup(schema, dataflow=store.dataflow), frame)
+    as_of = await store.get_features(schema, timestamp=cutoff)  # rows stamped <= cutoff
+    everything = await store.get_features(schema)
+    return as_of, everything
 
-# 4. Train
-pipeline = TrainingPipeline(task="regression", estimator="ols")
-pipeline.fit(features_2024.drop("resale_price").to_pandas(),
-             features_2024["resale_price"].to_numpy())
 
-# 5. Log everything
-with ExperimentTracker().start_run(name="mlfp02_capstone") as run:
-    run.log_param("model", "ols")
-    run.log_param("n", len(features_2024))
-    run.log_metric("r_squared", pipeline.r_squared_)
-    run.log_metric("adjusted_r_squared", pipeline.adj_r_squared_)
-    run.log_metric("f_statistic", pipeline.f_stat_)
-    run.log_artifact("coefficient_plot",
-                     ModelVisualizer().coefficient_plot(pipeline))
+train, everything = asyncio.run(materialise_and_snapshot(datetime(2023, 12, 31, 23, 59, 59)))
+test = everything.join(train.select("transaction_id"), on="transaction_id", how="anti")
+print(f"stored {everything.height:,} rows; as of 31 Dec 2023: {train.height:,}; 2024 hold-out: {test.height:,}")
+
+
+def design(df: pl.DataFrame) -> np.ndarray:
+    return np.column_stack([np.ones(df.height),
+                            df.select("floor_area_sqm", "remaining_lease_years").to_numpy()])
+
+
+beta = np.linalg.lstsq(design(train), train["resale_price"].to_numpy(), rcond=None)[0]
+y_test = test["resale_price"].to_numpy()
+pred = design(test) @ beta
+r2_test = 1 - np.sum((y_test - pred) ** 2) / np.sum((y_test - y_test.mean()) ** 2)
+print(f"area +{beta[1]:,.0f}/sqm, lease {beta[2]:+,.0f}/yr, out-of-time R2 = {r2_test:.3f}")
+fig = ModelVisualizer().residuals(y_test, pred)
+
+
+async def log_capstone() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_capstone", run_name="pit_ols") as run:
+        await run.log_params({"feature_schema": schema.name, "schema_version": str(schema.version),
+                              "train_as_of": "2023-12-31", "test": "2024"})
+        await run.log_metrics({"beta_area": float(beta[1]), "r2_out_of_time": float(r2_test),
+                               "n_train": float(train.height), "n_test": float(test.height)})
+    await tracker.close()
+
+
+asyncio.run(log_capstone())
 ```
 
-Every step is logged, versioned, and lineage-traced. A year
-from now, you (or a new teammate) can rerun the exact analysis.
+It prints `stored 9,990 rows; as of 31 Dec 2023: 4,991; 2024
+hold-out: 4,999` and `area +9,120/sqm, lease +78/yr, out-of-time R2 =
+0.831`. The out-of-time `R²` (0.831) is close to the in-sample and
+cross-validated values from Lesson 2.5 (0.86 with towns; 0.83 with
+area alone), so the model is not exploiting anything that disappears
+in the following year. The tracker run ties the result to the schema
+name and version, the cutoff and the test year: a year from now you
+can say exactly which data produced which number.
 
 ## Cross-References
 
@@ -4180,10 +4282,10 @@ from now, you (or a new teammate) can rerun the exact analysis.
 - **Module 4** introduces unsupervised methods (clustering,
   dimensionality reduction) as complements to the supervised
   tools we used here.
-- **Module 5** adds LLM-based synthesis — a good final report
+- **Module 6** adds LLM-based synthesis — a good final report
   can be drafted by an agent using the experiment tracker's
   metadata as context.
-- **Module 6** adds alignment and governance — every model
+- **Module 6** also adds alignment and governance — every model
   that goes to production needs a documented sign-off.
 
 ## Reflection
@@ -4249,17 +4351,21 @@ to _statistical thinking_.
 
 ## Engines You Now Own
 
-- **ExperimentTracker** — log every parameter and metric.
-- **FeatureEngineer** — generate temporal, interaction, and
-  polynomial features.
-- **FeatureStore** — store features with schema, versioning,
-  and point-in-time correctness.
-- **TrainingPipeline** — fit linear and logistic regressions
-  with full inferential output.
-- **ModelVisualizer** — coefficient plots, residual
-  diagnostics, posterior overlays.
+- **ExperimentTracker** — record every parameter and metric of an
+  analysis run (async: `await ExperimentTracker.create(...)`,
+  `async with tracker.track(...)`). It records; your code computes.
+- **FeatureEngineer** — `generate` candidate features (temporal,
+  interaction, polynomial) from a typed schema; `select` the best.
+- **FeatureStore** — typed, versioned feature tables with lineage
+  and point-in-time reads (`get_features(schema, timestamp=...)`).
+- **ModelVisualizer** — residual plots, ROC curves, confusion
+  matrices, histograms.
 - **DataExplorer** — from Module 1, used to sanity-check every
   new dataset before modelling.
+- **TrainingPipeline** — met in name only here: it trains
+  _predictive_ models from a feature store and becomes the core
+  engine in Module 3. In Module 2 you built the inferential
+  regression tables yourself.
 
 ## What's Next
 
@@ -4274,7 +4380,8 @@ inside a full MLOps workflow.
 > with you into Module 3 and every production model you ever
 > build.
 
-See you in Module 3: Supervised ML — Theory to Production.
+See you in Module 3: Supervised Machine Learning for Building and
+Deploying Models.
 
 ---
 
@@ -4719,8 +4826,8 @@ difficulty:
    Core reference for Lesson 2.7.
 5. **Trustworthy Online Controlled Experiments** (Kohavi, Tang, Xu).
    Practical guide to A/B testing at scale, including CUPED,
-   sequential testing, and interference. Written by the team that
-   ran thousands of experiments at Microsoft.
+   sequential testing, and interference. Written by practitioners who
+   led large-scale online experimentation programmes.
 6. **Causal Inference: The Mixtape** (Cunningham). Free online.
    Friendly introduction to DiD, IV, RDD, and synthetic control.
 7. **The Elements of Statistical Learning** (Hastie, Tibshirani,
@@ -4780,4 +4887,4 @@ Solutions are throughout Lessons 2.1–2.7. No cheat sheet.
 ---
 
 _End of Module 2 textbook chapter. Continue to Module 3 — Supervised
-Machine Learning: Theory to Production._
+Machine Learning for Building and Deploying Models._

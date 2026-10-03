@@ -822,8 +822,9 @@ board = obs.retrieval.compare_retrievers(
 util = obs.retrieval.context_utilisation(answer, retrieved_chunks)
 # float in [0, 1] — token-overlap heuristic, no LLM call
 
-# ── Judge-based RAG scores for the whole pipeline ────────────
-scores = obs.retrieval.ragas_scores(queries, contexts_per_query, answers)
+# ── End-to-end scores per query (ragas if usable, else judge) ─
+scores = obs.retrieval.evaluate(queries, contexts_per_query, answers,
+                                ground_truth_ids=gold_ids_per_query)
 
 obs.retrieval.plot_rag_dashboard().show()  # recall + leaderboard
 </code></pre>
@@ -837,7 +838,7 @@ obs.retrieval.plot_rag_dashboard().show()  # recall + leaderboard
     <strong>Time</strong>: 2 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;<code>compare_retrievers</code> is one call. In 6.4 you score four retrievers with it without hand-writing a single metric loop.&rdquo;<br/>
     <strong>Key question for the room</strong>: &ldquo;What happens if <code>context_utilisation</code> is 0.3? Which number do I change?&rdquo; &rarr; expected wrong answer: &ldquo;try a bigger model&rdquo; &rarr; right answer: &ldquo;tighten the prompt to cite chunks, OR re-rank so irrelevant chunks do not crowd the context window.&rdquo;<br/>
-    <strong>If behind schedule</strong>: skip <code>ragas_scores</code> &mdash; the bake-off is the headline. (Chunk-size comparison is Exercise 6.4 part 1, <code>ex_4/01</code>.)<br/>
+    <strong>If behind schedule</strong>: skip <code>evaluate</code> &mdash; the bake-off is the headline. (Chunk-size comparison is Exercise 6.4 part 1, <code>ex_4/01</code>.)<br/>
     <strong>Transition</strong>: &ldquo;Lens 4 is the one most teams never build &mdash; until the first 3am agent incident.&rdquo;
   </aside>
 </section>
@@ -2507,21 +2508,23 @@ print(m["train_loss"], m.get("rewards/margins"), result.adapter_path)
     <div class="cell">
       <h4>Dense Retrieval</h4>
       <p>Embed query and documents into vectors. Find nearest neighbours by cosine similarity. Captures semantic meaning.</p>
-      <pre><code class="language-python">from sentence_transformers import (
-    SentenceTransformer)
-model = SentenceTransformer(
-    "all-MiniLM-L6-v2")
-q_emb = model.encode(query)
+      <pre><code class="language-python">from shared.mlfp06._ollama_bootstrap import (
+    make_embedder)
+embedder = make_embedder()
+# nomic-embed-text via Ollama
+q_emb = (await embedder.embed(
+    [query]))[0]
 # Cosine similarity search</code></pre>
     </div>
     <div class="cell">
       <h4>Sparse Retrieval (BM25)</h4>
       <p>Term frequency + inverse document frequency. Exact keyword matching. Fast, interpretable, no GPU needed.</p>
-      <pre><code class="language-python">from rank_bm25 import BM25Okapi
-bm25 = BM25Okapi(tokenized_docs)
-scores = bm25.get_scores(
-    tokenized_query)
-top_k = scores.argsort()[-5:]</code></pre>
+      <pre><code class="language-python"># BM25 built from scratch
+# in Exercise 6.4 (ex_4/03)
+bm25 = BM25(chunk_texts,
+            k1=1.5, b=0.75)
+hits = bm25.search(
+    query, top_k=5)</code></pre>
     </div>
     <div class="cell">
       <h4>Hybrid Retrieval</h4>
@@ -2575,18 +2578,19 @@ top_docs = [candidates[i]
         <li>Embed the hypothetical answer instead of the query</li>
         <li>The hypothetical answer is in "document space" &mdash; better cosine similarity</li>
       </ul>
-      <pre><code class="language-python">hypothetical = delegate.generate(
-    f"Write a passage that answers: {query}"
-)
-hyde_embedding = model.encode(hypothetical)
-# Search with hyde_embedding instead</code></pre>
+      <pre><code class="language-python">hypothetical, _, _ = await run_delegate_text(
+    make_delegate(),
+    f"Write a passage that answers: {query}")
+hyde_emb = (await make_embedder().embed(
+    [hypothetical]))[0]
+# Search with hyde_emb instead of q_emb</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Re-ranking is the standard production pattern: fast retrieval for candidates, then accurate re-ranking for final results. HyDE is clever: the generated answer does not need to be correct, it just needs to be in the right semantic neighbourhood.
+    Time: ~3 min. Re-ranking is the standard production pattern: fast retrieval for candidates, then accurate re-ranking for final results. The slide shows a dedicated cross-encoder model; Exercise 6.4 (ex_4/05) uses the local LLM as a stand-in cross-encoder (score each query&ndash;passage pair 0&ndash;10), so no extra model download is needed. HyDE is clever: the generated answer does not need to be correct, it just needs to be in the right semantic neighbourhood.
   </aside>
 </section>
 
@@ -2606,19 +2610,63 @@ hyde_embedding = model.encode(hypothetical)
       <tr><td><strong>Context Recall</strong></td><td>Did we retrieve all needed information?</td><td>Compare retrieved context to ground truth</td></tr>
     </tbody>
   </table>
-  <pre><code class="language-python">from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy, context_relevancy
-
-results = evaluate(
-    dataset=eval_dataset,  # questions + ground truth + retrieved contexts + answers
-    metrics=[faithfulness, answer_relevancy, context_relevancy],
-)
-print(results)  # {"faithfulness": 0.87, "answer_relevancy": 0.92, ...}</code></pre>
+  <pre><code class="language-python"># Exercise 6.4 (ex_4/05): the four RAGAS metrics as LLM-as-judge
+# scores on local Ollama, one judge prompt per metric
+metrics = await compute_ragas_metrics(
+    question=q, answer=answer,
+    context="\n\n".join(retrieved_chunks), ground_truth=gold_answer)
+print(metrics)
+# {"faithfulness": ..., "answer_relevance": ...,
+#  "context_relevance": ..., "context_recall": ...}  each in [0, 1]</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. RAGAS provides the four metrics that matter for RAG quality. Faithfulness is the most important: if the answer is not grounded in the retrieved documents, you have a hallucinating RAG system. If beginners confused: "Faithfulness asks: did the AI make this up, or did it actually find it in the documents?"
+    Time: ~3 min. RAGAS defines the four metrics that matter for RAG quality. The course computes them with its own LLM-as-judge prompts on local Ollama (the <code>ragas</code> package's own metrics need extra provider dependencies that are not part of the course environment). Faithfulness is the most important: if the answer is not grounded in the retrieved documents, you have a hallucinating RAG system. If beginners confused: "Faithfulness asks: did the AI make this up, or did it actually find it in the documents?"
+  </aside>
+</section>
+
+
+<!-- SLIDE 40b — Advanced RAG patterns + Kaizen RAG agents -->
+<section class="code-fit">
+  <h2>Advanced RAG Patterns &amp; Kaizen RAG Agents</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Beyond one-shot retrieval</h3>
+      <ul style="font-size:0.78em;">
+        <li><strong>Metadata filtering</strong>: filter chunks by source, date or department <em>before</em> similarity search &mdash; precision you cannot get from embeddings alone</li>
+        <li><strong>Multi-hop retrieval</strong>: retrieve, read, form a follow-up query, retrieve again &mdash; for questions whose answer spans two documents (HotpotQA-style, used in Exercise 6.5)</li>
+        <li><strong>Document summarisation</strong>: index a summary per document; retrieve the document first, then its chunks &mdash; keeps long documents findable</li>
+      </ul>
+      <div class="callout callout-advanced" style="font-size:0.74em; margin-top:6px;">
+        Multi-hop is where RAG meets agents: the &ldquo;follow-up query&rdquo; is a reasoning step, which is why 6.5 builds it as a ReAct loop.
+      </div>
+    </div>
+    <div class="col">
+      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kaizen_agents.agents import MemoryAgent, RAGResearchAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL
+
+# RAG agent: own vector store (local sentence-transformer
+# embeddings) + retrieve-then-answer in one run()
+rag = RAGResearchAgent(llm_provider="ollama",
+                       model=DEFAULT_CHAT_MODEL, top_k_documents=3)
+rag.add_document("d1", "Refund policy", policy_text)
+out = rag.run(query="How long is the refund window?")
+print(out["answer"], out["sources"], out["confidence"])
+
+# Memory agent: remembers earlier turns per session_id
+mem = MemoryAgent(llm_provider="ollama", model=DEFAULT_CHAT_MODEL)
+mem.run("I handle motor insurance claims.", session_id="u42")
+reply = mem.run("Which claims do I handle?", session_id="u42")
+print(reply["response"])</code></pre>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. Two halves. Left: three patterns that fix the commonest RAG failures &mdash; wrong-source chunks (metadata filter), answers that need two documents (multi-hop), long documents that never rank (summary index). Right: Kaizen ships ready-made agents for the two most common shapes. <code>RAGResearchAgent</code> keeps its own small vector store and answers with sources and a confidence; <code>MemoryAgent</code> keeps per-session conversation history. Both run on the course's local Ollama model. Point out the trade-off: the packaged agents are quick to start, but the hand-built pipeline from the previous slides is what you tune and evaluate. If beginners confused: "Metadata filtering is like telling the librarian 'only the 2024 shelf' before you ask the question."
   </aside>
 </section>
 
@@ -2631,22 +2679,22 @@ print(results)  # {"faithfulness": 0.87, "answer_relevancy": 0.92, ...}</code></
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Build RAG system on Singapore policy documents</li>
-        <li>Implement BM25, dense, and hybrid retrieval</li>
-        <li>Evaluate with RAGAS metrics</li>
-        <li>Implement HyDE and measure improvement</li>
+        <li>Compare chunking strategies (<code>ex_4/01</code>)</li>
+        <li>Dense retrieval with <code>nomic-embed-text</code> (<code>02</code>), BM25 from scratch (<code>03</code>), hybrid with RRF (<code>04</code>)</li>
+        <li>LLM re-ranker, RAGAS-style judge metrics, HyDE and a full pipeline (<code>05</code>)</li>
+        <li>hit@k leaderboard: BM25 vs dense vs hybrid vs HyDE</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
         <li>RAG pipeline end-to-end functional</li>
-        <li>Three retrieval methods compared quantitatively</li>
-        <li>RAGAS metrics computed for each approach</li>
-        <li>HyDE measurably improves retrieval quality</li>
+        <li>Retrieval methods compared quantitatively on the same eval questions</li>
+        <li>RAGAS-style metrics computed for the pipeline</li>
+        <li>HyDE measured against dense on the same hit@k &mdash; report whether it helps</li>
       </ul>
       <div class="callout callout-foundations" style="margin-top:8px;">
-        <strong>Data:</strong> Singapore government policy documents (public domain). Real data, real questions, real evaluation.
+        <strong>Data:</strong> a 1,000-document sample of the open <code>neural-bridge/rag-dataset-12000</code> (context, question, answer). Real data, real questions, real evaluation.
       </div>
     </div>
   </div>
@@ -2654,7 +2702,7 @@ print(results)  # {"faithfulness": 0.87, "answer_relevancy": 0.92, ...}</code></
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. This is a full engineering exercise. Students build a production-grade RAG pipeline with proper evaluation. The Singapore policy dataset ensures real-world complexity.
+    Time: ~1 min. This is a full engineering exercise. Students build a production-grade RAG pipeline with proper evaluation. The corpus is a public, general-domain RAG benchmark (downloaded on first run and cached), so every question has a known source document. Stress that HyDE is not guaranteed to win: students measure it on the same hit@k as dense and report what they find.
   </aside>
 </section>
 

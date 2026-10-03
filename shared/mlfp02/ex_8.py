@@ -291,11 +291,12 @@ def fit_ols(X: np.ndarray, y: np.ndarray) -> dict[str, Any]:
     xtx_inv = np.linalg.inv(X.T @ X)
     se = np.sqrt(sigma_sq * np.diag(xtx_inv))
     t_stat = beta / se
-    p_val = 2.0 * (1.0 - sp_stats.t.cdf(np.abs(t_stat), df=n - k))
+    # Survival functions keep precision for tiny p-values (1 - cdf rounds to 0)
+    p_val = 2.0 * sp_stats.t.sf(np.abs(t_stat), df=n - k)
 
     sse = float(np.sum((y_hat - y.mean()) ** 2))
     f_stat = (sse / (k - 1)) / (ssr / (n - k))
-    f_p = 1.0 - sp_stats.f.cdf(f_stat, dfn=k - 1, dfd=n - k)
+    f_p = sp_stats.f.sf(f_stat, dfn=k - 1, dfd=n - k)
 
     return {
         "n": n,
@@ -312,6 +313,11 @@ def fit_ols(X: np.ndarray, y: np.ndarray) -> dict[str, Any]:
         "f_stat": float(f_stat),
         "f_p": float(f_p),
     }
+
+
+def format_p(p: float) -> str:
+    """Format a p-value; an underflowed 0.0 is reported as '< 1e-300'."""
+    return "< 1e-300" if p == 0.0 else f"{p:.2e}"
 
 
 def normal_normal_posterior(

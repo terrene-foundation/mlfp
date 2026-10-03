@@ -279,7 +279,7 @@ monthly_prices = monthly_prices.with_columns(
 result = (
     pl.scan_parquet(path)                         # lazy: no data loaded yet
     .with_columns(pl.col("month").str.slice(0, 4).cast(pl.Int32).alias("year"))
-    .filter(pl.col("year") >= 2020)
+    .filter(pl.col("year") &gt;= 2020)
     .group_by("town")
     .agg(pl.col("resale_price").median().alias("median"))
     .sort("median", descending=True)

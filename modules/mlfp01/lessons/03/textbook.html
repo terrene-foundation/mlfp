@@ -121,7 +121,7 @@
   <code>return</code> statement sends a value back to the caller.
 </p>
 
-<pre><code class="language-python">def format_sgd(amount: float) -> str:
+<pre><code class="language-python">def format_sgd(amount: float) -&gt; str:
     """Format a number as Singapore dollars with thousands separator."""
     return f"S${amount:,.0f}"
 
@@ -390,7 +390,7 @@ hdb = loader.load("mlfp01", "hdb_resale.parquet").with_columns(
     <span class="step-label">Step 2.</span>
     <p>Write a helper function that formats a number as Singapore dollars —
        we will call it dozens of times across the report.</p>
-    <pre><code class="language-python">def format_sgd(amount: float) -> str:
+    <pre><code class="language-python">def format_sgd(amount: float) -&gt; str:
     """Format a number as Singapore dollars with thousands separator."""
     return f"S${amount:,.0f}"</code></pre>
   </div>
@@ -424,13 +424,13 @@ hdb = loader.load("mlfp01", "hdb_resale.parquet").with_columns(
     <span class="step-label">Step 4.</span>
     <p>Iterate over the top 10 rows with a for loop and print a formatted
        report line using our helper function.</p>
-    <pre><code class="language-python">def district_line(row: dict) -> str:
+    <pre><code class="language-python">def district_line(row: dict) -&gt; str:
     return (
-        f"  {row['town']:<20} "
-        f"{format_sgd(row['median_price']):>12}  "
-        f"{row['transaction_count']:>8,}  "
-        f"IQR={format_sgd(row['iqr_price']):>10}  "
-        f"{format_sgd(row['median_price_sqm']):>10}/sqm"
+        f"  {row['town']:&lt;20} "
+        f"{format_sgd(row['median_price']):&gt;12}  "
+        f"{row['transaction_count']:&gt;8,}  "
+        f"IQR={format_sgd(row['iqr_price']):&gt;10}  "
+        f"{format_sgd(row['median_price_sqm']):&gt;10}/sqm"
     )
 
 print("=" * 70)

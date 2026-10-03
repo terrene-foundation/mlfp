@@ -142,13 +142,13 @@ from shared import MLFPDataLoader  # load one name from a package
   <code>if</code> operates on whole program paths.
 </p>
 
-<pre><code class="language-python">def price_range_label(price: float) -> str:
+<pre><code class="language-python">def price_range_label(price: float) -&gt; str:
     """Classify a resale price into a human-readable tier."""
-    if price < 350_000:
+    if price &lt; 350_000:
         return "Budget"
-    elif price < 500_000:
+    elif price &lt; 500_000:
         return "Mid-range"
-    elif price < 700_000:
+    elif price &lt; 700_000:
         return "Premium"
     else:
         return "Luxury"
@@ -493,7 +493,7 @@ print(hdb_enriched.shape)   # (50150, 15)</code></pre>
     <p>Two helper functions: the great-circle (haversine) distance between
        two latitude/longitude points, and a desirability classifier built
        with <code>if / elif / else</code>.</p>
-    <pre><code class="language-python">def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    <pre><code class="language-python">def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -&gt; float:
     """Great-circle distance between two points, in kilometres."""
     R = 6371.0  # Earth radius in km
     dlat = math.radians(lat2 - lat1)
@@ -504,15 +504,15 @@ print(hdb_enriched.shape)   # (50150, 15)</code></pre>
     return 2 * R * math.asin(math.sqrt(a))
 
 
-def desirability_tier(stations, schools: int) -> str:
+def desirability_tier(stations, schools: int) -&gt; str:
     """Classify a town into a desirability tier."""
     if stations is None:
         return "Unknown"           # town not in the MRT table
-    if stations >= 4 and schools >= 10:
+    if stations &gt;= 4 and schools &gt;= 10:
         return "Prime"
-    elif stations >= 4:
+    elif stations &gt;= 4:
         return "Good MRT access"
-    elif schools >= 10:
+    elif schools &gt;= 10:
         return "School-rich"
     else:
         return "Fewer amenities"</code></pre>

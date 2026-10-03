@@ -182,7 +182,7 @@
   regular Python values:
 </p>
 
-<pre><code class="language-python">pl.col("resale_price") > 500_000
+<pre><code class="language-python">pl.col("resale_price") &gt; 500_000
 # → an expression: "the resale_price column, compared to 500,000"
 
 pl.col("town") == "BISHAN"
@@ -292,7 +292,7 @@ df.filter(pl.col("town").is_in(central))
 
 <pre><code class="language-python">result = (
     hdb
-    .filter(pl.col("year") >= 2020)
+    .filter(pl.col("year") &gt;= 2020)
     .filter(pl.col("price_tier").is_in(["premium", "luxury"]))
     .select("transaction_date", "town", "flat_type", "resale_price")
     .sort("resale_price", descending=True)
@@ -375,9 +375,9 @@ df.filter(pl.col("town").is_in(central))
 </p>
 
 <pre><code class="language-python">hdb = hdb.with_columns(
-    pl.when(pl.col("resale_price") < 350_000).then(pl.lit("budget"))
-    .when(pl.col("resale_price") < 500_000).then(pl.lit("mid_range"))
-    .when(pl.col("resale_price") < 700_000).then(pl.lit("premium"))
+    pl.when(pl.col("resale_price") &lt; 350_000).then(pl.lit("budget"))
+    .when(pl.col("resale_price") &lt; 500_000).then(pl.lit("mid_range"))
+    .when(pl.col("resale_price") &lt; 700_000).then(pl.lit("premium"))
     .otherwise(pl.lit("luxury"))
     .alias("price_tier")
 )
@@ -473,7 +473,7 @@ Columns: ['month', 'town', 'flat_type', 'block', 'street_name', 'storey_range',
     (pl.col("town") == "BISHAN")
     & (pl.col("flat_type") == "4 ROOM")
     & (pl.col("year") == 2023)
-    & (pl.col("resale_price") > 800_000)
+    & (pl.col("resale_price") &gt; 800_000)
 )
 
 print(f"Matching transactions: {million_dollar.height}")</code></pre>
@@ -488,7 +488,7 @@ print(f"Matching transactions: {million_dollar.height}")</code></pre>
     <span class="step-label">Step 4.</span>
     <p>Compute the median price per square metre across those matching rows
        and format a summary.</p>
-    <pre><code class="language-python">if million_dollar.height > 0:
+    <pre><code class="language-python">if million_dollar.height &gt; 0:
     median_psm = million_dollar["price_per_sqm"].median()
     median_price = million_dollar["resale_price"].median()
     print(f"Bishan 4-room &gt; S$800k, 2023:")
@@ -518,7 +518,7 @@ else:
         (pl.col("town") == "BISHAN")
         & (pl.col("flat_type") == "4 ROOM")
         & (pl.col("year") == 2023)
-        & (pl.col("resale_price") > 800_000)
+        & (pl.col("resale_price") &gt; 800_000)
     )
     .select("month", "town", "resale_price", "floor_area_sqm", "price_per_sqm")
     .sort("resale_price", descending=True)

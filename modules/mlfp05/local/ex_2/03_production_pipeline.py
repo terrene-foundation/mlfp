@@ -288,7 +288,9 @@ onnx_path = Path("ex_2_resnet_se.onnx")
 # InferenceServer feeds ONNX Runtime one flat row per request record, so
 # we export the CNN behind FlatImageAdapter: it takes (batch, 3072) pixel
 # rows and reshapes them to (batch, 3, 32, 32). The adapter must be in
-# eval mode — OnnxBridge restores the training flag it finds.
+# eval mode — OnnxBridge restores the training flag it finds. The sample
+# is a batch of TWO rows, not one: the exporter traces with torch.export,
+# which treats size-1 dimensions as constants and can freeze the batch size.
 # (The exporter may print an opset-conversion traceback and fall back to
 # opset 18; that is log noise — export_result.success is the real signal.)
 serving_model = FlatImageAdapter(resnet_se).eval()
@@ -296,7 +298,7 @@ serving_model = FlatImageAdapter(resnet_se).eval()
 # TODO: Export serving_model with OnnxBridge.
 #   Signature: bridge.export(model, framework, *, output_path=..., sample_input=...)
 #   - framework is the short name of the training library ("torch")
-#   - sample_input is ONE example row in the shape the graph will receive
+#   - sample_input is a small batch (2 rows) shaped like the real input
 export_result = ____
 print(
     f"  OnnxBridge.export: success={export_result.success} "

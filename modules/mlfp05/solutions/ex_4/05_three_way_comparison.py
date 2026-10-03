@@ -601,47 +601,51 @@ print("\n--- Checkpoint 3 passed --- models registered in ModelRegistry\n")
 onnx_path = Path("ex_4_bert_agnews.onnx")
 bert_model.eval()
 
-exported = False
-try:
-    result = bridge.export(
-        model=bert_model,
-        framework="pytorch",
-        output_path=onnx_path,
-        n_features=BERT_MAX_LEN,
-    )
-    success = getattr(result, "success", bool(result))
-    exported = bool(success) and onnx_path.exists()
-except Exception:
-    pass
 
-if not exported:
-    # Torch ONNX export for BERT: provide dummy input_ids + attention_mask
-    print("  Using torch.onnx.export for BERT model...")
-    dummy_ids = torch.ones(1, BERT_MAX_LEN, dtype=torch.long, device=DEVICE)
-    dummy_mask = torch.ones(1, BERT_MAX_LEN, dtype=torch.long, device=DEVICE)
-    bert_cpu = bert_model.cpu()
-    torch.onnx.export(
-        bert_cpu,
-        (dummy_ids.cpu(), dummy_mask.cpu()),
-        onnx_path,
-        input_names=["input_ids", "attention_mask"],
-        output_names=["logits"],
-        dynamic_axes={
-            "input_ids": {0: "batch", 1: "seq"},
-            "attention_mask": {0: "batch", 1: "seq"},
-            "logits": {0: "batch"},
-        },
-        opset_version=17,
-        dynamo=False,
-    )
-    bert_model.to(DEVICE)
+class BertLogits(nn.Module):
+    """Single-input view of the classifier for export: token ids in, logits
+    out. The attention mask is rebuilt from the ids ([PAD] has id 0)."""
 
-if onnx_path.exists():
-    print(f"  ONNX export: {onnx_path} ({onnx_path.stat().st_size // 1024:,} KB)")
-else:
-    print("  ONNX export: skipped (export not available in this environment)")
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        mask = (input_ids != 0).long()
+        return self.model(input_ids=input_ids, attention_mask=mask).logits
+
+
+# Export on the CPU, then move BERT back. The sample is a batch of TWO
+# headlines, not one: the exporter traces with torch.export, which treats
+# size-1 dimensions as constants and can freeze the batch size at 1.
+bert_model.cpu()
+export_model = BertLogits(bert_model).eval()
+export_result = bridge.export(
+    export_model, "torch", output_path=onnx_path, sample_input=bert_test_ids[:2]
+)
+
+# Check the graph on real headlines. OnnxBridge.validate feeds float32
+# arrays, so it cannot drive an int64 token-id graph — compare directly.
+import onnxruntime as ort
+
+session = ort.InferenceSession(str(onnx_path))
+check_ids = bert_test_ids[:16]
+onnx_logits = session.run(None, {session.get_inputs()[0].name: check_ids.numpy()})[0]
+with torch.no_grad():
+    torch_logits = export_model(check_ids).numpy()
+bert_model.to(DEVICE)
+max_diff = float(np.abs(onnx_logits - torch_logits).max())
+agreement = float((onnx_logits.argmax(axis=1) == torch_logits.argmax(axis=1)).mean())
+print(
+    f"  OnnxBridge.export: success={export_result.success} -> {onnx_path} "
+    f"({onnx_path.stat().st_size // 1024:,} KB)"
+)
+print(f"  ONNX vs PyTorch on 16 test headlines: max |logit diff| = {max_diff:.2e}, "
+      f"class agreement = {agreement:.0%}")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert export_result.success, f"OnnxBridge export failed: {export_result.error_message}"
+assert agreement == 1.0 and max_diff < 1e-3, "ONNX graph drifted from PyTorch"
 # INTERPRETATION: The ModelRegistry gives you a versioned record of every
 # model experiment. The ONNX export makes the model portable -- it can run
 # on a server without PyTorch installed, in a mobile app, or in a browser

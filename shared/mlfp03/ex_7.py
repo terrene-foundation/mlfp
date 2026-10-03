@@ -4,9 +4,10 @@
 Shared infrastructure for MLFP03 Exercise 7 — Kailash Workflows, DataFlow
 Persistence, Hyperparameter Search, and Model Registry.
 
-Contains: dataset loading, preprocessing-to-sklearn-input helpers, fixed
-train/test splits, metric computation, DB URL resolution, and pipeline-audit
-utilities. Technique-specific code (workflow node wiring, search space
+Contains: leak-free dataset loading, fixed dev/test frames, FeatureSchema
+construction, registry setup and artefact loading, metric computation, the
+production quality gate, illustrative ROI helpers, DB URL resolution and
+pipeline-audit utilities. Technique-specific code (workflow node wiring, search space
 definitions, registry lifecycle transitions) lives in the per-technique files.
 
 Available after ``uv sync`` from any directory.
@@ -14,7 +15,6 @@ Available after ``uv sync`` from any directory.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field as _field
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,6 @@ from sklearn.metrics import (
 )
 
 from kailash_ml import PreprocessingPipeline
-from kailash_ml.interop import to_sklearn_input
 from kailash_ml.types import FeatureField, FeatureSchema
 
 from shared import MLFPDataLoader
@@ -89,100 +88,6 @@ def load_credit_frame() -> pl.DataFrame:
     return loader.load("mlfp02", DATASET_FILE).drop(CREDIT_NON_FEATURE_COLUMNS)
 
 
-@dataclass
-class CreditSplit:
-    """Train/test tensors with column metadata — one source of truth."""
-
-    X_train: np.ndarray
-    y_train: np.ndarray
-    X_test: np.ndarray
-    y_test: np.ndarray
-    feature_columns: list[str] = _field(default_factory=list)
-    train_size: int = 0
-    test_size: int = 0
-    feature_count: int = 0
-
-
-def prepare_credit_split(
-    credit: pl.DataFrame | None = None, *, seed: int = RANDOM_SEED
-) -> CreditSplit:
-    """Run the Kailash-ML preprocessing pipeline and return a CreditSplit.
-
-    Deterministic with ``seed``: same seed in + same data in → same split out.
-    This is the reproducibility contract Task 12 verifies.
-    """
-    if credit is None:
-        credit = load_credit_frame()
-
-    pipeline = PreprocessingPipeline()
-    result = pipeline.setup(
-        credit,
-        target=TARGET_COLUMN,
-        seed=seed,
-        normalize=False,
-        categorical_encoding="ordinal",
-    )
-
-    feature_columns = [c for c in result.train_data.columns if c != TARGET_COLUMN]
-    X_train, y_train, _ = to_sklearn_input(
-        result.train_data,
-        feature_columns=feature_columns,
-        target_column=TARGET_COLUMN,
-    )
-    X_test, y_test, _ = to_sklearn_input(
-        result.test_data,
-        feature_columns=feature_columns,
-        target_column=TARGET_COLUMN,
-    )
-
-    return CreditSplit(
-        X_train=X_train,
-        y_train=y_train,
-        X_test=X_test,
-        y_test=y_test,
-        feature_columns=feature_columns,
-        train_size=X_train.shape[0],
-        test_size=X_test.shape[0],
-        feature_count=X_train.shape[1],
-    )
-
-
-def prepare_credit_frame(
-    credit: pl.DataFrame | None = None, *, seed: int = RANDOM_SEED
-) -> tuple[pl.DataFrame, list[str]]:
-    """Return a preprocessed polars DataFrame suitable for TrainingPipeline.
-
-    Adds a deterministic ``application_id`` column so a ``FeatureSchema`` can
-    declare an ``entity_id_column`` — required by kailash-ml's TrainingPipeline.
-
-    Returns
-    -------
-    (frame, feature_columns)
-        ``frame`` contains all feature columns + ``default`` (target) +
-        ``application_id`` (entity). ``feature_columns`` excludes both.
-    """
-    if credit is None:
-        credit = load_credit_frame()
-
-    pipeline = PreprocessingPipeline()
-    result = pipeline.setup(
-        credit,
-        target=TARGET_COLUMN,
-        seed=seed,
-        normalize=False,
-        categorical_encoding="ordinal",
-    )
-
-    combined = pl.concat([result.train_data, result.test_data])
-    combined = combined.with_columns(
-        pl.int_range(0, combined.height, dtype=pl.Int64).alias("application_id")
-    )
-    feature_columns = [
-        c for c in combined.columns if c not in (TARGET_COLUMN, "application_id")
-    ]
-    return combined, feature_columns
-
-
 def prepare_credit_frames(
     credit: pl.DataFrame | None = None, *, seed: int = RANDOM_SEED
 ) -> tuple[pl.DataFrame, pl.DataFrame, list[str]]:
@@ -221,7 +126,7 @@ def prepare_credit_frames(
 
 
 def credit_feature_schema(feature_columns: list[str]) -> FeatureSchema:
-    """Build a FeatureSchema matching ``prepare_credit_frame`` output."""
+    """Build a FeatureSchema matching ``prepare_credit_frames`` output."""
     return FeatureSchema(
         name="credit_model_input",
         features=[FeatureField(name=f, dtype="float64") for f in feature_columns],
@@ -241,14 +146,6 @@ async def build_training_registry(db_url: str | None = None):
     await conn.initialize()
     registry = ModelRegistry(conn)
     return registry, conn
-
-
-def scale_pos_weight_for(y: np.ndarray) -> float:
-    """LightGBM scale_pos_weight for a 12%-positive binary target."""
-    pos_rate = float(y.mean())
-    if pos_rate <= 0.0 or pos_rate >= 1.0:
-        return 1.0
-    return (1.0 - pos_rate) / pos_rate
 
 
 # ════════════════════════════════════════════════════════════════════════

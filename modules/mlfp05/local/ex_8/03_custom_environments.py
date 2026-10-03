@@ -172,7 +172,7 @@ class ChurnPreventionEnv(gym.Env):
             intervention_cost = 1.5
 
         # TODO: Natural drift per day (draw noise from self.np_random):
-        #   satisfaction: -0.02 + Normal(0, 0.02), floor at 0
+        #   satisfaction: -0.02 + Normal(0, 0.02), kept in [0, 1]
         #   usage:        -0.01 + Normal(0, 0.02), kept in [0, 1]
         #   tickets:      +0.02 + Normal(0, 0.01), kept in [0, 1]
         satisfaction = ____  # TODO

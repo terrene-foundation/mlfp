@@ -167,7 +167,9 @@ class ChurnPreventionEnv(gym.Env):
             intervention_cost = 1.5
 
         # Natural drift: satisfaction decays, tickets accumulate
-        satisfaction = max(0.0, satisfaction - 0.02 + self.np_random.normal(0, 0.02))
+        satisfaction = float(
+            np.clip(satisfaction - 0.02 + self.np_random.normal(0, 0.02), 0.0, 1.0)
+        )
         usage = max(0.0, min(1.0, usage - 0.01 + self.np_random.normal(0, 0.02)))
         tickets = max(0.0, min(1.0, tickets + 0.02 + self.np_random.normal(0, 0.01)))
         tenure = min(1.0, tenure + 1.0 / self.max_steps)

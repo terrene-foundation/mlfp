@@ -131,8 +131,7 @@ class ActorCritic(nn.Module):
     are far larger than the actor's tiny policy-gradient signal, so they
     dominate the shared parameters and the policy never moves — on CartPole
     this leaves the agent stuck at ~random return (~24) with entropy frozen
-    at ln(2). Two independent MLPs let each head learn at its own scale, and
-    PPO then solves CartPole (return climbs past 200) within ~20 iterations.
+    at ln(2). Two independent MLPs let each head learn at its own scale.
     """
 
     def __init__(self, obs_dim: int, n_actions: int, hidden: int = 64):

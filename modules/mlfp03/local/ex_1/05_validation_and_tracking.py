@@ -7,14 +7,23 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Declare a FeatureSchema contract
-#   - Validate the engineered matrix at runtime
-#   - Vote across filter / wrapper / embedded methods for consensus
-#   - Log the final feature set to ExperimentTracker
-#   - Run a leakage audit before any training
+#   - Declare a FeatureSchema contract (types, nullability, documentation)
+#   - Validate the engineered matrix against the schema at runtime
+#   - Vote across filter/wrapper/embedded selections to build a ROBUST
+#     consensus feature set
+#   - Log the final feature set + metrics to ExperimentTracker
+#   - Run a leakage audit that every selection MUST pass before training
 #
-# PREREQUISITES: 02, 03, 04
+# PREREQUISITES: 02_filter_selection.py, 03_wrapper_selection.py,
+#                04_embedded_selection.py
 # ESTIMATED TIME: ~30 min
+#
+# TASKS:
+#   1. Theory — why schemas + audits are the last line of defence
+#   2. Build — declare FeatureSchema + replay the three selections
+#   3. Train — vote consensus across methods
+#   4. Visualise — consensus table + leakage audit report
+#   5. Apply — governance gates for a national health-data platform
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -23,6 +32,7 @@ import asyncio
 from collections import Counter
 
 import numpy as np
+import plotly.graph_objects as go
 import polars as pl
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFE, chi2, mutual_info_classif
@@ -33,9 +43,13 @@ from kailash_ml import DataExplorer
 from kailash_ml.types import FeatureField, FeatureSchema
 
 from shared.mlfp03.ex_1 import (
+    OUTPUT_DIR,
+    PREDICTION_HOURS,
+    audit_feature_list,
     build_full_feature_frame,
     load_icu_tables,
     log_selection_run,
+    prediction_window_report,
     prepare_selection_inputs,
     setup_tracking,
 )
@@ -44,14 +58,31 @@ from shared.mlfp03.ex_1 import (
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Schemas + Audits Are The Last Line Of Defence
 # ════════════════════════════════════════════════════════════════════════
-# Two complementary defences catch the highest-stakes ML bugs:
-#   1. FeatureSchema — a runtime type/nullability contract
-#   2. Leakage audit — a mechanical scan for post-hoc features
-# Neither is optional.
+# Feature engineering is where the highest-stakes bugs live. A single
+# leaky feature can pass every unit test, every code review, and every
+# cross-validation fold — and then fail catastrophically in production
+# because the validation set and the train set were drawn from the
+# same leaky joint distribution.
+#
+# Two complementary defences catch these bugs:
+#
+#   1. FeatureSchema — a type + nullability contract checked at
+#      runtime (by us, below: the schema object only DECLARES it). If a downstream refactor renames a column or changes
+#      its dtype, the schema check fires before the model trains on
+#      bad data. Think of it as a type system for ML features.
+#
+#   2. Leakage audit — a mechanical gate that FAILS when a feature is
+#      a target source (los_days, discharge time), uses events after
+#      the prediction cutoff, or correlates almost perfectly with the
+#      target. A flagged feature MUST be removed before training.
+#
+# Neither defence is optional. Schemas catch "we renamed a column"
+# bugs; the leakage audit catches "we accidentally used the future"
+# bugs. Different failure modes, both fatal.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — BUILD: feature matrix + FeatureSchema + selections
+# TASK 2 — BUILD: feature matrix + FeatureSchema + re-run selections
 # ════════════════════════════════════════════════════════════════════════
 
 tables = load_icu_tables()
@@ -64,12 +95,18 @@ print("=" * 70)
 print(f"  Features: {len(feature_cols)}")
 print(f"  Samples:  {X_sel.shape[0]}")
 
-# TODO: Declare a FeatureSchema named "icu_clinical_features_v1" with
-# seven FeatureField entries covering age, los_days, n_unique_medications,
-# received_vasopressors, n_abnormal_labs, abnormal_lab_ratio,
-# medication_intensity. Use entity_id_column="patient_id",
-# timestamp_column="admit_time", version=1.
-# Hint: FeatureSchema(name=..., features=[FeatureField(name=..., dtype=..., nullable=False, description=...), ...], entity_id_column=..., timestamp_column=..., version=1)
+# FeatureSchema — declare expected types on the core clinical contract.
+# Rows are ADMISSIONS (one patient can have several), so the entity key is
+# admission_id. los_days is deliberately absent: it is the target source.
+# TODO: Declare a FeatureSchema named "icu_clinical_features_v1" with seven
+# FeatureField entries: age (int64, required), bmi (float64, nullable),
+# n_unique_medications (uint32), received_vasopressors (bool),
+# n_abnormal_labs (uint32), abnormal_lab_ratio (float64) and
+# medication_doses_per_hour (float64) — all required except bmi. Rows are
+# admissions, so entity_id_column="admission_id"; timestamp_column="admit_time";
+# version=1. Do NOT declare los_days: it is the target source.
+# Hint: FeatureSchema(name=..., features=[FeatureField(name=..., dtype=...,
+#       nullable=..., description=...), ...], entity_id_column=..., ...)
 icu_schema = ____
 
 print(f"\n--- FeatureSchema: {icu_schema.name} (v{icu_schema.version}) ---")
@@ -77,21 +114,49 @@ for f in icu_schema.features:
     nullable = "nullable" if f.nullable else "required"
     print(f"  {f.name:<25} {f.dtype:<10} {nullable}  -- {f.description}")
 
+# Validate the schema against the built feature matrix: presence, dtype
+# AND nullability. Collect every violation, then fail loudly.
+DTYPE_NAMES = {
+    "float64": pl.Float64,
+    "int64": pl.Int64,
+    "uint32": pl.UInt32,
+    "bool": pl.Boolean,
+}
+violations: list[str] = []
 for field_def in icu_schema.features:
-    assert (
-        field_def.name in features.columns
-    ), f"Schema field '{field_def.name}' missing from feature matrix"
+    if field_def.name not in features.columns:
+        violations.append(f"{field_def.name}: missing")
+        continue
+    # TODO: look up the column's actual polars dtype and compare it with
+    # DTYPE_NAMES[field_def.dtype]
+    actual = ____
+    if ____:
+        violations.append(f"{field_def.name}: declared {field_def.dtype}, got {actual}")
+    # TODO: a non-nullable field must have zero nulls
+    if ____:
+        violations.append(f"{field_def.name}: declared non-null, has nulls")
+for key in (icu_schema.entity_id_column, icu_schema.timestamp_column):
+    if key not in features.columns:
+        violations.append(f"key column {key}: missing")
+# A schema must never declare a target source as a feature
+audit_feature_list([f.name for f in icu_schema.features])
+print(f"\n  Schema violations: {violations if violations else 'none'}")
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────────
 assert icu_schema.name == "icu_clinical_features_v1", "Task 2: schema name mismatch"
 assert len(icu_schema.features) == 7, "Task 2: schema should declare 7 fields"
-print("\n[ok] Checkpoint 1 passed — FeatureSchema validated\n")
+assert not violations, f"Task 2: schema violations: {violations}"
+assert features["admission_id"].n_unique() == features.height, (
+    "Task 2: entity key admission_id must be unique per row"
+)
+print("\n[ok] Checkpoint 1 passed — FeatureSchema (names, dtypes, nulls) validated\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — TRAIN: re-run the three selection families
+# TASK 3 — TRAIN: re-run the three selections for the consensus vote
 # ════════════════════════════════════════════════════════════════════════
 
+# (a) Filter — mutual information
 mi_scores = mutual_info_classif(X_sel, y_binary, random_state=42)
 mi_top = {
     name
@@ -100,6 +165,7 @@ mi_top = {
     )[:15]
 }
 
+# (b) Filter — chi-squared
 X_chi2 = MinMaxScaler().fit_transform(X_sel)
 chi2_scores, _ = chi2(X_chi2, y_binary)
 chi2_top = {
@@ -109,20 +175,21 @@ chi2_top = {
     )[:15]
 }
 
+# (c) Wrapper — RFE + Random Forest
 rfe = RFE(
-    estimator=RandomForestClassifier(
-        n_estimators=100, max_depth=5, random_state=42, n_jobs=-1
-    ),
+    estimator=RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42),
     n_features_to_select=15,
     step=5,
 )
 rfe.fit(X_sel, y_binary)
-rfe_top = {name for name, sel in zip(feature_cols, rfe.support_) if sel}
+rfe_top = {name for name, selected in zip(feature_cols, rfe.support_) if selected}
 
+# (d) Embedded — L1 Lasso
 X_scaled = StandardScaler().fit_transform(X_sel)
-lasso = LogisticRegression(
-    penalty="l1", C=0.1, solver="saga", max_iter=5000, random_state=42
-)
+# TODO: L1-penalised LogisticRegression (C=0.1, solver="saga",
+# max_iter=5000, random_state=42). In scikit-learn 1.8+ an L1 penalty is
+# requested with l1_ratio=1.0 (the old penalty="l1" is deprecated).
+lasso = ____
 lasso.fit(X_scaled, y_binary)
 lasso_top = {
     name for name, coef in zip(feature_cols, lasso.coef_[0]) if abs(coef) > 1e-6
@@ -135,9 +202,8 @@ all_methods: dict[str, set[str]] = {
     "Lasso (C=0.1)": lasso_top,
 }
 
-# TODO: Build a Counter of how many methods selected each feature, then
-# derive consensus_3plus (>=3 votes) and consensus_2plus (>=2 votes).
-# Hint: votes = Counter(); for feats in all_methods.values(): votes.update(feats)
+# TODO: Count how many methods selected each feature.
+# Hint: votes = Counter(); then votes.update(feats) for each method's set
 votes: Counter = ____
 for feats in all_methods.values():
     ____
@@ -148,11 +214,14 @@ final_features = consensus_3plus if len(consensus_3plus) >= 8 else consensus_2pl
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
 assert len(final_features) > 0, "Task 3: consensus must select at least one feature"
+assert len(final_features) <= len(
+    feature_cols
+), "Task 3: cannot select more features than exist"
 print("\n[ok] Checkpoint 2 passed — multi-method consensus complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE consensus + run leakage audit
+# TASK 4 — VISUALISE the consensus and run the leakage audit
 # ════════════════════════════════════════════════════════════════════════
 
 print("\n--- Feature Selection Method Comparison ---")
@@ -162,63 +231,79 @@ for method, feats in all_methods.items():
     print(f"  {method:<18} {len(feats):>10}")
 
 print(f"\n  Features with >=3 method votes: {len(consensus_3plus)}")
-print(f"  Final feature set ({len(final_features)} features):")
+print(f"  Features with >=2 method votes: {len(consensus_2plus)}")
+print(f"\n  Final feature set ({len(final_features)} features):")
 for f in final_features:
     picking_methods = [m for m, s in all_methods.items() if f in s]
     print(f"    {f:<35}  [{', '.join(picking_methods)}]")
 
+# Visual: how many of the four methods picked each feature
+vote_rows = votes.most_common(25)
+fig_votes = go.Figure(
+    go.Bar(
+        x=[v for _, v in vote_rows][::-1],
+        y=[f for f, _ in vote_rows][::-1],
+        orientation="h",
+    )
+)
+fig_votes.update_layout(
+    title="Feature-selection consensus — votes out of 4 methods (top 25)",
+    xaxis_title="Number of methods selecting the feature",
+    height=650,
+)
+votes_path = OUTPUT_DIR / "ex1_05_consensus_votes.html"
+fig_votes.write_html(str(votes_path))
+print(f"\n  Saved: {votes_path}")
 
+
+# --- Leakage Audit ---
 print("\n--- Leakage Detection Audit ---")
 
-# TODO: Scan feature_cols for any name containing "mortality", "death",
-# "outcome", or "discharge_diagnosis".
-# Hint: [c for c in feature_cols if any(kw in c.lower() for kw in (...))]
-leakage_suspects = ____
-
-if leakage_suspects:
-    print(f"  [WARN] target-derived feature names: {leakage_suspects}")
+# (1) Name / source gate: raises ValueError on any ID, target-source or
+#     discharge column. Recorded as a list so it can be logged below.
+leakage_suspects: list[str] = []
+try:
+    audit_feature_list(feature_cols)
+except ValueError as exc:
+    leakage_suspects = [c for c in feature_cols if c in str(exc)]
+    print(f"  [FAIL] {exc}")
 else:
-    print("  [ok] no target-derived feature names")
+    print(f"  [ok] none of the {len(feature_cols)} features is an ID / target source")
 
-future_risk_cols = [
-    c
-    for c in features.columns
-    if any(kw in c.lower() for kw in ("discharge", "icu_out", "death_time"))
-]
-if future_risk_cols:
-    print(f"  [WARN] potential future-information columns: {future_risk_cols}")
-else:
-    print("  [ok] no future-information columns")
+# (2) Point-in-time gate: the latest event that reached ANY feature,
+#     measured from the data the builders actually used.
+window = prediction_window_report(tables)
+latest_event_hours = float(window["max_offset_hours"].max())
+print(
+    f"  Latest event used: {latest_event_hours:.1f}h after admission "
+    f"(cutoff {PREDICTION_HOURS}h)"
+)
 
-print("  [ok] vitals / medications / labs filtered to [admit_time, discharge_time]")
-
-target_col = "mortality" if "mortality" in features.columns else "los_days"
+# (3) Correlation sniff test — a feature with |r| > 0.95 against the
+#     target is almost certainly leaked. Constant columns are skipped
+#     (their correlation is undefined).
 target_high_corr: list[tuple[str, float]] = []
-if target_col in features.columns:
-    for col in feature_cols[:40]:
-        try:
-            corr = features.select(
-                pl.corr(
-                    pl.col(col).cast(pl.Float64),
-                    pl.col(target_col).cast(pl.Float64),
-                )
-            ).item()
-            if corr is not None and abs(corr) > 0.95:
-                target_high_corr.append((col, float(corr)))
-        except Exception:
-            continue
+for j, col in enumerate(feature_cols):
+    column = X_sel[:, j]
+    if column.std() == 0:
+        continue
+    # TODO: Pearson r between this column and y_binary (np.corrcoef)
+    r = ____
+    if abs(r) > 0.95:
+        target_high_corr.append((col, r))
 
 if target_high_corr:
-    print("  [WARN] near-perfect target correlation (|r|>0.95):")
+    print("  [FAIL] near-perfect target correlation (|r|>0.95):")
     for name, r in target_high_corr:
         print(f"    {name:<33} r={r:.4f}")
 else:
-    print("  [ok] no features with suspicious target correlation")
+    print("  [ok] no feature has |r| > 0.95 with the target")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
 assert (
     len(leakage_suspects) == 0
 ), f"Task 4: leakage suspects detected: {leakage_suspects}"
+assert latest_event_hours <= PREDICTION_HOURS, "Task 4: event after the cutoff used"
 assert (
     len(target_high_corr) == 0
 ), f"Task 4: features with r>0.95 to target: {target_high_corr}"
@@ -226,7 +311,7 @@ print("\n[ok] Checkpoint 3 passed — leakage audit clean\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4b — LOG the consensus run + profile
+# TASK 4b — LOG the consensus run + profile to ExperimentTracker
 # ════════════════════════════════════════════════════════════════════════
 
 
@@ -272,13 +357,41 @@ print("\n[ok] Checkpoint 4 passed — consensus run logged\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: MOH Singapore Population-Health Pipeline
+# TASK 5 — APPLY: governance gates for a national health-data platform
 # ════════════════════════════════════════════════════════════════════════
-# The Ministry of Health's national platform ingests records from every
-# Singapore hospital. Every model MUST pass schema validation, leakage
-# audit, and ExperimentTracker logging. One prevented leakage incident
-# saves ~S$2.5M in remediation — the audit pays for the pipeline for
-# 14 years off a single catch.
+# SCENARIO (illustrative): a national health-data platform ingests
+# anonymised records from many hospitals and trains predictive models
+# (readmission, length-of-stay) for capacity planning. Every model MUST
+# pass:
+#   1. A FeatureSchema contract check so schemas cannot silently drift
+#      between contributing hospitals (names, dtypes, nullability)
+#   2. A leakage audit so no post-outcome column (discharge diagnosis,
+#      billed charges, death certificate) or post-cutoff event reaches
+#      the training set
+#   3. An ExperimentTracker record so any published statistic can be
+#      reproduced later
+#
+# Why this exercise's pattern is the right tool:
+#   - A per-hospital schema catches a contributor who renames a column
+#     (e.g. "HR" vs "heart_rate") or changes its type before it poisons
+#     the national run
+#   - The leakage audit is mechanical and can run as a pipeline gate
+#   - The multi-method consensus gives a feature shortlist that survives
+#     methodological review
+#
+# COST OF A MISS (illustrative): a leaked feature makes validation look
+# excellent and production fail; the cost is the bad decisions taken on
+# the model's output plus the investigation and re-validation. A gate
+# that runs on every pipeline execution costs a few seconds.
+#
+# LIMITATIONS:
+#   - Schema checks catch type drift, not semantic drift (a column
+#     still called "heart_rate" but suddenly measured differently)
+#   - The leakage audit is HEURISTIC — it catches known patterns, but a
+#     novel leakage source needs a clinician's eye
+#   - In THIS dataset the audit passes, yet the window report shows
+#     almost no event data before the cutoff — passing a leakage audit
+#     does not mean the features are informative
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -289,12 +402,22 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Declared and validated a FeatureSchema contract
-  [x] Voted across filter + wrapper + embedded methods for consensus
-  [x] Ran a mechanical leakage audit
-  [x] Logged the consensus + audit metrics to ExperimentTracker
+  [x] Declared a FeatureSchema contract for ICU clinical features
+  [x] Validated names, dtypes and nullability against the feature matrix
+  [x] Voted across filter + wrapper + embedded methods for a robust
+      consensus feature set
+  [x] Ran a leakage gate (target sources, prediction cutoff, correlation)
+  [x] Logged the final consensus + audit metrics to ExperimentTracker
+  [x] Applied the pattern to a national health-data platform where
+      governance dominates
+
+  KEY INSIGHT: Data quality beats model complexity. The FeatureSchema +
+  leakage audit IS the model's warranty card — without it, you are
+  shipping predictions on trust alone. And an audit that passes is not
+  the same as features that carry signal: check both.
 
   Next: Exercise 2 — bias/variance trade-off, nested cross-validation,
-  and regularisation without touching the feature set.
+  and how regularisation controls model complexity without touching
+  the feature set built here.
 """
 )

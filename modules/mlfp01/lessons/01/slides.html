@@ -58,9 +58,9 @@
       <text x="110" y="32" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">1. Load</text>
       <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
         <text x="25" y="52">month,temp,rain</text>
-        <text x="25" y="66">Jan,26.0,194.7</text>
-        <text x="25" y="80">Feb,26.5,63.4</text>
-        <text x="25" y="94">Mar,27.0,170.6</text>
+        <text x="25" y="66">January,26.5,167</text>
+        <text x="25" y="80">February,27.1,108</text>
+        <text x="25" y="94">March,27.5,170</text>
         <text x="25" y="108">...</text>
       </g>
       <rect x="140" y="48" width="60" height="22" rx="4" fill="#E0F2F1" stroke="#0D9488"/>
@@ -77,13 +77,13 @@
         <rect x="295" y="40" width="190" height="16" rx="2" fill="#0D9488"/>
         <text x="305" y="52" fill="white" font-size="9">month  temp   rain</text>
         <rect x="295" y="56" width="190" height="14" fill="#F0FDFA"/>
-        <text x="305" y="66" fill="#0F766E" font-size="9">Str    F64    F64</text>
+        <text x="305" y="66" fill="#0F766E" font-size="9">Str        F64    I64</text>
         <rect x="295" y="70" width="190" height="14" fill="white"/>
-        <text x="305" y="80" fill="#1E293B" font-size="9">"Jan"  26.0   194.7</text>
+        <text x="305" y="80" fill="#1E293B" font-size="9">"January"  26.5   167</text>
         <rect x="295" y="84" width="190" height="14" fill="#F8FAFC"/>
-        <text x="305" y="94" fill="#1E293B" font-size="9">"Feb"  26.5    63.4</text>
+        <text x="305" y="94" fill="#1E293B" font-size="9">"February" 27.1   108</text>
         <rect x="295" y="98" width="190" height="14" fill="white"/>
-        <text x="305" y="108" fill="#1E293B" font-size="9">"Mar"  27.0   170.6</text>
+        <text x="305" y="108" fill="#1E293B" font-size="9">"March"    27.5   170</text>
       </g>
       <text x="390" y="130" text-anchor="middle" font-family="Inter" font-size="10" fill="#94A3B8">shape: (12, 3) — typed columns</text>
 
@@ -95,10 +95,10 @@
       <text x="657" y="32" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">3. Summarise</text>
       <g font-family="JetBrains Mono" font-size="9">
         <text x="575" y="52" fill="#0F766E">stat   temp    rain</text>
-        <text x="575" y="66" fill="#1E293B">mean   26.68   152.9</text>
-        <text x="575" y="80" fill="#1E293B">std     0.43    56.7</text>
-        <text x="575" y="94" fill="#1E293B">min    26.00    63.4</text>
-        <text x="575" y="108" fill="#1E293B">max    27.20   227.2</text>
+        <text x="575" y="66" fill="#1E293B">mean   27.47   171.8</text>
+        <text x="575" y="80" fill="#1E293B">std     0.62    40.1</text>
+        <text x="575" y="94" fill="#1E293B">min    26.50   108.0</text>
+        <text x="575" y="108" fill="#1E293B">max    28.30   254.0</text>
       </g>
       <text x="657" y="130" text-anchor="middle" font-family="Inter" font-size="10" fill="#94A3B8">distribution at a glance</text>
 
@@ -231,43 +231,36 @@ print(report)
   <figure style="text-align: center;">
     <svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg">
       <rect x="40" y="20" width="640" height="40" fill="#0D9488"/>
-      <text x="100" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">month</text>
-      <text x="240" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">mean_temperature_c</text>
-      <text x="430" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">total_rainfall_mm</text>
-      <text x="600" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">humidity_pct</text>
+      <text x="140" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">month</text>
+      <text x="360" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">mean_temperature_c</text>
+      <text x="570" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">total_rainfall_mm</text>
 
       <rect x="40" y="60" width="640" height="28" fill="#F0FDFA" stroke="#94A3B8" stroke-width="0.5"/>
-      <text x="100" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">String</text>
-      <text x="240" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Float64</text>
-      <text x="430" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Float64</text>
-      <text x="600" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Int64</text>
+      <text x="140" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">String</text>
+      <text x="360" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Float64</text>
+      <text x="570" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Int64</text>
 
       <g font-family="JetBrains Mono" font-size="13" fill="#1E293B">
         <rect x="40" y="88" width="640" height="32" fill="white" stroke="#E2E8F0"/>
-        <text x="100" y="108" text-anchor="middle">"Jan"</text>
-        <text x="240" y="108" text-anchor="middle">26.0</text>
-        <text x="430" y="108" text-anchor="middle">194.7</text>
-        <text x="600" y="108" text-anchor="middle">82</text>
+        <text x="140" y="108" text-anchor="middle">"January"</text>
+        <text x="360" y="108" text-anchor="middle">26.5</text>
+        <text x="570" y="108" text-anchor="middle">167</text>
         <rect x="40" y="120" width="640" height="32" fill="#F8FAFC" stroke="#E2E8F0"/>
-        <text x="100" y="140" text-anchor="middle">"Feb"</text>
-        <text x="240" y="140" text-anchor="middle">26.5</text>
-        <text x="430" y="140" text-anchor="middle">63.4</text>
-        <text x="600" y="140" text-anchor="middle">79</text>
+        <text x="140" y="140" text-anchor="middle">"February"</text>
+        <text x="360" y="140" text-anchor="middle">27.1</text>
+        <text x="570" y="140" text-anchor="middle">108</text>
         <rect x="40" y="152" width="640" height="32" fill="white" stroke="#E2E8F0"/>
-        <text x="100" y="172" text-anchor="middle">"Mar"</text>
-        <text x="240" y="172" text-anchor="middle">27.0</text>
-        <text x="430" y="172" text-anchor="middle">170.6</text>
-        <text x="600" y="172" text-anchor="middle">81</text>
+        <text x="140" y="172" text-anchor="middle">"March"</text>
+        <text x="360" y="172" text-anchor="middle">27.5</text>
+        <text x="570" y="172" text-anchor="middle">170</text>
         <rect x="40" y="184" width="640" height="32" fill="#F8FAFC" stroke="#E2E8F0"/>
-        <text x="100" y="204" text-anchor="middle">…</text>
-        <text x="240" y="204" text-anchor="middle">…</text>
-        <text x="430" y="204" text-anchor="middle">…</text>
-        <text x="600" y="204" text-anchor="middle">…</text>
+        <text x="140" y="204" text-anchor="middle">…</text>
+        <text x="360" y="204" text-anchor="middle">…</text>
+        <text x="570" y="204" text-anchor="middle">…</text>
         <rect x="40" y="216" width="640" height="32" fill="white" stroke="#E2E8F0"/>
-        <text x="100" y="236" text-anchor="middle">"Dec"</text>
-        <text x="240" y="236" text-anchor="middle">26.5</text>
-        <text x="430" y="236" text-anchor="middle">227.2</text>
-        <text x="600" y="236" text-anchor="middle">85</text>
+        <text x="140" y="236" text-anchor="middle">"December"</text>
+        <text x="360" y="236" text-anchor="middle">26.5</text>
+        <text x="570" y="236" text-anchor="middle">232</text>
       </g>
     </svg>
   </figure>
@@ -314,7 +307,7 @@ print(df.head(5))
   <pre><code class="language-text" data-trim>
 Shape: (12, 3)
 Columns: ['month', 'mean_temperature_c', 'total_rainfall_mm']
-Schema: {'month': String, 'mean_temperature_c': Float64, 'total_rainfall_mm': Float64}
+Schema: Schema({'month': String, 'mean_temperature_c': Float64, 'total_rainfall_mm': Int64})
   </code></pre>
   <p style="color: #64748B; font-style: italic;">Read those values aloud. You have just done the most important habit of every careful analyst.</p>
 </section>
@@ -323,18 +316,19 @@ Schema: {'month': String, 'mean_temperature_c': Float64, 'total_rainfall_mm': Fl
 <section>
   <h2>Step 3: Summarise with describe()</h2>
   <pre><code class="language-text" data-trim>
-┌────────────┬───────┬────────────────────┬───────────────────┐
-│ statistic  ┆ month ┆ mean_temperature_c ┆ total_rainfall_mm │
-╞════════════╪═══════╪════════════════════╪═══════════════════╡
-│ count      ┆ 12    ┆ 12.0               ┆  12.0             │
-│ mean       ┆ null  ┆ 26.68              ┆ 152.85            │
-│ std        ┆ null  ┆  0.43              ┆  56.71            │
-│ min        ┆ Apr   ┆ 26.00              ┆  63.40            │
-│ 50%        ┆ null  ┆ 26.65              ┆ 156.10            │
-│ max        ┆ Sep   ┆ 27.20              ┆ 227.20            │
-└────────────┴───────┴────────────────────┴───────────────────┘
+┌───────────┬───────────┬────────────────────┬───────────────────┐
+│ statistic ┆ month     ┆ mean_temperature_c ┆ total_rainfall_mm │
+╞═══════════╪═══════════╪════════════════════╪═══════════════════╡
+│ count     ┆ 12        ┆ 12.0               ┆ 12.0              │
+│ mean      ┆ null      ┆ 27.466667          ┆ 171.75            │
+│ std       ┆ null      ┆ 0.624257           ┆ 40.104693         │
+│ min       ┆ April     ┆ 26.5               ┆ 108.0             │
+│ 50%       ┆ null      ┆ 27.6               ┆ 167.0             │
+│ max       ┆ September ┆ 28.3               ┆ 254.0             │
+└───────────┴───────────┴────────────────────┴───────────────────┘
   </code></pre>
-  <p style="font-size: 0.8em;">Singapore: temperature is famously consistent (std 0.43°C). Rainfall varies hugely (std 56.71 mm).</p>
+  <p style="font-size: 0.8em;">Temperature barely moves (std 0.62°C on a mean of 27.47). Rainfall varies far more (std 40.1 mm on 171.75).
+  <strong>Careful:</strong> min/max of the text column <code>month</code> are <em>alphabetical</em> (April, September) &mdash; not the coolest or hottest month.</p>
 </section>
 
 <!-- ═══ Slide 11b: describe() as a distribution ═════════════ -->
@@ -351,37 +345,37 @@ Schema: {'month': String, 'mean_temperature_c': Float64, 'total_rainfall_mm': Fl
       <!-- min line -->
       <line x1="80" y1="280" x2="80" y2="260" stroke="#F43F5E" stroke-width="2"/>
       <text x="80" y="300" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#F43F5E">min</text>
-      <text x="80" y="314" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">26.0</text>
+      <text x="80" y="314" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">26.5</text>
 
       <!-- Q1 (25%) line -->
       <line x1="240" y1="280" x2="240" y2="215" stroke="#4F46E5" stroke-width="2"/>
       <text x="240" y="300" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#4F46E5">Q1 (25%)</text>
-      <text x="240" y="314" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">26.35</text>
+      <text x="240" y="314" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">27.1</text>
 
       <!-- Median (50%) line -->
       <line x1="380" y1="280" x2="380" y2="55" stroke="#F59E0B" stroke-width="2.5"/>
       <text x="380" y="300" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#F59E0B">median (50%)</text>
-      <text x="380" y="314" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">26.65</text>
+      <text x="380" y="314" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">27.6</text>
 
       <!-- Q3 (75%) line -->
       <line x1="520" y1="280" x2="520" y2="215" stroke="#4F46E5" stroke-width="2"/>
       <text x="520" y="300" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#4F46E5">Q3 (75%)</text>
-      <text x="520" y="314" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">26.90</text>
+      <text x="520" y="314" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">27.9</text>
 
       <!-- max line -->
       <line x1="680" y1="280" x2="680" y2="260" stroke="#F43F5E" stroke-width="2"/>
       <text x="680" y="300" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#F43F5E">max</text>
-      <text x="680" y="314" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">27.2</text>
+      <text x="680" y="314" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">28.3</text>
 
       <!-- Mean marker -->
-      <line x1="395" y1="280" x2="395" y2="55" stroke="#0D9488" stroke-width="2" stroke-dasharray="6 3"/>
-      <text x="430" y="46" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">mean = 26.68</text>
+      <line x1="362" y1="280" x2="362" y2="55" stroke="#0D9488" stroke-width="2" stroke-dasharray="6 3"/>
+      <text x="430" y="46" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">mean = 27.47</text>
 
       <!-- std bracket -->
       <line x1="310" y1="35" x2="450" y2="35" stroke="#3B82F6" stroke-width="1.5"/>
       <line x1="310" y1="30" x2="310" y2="40" stroke="#3B82F6" stroke-width="1.5"/>
       <line x1="450" y1="30" x2="450" y2="40" stroke="#3B82F6" stroke-width="1.5"/>
-      <text x="380" y="28" text-anchor="middle" font-family="Inter" font-size="11" fill="#3B82F6">std = 0.43</text>
+      <text x="380" y="28" text-anchor="middle" font-family="Inter" font-size="11" fill="#3B82F6">std = 0.62</text>
 
       <!-- IQR bracket -->
       <rect x="240" y="220" width="280" height="55" rx="0" fill="#4F46E5" fill-opacity="0.08" stroke="#4F46E5" stroke-width="1" stroke-dasharray="4 3"/>
@@ -400,7 +394,7 @@ Schema: {'month': String, 'mean_temperature_c': Float64, 'total_rainfall_mm': Fl
   <div style="text-align: center; margin: 2em 0; padding: 24px; background: #F8FAFC; border-radius: 8px;">
     \[ \bar{x} \;=\; \frac{1}{n} \sum_{i=1}^{n} x_i \]
   </div>
-  <p>For our 12 monthly temperatures: $\bar{x} = (26.0 + 26.5 + \ldots) / 12 = 26.68$°C</p>
+  <p>For our 12 monthly temperatures: $\bar{x} = (26.5 + 27.1 + \ldots + 26.5) / 12 = 27.47$°C</p>
   <div style="background: #EFF6FF; padding: 14px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; margin-top: 1em;">
     <strong style="color: #3B82F6;">🔵 Theory:</strong>
     The mean is the unique value $c$ that minimises $\sum (x_i - c)^2$. This
@@ -415,7 +409,7 @@ Schema: {'month': String, 'mean_temperature_c': Float64, 'total_rainfall_mm': Fl
     \[ s^2 \;=\; \frac{1}{n - 1} \sum_{i=1}^{n} (x_i - \bar{x})^2 \]
   </div>
   <p>Standard deviation is the square root: $s = \sqrt{s^2}$ — same units as the data.</p>
-  <p style="font-size: 0.85em;">Singapore 2023: $s_{\text{temp}} = 0.43$°C — every month is within half a degree of average.</p>
+  <p style="font-size: 0.85em;">Course weather data: $s_{\text{temp}} = 0.62$°C — every month is within one degree of the average (26.5–28.3°C).</p>
   <div style="background: #FFFBEB; padding: 14px 18px; border-left: 4px solid #F59E0B; border-radius: 4px; margin-top: 1em;">
     <strong>Why $n - 1$?</strong> Bessel's correction. We use one degree of
     freedom to estimate $\bar{x}$, leaving $n - 1$ "free" observations. We will
@@ -434,7 +428,7 @@ hottest = df.filter(
 )
 
 print(f"Hottest: {hottest['month'][0]} at {max_temp}°C")
-# → Hottest: May at 27.2°C
+# → Hottest: May at 28.3°C
   </code></pre>
   <p style="font-size: 0.85em; color: #64748B;">
     <code>pl.col(...)</code> builds an expression. <code>== max_temp</code>

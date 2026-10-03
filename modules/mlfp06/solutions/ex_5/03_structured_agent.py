@@ -10,7 +10,7 @@
 #   - Build a custom BaseAgent that declares signature + model + budget
 #   - Run the agent and receive typed attributes instead of raw strings
 #   - Validate outputs (types, ranges, list lengths)
-#   - Know when to choose BaseAgent vs ReActAgent
+#   - Know when to choose BaseAgent + Signature vs a tool-using ReAct agent
 #
 # PREREQUISITES: 01_react_agent.py (agent basics), 02_cost_budget_agent.py
 # ESTIMATED TIME: ~40 min
@@ -27,20 +27,20 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
 from kaizen import InputField, OutputField, Signature
 from kaizen.core.base_agent import BaseAgent
 
-from shared.mlfp06._ollama_bootstrap import OLLAMA_BASE_URL
+from shared.mlfp06._ollama_bootstrap import OLLAMA_BASE_URL, preflight_ollama
 from shared.mlfp06.ex_5 import (
     MODEL,
     OUTPUT_DIR,
     data_summary,
     load_hotpotqa,
     make_tools,
+    require_agent_result,
 )
 
 # ════════════════════════════════════════════════════════════════════════
@@ -62,7 +62,7 @@ print("✓ Checkpoint 1 passed — summary ready to feed agent\n")
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Why structured output changes everything
 # ════════════════════════════════════════════════════════════════════════
-# ReActAgent is great for exploration — you hand it tools and ask a
+# A ReAct agent is great for exploration — you hand it tools and ask a
 # question and it figures out how to answer.  The downside: the output
 # is a free-form string.  Downstream code has to parse it.  String
 # parsing is fragile and breaks the moment the LLM rephrases.
@@ -76,16 +76,18 @@ print("✓ Checkpoint 1 passed — summary ready to feed agent\n")
 #   result["recommended_approach"] # str
 #
 # No JSON parsing.  No "the LLM forgot to include the findings field."
-# The signature is enforced — the LLM MUST produce the declared shape
-# or the call fails loudly.
+# The signature is enforced — if the reply does not fill the declared
+# shape, run_async() returns an {"error": ...} dict instead of fields.
+# require_agent_result() turns that into a loud failure, so a broken
+# call can never masquerade as an empty analysis.
 #
-# ANALOGY: ReActAgent is "tell me what you think" — a conversation.
+# ANALOGY: a ReAct agent is "tell me what you think" — a conversation.
 # BaseAgent + Signature is "fill out this form" — a contract.  Forms
 # are boring but they feed data pipelines without a translation layer.
 #
 # WHEN TO USE WHICH:
 #
-#   ReActAgent            : open-ended exploration, tool use required,
+#   ReAct agent           : open-ended exploration, tool use required,
 #                           number of steps unknown
 #   BaseAgent + Signature : known output shape, feeds downstream code,
 #                           audit trail, pipeline integration
@@ -138,11 +140,13 @@ class DataAnalysisConfig:
     attributes, which kaizen silently ignored (see 04 critic notes).
     """
 
-    llm_provider: str = os.environ.get("LLM_PROVIDER", "ollama")
-    base_url: str = os.environ.get("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
-    model: str = MODEL  # resolved from .env in shared/mlfp06/ex_5.py
+    llm_provider: str = "ollama"
+    base_url: str = OLLAMA_BASE_URL
+    model: str = MODEL  # resolved from OLLAMA_CHAT_MODEL in .env
     temperature: float = 0.2
-    budget_limit_usd: float = 1.0  # replaces legacy max_llm_cost_usd
+    # Dollar cap, passed at construction (see 02).  A no-op on free local
+    # Ollama; the hard stop when the same agent runs on a priced provider.
+    budget_limit_usd: float = 1.0
     # kaizen 2.28: run_async() requires use_async_llm=True; json_object
     # response_format + explicit mode make the typed Signature fields parse
     # out of the model reply (otherwise the result is prose, not typed fields).
@@ -174,9 +178,10 @@ async def run_structured_agent():
             "questions in this dataset?"
         ),
     )
-    return result
+    return require_agent_result(result, "DataAnalysisAgent")
 
 
+preflight_ollama(required_models=[MODEL])  # fails loudly if Ollama is down
 structured_result = asyncio.run(run_structured_agent())
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
@@ -269,7 +274,7 @@ print(f"\n  Saved: {fname}")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Apply: Singapore HR analytics pipeline
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore conglomerate runs monthly attrition analysis
+# SCENARIO (illustrative figures): A Singapore conglomerate runs monthly attrition analysis
 # across 50 business units.  The HR team wants: key drivers of attrition,
 # recommended interventions, and a confidence score — all 50 units, in
 # one PDF, every month.
@@ -294,7 +299,7 @@ print(f"\n  Saved: {fname}")
 # same shape because the Signature enforces it.
 #
 # BUSINESS IMPACT:
-#   - Cost per month:     S$12,000 -> S$15 (LLM) + 30 min ops
+#   - Cost per month:     S$12,000 -> compute for 50 LLM calls + 30 min ops
 #   - Latency:            8 days -> 15 minutes
 #   - Consistency:        free-form briefs -> uniform schema
 #   - Human reviewers:    route units with confidence < 0.7 to the
@@ -318,54 +323,12 @@ print(
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# DIAGNOSTIC CHECKPOINT
 # ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Agent Trace (TAOD capture, tool-call success, stuck-loop
-# detection). Secondary: Output (final answer quality).
-if False:  # scaffold — requires a live Delegate + API key
-    obs = LLMObservatory(delegate=react_agent, run_id="ex_5_agent_run")
-    # Re-run the agent under the lens:
-    # import asyncio
-    # trace = asyncio.run(obs.agent.capture_run(react_agent, task=prompt))
-    # obs.output.evaluate(prompts=[prompt], responses=[trace.final_answer])
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Agent      (HEALTHY): 5 TAOD steps, tool-call success 1.00,
-#       no stuck loops, total cost $0.017 (budget $2.00).
-#   [✓] Output     (HEALTHY): judge faithfulness 0.89 on final answer.
-#   [?] Retrieval / Alignment / Governance / Attention (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [AGENT LENS] 5 TAOD steps for a multi-hop question is the healthy
-#     signature — general (data_summary) -> specific (run_query) ->
-#     targeted (search_documents) -> grounded (lookup_answer) ->
-#     synthesis. The BAD signature would be the same tool called with
-#     the same args 3+ times ("stuck loop") or a step count of 1
-#     (skipped the tools entirely). The loop detector in AgentDiagnostics
-#     flags both.
-#     >> Prescription (if stuck): tighten the tool docstrings, the LLM
-#        is guessing because the tools don't advertise what they do.
-#  [OUTPUT LENS] Faithfulness 0.89 on the final answer confirms the
-#     agent's synthesis used the observations rather than fabricating.
-# ════════════════════════════════════════════════════════════════════
-
+# The LLM Observatory's Agent Trace lens needs a tool-using Delegate
+# (01 and 02).  For a single structured call the diagnostic IS the
+# contract: Checkpoints 3-4 verified every field's presence, type and
+# range, and the coverage chart above shows how fully each was filled.
 
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION

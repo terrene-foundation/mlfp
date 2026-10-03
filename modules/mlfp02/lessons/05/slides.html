@@ -157,10 +157,16 @@
 <section>
   <h2>Worked: HDB load and design matrix</h2>
   <pre><code class="language-python" data-trim>
-df = (MLFPDataLoader().load("mlfp02", "hdb_resale.parquet")
-      .filter(pl.col("flat_type") == "4 ROOM")
+import numpy as np
+import polars as pl
+from shared import MLFPDataLoader
+
+df = (MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+      # drop sentinel prices (10 dollars, 9 million) before fitting
+      .filter(pl.col("resale_price").is_between(100_000, 2_000_000))
       .with_columns(
-          age=pl.col("year") - pl.col("lease_commence_date"),
+          age=pl.col("month").str.slice(0, 4).cast(pl.Int64)
+              - pl.col("lease_commence_date"),
           log_price=pl.col("resale_price").log()))
 df_enc = df.to_dummies(["town"], drop_first=True)
 
@@ -198,7 +204,7 @@ r2 = 1 - ss_res/ss_tot
 r2_adj = 1 - (1 - r2) * (n - 1) / (n - p)
 F = (r2 / (p-1)) / ((1 - r2) / (n - p))
   </code></pre>
-  <p style="font-size: 0.85em;">Typical HDB fit: $R^2 \approx 0.82$, $F > 1000$, p &lt; $10^{-50}$.</p>
+  <p style="font-size: 0.85em;">This fit (49,899 sales): $R^2 \approx 0.83$, $F \approx 48{,}000$, p effectively 0. With $n$ this large, read $R^2$ and effect sizes, not just $p$.</p>
 </section>
 
 <section>
@@ -206,11 +212,12 @@ F = (r2 / (p-1)) / ((1 - r2) / (n - p))
   <table style="font-size: 0.75em;">
     <thead><tr><th>Coefficient</th><th>Meaning</th></tr></thead>
     <tbody>
-      <tr><td>$\hat\beta_{\text{area}} = 0.012$</td><td>+1 m² → +1.2% in price</td></tr>
-      <tr><td>$\hat\beta_{\text{age}} = -0.004$</td><td>+1 year → −0.4% in price</td></tr>
-      <tr><td>$\hat\beta_{\text{BISHAN}} = 0.18$</td><td>Bishan premium ≈ 18% over the base town</td></tr>
+      <tr><td>$\hat\beta_{\text{area}} = 0.0112$ ($t \approx 490$)</td><td>+1 m² → about +1.1% in price</td></tr>
+      <tr><td>$\hat\beta_{\text{age}} \approx 0.00002$ ($t \approx 0.6$)</td><td>No detectable age effect once area is held fixed</td></tr>
+      <tr><td>$\hat\beta_{\text{BISHAN}} = 0.119$ ($t \approx 33$)</td><td>Bishan premium $e^{0.119} - 1 \approx 13\%$ over the base: every town not in the model</td></tr>
     </tbody>
   </table>
+  <p style="font-size: 0.8em; color: #64748B;">With a log outcome, $\beta$ is approximately the proportional change; use $e^{\beta} - 1$ when $\beta$ is not small.</p>
   <p style="font-size: 0.85em; color: #64748B; margin-top: 1em;">
     <em>Ceteris paribus.</em> Drop any predictor from the model and every
     remaining coefficient can change.

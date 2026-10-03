@@ -29,7 +29,7 @@
 Time: ~2 min
 Talking points:
 - Welcome to Module 1 of MLFP. This module takes you from zero Python to building complete data pipelines.
-- The provocative question on screen is not rhetorical. By the end of today, you will load 15 million rows and find patterns dashboards miss.
+- The provocative question on screen is not rhetorical. By the end of today, you will load ~50,000 HDB resale transactions and find problems a summary dashboard hides.
 - If beginners confused: reassure them no prior programming is needed.
 - If experts bored: mention we will reach window functions, lazy frames, and automated profiling by the end.
 Transition: "Let me show you what you will be able to do after these 8 lessons."
@@ -156,21 +156,20 @@ Transition: "Let us begin with Lesson 1.1 and your very first line of Python."
         <li><strong>Plotly</strong> &mdash; interactive visualisation</li>
         <li><strong>Kailash ML</strong> &mdash; <code>pip install kailash-ml</code></li>
       </ul>
-      <pre style="font-size: 0.55em;"><code class="language-python"># Quick setup
+      <pre style="font-size: 0.55em;"><code class="language-bash"># Quick setup (run in a terminal, not in Python)
 uv pip install polars plotly kailash-ml python-dotenv requests</code></pre>
     </div>
     <div class="col">
-      <h3>Three Exercise Formats</h3>
+      <h3>Two Exercise Formats</h3>
       <table>
         <thead><tr><th>Format</th><th>Location</th></tr></thead>
         <tbody>
-          <tr><td>Local .py</td><td><code>modules/mlfp01/local/</code></td></tr>
-          <tr><td>Jupyter</td><td><code>modules/mlfp01/notebooks/</code></td></tr>
-          <tr><td>Google Colab</td><td><code>modules/mlfp01/colab/</code></td></tr>
+          <tr><td>VS Code (local .py)</td><td><code>modules/mlfp01/local/</code></td></tr>
+          <tr><td>Google Colab</td><td><code>modules/mlfp01/colab-selfcontained/</code></td></tr>
         </tbody>
       </table>
       <div class="callout callout-foundations" style="margin-top:8px;">
-        <strong>All three formats produce identical results.</strong> Choose the one that fits your workflow.
+        <strong>Both formats produce identical results.</strong> Choose the one that fits your workflow. Worked solutions live in <code>solutions/</code> (VS Code) and <code>colab-selfcontained-solutions/</code> (Colab).
       </div>
     </div>
   </div>
@@ -179,8 +178,9 @@ uv pip install polars plotly kailash-ml python-dotenv requests</code></pre>
 Time: ~2 min
 Talking points:
 - uv is a fast Python package installer. Students can also use pip directly.
-- Three formats: local Python files, Jupyter notebooks, and Google Colab. All produce the same results.
-- If beginners confused: start with Jupyter notebooks for interactive exploration.
+- Two formats: local Python files for VS Code (modules/mlfp01/local/) and self-contained Colab notebooks (modules/mlfp01/colab-selfcontained/). Both produce the same results.
+- The Colab notebooks need no git clone: helpers are inlined and the data downloads automatically.
+- If beginners confused: start with Colab, there is nothing to install.
 - If experts bored: local .py files are better for version control and production code.
 Transition: "Everything is set up. Let us begin Lesson 1.1."
   </aside>

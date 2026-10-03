@@ -110,12 +110,11 @@ class LSTMClassifier(nn.Module):
     ):
         super().__init__()
         # TODO: Build the LSTM architecture
-        # Hint: self.embed = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
-        # Hint: self.lstm = nn.LSTM(embed_dim, hidden_dim, num_layers=n_layers,
-        #              batch_first=True, dropout=dropout if n_layers > 1 else 0.0,
-        #              bidirectional=True)
-        # Hint: self.head_drop = nn.Dropout(dropout)
-        # Hint: self.head = nn.Linear(hidden_dim * 2, n_classes)  — *2 because bidirectional
+        # - embed: token embedding (embed_dim wide, id 0 is padding)
+        # - lstm: nn.LSTM, n_layers deep, batch-first, BIDIRECTIONAL; inter-layer
+        #   dropout only makes sense (and only is allowed) when n_layers > 1
+        # - head_drop: dropout before the head
+        # - head: linear to n_classes — what width does a bidirectional LSTM emit?
         self.embed = ...  # YOUR CODE HERE
         self.lstm = ...  # YOUR CODE HERE
         self.head_drop = ...  # YOUR CODE HERE
@@ -123,14 +122,11 @@ class LSTMClassifier(nn.Module):
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
         # TODO: Implement forward pass
-        # Step 1: x = self.embed(tokens)
-        # Step 2: lstm_out, _ = self.lstm(x)  — shape (B, L, 2*H)
-        # Step 3: Mean pool over non-pad positions
-        #   pad_mask = (tokens == 0)
-        #   lengths = (~pad_mask).sum(dim=1, keepdim=True).clamp(min=1).float()
-        #   lstm_out = lstm_out.masked_fill(pad_mask.unsqueeze(-1), 0.0)
-        #   pooled = lstm_out.sum(dim=1) / lengths
-        # Step 4: return self.head(self.head_drop(pooled))
+        # Step 1: embed the tokens
+        # Step 2: run the LSTM over the whole sequence -> (B, L, 2*H)
+        # Step 3: mean-pool over the NON-pad positions (pad id 0): zero the
+        #         pad outputs, divide by each sequence's real length (never 0)
+        # Step 4: dropout -> head -> logits (B, n_classes)
         ...  # YOUR CODE HERE
 
 
@@ -150,9 +146,9 @@ print("\n--- Checkpoint 1 passed --- LSTM architecture ready\n")
 # ════════════════════════════════════════════════════════════════════════
 print("\n== Training LSTM baseline on full AG News ==")
 # TODO: Create LSTMClassifier and train it
-# Hint: lstm_model = LSTMClassifier(vocab_size=len(vocab), embed_dim=128, hidden_dim=128, n_layers=2, n_classes=4)
-# Hint: lstm_losses, lstm_accs = train_model(lstm_model, "lstm_baseline",
-#           train_loader, val_loader, tracker, exp_name, epochs=EPOCHS_SCRATCH)
+# - lstm_model: full vocab, embed_dim 128, hidden_dim 128, 2 layers, 4 classes
+# - lstm_losses, lstm_accs: from the train_model helper (run name
+#   "lstm_baseline", same loaders/tracker/exp_name, EPOCHS_SCRATCH epochs)
 lstm_model = ...  # YOUR CODE HERE
 lstm_losses, lstm_accs = ...  # YOUR CODE HERE
 
@@ -217,15 +213,16 @@ print("\n--- Checkpoint 2 passed --- LSTM baseline trained\n")
 # LSTM must learn to propagate information through the hidden state chain.
 
 # TODO: Visualise LSTM training curves using ModelVisualizer
-# Hint: from shared.mlfp05.ex_4 import get_viz
-# Hint: viz = get_viz()
-# Hint: fig_lstm = viz.training_history(metrics={"LSTM train_loss": lstm_losses, "LSTM val_accuracy": lstm_accs}, x_label="Epoch", y_label="Value")
-# Hint: fig_lstm.write_html("ex_4_3_lstm_training_curves.html")
+# - viz: the ModelVisualizer from get_viz()
+# - fig_lstm: its training_history plot; metrics maps a series label to a
+#   list of per-epoch values — plot "LSTM train_loss" and "LSTM val_accuracy"
+#   against "Epoch"
+# - save fig_lstm as HTML to ex_4_3_lstm_training_curves.html
 from shared.mlfp05.ex_4 import get_viz
 
-viz = ...  # YOUR CODE HERE — get_viz()
-fig_lstm = ...  # YOUR CODE HERE — viz.training_history(...)
-...  # YOUR CODE HERE — fig_lstm.write_html("ex_4_3_lstm_training_curves.html")
+viz = ...  # YOUR CODE HERE
+fig_lstm = ...  # YOUR CODE HERE
+...  # YOUR CODE HERE
 print("  LSTM training curves saved to ex_4_3_lstm_training_curves.html")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────

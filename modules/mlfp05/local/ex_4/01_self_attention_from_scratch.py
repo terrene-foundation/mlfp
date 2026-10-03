@@ -118,29 +118,30 @@ def scaled_dot_product_attention(
     d_k = q.size(-1)
 
     # Step 1: Compute raw scores via batched matrix multiplication.
-    # TODO: Use torch.einsum "bqd,bkd->bqk" to compute Q*K^T scores
-    # Hint: scores = torch.einsum("bqd,bkd->bqk", q, k)
+    # TODO: Q K^T for every (query, key) pair -> shape (B, L_q, L_k).
+    # Hint: torch.einsum contracts the shared feature axis d of q and k.
     scores = ...  # YOUR CODE HERE
 
     # Step 2: Scale by 1/sqrt(d_k). Without this, the dot products grow
     # proportionally to d_k, pushing softmax into regions where the gradient
     # is nearly zero.
-    # TODO: Divide scores by math.sqrt(d_k)
+    # TODO: Apply the 1/sqrt(d_k) temperature described above.
     scores = ...  # YOUR CODE HERE
 
     # Step 3: Apply mask (if provided). Setting masked positions to -inf
     # ensures they get zero probability after softmax.
-    # TODO: Use scores.masked_fill(mask == 0, float("-inf")) when mask is not None
+    # TODO: Where mask is 0, overwrite the score with -inf (Tensor.masked_fill).
     if mask is not None:
         ...  # YOUR CODE HERE
 
     # Step 4: Softmax over the key dimension (dim=-1).
-    # TODO: Apply F.softmax to get attention weights — F.softmax(scores, dim=-1)
+    # TODO: Normalise each query's scores into a probability distribution
+    #   over the keys (F.softmax on the key axis).
     weights = ...  # YOUR CODE HERE
 
     # Step 5: Weighted sum of values using einsum.
-    # TODO: Use torch.einsum "bqk,bkd->bqd" to compute weighted values
-    # Hint: out = torch.einsum("bqk,bkd->bqd", weights, v)
+    # TODO: Weighted sum of the value vectors -> shape (B, L_q, d_v).
+    # Hint: torch.einsum again, this time contracting the key axis k.
     out = ...  # YOUR CODE HERE
 
     return out, weights
@@ -183,19 +184,20 @@ sample_indices = torch.tensor(
     [text_to_indices(sample_text, vocab, MAX_LEN)], dtype=torch.long
 )
 
-# TODO: Create embedding layer and compute self-attention on a real headline
-# Hint: embed_dim = 32; embedding = torch.nn.Embedding(len(vocab), embed_dim, padding_idx=0)
-# Then: embedded = embedding(sample_indices) inside torch.no_grad()
-# Then: call scaled_dot_product_attention(embedded, embedded, embedded)
+# TODO: Create an (untrained) embedding layer and run self-attention on a real headline
+# - embedding: torch.nn.Embedding over the whole vocab, embed_dim wide, with
+#   index 0 as the padding index (pads become zero vectors)
+# - embedded: the sample headline's token ids embedded -> (1, MAX_LEN, embed_dim)
+# - SELF-attention: the same tensor plays query, key and value
 embed_dim = 32
 embedding = (
     ...
-)  # YOUR CODE HERE — torch.nn.Embedding(len(vocab), embed_dim, padding_idx=0)
+)  # YOUR CODE HERE
 with torch.no_grad():
-    embedded = ...  # YOUR CODE HERE — embedding(sample_indices)
+    embedded = ...  # YOUR CODE HERE
     _, sample_attn = (
         ...
-    )  # YOUR CODE HERE — scaled_dot_product_attention(embedded, embedded, embedded)
+    )  # YOUR CODE HERE
     sample_attn_np = sample_attn[0].numpy()  # (MAX_LEN, MAX_LEN)
 
 # Build word labels for the heatmap
@@ -274,16 +276,17 @@ def get_attention_representation(text: str) -> torch.Tensor:
     indices = torch.tensor([text_to_indices(text, vocab, MAX_LEN)], dtype=torch.long)
     with torch.no_grad():
         # TODO: Compute embedding, apply self-attention, mean-pool over non-pad positions
-        # Step 1: emb = embedding_legal(indices)
-        # Step 2: attn_out, _ = scaled_dot_product_attention(emb, emb, emb)
-        # Step 3: mask = (indices != 0).float().unsqueeze(-1)
-        # Step 4: pooled = (attn_out * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+        # Step 1: embed the token ids with embedding_legal -> (1, MAX_LEN, embed_dim)
+        # Step 2: self-attention over emb (your function from Task 2)
+        # Step 3: float mask of real (non-pad, id != 0) tokens, shaped (1, MAX_LEN, 1)
+        #         so it broadcasts over the feature axis
+        # Step 4: masked mean over the sequence axis (guard the divisor against 0)
         emb = ...  # YOUR CODE HERE
         attn_out, _ = ...  # YOUR CODE HERE
-        mask = ...  # YOUR CODE HERE — (indices != 0).float().unsqueeze(-1)
+        mask = ...  # YOUR CODE HERE
         pooled = (
             ...
-        )  # YOUR CODE HERE — (attn_out * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+        )  # YOUR CODE HERE
     return pooled.squeeze(0)  # (embed_dim,)
 
 
@@ -294,15 +297,16 @@ print(f"\n  Query documents: {len(query_texts)}")
 print(f"  Candidate pool: {len(candidate_texts)} headlines")
 
 # TODO: For each query, compute its representation, find top-3 similar candidates
-# Hint: q_rep = get_attention_representation(q_text)
-# Hint: similarities = F.cosine_similarity(q_rep.unsqueeze(0), candidate_reps, dim=1)
-# Hint: top_k = similarities.topk(3)
+# - q_rep: the query's representation (same helper as the candidates)
+# - similarities: F.cosine_similarity of q_rep against every row of
+#   candidate_reps -> shape (50,); add a batch axis to q_rep so it broadcasts
+# - top_k: the 3 largest similarities (Tensor.topk gives .values and .indices)
 for qi, (q_text, q_label) in enumerate(zip(query_texts, query_labels)):
-    q_rep = ...  # YOUR CODE HERE — get_attention_representation(q_text)
+    q_rep = ...  # YOUR CODE HERE
     similarities = (
         ...
-    )  # YOUR CODE HERE — F.cosine_similarity(q_rep.unsqueeze(0), candidate_reps, dim=1)
-    top_k = ...  # YOUR CODE HERE — similarities.topk(3)
+    )  # YOUR CODE HERE
+    top_k = ...  # YOUR CODE HERE
 
     print(f"\n  Query ({q_label}): '{q_text[:60]}'")
     for rank, (score, idx) in enumerate(

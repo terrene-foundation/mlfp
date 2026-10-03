@@ -133,28 +133,30 @@ class EducationalMultiHead(nn.Module):
         b, seq, d = x.shape
 
         # TODO: Compute Q, K, V for all heads in one matrix multiply
-        # Hint: qkv = self.qkv(x).reshape(b, seq, 3, self.n_heads, self.d_k)
-        # Then: q, k, v = qkv.unbind(dim=2)  — each is (b, seq, n_heads, d_k)
+        # Hint: self.qkv gives (b, seq, 3 * d_model); view it as
+        #   (b, seq, 3, n_heads, d_k), then split the "3" axis into q, k, v,
+        #   each (b, seq, n_heads, d_k).
         qkv = ...  # YOUR CODE HERE
         q, k, v = ...  # YOUR CODE HERE
 
         # TODO: Reshape for attention — merge batch and head dims
-        # Hint: q = q.transpose(1, 2).reshape(b * self.n_heads, seq, self.d_k)
-        # Same for k and v
+        # Hint: bring the head axis next to batch, then fold both into one
+        #   axis -> (b * n_heads, seq, d_k). Same for q, k and v.
         q = ...  # YOUR CODE HERE
         k = ...  # YOUR CODE HERE
         v = ...  # YOUR CODE HERE
 
-        # TODO: Apply scaled_dot_product_attention from helpers
-        # Hint: out, weights = scaled_dot_product_attention(q, k, v)
+        # TODO: Apply scaled_dot_product_attention from helpers (every head
+        #   is now just another batch element).
         out, weights = ...  # YOUR CODE HERE
 
         # Reshape weights to (b, n_heads, seq, seq) for visualisation
         attn_weights = weights.reshape(b, self.n_heads, seq, seq)
 
         # TODO: Concatenate heads and project back to d_model
-        # Hint: out = out.reshape(b, self.n_heads, seq, self.d_k).transpose(1, 2).reshape(b, seq, d)
-        # Then: return self.proj(out), attn_weights
+        # Hint: undo the fold: (b * n_heads, seq, d_k) -> (b, seq, d_model),
+        #   with each position's heads side by side. Return the projected
+        #   output together with attn_weights.
         out = ...  # YOUR CODE HERE
         return ...  # YOUR CODE HERE
 
@@ -193,8 +195,8 @@ class PositionalEncoding(nn.Module):
             torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
         )
         # TODO: Fill pe with sinusoidal values
-        # Hint: pe[:, 0::2] = torch.sin(position * div)  — even dimensions
-        # Hint: pe[:, 1::2] = torch.cos(position * div)  — odd dimensions
+        # Hint: even feature columns get sin(position * div), odd columns get
+        #   cos(position * div) (slice the column axis with a step of 2).
         ...  # YOUR CODE HERE
         ...  # YOUR CODE HERE
         self.register_buffer("pe", pe.unsqueeze(0))
@@ -225,14 +227,13 @@ class TransformerClassifier(nn.Module):
     ):
         super().__init__()
         # TODO: Build the Transformer architecture
-        # Hint: self.embed = nn.Embedding(vocab_size, d_model, padding_idx=0)
-        # Hint: self.posenc = PositionalEncoding(d_model)
-        # Hint: self.emb_drop = nn.Dropout(dropout)
-        # Hint: layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads,
-        #              dim_feedforward=4 * d_model, dropout=dropout, batch_first=True)
-        # Hint: self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers, enable_nested_tensor=False)  # MPS-compat
-        # Hint: self.head_drop = nn.Dropout(dropout)
-        # Hint: self.head = nn.Linear(d_model, n_classes)
+        # - embed: token embedding, d_model wide, id 0 is padding
+        # - posenc: the PositionalEncoding above; emb_drop / head_drop: dropout
+        # - layer: one nn.TransformerEncoderLayer — n_heads heads, feed-forward
+        #   width 4 * d_model, batch-first tensors
+        # - encoder: nn.TransformerEncoder stacking n_layers copies; pass
+        #   enable_nested_tensor=False (the nested-tensor fast path fails on MPS)
+        # - head: linear map from d_model to n_classes
         self.embed = ...  # YOUR CODE HERE
         self.posenc = ...  # YOUR CODE HERE
         self.emb_drop = ...  # YOUR CODE HERE
@@ -243,14 +244,13 @@ class TransformerClassifier(nn.Module):
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
         # TODO: Implement the forward pass
-        # Step 1: pad_mask = (tokens == 0)
-        # Step 2: x = self.embed(tokens) -> posenc -> emb_drop
-        # Step 3: x = self.encoder(x, src_key_padding_mask=pad_mask)
-        # Step 4: Mean-pool over non-pad positions
-        #   lengths = (~pad_mask).sum(dim=1, keepdim=True).clamp(min=1).float()
-        #   x = x.masked_fill(pad_mask.unsqueeze(-1), 0.0)
-        #   pooled = x.sum(dim=1) / lengths
-        # Step 5: return self.head(self.head_drop(pooled))
+        # Step 1: boolean pad mask (True where the token id is 0)
+        # Step 2: embed -> positional encoding -> dropout
+        # Step 3: encoder, telling it which keys are padding
+        #         (src_key_padding_mask)
+        # Step 4: mean-pool over the NON-pad positions only (zero the pads,
+        #         divide by the real length, never by 0)
+        # Step 5: dropout -> classification head -> logits (batch, n_classes)
         ...  # YOUR CODE HERE
 
 
@@ -267,10 +267,10 @@ print("--- Checkpoint 2 passed --- TransformerClassifier architecture ready\n")
 # ════════════════════════════════════════════════════════════════════════
 print("\n== Training Transformer on full AG News ==")
 # TODO: Create TransformerClassifier and train it
-# Hint: transformer_model = TransformerClassifier(vocab_size=len(vocab), d_model=128, n_heads=4, n_layers=3, n_classes=4)
-# Hint: transformer_losses, transformer_accs = train_model(
-#           transformer_model, "transformer", train_loader, val_loader,
-#           tracker, exp_name, epochs=EPOCHS_SCRATCH)
+# - transformer_model: full vocab, d_model 128, 4 heads, 3 layers, 4 classes
+# - transformer_losses, transformer_accs: from the train_model helper
+#   (run name "transformer", the train/val loaders, tracker, exp_name,
+#   EPOCHS_SCRATCH epochs)
 transformer_model = ...  # YOUR CODE HERE
 transformer_losses, transformer_accs = ...  # YOUR CODE HERE
 
@@ -428,12 +428,10 @@ financial_headlines = [
 ]
 
 # TODO: Classify financial headlines with the trained transformer
-# Step 1: Set model to eval mode — transformer_model.eval()
-# Step 2: Tokenise — fin_idx = torch.tensor([text_to_indices(t, vocab, MAX_LEN) for t in financial_headlines], dtype=torch.long, device=DEVICE)
-# Step 3: with torch.no_grad(): get logits, probs, preds
-#   fin_logits = transformer_model(fin_idx)
-#   fin_probs = F.softmax(fin_logits, dim=-1)
-#   fin_preds = fin_logits.argmax(dim=-1).cpu().tolist()
+# - fin_idx: token-id tensor (long, on DEVICE) built with text_to_indices
+#   for every headline -> (n_headlines, MAX_LEN)
+# - fin_logits / fin_probs: model output and its softmax over classes
+# - fin_preds: the predicted class id per headline, as a Python list
 transformer_model.eval()
 with torch.no_grad():
     fin_idx = ...  # YOUR CODE HERE

@@ -141,10 +141,10 @@ class EducationalMultiHead(nn.Module):
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         b, seq, d = x.shape
         # TODO: Compute QKV, split heads, apply attention, concatenate, project
-        # Hint: qkv = self.qkv(x).reshape(b, seq, 3, self.n_heads, self.d_k)
-        # Hint: q, k, v = qkv.unbind(dim=2)
-        # Hint: Reshape to (b*n_heads, seq, d_k), call scaled_dot_product_attention
-        # Hint: Reshape back, project with self.proj
+        # Hint: (b, seq, 3*d_model) -> q, k, v of (b, seq, n_heads, d_k)
+        #   -> fold heads into batch (b*n_heads, seq, d_k) -> attention
+        #   -> unfold to (b, seq, d_model) -> self.proj. Return (output,
+        #   weights reshaped to (b, n_heads, seq, seq)).
         ...  # YOUR CODE HERE
 
 
@@ -160,8 +160,8 @@ class PositionalEncoding(nn.Module):
         div = torch.exp(
             torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
         )
-        # TODO: pe[:, 0::2] = torch.sin(position * div)
-        # TODO: pe[:, 1::2] = torch.cos(position * div)
+        # TODO: sin(position * div) into the even feature columns,
+        #   cos(position * div) into the odd ones.
         ...  # YOUR CODE HERE
         self.register_buffer("pe", pe.unsqueeze(0))
 
@@ -195,16 +195,16 @@ class TransformerClassifier(nn.Module):
 # --- LSTM ---
 print("\n== Training LSTM baseline ==")
 # TODO: Create and train LSTM model
-# Hint: lstm_model = LSTMClassifier(vocab_size=len(vocab), embed_dim=128, hidden_dim=128, n_layers=2, n_classes=4)
-# Hint: lstm_losses, lstm_accs = train_model(lstm_model, "lstm_baseline", train_loader, val_loader, tracker, exp_name, epochs=EPOCHS_SCRATCH)
+# Hint: same configuration and train_model call as 03_lstm_baseline.py
+#   (embed/hidden 128, 2 layers, 4 classes, run name "lstm_baseline").
 lstm_model = ...  # YOUR CODE HERE
 lstm_losses, lstm_accs = ...  # YOUR CODE HERE
 
 # --- Transformer ---
 print("\n== Training Transformer ==")
 # TODO: Create and train Transformer model
-# Hint: transformer_model = TransformerClassifier(vocab_size=len(vocab), d_model=128, n_heads=4, n_layers=3, n_classes=4)
-# Hint: transformer_losses, transformer_accs = train_model(transformer_model, "transformer", train_loader, val_loader, tracker, exp_name, epochs=EPOCHS_SCRATCH)
+# Hint: same configuration and train_model call as 02_transformer_encoder.py
+#   (d_model 128, 4 heads, 3 layers, 4 classes, run name "transformer").
 transformer_model = ...  # YOUR CODE HERE
 transformer_losses, transformer_accs = ...  # YOUR CODE HERE
 
@@ -218,9 +218,8 @@ bert_model = BertForSequenceClassification.from_pretrained(
 ).to(DEVICE)
 
 # TODO: Freeze lower 8 of 12 layers
-# Hint: for name, param in bert_model.named_parameters():
-#           if "bert.encoder.layer" in name and int(name.split(".")[3]) < 8: param.requires_grad = False
-#           elif "bert.embeddings" in name: param.requires_grad = False
+# Hint: as in 04_bert_finetuning.py — read the layer index out of each
+#   "bert.encoder.layer.<k>..." parameter name; freeze k < 8 and the embeddings.
 for name, param in bert_model.named_parameters():
     ...  # YOUR CODE HERE
 
@@ -264,9 +263,9 @@ bert_test_loader = DataLoader(
 
 async def train_bert_async(model, train_loader, test_loader, epochs=3, lr=2e-5):
     # TODO: Implement BERT training loop with ExperimentTracker
-    # Hint: optimizer = AdamW, scheduler = LinearLR
-    # Hint: async with tracker.track(...) as run: log params, train loop, log metrics
-    optimizer = ...  # YOUR CODE HERE — AdamW with trainable params only
+    # Hint: AdamW over trainable parameters only (lr, weight decay 0.01);
+    #   the LinearLR scheduler and tracker run below are provided.
+    optimizer = ...  # YOUR CODE HERE
     scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer,
         start_factor=1.0,
@@ -292,9 +291,8 @@ async def train_bert_async(model, train_loader, test_loader, epochs=3, lr=2e-5):
             batch_losses = []
             for batch_idx, (ids, mask, labels) in enumerate(train_loader):
                 # TODO: Forward + backward + step
-                # Hint: optimizer.zero_grad()
-                # Hint: outputs = model(input_ids=ids, attention_mask=mask, labels=labels)
-                # Hint: outputs.loss.backward(); clip_grad_norm_; optimizer.step()
+                # Hint: labels in -> outputs.loss out; clip grad norm to 1.0;
+                #   record each batch loss in batch_losses.
                 ...  # YOUR CODE HERE
                 if (batch_idx + 1) % 500 == 0:
                     print(
@@ -309,7 +307,7 @@ async def train_bert_async(model, train_loader, test_loader, epochs=3, lr=2e-5):
                 correct = total_count = 0
                 for ids, mask, labels in test_loader:
                     # TODO: Get predictions and accumulate accuracy
-                    # Hint: preds = model(input_ids=ids, attention_mask=mask).logits.argmax(dim=-1)
+                    #   (argmax of .logits; update correct and total_count).
                     ...  # YOUR CODE HERE
                 acc = correct / total_count
                 test_accs.append(acc)
@@ -402,7 +400,9 @@ print("\n--- Checkpoint 1 passed --- all three models trained\n")
 # TASK 2 — Visualise: Side-by-side comparison table + training curves
 # ════════════════════════════════════════════════════════════════════════
 # TODO: Build results dictionary and print comparison table
-# Hint: results = { "LSTM": {"test_acc": lstm_test_acc, "final_loss": lstm_losses[-1], "params": sum(p.numel() for p in lstm_model.parameters())}, ... }
+# Hint: keys "LSTM", "Transformer", "BERT (fine-tuned)"; each value holds
+#   "test_acc" (the *_test_acc above), "final_loss" (last training loss) and
+#   "params" (total parameter count; BERT's is total_params).
 results = ...  # YOUR CODE HERE
 
 print("\n== 3-Way Model Comparison on AG News ==")
@@ -414,12 +414,11 @@ for name, r in results.items():
     )
 
 # TODO: Create training curves comparison chart
-# Hint: viz = get_viz()
-# Hint: fig_curves = viz.training_history(metrics={...all 6 series...}, x_label="Epoch", y_label="Value")
-# Hint: fig_curves.write_html("ex_4_5_training_curves.html")
+# Hint: viz.training_history with all 6 series (loss and val accuracy for
+#   each model) against "Epoch"; save as HTML to ex_4_5_training_curves.html.
 viz = get_viz()
 fig_curves = ...  # YOUR CODE HERE
-...  # YOUR CODE HERE — write_html
+...  # YOUR CODE HERE
 print("\nTraining curves saved to ex_4_5_training_curves.html")
 
 # TODO: Sample predictions from all three models
@@ -438,14 +437,14 @@ bert_model.eval()
 with torch.no_grad():
     transformer_preds = (
         ...
-    )  # YOUR CODE HERE — transformer_model(sample_idx).argmax(dim=-1).cpu().tolist()
+    )  # YOUR CODE HERE — predicted class ids as a Python list
     lstm_preds = (
         ...
-    )  # YOUR CODE HERE — lstm_model(sample_idx).argmax(dim=-1).cpu().tolist()
+    )  # YOUR CODE HERE
     bert_sample_ids, bert_sample_mask = tokenise_for_bert(sample_texts)
     bert_preds = (
         ...
-    )  # YOUR CODE HERE — bert_model(...).logits.argmax(dim=-1).cpu().tolist()
+    )  # YOUR CODE HERE — BERT takes the bert_sample_* tensors (on DEVICE)
 
 print(f"\n== Sample Predictions (all 3 models) ==")
 print(f"{'Headline':<50} {'True':<10} {'LSTM':<10} {'Trans':<10} {'BERT':<10}")
@@ -497,11 +496,9 @@ async def register_all_models():
     ]
 
     # TODO: Register each model in the registry
-    # Hint: for name, state_dict, test_acc, model_type in models_to_register:
-    #   model_bytes = pickle.dumps(state_dict)
-    #   version = await registry.register_model(name=name, artifact=model_bytes,
-    #       metrics=[MetricSpec(name="test_accuracy", value=test_acc), ...])
-    #   model_versions[model_type] = version
+    # Hint: the artifact is the pickled state_dict (bytes); register_model is
+    #   async and takes a list of MetricSpec (at least test_accuracy). Store
+    #   each returned version in model_versions under its model_type.
     for name, state_dict, test_acc, model_type in models_to_register:
         ...  # YOUR CODE HERE
 

@@ -104,12 +104,11 @@ bert_model = BertForSequenceClassification.from_pretrained(
 
 # TODO: Freeze the lower 8 of 12 encoder layers — only fine-tune the top 4
 # layers plus the pooler and classification head.
-# Hint: Loop over bert_model.named_parameters()
-# Hint: if "bert.encoder.layer" in name: layer_num = int(name.split(".")[3])
-#       if layer_num < 8: param.requires_grad = False
-# Hint: if "bert.embeddings" in name: param.requires_grad = False
+# Hint: parameter names look like "bert.encoder.layer.<k>.attention...";
+#   parse the layer index k out of the name. Freeze (requires_grad off) every
+#   encoder layer below 8 and the "bert.embeddings" parameters.
 for name, param in bert_model.named_parameters():
-    ...  # YOUR CODE HERE — freeze layers 0-7 and embeddings
+    ...  # YOUR CODE HERE
 
 trainable = sum(p.numel() for p in bert_model.parameters() if p.requires_grad)
 total_params = sum(p.numel() for p in bert_model.parameters())
@@ -150,10 +149,9 @@ def tokenise_for_bert(
     Returns:
         (input_ids, attention_mask) tensors ready for BERT.
     """
-    # TODO: Use bert_tokenizer to encode texts
-    # Hint: encoding = bert_tokenizer(texts, max_length=max_len,
-    #           padding="max_length", truncation=True, return_tensors="pt")
-    # Hint: return encoding["input_ids"], encoding["attention_mask"]
+    # TODO: Use bert_tokenizer to encode texts: every sequence padded AND
+    #   truncated to exactly max_len, returned as PyTorch tensors. Return the
+    #   (input_ids, attention_mask) pair from the encoding.
     encoding = ...  # YOUR CODE HERE
     return ...  # YOUR CODE HERE
 
@@ -198,7 +196,8 @@ async def train_bert_async(
 ) -> tuple[list[float], list[float]]:
     """Fine-tune BERT and log to ExperimentTracker."""
     # TODO: Set up optimizer with only trainable parameters
-    # Hint: optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=lr, weight_decay=0.01)
+    # Hint: AdamW over the parameters that still require grad (the frozen
+    #   ones must not be passed), learning rate lr, weight decay 0.01.
     optimizer = ...  # YOUR CODE HERE
     scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer, start_factor=1.0, end_factor=0.1, total_iters=epochs
@@ -224,13 +223,10 @@ async def train_bert_async(
             batch_losses = []
             for batch_idx, (ids, mask, labels) in enumerate(train_loader):
                 # TODO: Forward pass, backward pass, optimizer step
-                # Hint: optimizer.zero_grad()
-                # Hint: outputs = model(input_ids=ids, attention_mask=mask, labels=labels)
-                # Hint: loss = outputs.loss
-                # Hint: loss.backward()
-                # Hint: torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                # Hint: optimizer.step()
-                # Hint: batch_losses.append(loss.item())
+                # Hint: passing labels to the Hugging Face model makes it return
+                #   the cross-entropy as outputs.loss. Clip the gradient norm to
+                #   1.0 before stepping, and append each batch's loss value to
+                #   batch_losses (the progress print above reads it).
                 ...  # YOUR CODE HERE
                 if (batch_idx + 1) % 500 == 0:
                     print(
@@ -241,18 +237,15 @@ async def train_bert_async(
             epoch_loss = float(np.mean(batch_losses))
             train_losses.append(epoch_loss)
 
-            # TODO: Evaluate on validation set
-            # Hint: model.eval()
-            # Hint: with torch.no_grad(): loop over test_loader
-            #   logits = model(input_ids=ids, attention_mask=mask).logits
-            #   preds = logits.argmax(dim=-1)
-            #   correct += (preds == labels).sum().item()
+            # TODO: Evaluate on the held-out loader: predicted class = argmax
+            #   of the model's .logits; accumulate correct and total_count
+            #   (as Python ints) so acc below is the accuracy.
             model.eval()
             with torch.no_grad():
                 correct = 0
                 total_count = 0
                 for ids, mask, labels in test_loader:
-                    ...  # YOUR CODE HERE — get logits, preds, accumulate correct/total
+                    ...  # YOUR CODE HERE
                 acc = correct / total_count
                 test_accs.append(acc)
 
@@ -347,12 +340,9 @@ class_correct: Counter[int] = Counter()
 class_total: Counter[int] = Counter()
 
 # TODO: Compute per-class accuracy on the validation set
-# Hint: with torch.no_grad(): loop over bert_test_loader
-#   logits = bert_model(input_ids=ids, attention_mask=mask).logits
-#   preds = logits.argmax(dim=-1)
-#   for pred, label in zip(preds.cpu().tolist(), labels.cpu().tolist()):
-#       class_total[label] += 1
-#       if pred == label: class_correct[label] += 1
+# Hint: per batch, get predicted class ids, then for every (pred, label)
+#   pair count the label in class_total and, when they match, in
+#   class_correct (both Counters keyed by class id).
 with torch.no_grad():
     for ids, mask, labels in bert_test_loader:
         ...  # YOUR CODE HERE

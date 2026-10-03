@@ -151,8 +151,9 @@ def gradient_penalty(
     # TODO: Get critic scores on interpolated images
     d_interp = ____
 
-    # TODO: Compute gradients of critic output w.r.t. interpolated images
-    # Hint: Use torch.autograd.grad with create_graph=True, retain_graph=True
+    # PROVIDED: gradients of the critic output w.r.t. the interpolated
+    # images. create_graph=True keeps this gradient itself differentiable,
+    # so the critic's optimiser can backpropagate through the penalty.
     grad = torch.autograd.grad(
         outputs=d_interp,
         inputs=interp,

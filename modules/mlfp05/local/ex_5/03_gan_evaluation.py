@@ -199,8 +199,8 @@ for epoch in range(15):
     )
 
 
-# TODO: Implement gradient penalty function for WGAN-GP
-# Hint: Same as ex_5/02 — interpolate real+fake, compute grad norm, penalise != 1
+# Gradient penalty for WGAN-GP — the same function you wrote in ex_5/02;
+# only its final line is left for you here.
 def gradient_penalty(D, real, fake):
     batch = real.size(0)
     alpha = torch.rand(batch, 1, 1, 1, device=real.device)

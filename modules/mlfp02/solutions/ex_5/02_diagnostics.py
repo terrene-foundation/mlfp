@@ -215,19 +215,20 @@ print(f"Saved: {path}")
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: A risk analyst at a Singapore bank reviews the HDB
 # valuation model before it is used to approve mortgages. The analyst
-# runs these diagnostics and finds:
+# reads the diagnostics above and asks:
 #
-# - VIF is low for all features — no multicollinearity problem.
-# - Breusch-Pagan rejects homoscedasticity — expensive flats have
-#   higher price variance than cheap ones.
-# - Residuals are right-skewed — the model underestimates some
-#   expensive flats.
+# - Is any VIF above 10? (unstable, uninterpretable coefficients)
+# - Does Breusch-Pagan reject homoscedasticity? (price noise that
+#   grows with the flat's size or value)
+# - Are the residuals skewed or heavy-tailed? (some flats badly
+#   mis-valued in one direction)
 #
-# BUSINESS IMPACT: The bank uses the model's confidence intervals to
-# set loan-to-value (LTV) ratios. If the SEs are wrong because of
-# heteroscedasticity, the bank might approve a 90% LTV loan on a
-# property whose true uncertainty is +/- $80K. A $400K flat could
-# really be worth $320K, and the bank is exposed. The fix: use WLS
+# BUSINESS IMPACT: The bank sizes loans as a fraction of the valuation
+# (a loan-to-value cap). If heteroscedasticity makes the OLS intervals
+# too narrow for expensive flats, the bank believes a valuation is
+# tighter than it is — a flat valued at $400K with a stated +/- $20K
+# could in reality be +/- $80K, leaving the loan under-collateralised
+# if the low end is true. The fix: use WLS
 # or robust standard errors (next file).
 
 print(f"\n--- Business Application: Mortgage Risk ---")

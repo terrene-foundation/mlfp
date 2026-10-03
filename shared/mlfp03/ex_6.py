@@ -3,7 +3,8 @@
 """
 Shared infrastructure for MLFP03 Exercise 6 — Interpretability and Fairness.
 
-Contains: Singapore credit scoring data load, LightGBM model training,
+Contains: Singapore credit scoring data load, LightGBM model training
+(via kailash-ml TrainingPipeline),
 TreeSHAP explainer setup, output directory, and common helper utilities.
 
 Technique-specific code (permutation importance loops, LIME wrappers,
@@ -22,13 +23,15 @@ Import pattern (solutions and local both):
 """
 from __future__ import annotations
 
+import asyncio
+import os
+import pickle
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import polars as pl
 
-import lightgbm as lgb
 import shap
 from sklearn.metrics import roc_auc_score
 
@@ -132,8 +135,68 @@ def load_credit_scoring() -> dict[str, Any]:
     return _CACHE
 
 
+# The model is trained through kailash-ml's TrainingPipeline (fit + holdout
+# evaluation + registry entry in one call) and loaded back from the
+# registry, so SHAP explains exactly the registered artefact. Class
+# weighting (scale_pos_weight) is kept from the original exercise design:
+# it raises recall on the 12% default class at the cost of inflated
+# probabilities (Exercise 5) — 05_fairness_audit.py discusses the effect.
+MODEL_NAME = "credit_default_ex6"
+_DB_ABS_PATH = (OUTPUT_DIR / "ex6_models.db").resolve()
+DB_URL: str = os.environ.get("MLFP03_EX6_DB_URL", f"sqlite:///{_DB_ABS_PATH.as_posix()}")
+
+
+async def _train_via_pipeline(
+    X_train: np.ndarray, y_train: np.ndarray, feature_names: list[str]
+) -> Any:
+    from kailash.db import ConnectionManager
+    from kailash_ml import ModelRegistry, TrainingPipeline
+    from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+    from kailash_ml.types import FeatureField, FeatureSchema
+
+    frame = pl.DataFrame(X_train, schema=feature_names, orient="row").with_columns(
+        pl.Series(TARGET_COLUMN, y_train),
+        pl.int_range(0, len(y_train), dtype=pl.Int64).alias("row_id"),
+    )
+    schema = FeatureSchema(
+        name="ex6_credit_input",
+        features=[FeatureField(name=f, dtype="float64") for f in feature_names],
+        entity_id_column="row_id",
+    )
+    conn = ConnectionManager(DB_URL)
+    await conn.initialize()
+    try:
+        registry = ModelRegistry(conn)
+        pipeline = TrainingPipeline(feature_store=None, registry=registry)
+        result = await pipeline.train(
+            data=frame,
+            schema=schema,
+            model_spec=ModelSpec(
+                model_class="lightgbm.LGBMClassifier",
+                framework="lightgbm",
+                hyperparameters={
+                    "n_estimators": 500,
+                    "learning_rate": 0.1,
+                    "max_depth": 6,
+                    "scale_pos_weight": float((1 - y_train.mean()) / y_train.mean()),
+                    "random_state": RANDOM_SEED,
+                    "verbose": -1,
+                },
+            ),
+            eval_spec=EvalSpec(metrics=["auc"], split_strategy="holdout", test_size=0.2),
+            experiment_name=MODEL_NAME,
+        )
+        if result.model_version is None:
+            raise RuntimeError("TrainingPipeline did not register the model")
+        version = int(result.model_version.version)
+        # Unpickling executes code: only load artefacts you trained yourself.
+        return pickle.loads(await registry.load_artifact(MODEL_NAME, version))
+    finally:
+        await conn.close()
+
+
 def train_credit_model() -> dict[str, Any]:
-    """Train the LightGBM credit default model. Cached per-process.
+    """Train the LightGBM credit default model via TrainingPipeline. Cached per-process.
 
     Returns a dict with model, y_proba, y_pred, auc, and all data from
     `load_credit_scoring()`.
@@ -145,15 +208,7 @@ def train_credit_model() -> dict[str, Any]:
     X_train, y_train = data["X_train"], data["y_train"]
     X_test, y_test = data["X_test"], data["y_test"]
 
-    model = lgb.LGBMClassifier(
-        n_estimators=500,
-        learning_rate=0.1,
-        max_depth=6,
-        scale_pos_weight=(1 - y_train.mean()) / y_train.mean(),
-        random_state=RANDOM_SEED,
-        verbose=-1,
-    )
-    model.fit(X_train, y_train)
+    model = asyncio.run(_train_via_pipeline(X_train, y_train, data["feature_names"]))
 
     y_proba = model.predict_proba(X_test)[:, 1]
     y_pred = model.predict(X_test)

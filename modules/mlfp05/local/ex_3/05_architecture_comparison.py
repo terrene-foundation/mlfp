@@ -113,42 +113,36 @@ class VanillaRNN(nn.Module):
         self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
     ):
         super().__init__()
-        # TODO: Define nn.RNN layer (input_dim, hidden_dim, batch_first=True, nonlinearity="tanh")
-        # TODO: Define nn.Linear prediction head (hidden_dim, horizon)
+        # TODO: self.rnn (tanh RNN) and self.head — as in 01_vanilla_rnn.py
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: out, _ = self.rnn(x); return self.head(out[:, -1])
+        # TODO: Forecast from the last timestep's output
         pass
 class LSTMRegressor(nn.Module):
     def __init__(
         self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
     ):
         super().__init__()
-        # TODO: Define nn.LSTM layer (input_dim, hidden_dim, batch_first=True)
-        # TODO: Define nn.Linear prediction head (hidden_dim, horizon)
+        # TODO: self.lstm and self.head — as in 02_lstm.py
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: out, _ = self.lstm(x); return self.head(out[:, -1])
+        # TODO: Forecast from the last timestep's output
         pass
 class GRURegressor(nn.Module):
     def __init__(
         self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
     ):
         super().__init__()
-        # TODO: Define nn.GRU layer (input_dim, hidden_dim, batch_first=True)
-        # TODO: Define nn.Linear prediction head (hidden_dim, horizon)
+        # TODO: self.gru and self.head — as in 03_gru.py
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: out, _ = self.gru(x); return self.head(out[:, -1])
+        # TODO: Forecast from the last timestep's output
         pass
 class TemporalAttention(nn.Module):
     def __init__(self, hidden_dim: int):
         super().__init__()
-        # TODO: Define W — nn.Linear(hidden_dim, hidden_dim)
-        # TODO: Define v — nn.Linear(hidden_dim, 1, bias=False)
+        # TODO: self.W (projection) and self.v (bias-free scorer) — as in
+        #   04_temporal_attention.py
     def forward(self, lstm_outputs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # TODO: energy = tanh(self.W(lstm_outputs))
-        # TODO: scores = self.v(energy).squeeze(-1)
-        # TODO: weights = softmax(scores, dim=-1)
-        # TODO: context = bmm(weights.unsqueeze(1), lstm_outputs).squeeze(1)
-        # TODO: return context, weights
+        # TODO: energy -> per-timestep scores -> weights normalised over time
+        #   -> weighted sum of the hidden states; return context, weights
         pass
 class LSTMWithAttention(nn.Module):
     def __init__(

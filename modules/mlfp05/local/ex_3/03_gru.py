@@ -137,12 +137,12 @@ class GRURegressor(nn.Module):
         self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
     ):
         super().__init__()
-        # TODO: Define GRU layer — nn.GRU(input_dim, hidden_dim, batch_first=True)
-        # TODO: Define prediction head — nn.Linear(hidden_dim, horizon)
+        # TODO: self.gru — single-layer nn.GRU, input_dim -> hidden_dim, batch-first
+        # TODO: self.head — linear map from the hidden size to `horizon` outputs
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Pass x through self.gru -> out, _
-        # TODO: Return self.head(out[:, -1]) — last hidden state -> (batch, horizon)
+        # TODO: Run x through self.gru and forecast from the LAST timestep's
+        #   output, giving shape (batch, horizon)
         pass
 
 
@@ -153,12 +153,11 @@ class LSTMRegressor(nn.Module):
         self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
     ):
         super().__init__()
-        # TODO: Define LSTM layer — nn.LSTM(input_dim, hidden_dim, batch_first=True)
-        # TODO: Define prediction head — nn.Linear(hidden_dim, horizon)
+        # TODO: self.lstm and self.head — the same shape of model as GRURegressor,
+        #   with an LSTM in place of the GRU (same sizes, so the comparison is fair)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Pass x through self.lstm -> out, _
-        # TODO: Return self.head(out[:, -1])
+        # TODO: Same last-timestep forecast as GRURegressor.forward
         pass
 
 
@@ -352,15 +351,15 @@ def visualise_gru_gates(model: nn.Module, sample: torch.Tensor) -> None:
     """Extract and visualise GRU gate activations using hooks."""
     model.eval()
 
-    # TODO: Run step-by-step through the GRU to capture hidden states
-    #   gru_layer = model.gru
-    #   Initialise h = zeros(1, 1, HIDDEN_DIM) on device
-    #   Loop through timesteps: out, h = gru_layer(sample[:, t:t+1, :], h)
-    #   Append h.squeeze().cpu().numpy() to hidden_states list
+    # TODO: Run the model's GRU layer step-by-step to capture hidden states:
+    #   start from a zero hidden state shaped (layers, batch, HIDDEN_DIM),
+    #   feed one length-1 slice of the sequence at a time while carrying h
+    #   forward (no gradients needed), and keep each h as a flat numpy vector
+    #   in a list `hidden_states`
     # TODO: Stack into hidden_matrix of shape (seq_len, hidden_dim)
 
     # TODO: Create 2-row subplot (14, 8):
-    #   Top: heatmap of hidden_matrix.T with "RdBu_r" cmap
+    #   Top: heatmap with hidden dimensions on the y-axis, time on the x-axis, "RdBu_r" cmap
     #     Title: "GRU Hidden State Evolution (all dimensions)"
     #   Bottom: line plot of top-5 most active dimensions by variance
     #     Title includes "(sharper transitions = update gate)"
@@ -452,8 +451,9 @@ ANOMALY_THRESHOLD = 3.5  # mm/s^2 — bearing replacement recommended above this
 # TODO: Train both GRU (hidden=16) and LSTM (hidden=16) on sensor data
 # TODO: Evaluate both models and compute MAE (gru_mae, lstm_mae)
 # TODO: Benchmark inference latency for sensor-sized models (n_runs=500)
-# TODO: Calculate real-time capacity: 60_000 / latency_ms = inferences per minute
-#   sensor_speedup = LSTM latency / GRU latency
+# TODO: Calculate real-time capacity: inferences per minute one model can
+#   serve at its measured per-call latency (ms)
+#   sensor_speedup: how many times faster the GRU is than the LSTM
 
 # TODO: Anomaly detection: count GRU predictions exceeding ANOMALY_THRESHOLD
 #   (n_alerts_gru)

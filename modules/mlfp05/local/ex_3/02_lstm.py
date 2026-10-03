@@ -141,12 +141,13 @@ class LSTMRegressor(nn.Module):
         self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
     ):
         super().__init__()
-        # TODO: Define LSTM layer — nn.LSTM(input_dim, hidden_dim, batch_first=True)
-        # TODO: Define prediction head — nn.Linear(hidden_dim, horizon)
+        # TODO: self.lstm — single-layer nn.LSTM, input_dim -> hidden_dim, batch-first
+        # TODO: self.head — linear map from the hidden size to `horizon` outputs
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Pass x through self.lstm -> out, (h_n, c_n)
-        # TODO: Return self.head(out[:, -1]) — last hidden state -> (batch, horizon)
+        # TODO: Run x through self.lstm (it returns the output sequence plus a
+        #   (hidden, cell) tuple); forecast from the LAST timestep's output,
+        #   giving shape (batch, horizon)
         pass
 
 
@@ -157,9 +158,10 @@ class LSTMCellFromScratch(nn.Module):
 
     def __init__(self, input_dim: int, hidden_dim: int):
         super().__init__()
-        # TODO: Single linear layer that computes all 4 gates in one matrix multiply
-        #   self.gates = nn.Linear(input_dim + hidden_dim, 4 * hidden_dim)
-        #   This concatenates [x_t, h_prev] and produces i, f, g, o in one pass
+        # TODO: self.gates — ONE linear layer that reads the concatenation
+        #   [x_t, h_prev] and emits all four gate pre-activations at once
+        #   (so its output is four hidden-sized blocks: i, f, g, o).
+        #   Work out its in/out sizes from that description.
         self.hidden_dim = hidden_dim
 
     def forward(self, x_t: torch.Tensor, h_prev: torch.Tensor, c_prev: torch.Tensor):
@@ -173,17 +175,14 @@ class LSTMCellFromScratch(nn.Module):
         Returns:
             h_next, c_next
         """
-        # TODO: Concatenate x_t and h_prev along dim=-1
-        # TODO: Pass through self.gates and chunk into 4 parts: i, f, g, o
-        # TODO: Apply activations:
-        #   i = torch.sigmoid(i)   # input gate
-        #   f = torch.sigmoid(f)   # forget gate
-        #   g = torch.tanh(g)      # candidate cell
-        #   o = torch.sigmoid(o)   # output gate
-        # TODO: Cell update (ADDITIVE — the key insight):
-        #   c_next = f * c_prev + i * g
-        # TODO: Hidden state output:
-        #   h_next = o * torch.tanh(c_next)
+        # TODO: Join x_t and h_prev along the feature dimension
+        # TODO: Run self.gates and split the result into 4 equal parts, in the
+        #   order i, f, g, o (see Tensor.chunk)
+        # TODO: Squash each part: the three gates (input i, forget f, output o)
+        #   must lie in (0, 1); the candidate cell g lies in (-1, 1)
+        # TODO: Cell update (ADDITIVE — the key insight): the forget gate scales
+        #   the old cell, the input gate scales the candidate, and the two are SUMMED
+        # TODO: Hidden output: the output gate filters a tanh-squashed new cell
         # TODO: Return h_next, c_next
         pass
 
@@ -302,11 +301,12 @@ def gradient_decay_lstm(seq_len: int = 60) -> list[float]:
     hd = 16
     cell_gd = LSTMCellFromScratch(N_FEATURES, hd).to(device)
     # TODO: Create random input x of shape (1, seq_len, N_FEATURES) on device
-    # TODO: Initialise h = zeros(1, hd) and c = zeros(1, hd) with requires_grad_(True)
-    # TODO: Loop through each timestep, calling cell_gd(x[:, t], h, c)
-    #   h.retain_grad() at each step, append h to hiddens list
-    # TODO: Backpropagate: hiddens[-1].pow(2).sum().backward()
-    # TODO: Return _collect_grad_norms(hiddens)
+    # TODO: Start from zero hidden and cell states, each (1, hd), tracking gradients
+    # TODO: Step cell_gd through every timestep (it returns the new hidden and
+    #   cell states); keep each intermediate h's gradient and collect the
+    #   hidden states in a list `hiddens` — same pattern as gradient_decay_rnn
+    # TODO: Backpropagate from the LAST hidden state (sum of its squares)
+    # TODO: Return the per-step gradient norms via _collect_grad_norms
     pass
 
 
@@ -371,12 +371,13 @@ def visualise_gate_activations(sample: torch.Tensor) -> None:
     with torch.no_grad():
         for t in range(seq_len):
             x_t = sample[:, t]
-            # TODO: Concatenate x_t and h, pass through cell_viz.gates
-            # TODO: Chunk into i_g, f_g, g_g, o_g (4 chunks)
-            # TODO: Apply sigmoid to f_g, i_g, o_g and append .cpu().numpy().flatten()
-            #   to forget_gates, input_gates, output_gates lists
-            # TODO: Call cell_viz(x_t, h, c) to advance the state
-            # TODO: Append c.cpu().numpy().flatten() to cell_states
+            # TODO: Recompute this step's gate pre-activations from cell_viz.gates
+            #   (same input as inside the cell) and split them as i, f, g, o
+            # TODO: Squash the forget, input and output gates into (0, 1) and
+            #   store each as a flat numpy vector in forget_gates, input_gates,
+            #   output_gates
+            # TODO: Advance the state by calling the cell itself on (x_t, h, c)
+            # TODO: Store the new cell state as a flat numpy vector in cell_states
             pass
 
     # TODO: Stack each list into numpy matrices of shape (seq_len, 16)
@@ -462,14 +463,14 @@ dbs_symbol = "D05.SI"  # DBS Group Holdings on SGX (public price data)
 # TODO: Train a dedicated LSTMRegressor on DBS data for EPOCHS
 
 # TODO: Evaluate and denormalise predictions to real prices
-# TODO: Compute prediction intervals using residual distribution:
-#   residuals = preds[:, 0] - actual[:, 0]
-#   res_std = np.std(residuals)
-#   67% CI: +/- 1.0 * res_std
-#   95% CI: +/- 1.96 * res_std
+# TODO: Compute prediction intervals from the residual distribution:
+#   residuals of the day-1 forecast (prediction minus actual), their spread
+#   (standard deviation) as res_std, then bands around the prediction:
+#   67% CI: +/- 1.0 residual std;  95% CI: +/- 1.96 residual std
 
 # TODO: Trading decision framework:
-#   predicted_5d_return = (latest_pred[-1] - latest_pred[0]) / latest_pred[0] * 100
+#   predicted_5d_return: percentage change from the first to the last day of
+#   the most recent forecast window (latest_pred)
 #   BUY if return > 1.5%, SELL if < -1.5%, else HOLD
 #   Store the label as decision and a one-line explanation as reasoning
 

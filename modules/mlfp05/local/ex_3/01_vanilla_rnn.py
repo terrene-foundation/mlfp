@@ -132,14 +132,15 @@ class VanillaRNN(nn.Module):
         self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
     ):
         super().__init__()
-        # TODO: Define RNN layer — nn.RNN(input_dim, hidden_dim, batch_first=True, nonlinearity="tanh")
-        # TODO: Define prediction head — nn.Linear(hidden_dim, horizon)
+        # TODO: self.rnn — a single-layer tanh nn.RNN mapping input_dim features
+        #   to hidden_dim units; inputs arrive as (batch, seq, features)
+        # TODO: self.head — a linear layer from the hidden size to `horizon` outputs
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Pass x through self.rnn to get output sequence and hidden state
-        #   out, _ = self.rnn(x)  # out shape: (batch, seq, hidden)
-        # TODO: Take the LAST hidden state and pass through the prediction head
-        #   return self.head(out[:, -1])  # shape: (batch, horizon)
+        # TODO: Run x through self.rnn — it returns (output sequence, final hidden);
+        #   the output sequence has shape (batch, seq, hidden)
+        # TODO: Feed only the LAST timestep's hidden vector to the head and
+        #   return the forecast, shape (batch, horizon)
         pass
 
 
@@ -239,17 +240,18 @@ def gradient_decay_rnn(seq_len: int = 60) -> list[float]:
     """Gradient norm at each timestep for a vanilla RNN."""
     torch.manual_seed(0)
     hd = 16
-    # TODO: Create weight matrices W_xh (N_FEATURES, hd), W_hh (hd, hd), bias b (hd)
-    #   All need requires_grad_(True). Scale W matrices by 0.5 with .mul_(0.5)
-    # TODO: Create random input x of shape (1, seq_len, N_FEATURES) on device
-    # TODO: Initialise hidden state h = zeros(1, hd) with requires_grad_(True)
-    # TODO: Loop through each timestep t in range(seq_len):
-    #   h = torch.tanh(x[:, t] @ W_xh + h @ W_hh + b)
-    #   h.retain_grad()   # keep gradient for this intermediate step
-    #   hiddens.append(h)
-    # TODO: Backpropagate from the last hidden state:
-    #   hiddens[-1].pow(2).sum().backward()
-    # TODO: Return _collect_grad_norms(hiddens)
+    # TODO: Create leaf tensors that track gradients: input-to-hidden weights
+    #   W_xh (N_FEATURES, hd) and hidden-to-hidden W_hh (hd, hd), both random
+    #   and scaled by 0.5, plus a zero bias b (hd)
+    # TODO: Create a random input x of shape (1, seq_len, N_FEATURES) on device
+    # TODO: Start from a zero hidden state h of shape (1, hd) that tracks gradients
+    # TODO: Unroll the recurrence by hand for every timestep: the new h is
+    #   tanh of (this step's input projected by W_xh + previous h projected by
+    #   W_hh + b). Intermediate tensors drop their .grad by default — ask
+    #   autograd to retain it, and collect every h in a list `hiddens`
+    # TODO: Backpropagate a scalar built from the LAST hidden state only
+    #   (sum of its squares), so earlier steps receive gradient through time
+    # TODO: Return the per-step gradient norms via _collect_grad_norms
     pass
 
 
@@ -314,13 +316,13 @@ def plot_hidden_state_evolution(model: nn.Module, sample: torch.Tensor) -> None:
     with torch.no_grad():
         # TODO: Get the rnn_layer from model.rnn
         # TODO: Initialise h = zeros(1, 1, HIDDEN_DIM) on device
-        # TODO: Loop through each timestep t in range(sample.shape[1]):
-        #   _, h = rnn_layer(sample[:, t:t+1, :], h)
-        #   Append h.squeeze().cpu().numpy() to hidden_states list
+        # TODO: Feed the sample to rnn_layer ONE timestep at a time (a length-1
+        #   slice of the sequence), carrying h forward; after each step store
+        #   h as a flat numpy vector in a list `hidden_states`
         pass
 
     # TODO: Stack hidden_states into a matrix of shape (seq_len, hidden_dim)
-    hidden_matrix = None  # np.stack(hidden_states)
+    hidden_matrix = None  # replace: one row per timestep
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8))
 
@@ -398,7 +400,7 @@ print("=" * 70)
 
 # TODO: Generate realistic F&B sales data with weekly seasonality
 #   - n_days = 365 * 3 (3 years)
-#   - base_sales = 800 + 200 * sin(2*pi*arange(n_days)/7) for weekly cycle
+#   - base_sales: weekly sinusoid (period 7 days) around 800 with amplitude 200
 #   - Add weekend_boost (150 for days 5,6), payday_boost (100 for first 3 days of month)
 #   - Add linear trend and Gaussian noise
 #   - Clip minimum to 200
@@ -419,7 +421,7 @@ CAFE_HORIZON = 3
 
 # TODO: Denormalise predictions and compute business metrics
 #   - mae_day1: Mean Absolute Error for day-1 prediction
-#   - accuracy_improvement: 1 - mae_day1 / mean(actual)
+#   - accuracy_improvement: one minus the day-1 MAE relative to mean actual sales (floor 0)
 #   - waste reduction and annual savings calculation (store as annual_savings)
 
 # TODO: Plot cafe demand forecast vs actual (60-day window)

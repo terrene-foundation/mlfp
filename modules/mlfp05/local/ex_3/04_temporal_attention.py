@@ -123,8 +123,8 @@ class TemporalAttention(nn.Module):
     """
     def __init__(self, hidden_dim: int):
         super().__init__()
-        # TODO: Define W — nn.Linear(hidden_dim, hidden_dim)
-        # TODO: Define v — nn.Linear(hidden_dim, 1, bias=False)
+        # TODO: self.W — learned projection hidden -> hidden (with bias)
+        # TODO: self.v — learned scoring vector hidden -> 1 score, no bias
     def forward(self, lstm_outputs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
@@ -133,12 +133,14 @@ class TemporalAttention(nn.Module):
             context: (batch, hidden) — weighted summary
             weights: (batch, seq) — attention distribution over timesteps
         """
-        # TODO: Compute energy = tanh(self.W(lstm_outputs))  — shape: (batch, seq, hidden)
-        # TODO: Compute scores = self.v(energy).squeeze(-1)  — shape: (batch, seq)
-        # TODO: Compute weights = softmax(scores, dim=-1)    — shape: (batch, seq)
-        # TODO: Compute context using batch matrix multiply:
-        #   context = torch.bmm(weights.unsqueeze(1), lstm_outputs).squeeze(1)
-        #   This computes the weighted sum across all timesteps
+        # TODO: energy — tanh of the W-projected hidden states, (batch, seq, hidden)
+        # TODO: scores — one scalar per timestep from v, drop the trailing
+        #   size-1 dim, (batch, seq)
+        # TODO: weights — normalise the scores over the TIME axis so each
+        #   row sums to 1, (batch, seq)
+        # TODO: context — the attention-weighted sum of the hidden states over
+        #   time, (batch, hidden). A batched matrix multiply (torch.bmm) does it
+        #   in one call if you give the weights a length-1 "query" dimension.
         # TODO: Return context, weights
         pass
 class LSTMWithAttention(nn.Module):
@@ -150,13 +152,12 @@ class LSTMWithAttention(nn.Module):
         self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
     ):
         super().__init__()
-        # TODO: Define LSTM layer — nn.LSTM(input_dim, hidden_dim, batch_first=True)
-        # TODO: Define attention module — TemporalAttention(hidden_dim)
-        # TODO: Define prediction head — nn.Linear(hidden_dim, horizon)
+        # TODO: self.lstm (batch-first, input_dim -> hidden_dim), self.attention
+        #   (the TemporalAttention module above), self.head (hidden -> horizon)
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # TODO: Pass x through LSTM to get all hidden states: lstm_out, _ = self.lstm(x)
-        # TODO: Apply attention: context, attn_weights = self.attention(lstm_out)
-        # TODO: Predict: pred = self.head(context)
+        # TODO: Keep ALL the LSTM's per-timestep outputs (not just the last)
+        # TODO: Let the attention module summarise them into a context vector
+        # TODO: Forecast from the context vector
         # TODO: Return pred, attn_weights (both are needed — weights for visualisation)
         pass
 # Plain LSTM for comparison
@@ -165,10 +166,9 @@ class LSTMRegressor(nn.Module):
         self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
     ):
         super().__init__()
-        # TODO: Define LSTM layer — nn.LSTM(input_dim, hidden_dim, batch_first=True)
-        # TODO: Define prediction head — nn.Linear(hidden_dim, horizon)
+        # TODO: self.lstm and self.head — same sizes as in LSTMWithAttention
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Pass through LSTM, return head(out[:, -1])
+        # TODO: Forecast from the LAST timestep's LSTM output only (no attention)
         pass
 attn_model = LSTMWithAttention(input_dim=N_FEATURES, hidden_dim=HIDDEN_DIM)
 lstm_model = LSTMRegressor(input_dim=N_FEATURES, hidden_dim=HIDDEN_DIM)
@@ -403,11 +403,11 @@ n_patients = 200
 readings_per_patient = 72
 n_vitals = 5
 # TODO: Build ClinicalAttentionModel using TemporalAttention + LSTM + classifier
-#   class ClinicalAttentionModel(nn.Module):
-#     - LSTM layer: nn.LSTM(input_dim, hidden_dim=32, batch_first=True)
-#     - Attention: TemporalAttention(hidden_dim=32)
-#     - Classifier: nn.Sequential(Linear(32, 32), ReLU, Linear(32, 1), Sigmoid)
-#     - forward returns (probability, attention_weights)
+#   ClinicalAttentionModel (an nn.Module), instantiated as clinical_model:
+#     - batch-first LSTM over the vitals, hidden size 32
+#     - TemporalAttention over its outputs (hidden size 32)
+#     - classifier MLP on the context: 32 -> 32 (ReLU) -> 1, sigmoid output
+#     - forward returns (probability per patient, attention_weights)
 # TODO: Train for 30 epochs with binary cross-entropy loss
 # TODO: Evaluate: compute precision, recall, F1 score (f1)
 # TODO: degrade_indices = indices of deteriorating validation patients.

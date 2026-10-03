@@ -1613,7 +1613,7 @@ for c in stacked.component_contributions:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Interpretability is not optional in regulated industries (finance, healthcare). This lesson covers SHAP, LIME, and fairness metrics. For professionals: regulators increasingly require model explainability. The EU AI Act and MAS FEAT are real compliance requirements.</aside>
+  <aside class="notes">Timing: 1 min. Interpretability is not optional in regulated industries (finance, healthcare). This lesson covers SHAP, LIME, and fairness metrics. For professionals: explainability is increasingly expected. The EU AI Act sets binding requirements for high-risk systems; Singapore's FEAT principles are supervisory guidance that calls for fairness and transparency assessment, not a binding rule.</aside>
 </section>
 
 <!-- SLIDE 53 — Why Interpretability -->
@@ -1622,10 +1622,10 @@ for c in stacked.component_contributions:
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Regulatory Requirements</h3>
+      <h3>Regulation and Guidance</h3>
       <ul>
         <li>EU AI Act: "right to explanation" for high-risk AI</li>
-        <li>MAS FEAT: Fairness, Ethics, Accountability, Transparency (Singapore)</li>
+        <li>FEAT principles (Singapore, non-binding guidance): Fairness, Ethics, Accountability, Transparency</li>
         <li>ECOA (US): Cannot deny credit without explanation</li>
       </ul>
     </div>
@@ -1642,7 +1642,7 @@ for c in stacked.component_contributions:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. For a professional audience, the regulatory angle is the strongest motivator. MAS FEAT is directly relevant for Singapore-based professionals. The practical benefits are equally important: SHAP values have caught data leakage bugs that no other technique revealed.</aside>
+  <aside class="notes">Timing: 2 min. For a professional audience, the regulatory angle is the strongest motivator. The FEAT principles are directly relevant for Singapore-based professionals; they are principles, not prescriptive rules, so they do not mandate a particular method such as SHAP. The practical benefits are equally important: SHAP values have caught data leakage bugs that no other technique revealed.</aside>
 </section>
 
 <!-- SLIDE 54 — SHAP: Shapley Values -->
@@ -1731,17 +1731,17 @@ for c in stacked.component_contributions:
       <tr>
         <td><strong>Disparate Impact</strong></td>
         <td><span class="katex-inline">\frac{P(\hat{Y}=1 \mid G=\text{minority})}{P(\hat{Y}=1 \mid G=\text{majority})}</span></td>
-        <td>Should be &gt; 0.8 (80% rule)</td>
+        <td>&ge; 0.8 (four-fifths rule, from US employment guidance)</td>
       </tr>
       <tr>
         <td><strong>Equalized Odds</strong></td>
         <td>TPR and FPR equal across groups</td>
-        <td>Difference &lt; 0.05</td>
+        <td>Gap &lt; 0.05 (team-set rule of thumb)</td>
       </tr>
       <tr>
         <td><strong>Calibration Parity</strong></td>
         <td>Predicted probabilities equally reliable across groups</td>
-        <td>Brier score difference &lt; 0.02</td>
+        <td>Brier gap &lt; 0.02 (team-set rule of thumb)</td>
       </tr>
     </tbody>
   </table>
@@ -1756,7 +1756,7 @@ for c in stacked.component_contributions:
   <h2>The Fairness Impossibility Theorem</h2>
   <span class="marker marker-advanced">Advanced</span>
   <div class="callout callout-error">
-    <strong>Chouldechova (2017) / Kleinberg et al. (2016):</strong> A classifier CANNOT simultaneously satisfy demographic parity, equalized odds, AND calibration &mdash; except in trivial cases (perfect prediction or equal base rates).
+    <strong>Chouldechova (2017) / Kleinberg et al. (2016):</strong> When groups have different base rates, demographic parity, equalized odds and calibration are <em>pairwise</em> incompatible &mdash; no useful classifier satisfies even two of them, except in trivial cases (perfect prediction or an uninformative model).
   </div>
   <p><strong>What this means in practice:</strong></p>
   <ul>
@@ -1771,7 +1771,7 @@ for c in stacked.component_contributions:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. This is one of the most important results in ML fairness. It means every deployed model makes a fairness tradeoff, whether the team acknowledges it or not. The responsible approach: choose the criterion that matches the use case, measure it, document it, and justify the choice to stakeholders.</aside>
+  <aside class="notes">Timing: 2 min. This is one of the most important results in ML fairness. Do not teach it as "pick two": with unequal base rates, parity plus equalized odds forces an uninformative classifier, parity plus calibration forces equal base rates, and equalized odds plus calibration forces perfect prediction. Exercise 3.6 works the theorem with this model's real base rates. It means every deployed model makes a fairness tradeoff, whether the team acknowledges it or not. The responsible approach: choose the criterion that matches the use case, measure it, document it, and justify the choice to stakeholders.</aside>
 </section>
 
 <!-- SLIDE 59 — ALE Plots -->
@@ -1781,7 +1781,7 @@ for c in stacked.component_contributions:
   <p><strong>Problem with Partial Dependence Plots (PDP):</strong> When features are correlated, PDP creates unrealistic data points.</p>
   <p><strong>ALE solution:</strong> Only consider how predictions change within small windows of the feature, avoiding extrapolation to unrealistic feature combinations.</p>
   <div class="callout callout-advanced">
-    <strong>When to prefer ALE over PDP:</strong> Always, when features are correlated (which is almost always). ALE is unbiased; PDP can show spurious effects from impossible feature combinations. See Apley &amp; Zhu (2020).
+    <strong>When to prefer ALE over PDP:</strong> Always, when features are correlated (which is almost always). ALE avoids the extrapolation that lets PDP show spurious effects from impossible feature combinations. See Apley &amp; Zhu (2020).
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -1796,17 +1796,17 @@ for c in stacked.component_contributions:
   <ul>
     <li><strong>SHAP:</strong> Game-theoretic attribution with 4 axioms and Shapley value formula</li>
     <li><strong>LIME:</strong> Local linear approximation &mdash; fast but less rigorous</li>
-    <li><strong>ALE:</strong> Unbiased alternative to partial dependence for correlated features</li>
+    <li><strong>ALE:</strong> Alternative to partial dependence that avoids impossible rows when features correlate</li>
     <li><strong>Fairness:</strong> Disparate impact, equalized odds, calibration parity</li>
     <li><strong>Impossibility:</strong> Cannot satisfy all fairness criteria simultaneously</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.6:</strong> Compute SHAP values for the credit scoring model. Generate summary and waterfall plots. Measure disparate impact across demographic groups. Document findings.
+    <strong>Exercise 3.6:</strong> On a <code>TrainingPipeline</code> LightGBM credit model: TreeSHAP with additivity checked in log-odds, permutation importance + ALE, LIME vs SHAP reason codes, SHAP interactions, and a fairness audit on race, gender and age.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to move from "the model is accurate" to "the model is accurate, interpretable, and fair." This is the professional standard for deployed ML systems.</aside>
+  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to move from "the model is accurate" to "the model is accurate, interpretable, and fair." Two details to stress. SHAP values for LightGBM are in log-odds, so the additivity check compares base value plus SHAP sum against the raw (log-odds) output, not the probability. The fairness audit's four-fifths result: race (ratio about 0.94) and gender (about 0.96) pass, but the age bands fail badly (about 0.02), because the model's approvals concentrate in some age bands. A failing ratio is not a code bug to hide: it is routed to a human risk-committee decision, with the impossibility theorem explaining why no threshold fixes every criterion at once.</aside>
 </section>
 
 

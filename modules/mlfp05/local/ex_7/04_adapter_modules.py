@@ -11,7 +11,7 @@
 #   - Build bottleneck adapter modules that inject small trainable
 #     layers inside a frozen backbone
 #   - Compare parameter efficiency across methods: from-scratch,
-#     frozen head, adapter, and (preview) LoRA
+#     frozen head and adapter (LoRA follows in Module 6)
 #   - Visualise the performance-vs-parameters Pareto frontier
 #   - Apply adapter concepts to a multi-tenant AI platform scenario
 #
@@ -195,16 +195,26 @@ def build_adapter_resnet(
     bottleneck: int = 64,
 ) -> nn.Module:
     """ResNet-18 with bottleneck adapters after layer3 and layer4."""
-    # TODO: Build adapter-augmented ResNet-18
-    # Steps:
-    #   1. Load the ImageNet ResNet-18 (same as Part 2, no fallback)
-    #   2. Freeze all parameters
-    #   3. Replace model.fc with a trainable n_classes head
-    #   4. Wrap layer3 (256 channels) and layer4 (512 channels) each in an
-    #      AdaptedBlock with a BottleneckAdapter of matching width
-    #   5. Return the model
-    # Hint: freeze BEFORE adding the head and adapters so only they train
+    # No fallback to random weights: if the ImageNet download fails this
+    # raises — a random frozen backbone would make the comparison meaningless.
+    weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1
+    model = torchvision.models.resnet18(weights=weights)
+
+    # TODO: Freeze all original parameters
     ____
+
+    # TODO: Replace the fc head with a trainable n_classes head
+    in_features = model.fc.in_features
+    model.fc = ____
+
+    # TODO: Wrap layer3 (256 channels) and layer4 (512 channels) each in an
+    #   AdaptedBlock with a BottleneckAdapter of matching width
+    original_layer3 = model.layer3
+    original_layer4 = model.layer4
+    model.layer3 = ____
+    model.layer4 = ____
+
+    return model
 
 
 adapter_model = build_adapter_resnet(bottleneck=64)
@@ -247,13 +257,6 @@ print("\n" + "=" * 70)
 print("  TRAINING: All three approaches on CIFAR-10")
 print("=" * 70)
 
-# TODO: Train all three models and collect results
-# Method 1: Adapter model (already built above)
-# Method 2: Frozen head (build_frozen_head function)
-# Method 3: From scratch (build_scratch_cnn function)
-# Hint: Use train_model() from helpers for each
-# Hint: train_model returns (losses, val_accs, train_accs)
-
 # Method 1: Adapter model
 adapter_losses, adapter_accs, _ = train_model(
     adapter_model,
@@ -269,7 +272,10 @@ best_adapter = max(adapter_accs)
 
 # Method 2: Frozen head (from Part 2)
 def build_frozen_head(n_classes: int = N_CLASSES) -> nn.Module:
-    # TODO: Same as Part 2 — load ResNet-18, freeze, replace fc
+    # No fallback to random weights: if the ImageNet download fails this
+    # raises — a random frozen backbone would make the comparison meaningless.
+    # TODO: Same as Part 2 — ImageNet ResNet-18, freeze everything,
+    #   fresh n_classes head; return the model
     ____
 
 
@@ -289,8 +295,8 @@ n_frozen_trainable = count_params(frozen_model, trainable_only=True)
 
 # Method 3: From scratch
 def build_scratch_cnn(n_classes: int = N_CLASSES) -> nn.Module:
-    # TODO: Same 3-layer CNN from Part 1
-    ____
+    # TODO: Return the same small CNN as Part 1
+    return ____
 
 
 scratch_model = build_scratch_cnn()
@@ -369,22 +375,32 @@ print_prescription_pad(findings, "Adapter ResNet-18 (frozen backbone + bottlenec
 # TASK 5 — Visualise: Parameter count vs performance Pareto chart
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: Create two visualisations:
-# 1. Pareto chart: trainable params (x, log scale) vs accuracy (y)
-#    - Scatter with 3 methods + LoRA preview point
-#    - LoRA estimate: ~2% of total params, ~98% of adapter accuracy
-# 2. Training curves: epoch vs accuracy for all three methods
-# Hint: fig_pareto = go.Figure()
-# Hint: fig_pareto.add_trace(go.Scatter(x=param_counts, y=accuracies, mode="markers+text"))
-# Hint: fig_pareto.update_layout(xaxis_type="log")
-
 methods = ["From Scratch", "Frozen Head", "Adapter (bottleneck=64)"]
 param_counts = [n_scratch_trainable, n_frozen_trainable, n_adapter_trainable]
 accuracies = [best_scratch, best_frozen, best_adapter]
 colours = ["#FF5722", "#2196F3", "#4CAF50"]
 
 fig_pareto = go.Figure()
+
+# TODO: Scatter plot of trainable params (x) vs accuracy in % (y), one
+#   labelled marker per method, coloured with `colours`
+# Hint: go.Scatter with a "markers+text" mode; the layout below sets the
+#   log-scale x axis
 ____
+
+# (Only measured points are plotted. LoRA, the LLM-scale cousin of
+# adapters, is trained and measured in Module 6.)
+
+fig_pareto.update_layout(
+    title="Parameter Efficiency: Trainable Parameters vs Validation Accuracy",
+    xaxis_title="Trainable Parameters",
+    yaxis_title="Validation Accuracy (%)",
+    template="plotly_white",
+    xaxis_type="log",
+    showlegend=False,
+    width=800,
+    height=500,
+)
 
 pareto_path = OUTPUT_DIR / "04_parameter_pareto.html"
 fig_pareto.write_html(str(pareto_path))
@@ -393,8 +409,37 @@ print(f"  Saved: {pareto_path}")
 # Training curves comparison
 fig_curves = go.Figure()
 epochs_x = list(range(1, EPOCHS + 1))
-____
 
+for name, losses, accs, colour in [
+    ("From Scratch", scratch_losses, scratch_accs, "#FF5722"),
+    ("Frozen Head", frozen_losses, frozen_accs, "#2196F3"),
+    ("Adapter", adapter_losses, adapter_accs, "#4CAF50"),
+]:
+    fig_curves.add_trace(
+        go.Scatter(
+            x=epochs_x,
+            y=accs,
+            mode="lines+markers",
+            name=f"{name} val_acc",
+            line=dict(color=colour, width=2),
+        )
+    )
+    fig_curves.add_trace(
+        go.Scatter(
+            x=epochs_x,
+            y=losses,
+            mode="lines",
+            name=f"{name} loss",
+            line=dict(color=colour, width=1, dash="dot"),
+        )
+    )
+
+fig_curves.update_layout(
+    title="Training Curves: Three Transfer Learning Approaches",
+    xaxis_title="Epoch",
+    yaxis_title="Value",
+    template="plotly_white",
+)
 curves_path = OUTPUT_DIR / "04_training_curves.html"
 fig_curves.write_html(str(curves_path))
 print(f"  Saved: {curves_path}")
@@ -412,11 +457,12 @@ print("--- Checkpoint 4 passed --- visualisations complete\n")
 # multiple clients. Each client needs a custom image classifier, but
 # they share the same base architecture (ResNet-18).
 #
-# Full fine-tuning: store 11M params per client = ~44 MB per model
+# Full fine-tuning: store 11M params per client = ~43 MB per model
 # Adapter approach: store ~100K params per client = ~0.4 MB per adapter
 #
-# For 50 clients, that's 2.2 GB vs 20 MB. And at inference time, you
-# can keep ONE ResNet-18 in GPU memory and swap adapters per request.
+# For 50 clients, that's ~2.2 GB vs ~63 MB (one shared base + 50
+# adapters). And at inference time, you can keep ONE ResNet-18 in GPU
+# memory and swap adapters per request.
 
 print("\n" + "=" * 70)
 print("  APPLY: Multi-Tenant AI Platform — One Base, Many Adapters")
@@ -426,28 +472,42 @@ N_CLIENTS = 50
 FULL_MODEL_MB = n_adapter_total * 4 / (1024 * 1024)  # float32, 4 bytes each
 ADAPTER_MB = n_adapter_trainable * 4 / (1024 * 1024)
 
-# TODO: Print the multi-tenant storage analysis
-# Steps:
-#   1. Print per-client and 50-client storage for full fine-tuning
-#   2. Print per-client and 50-client storage for adapter approach
-#      (adapter: 1 base model + N tiny adapters)
-#   3. Calculate savings_storage and savings_gpu
-#   4. Print inference cost comparison
-# Hint: Full = N_CLIENTS * FULL_MODEL_MB
-# Hint: Adapter = FULL_MODEL_MB + N_CLIENTS * ADAPTER_MB (one shared base)
-# Hint: GPU at inference: full needs N models, adapter needs 1 base + swap
 print(f"\n  === Multi-Tenant Storage Analysis (50 clients) ===")
 print(f"  Base model (ResNet-18): {n_adapter_total:,} params = {FULL_MODEL_MB:.1f} MB")
 print(f"  Adapter weights: {n_adapter_trainable:,} params = {ADAPTER_MB:.2f} MB")
-____
+print()
+print(f"  {'Approach':<30} {'Per Client':>12} {'50 Clients':>14} {'GPU Memory':>14}")
+print("  " + "-" * 72)
+print(
+    f"  {'Full fine-tuning':<30} "
+    f"{FULL_MODEL_MB:>11.1f}MB "
+    f"{N_CLIENTS * FULL_MODEL_MB:>13.0f}MB "
+    f"{N_CLIENTS * FULL_MODEL_MB:>13.0f}MB"
+)
+print(
+    f"  {'Adapter (shared backbone)':<30} "
+    f"{ADAPTER_MB:>11.2f}MB "
+    f"{FULL_MODEL_MB + N_CLIENTS * ADAPTER_MB:>13.1f}MB "
+    f"{FULL_MODEL_MB + ADAPTER_MB:>13.1f}MB"
+)
 
-savings_storage = N_CLIENTS * FULL_MODEL_MB - (FULL_MODEL_MB + N_CLIENTS * ADAPTER_MB)
-savings_gpu = N_CLIENTS * FULL_MODEL_MB - (FULL_MODEL_MB + ADAPTER_MB)
+# TODO: Storage saved (N full models vs one shared base + N adapters) and
+#   GPU memory saved (N full models vs one base + one active adapter)
+savings_storage = ____
+savings_gpu = ____
 
 print(
     f"\n  Storage savings: {savings_storage:.0f} MB ({savings_storage / (N_CLIENTS * FULL_MODEL_MB) * 100:.0f}%)"
 )
 print(f"  GPU memory savings: {savings_gpu:.0f} MB (load one base + swap adapters)")
+print()
+print(f"  INFERENCE COST COMPARISON:")
+print(f"  Full fine-tuning: 50 separate models, each needing GPU memory")
+print(f"    -> Need multiple GPUs or sequential loading (slow)")
+print(f"  Adapter approach: 1 base model in GPU + swap {ADAPTER_MB:.2f} MB adapters")
+print(
+    f"    -> Single GPU serves all 50 clients with ~{ADAPTER_MB * 1000:.0f}KB swap per request"
+)
 print()
 print(f"  BRIDGE TO M6:")
 print(f"  In M6, you will learn LoRA (Low-Rank Adaptation) — the adapter")

@@ -11,7 +11,7 @@
 #   - Build bottleneck adapter modules that inject small trainable
 #     layers inside a frozen backbone
 #   - Compare parameter efficiency across methods: from-scratch,
-#     frozen head, adapter, and (preview) LoRA
+#     frozen head and adapter (LoRA follows in Module 6)
 #   - Visualise the performance-vs-parameters Pareto frontier
 #   - Apply adapter concepts to a multi-tenant AI platform scenario
 #
@@ -190,11 +190,10 @@ def build_adapter_resnet(
     bottleneck: int = 64,
 ) -> nn.Module:
     """ResNet-18 with bottleneck adapters after layer3 and layer4."""
-    try:
-        weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1
-        model = torchvision.models.resnet18(weights=weights)
-    except Exception:
-        model = torchvision.models.resnet18(weights=None)
+    # No fallback to random weights: if the ImageNet download fails this
+    # raises — a random frozen backbone would make the comparison meaningless.
+    weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1
+    model = torchvision.models.resnet18(weights=weights)
 
     # Freeze all original parameters
     for p in model.parameters():
@@ -268,11 +267,10 @@ best_adapter = max(adapter_accs)
 
 # Method 2: Frozen head (from Part 2)
 def build_frozen_head(n_classes: int = N_CLASSES) -> nn.Module:
-    try:
-        weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1
-        model = torchvision.models.resnet18(weights=weights)
-    except Exception:
-        model = torchvision.models.resnet18(weights=None)
+    # No fallback to random weights: if the ImageNet download fails this
+    # raises — a random frozen backbone would make the comparison meaningless.
+    weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1
+    model = torchvision.models.resnet18(weights=weights)
     for p in model.parameters():
         p.requires_grad = False
     model.fc = nn.Linear(model.fc.in_features, n_classes)
@@ -410,24 +408,11 @@ fig_pareto.add_trace(
     )
 )
 
-# Add a LoRA preview point (estimated, for context)
-lora_est_params = int(n_adapter_total * 0.02)  # ~2% of total
-fig_pareto.add_trace(
-    go.Scatter(
-        x=[lora_est_params],
-        y=[best_adapter * 100 * 0.98],  # Estimated ~98% of adapter accuracy
-        mode="markers+text",
-        text=["LoRA (M6 preview)"],
-        textposition="top center",
-        marker=dict(
-            size=16, color="#9C27B0", symbol="star", line=dict(width=2, color="black")
-        ),
-        textfont=dict(size=10, color="#9C27B0"),
-    )
-)
+# (Only measured points are plotted. LoRA, the LLM-scale cousin of
+# adapters, is trained and measured in Module 6.)
 
 fig_pareto.update_layout(
-    title="Parameter Efficiency Pareto: Fewer Params, Same Performance",
+    title="Parameter Efficiency: Trainable Parameters vs Validation Accuracy",
     xaxis_title="Trainable Parameters",
     yaxis_title="Validation Accuracy (%)",
     template="plotly_white",
@@ -492,11 +477,12 @@ print("--- Checkpoint 4 passed --- visualisations complete\n")
 # multiple clients. Each client needs a custom image classifier, but
 # they share the same base architecture (ResNet-18).
 #
-# Full fine-tuning: store 11M params per client = ~44 MB per model
+# Full fine-tuning: store 11M params per client = ~43 MB per model
 # Adapter approach: store ~100K params per client = ~0.4 MB per adapter
 #
-# For 50 clients, that's 2.2 GB vs 20 MB. And at inference time, you
-# can keep ONE ResNet-18 in GPU memory and swap adapters per request.
+# For 50 clients, that's ~2.2 GB vs ~63 MB (one shared base + 50
+# adapters). And at inference time, you can keep ONE ResNet-18 in GPU
+# memory and swap adapters per request.
 
 print("\n" + "=" * 70)
 print("  APPLY: Multi-Tenant AI Platform — One Base, Many Adapters")

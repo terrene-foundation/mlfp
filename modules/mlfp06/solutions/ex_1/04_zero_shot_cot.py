@@ -18,8 +18,8 @@
 #   1. Theory — Kojima et al. 2022 and why the trigger phrase works
 #   2. Build — the tiny prompt change
 #   3. Train — evaluate on SST-2
-#   4. Visualise — compare cost/accuracy vs full CoT
-#   5. Apply — SingPost delivery-complaint triage
+#   4. Visualise — compare tokens/accuracy vs full CoT
+#   5. Apply — delivery-complaint triage at a national postal operator
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -32,11 +32,13 @@ from shared.mlfp06.ex_1 import (
     CATEGORIES,
     compute_metrics,
     get_eval_docs,
+    load_technique_metrics,
     normalise_label,
     plot_comparison_bars,
     plot_tokens_vs_accuracy,
     print_summary,
     run_delegate,
+    save_technique_metrics,
 )
 
 load_dotenv()
@@ -47,8 +49,9 @@ load_dotenv()
 # ════════════════════════════════════════════════════════════════════════
 # Kojima et al. (2022, "Large Language Models are Zero-Shot Reasoners")
 # discovered that simply appending "Let's think step by step." to a
-# prompt unlocks most of the CoT benefit without any hand-crafted
-# reasoning template.
+# prompt unlocks much of the CoT benefit without any hand-crafted
+# reasoning template. With text-davinci-002 it lifted MultiArith from
+# 17.7% to 78.7% and GSM8K from 10.4% to 40.7% — five words, no examples.
 #
 # Why it works: the training distribution contains millions of StackOverflow,
 # textbook, and tutoring exchanges where "let's think step by step" precedes
@@ -132,31 +135,14 @@ print("\n[ok] Checkpoint passed — zero-shot CoT evaluation complete\n")
 # ════════════════════════════════════════════════════════════════════════
 print_summary(zs_cot_results, "Zero-Shot CoT")
 
-# R9A: visual proof — 4-method comparison chart (the full prompting ladder)
-# Expected baselines (R10: independently runnable)
-zero_shot_expected = {
-    "strategy": "Zero-Shot",
-    "accuracy": 0.80,
-    "total_tokens": 1500,
-    "avg_latency_s": 1.0,
-    "n": 20,
-}
-few_shot_expected = {
-    "strategy": "Few-Shot",
-    "accuracy": 0.85,
-    "total_tokens": 5400,
-    "avg_latency_s": 1.2,
-    "n": 20,
-}
-cot_expected = {
-    "strategy": "CoT",
-    "accuracy": 0.90,
-    "total_tokens": 10500,
-    "avg_latency_s": 3.5,
-    "n": 20,
-}
+# R9A: visual proof — 4-method comparison chart (the full prompting ladder).
+# Zero-shot, few-shot and CoT come from YOUR saved runs of 01-03; a rung
+# you have not run is reported and left out — never a made-up baseline.
 zs_cot_metrics = compute_metrics(zs_cot_results, "ZS-CoT")
-all_methods = [zero_shot_expected, few_shot_expected, cot_expected, zs_cot_metrics]
+save_technique_metrics(zs_cot_metrics)
+all_methods = load_technique_metrics(["Zero-Shot", "Few-Shot", "CoT"]) + [
+    zs_cot_metrics
+]
 
 plot_comparison_bars(
     all_methods,
@@ -166,45 +152,43 @@ plot_comparison_bars(
 
 plot_tokens_vs_accuracy(
     all_methods,
-    title="Cost vs Accuracy — Full Prompting Ladder",
-    filename="ex1_04_cost_vs_accuracy.png",
+    title="Tokens vs Accuracy — Full Prompting Ladder",
+    filename="ex1_04_tokens_vs_accuracy.png",
 )
 
-# INTERPRETATION: Accuracy usually lands between zero-shot and full CoT,
-# with a cost profile much closer to zero-shot. For tasks where 1-2
-# percentage points of accuracy matter less than cost/latency, this is
-# the default choice.
-# The 4-method chart is the decision tool: pick the cheapest method that
-# clears your accuracy bar. ZS-CoT often sits at the Pareto-optimal
-# "knee" — best accuracy per dollar for non-regulated tasks.
+# INTERPRETATION: In the literature ZS-CoT usually lands between zero-shot
+# and full CoT on accuracy, with fewer tokens than the full template.
+# Check whether YOUR chart agrees — on a 20-doc SST-2 sample the gaps can
+# be within noise (one doc = 5 points).
+# The 4-method chart is the decision tool: pick the cheapest method (fewest
+# tokens, lowest latency) that clears your accuracy bar.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: SingPost Delivery-Complaint Triage
+# TASK 5 — APPLY: Delivery-Complaint Triage at a National Postal Operator
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: SingPost receives ~6,000 delivery-complaint messages per day
-# via its mobile app. Each message must be tagged "urgent" (missed
-# delivery, wrong address, damaged parcel) or "informational" (status
-# query, general feedback). Urgent messages feed a priority queue the
-# dispatch team works every 30 minutes.
+# SCENARIO (illustrative): a national postal operator receives around
+# 6,000 delivery-complaint messages per day via its mobile app. Each
+# message must be tagged "urgent" (missed delivery, wrong address,
+# damaged parcel) or "informational" (status query, general feedback).
+# Urgent messages feed a priority queue the dispatch team works every
+# 30 minutes.
 #
 # Why zero-shot CoT fits:
-#   - 6,000 msgs/day is a high volume where latency matters — a 3x
-#     slowdown vs zero-shot at full CoT would mean messages pile up
-#     faster than the team can process
+#   - At this volume latency matters — full CoT's longer outputs would
+#     let messages pile up faster than the team can process them
 #   - The task is moderately ambiguous — "my parcel is late" could be
 #     urgent (2 days overdue) or informational (asking for an ETA)
-#   - There is no regulatory audit requirement — unlike SGH (Ex 1.3)
+#   - There is no regulatory audit requirement — unlike the clinical
+#     triage case in Ex 1.3
 #
-# The trigger phrase gives SingPost ~80% of the CoT accuracy gain at
-# ~40% of the CoT cost — the Pareto frontier for this class of task.
-#
-# BUSINESS IMPACT: Each urgent message triaged within 30 minutes
-# (versus 4 hours baseline) saves an average S$22 in re-delivery cost
-# and customer appeasement credits. At 6,000 msgs/day with ~8% urgent
-# (480 urgent msgs/day) and a 6% accuracy lift over zero-shot = 29
-# extra urgent msgs caught/day = S$633/day = S$230K/year in avoided
-# cost. LLM cost at zero-shot-CoT rate: ~S$18K/year. 13x ROI.
+# BUSINESS IMPACT (illustrative figures): suppose each urgent message
+# triaged within 30 minutes (instead of a 4-hour baseline) saves S$22
+# in re-delivery and goodwill credits. With ~8% urgent (480/day), a
+# 6-point lift over zero-shot catches ~29 more urgent messages/day =
+# ~S$640/day ≈ S$230K/year. Compare that with the extra tokens per
+# message your ZS-CoT run used over zero-shot, priced at the reference
+# rate from 01 — then decide whether the lift on YOUR chart is real.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -217,7 +201,7 @@ print(
     """
   [x] Triggered reasoning with one sentence instead of a 4-step template
   [x] Understood why "Let's think step by step" generalises across tasks
-  [x] Compared the cost/accuracy Pareto vs zero-shot and full CoT
+  [x] Compared the tokens/accuracy trade-off vs zero-shot and full CoT
   [x] Applied it to a high-volume, moderately-ambiguous triage task
 
   KEY INSIGHT: The trigger phrase is a cultural shortcut. The LLM knows

@@ -241,8 +241,8 @@ async def _train_ppo_timed():
 
             n = s_t.size(0)
             idxs = np.arange(n)
-            # TODO: PPO update — multiple epochs over minibatches
-            # Hint: same clipped surrogate pattern as 02_ppo.py
+            # TODO: PPO update — same clipped surrogate as 02_ppo.py, with the
+            # clip range fixed at [0.8, 1.2] (clip_eps = 0.2)
             for _ in range(4):
                 np.random.shuffle(idxs)
                 for start in range(0, n, 256):
@@ -250,12 +250,12 @@ async def _train_ppo_timed():
                     logits, vpred = model(s_t[mb])
                     dist = Categorical(logits=logits)
                     new_lp = dist.log_prob(a_t[mb])
-                    ratio = ____  # TODO: torch.exp(new_lp - old_lp_t[mb])
+                    ratio = ____  # TODO
                     surr1 = ____  # TODO
-                    surr2 = ____  # TODO: torch.clamp(ratio, 0.8, 1.2) * adv_t[mb]
-                    policy_loss = ____  # TODO: -torch.min(surr1, surr2).mean()
-                    value_loss = ____  # TODO: F.mse_loss(vpred, ret_t[mb])
-                    entropy = ____  # TODO: dist.entropy().mean()
+                    surr2 = ____  # TODO
+                    policy_loss = ____  # TODO
+                    value_loss = ____  # TODO
+                    entropy = ____  # TODO
                     loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
                     opt.zero_grad()
                     loss.backward()
@@ -374,9 +374,10 @@ viz = ModelVisualizer()
 
 # ── Plot 1: Evaluation reward box plot ───────────────────────────────
 # TODO: Create box plot comparing Random, DQN, PPO evaluation returns
-# Hint: pl.DataFrame with "Policy" and "Evaluation Return" columns
+# Hint: long-format polars DataFrame ("Policy", "Evaluation Return"), then
+# ModelVisualizer's box plot grouped by policy
 comparison_df = ____  # TODO
-fig1 = ____  # TODO: viz.box_plot(...)
+fig1 = ____  # TODO
 fig1.write_html(str(OUTPUT_DIR / "04_policy_comparison_boxplot.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_policy_comparison_boxplot.html'}")
 # INTERPRETATION: The box plot shows final policy quality. Random is
@@ -394,8 +395,11 @@ dqn_ma_rewards = moving_average(dqn_rewards, 20)
 dqn_ma_steps = dqn_cumulative_steps[len(dqn_rewards) - len(dqn_ma_rewards) :]
 ppo_cumulative_steps = [(i + 1) * STEPS_PER_ITER for i in range(len(ppo_returns))]
 
-# TODO: Create a line plot with DQN and PPO training curves on env-steps x-axis
-# Hint: go.Figure() with two go.Scatter traces + random baseline hline
+# TODO: Line plot of both training curves against env steps: DQN's moving
+# average (dqn_ma_rewards at dqn_ma_steps) and PPO's per-iteration returns
+# (at ppo_cumulative_steps), plus a dashed horizontal line at the random
+# policy's mean return
+# Hint: plotly graph_objects Scatter traces; Figure.add_hline
 fig2 = ____  # TODO
 fig2.write_html(str(OUTPUT_DIR / "04_sample_efficiency.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_sample_efficiency.html'}")
@@ -410,7 +414,7 @@ print(f"  Saved: {OUTPUT_DIR / '04_sample_efficiency.html'}")
 
 # ── Plot 3: Wall-clock training time comparison ──────────────────────
 # TODO: Create bar chart comparing DQN and PPO training times
-# Hint: go.Figure(data=[go.Bar(x=["DQN", "PPO"], y=[dqn_time, ppo_time], ...)])
+# Hint: plotly graph_objects Bar, labelled with the seconds
 fig3 = ____  # TODO
 fig3.write_html(str(OUTPUT_DIR / "04_training_time.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_training_time.html'}")

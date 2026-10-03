@@ -144,12 +144,14 @@ async def train_dqn_async(
     Returns:
         (q_net, episode_rewards, episode_losses, epsilons, episode_lengths)
     """
-    # TODO: Create q_net (DQN) and target_net (DQN copy) on device
-    # Hint: target_net starts with the same weights as q_net via load_state_dict
+    # TODO: Create the online Q-network and the target network (both the
+    # shared DQN class, on `device`), then make the target an exact copy of
+    # the online network and switch it to inference mode.
+    # Hint: nn.Module.load_state_dict / state_dict copy weights; .eval()
     q_net = ____  # TODO
     target_net = ____  # TODO
-    # TODO: Set target_net to eval mode and copy q_net weights
-    # Hint: target_net.load_state_dict(q_net.state_dict()); target_net.eval()
+    ____  # TODO: copy q_net's weights into target_net
+    ____  # TODO: put target_net in eval mode
 
     optimizer = torch.optim.Adam(q_net.parameters(), lr=lr)
     replay = ReplayBuffer(capacity=10_000)
@@ -184,15 +186,14 @@ async def train_dqn_async(
 
             while not done:
                 # TODO: Epsilon-greedy action selection
-                # Hint: with probability epsilon choose random action
-                # (env.action_space.sample()), otherwise argmax of Q-values
-                # from q_net on the current state tensor
+                # Hint: explore = sample from the env's action space;
+                # exploit = the action with the highest Q-value (as a Python int)
                 if random.random() < epsilon:
-                    action = ____  # TODO: random action
+                    action = ____  # TODO: explore
                 else:
                     with torch.no_grad():
                         s_t = torch.tensor(state, dtype=torch.float32, device=device)
-                        action = ____  # TODO: argmax of q_net(s_t)
+                        action = ____  # TODO: exploit
 
                 next_state, reward, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
@@ -208,19 +209,19 @@ async def train_dqn_async(
                 if len(replay) >= min_replay_size:
                     s_b, a_b, r_b, ns_b, d_b = replay.sample(batch_size)
 
-                    # TODO: Compute current Q-values for chosen actions
-                    # Hint: q_net(s_b).gather(1, a_b.unsqueeze(1)).squeeze(1)
+                    # TODO: Q-values of the actions actually taken
+                    # Hint: q_net gives one value per action; pick each row's
+                    # taken action with torch.gather (shape (batch,) at the end)
                     q_values = ____  # TODO
 
-                    # TODO: Compute target Q-values using Bellman equation
-                    # Target: r + gamma * max_a' Q_target(s', a') * (1 - done)
-                    # Hint: use target_net (not q_net) for next-state Q-values
+                    # TODO: Bellman targets (Task 1 theory)
+                    # Hint: next-state values come from target_net (not q_net),
+                    # best action per row; d_b == 1 must zero the future term
                     with torch.no_grad():
-                        next_q = ____  # TODO: target_net(ns_b).max(dim=1).values
-                        targets = ____  # TODO: r_b + gamma * next_q * (1.0 - d_b)
+                        next_q = ____  # TODO
+                        targets = ____  # TODO
 
-                    # TODO: Compute MSE loss between q_values and targets
-                    # Hint: F.mse_loss(q_values, targets)
+                    # TODO: regression loss between q_values and targets
                     loss = ____  # TODO
                     optimizer.zero_grad()
                     loss.backward()
@@ -228,15 +229,12 @@ async def train_dqn_async(
                     ep_loss_sum += loss.item()
                     ep_loss_count += 1
 
-            # TODO: Decay epsilon after each episode
-            # Hint: epsilon = max(epsilon_end, epsilon * epsilon_decay)
+            # TODO: Decay epsilon multiplicatively, never below epsilon_end
             epsilon = ____  # TODO
 
-            # TODO: Update target network periodically
-            # Hint: every target_update_freq episodes, copy q_net weights to target_net
+            # TODO: Every target_update_freq episodes, sync the target network
             if (ep + 1) % target_update_freq == 0:
-                # TODO: target_net.load_state_dict(q_net.state_dict())
-                pass
+                ____  # TODO: sync target_net with q_net
 
             episode_rewards.append(total_reward)
             avg_loss = ep_loss_sum / max(ep_loss_count, 1)
@@ -342,16 +340,16 @@ print("=" * 70)
 viz = ModelVisualizer()
 
 # ── Plot 1: DQN reward curve with moving average ─────────────────────
-# TODO: Use viz.training_history() with DQN episode rewards and moving average
-# Hint: metrics dict with "DQN episode reward": dqn_rewards and
-#   "DQN moving avg (20)": moving_average(dqn_rewards, 20)
-fig1 = ____  # TODO: viz.training_history(metrics={...}, x_label="Episode", y_label="Reward")
+# TODO: Plot the raw episode rewards and their 20-episode moving average
+# Hint: ModelVisualizer.training_history takes a dict of named series;
+# the shared helpers include a moving_average function
+fig1 = ____  # TODO
 fig1.write_html(str(OUTPUT_DIR / "01_dqn_reward_curve.html"))
 print(f"  Saved: {OUTPUT_DIR / '01_dqn_reward_curve.html'}")
 
 # ── Plot 2: Epsilon decay over training ──────────────────────────────
-# TODO: Plot epsilon values over episodes using viz.training_history()
-fig2 = ____  # TODO: viz.training_history(metrics={"Epsilon (exploration rate)": dqn_epsilons}, ...)
+# TODO: Plot the epsilon schedule over episodes (same visualiser method)
+fig2 = ____  # TODO
 fig2.write_html(str(OUTPUT_DIR / "01_dqn_epsilon_decay.html"))
 print(f"  Saved: {OUTPUT_DIR / '01_dqn_epsilon_decay.html'}")
 print(f"  Final epsilon after {len(dqn_epsilons)} episodes: {dqn_epsilons[-1]:.3f}")
@@ -371,14 +369,14 @@ q_values_grid = np.zeros((30, 30))
 
 dqn_model.eval()
 # TODO: Fill q_values_grid by querying the DQN for each (cart_pos, pole_angle) pair
-# Hint: For each (i, cp) and (j, pa), create state [cp, 0.0, pa, 0.0],
-#   pass through dqn_model, and store the max Q-value in q_values_grid[j, i]
+# Hint: the state vector is [cart_pos, cart_vel, pole_angle, pole_vel] with
+#   both velocities 0; store the BEST action's Q-value as a Python float
 for i, cp in enumerate(cart_positions):
     for j, pa in enumerate(pole_angles):
         state = torch.tensor([cp, 0.0, pa, 0.0], dtype=torch.float32, device=device)
         with torch.no_grad():
             q_vals = dqn_model(state)
-            q_values_grid[j, i] = ____  # TODO: float(q_vals.max().item())
+            q_values_grid[j, i] = ____  # TODO
 
 # Use polars for the heatmap data
 heatmap_rows = []
@@ -396,9 +394,9 @@ q_heatmap_df = pl.DataFrame(heatmap_rows)
 # Pivot for heatmap visualisation
 import plotly.graph_objects as go
 
-# TODO: Create a heatmap figure using go.Heatmap with q_values_grid
-# Hint: go.Figure(data=go.Heatmap(z=q_values_grid, x=cart_positions rounded,
-#   y=pole_angles rounded, colorscale="Viridis"))
+# TODO: Heatmap of q_values_grid (rows = pole angle, columns = cart
+# position) with a colour bar titled "Max Q-value"
+# Hint: plotly graph_objects Heatmap inside a Figure
 fig3 = ____  # TODO
 fig3.update_layout(
     title="DQN Q-Value Heatmap: Cart Position vs Pole Angle (velocities=0)",
@@ -505,18 +503,20 @@ class RetailInventoryEnv(gym.Env):
         self.step_count += 1
         stock, forecast, day_norm = self.state
 
-        # TODO: Implement the environment step logic
-        # 1. Apply order quantities based on action:
-        #    order_qtys = [0.0, 0.08, 0.18, 0.35]
-        #    order_costs = [0.0, 0.01, 0.02, 0.04]
-        #    stock = min(1.0, stock + order_qtys[action])
+        # TODO: Implement the environment step logic.
+        # BUSINESS RULES (the environment's specification):
+        #   - the order arrives immediately; shelves hold at most 1.0
+        #   - weekend days (day_of_week 5, 6) add 0.08 to base demand
+        #   - festive weeks (week 5-6 and week 43-44) add 0.12
+        #   - sales are limited by stock; unmet demand is a stockout
+        #   - 5% of the stock left after sales spoils overnight
+        #   - per unit: revenue 3.0, holding 0.3, stockout 5.0, spoilage 2.0
+        # 1. Apply the order
         order_qtys = [0.0, 0.08, 0.18, 0.35]
         order_costs = [0.0, 0.01, 0.02, 0.04]
-        stock = ____  # TODO: update stock with order quantity
+        stock = ____  # TODO
 
-        # 2. Compute demand with seasonal patterns
-        # Hint: weekend boost (+0.08 for day_of_week >= 5)
-        # Hint: festive boost (+0.12 for CNY weeks 5-6 and Deepavali weeks 43-44)
+        # 2. Demand = base + weekend boost + festive boost + noise
         day_of_week = int(day_norm * 7) % 7
         weekend_boost = ____  # TODO
         week = self.step_count // 7
@@ -524,18 +524,14 @@ class RetailInventoryEnv(gym.Env):
         base_demand = 0.15 + weekend_boost + festive_boost
         demand = max(0.0, base_demand + self.np_random.normal(0, 0.04))
 
-        # 3. Fulfil demand and compute spoilage
-        # Hint: sold = min(stock, demand), then subtract demand from stock
-        # Hint: spoilage = stock * 0.05 (5% daily for perishable goods)
+        # 3. Fulfil demand, then spoilage (stock can never go negative)
         sold = ____  # TODO
         stockout = ____  # TODO
-        stock = ____  # TODO: remaining stock after demand
-        spoiled = ____  # TODO: 5% spoilage
+        stock = ____  # TODO: stock left after demand
+        spoiled = ____  # TODO
         stock = stock - spoiled
 
-        # 4. Compute reward components
-        # Hint: sales_revenue = sold * 3.0, holding_cost = stock * 0.3,
-        #   stockout_penalty = stockout * 5.0, spoilage_cost = spoiled * 2.0
+        # 4. Reward components (per-unit prices in the rules above)
         sales_revenue = ____  # TODO
         holding_cost = ____  # TODO
         stockout_penalty = ____  # TODO
@@ -563,7 +559,9 @@ inv_env = RetailInventoryEnv()
 obs, info = inv_env.reset(seed=42)
 assert obs.shape == (3,), "Inventory env should have 3-D state"
 obs2, r, term, trunc, info = inv_env.step(1)
-assert isinstance(r, (int, float)) or hasattr(r, "__float__"), f"Reward should be numeric, got {type(r).__name__}: {r!r}"
+assert isinstance(r, (int, float)) or hasattr(
+    r, "__float__"
+), f"Reward should be numeric, got {type(r).__name__}: {r!r}"
 print(f"  RetailInventory env: obs={obs.shape}, actions=4, sample_reward={r:.3f}")
 
 # ── Train DQN on inventory environment ───────────────────────────────
@@ -610,11 +608,11 @@ pct_improvement = (
 print(f"  Improvement: {improvement:+.1f} ({pct_improvement:+.1f}%)")
 
 # ── Visualise: DQN vs baseline ───────────────────────────────────────
-# TODO: Create a box plot comparing DQN vs fixed-threshold annual rewards
-# Hint: pl.DataFrame with "Policy" and "Annual Reward" columns, then
-#   viz.box_plot(comparison_df, "Annual Reward", group_by="Policy")
+# TODO: Long-format polars DataFrame with a "Policy" label column
+# ("Fixed Threshold" / "DQN Learned") and an "Annual Reward" column, then a
+# ModelVisualizer box plot of the reward grouped by policy
 comparison_df = ____  # TODO
-fig_apply = ____  # TODO: viz.box_plot(...)
+fig_apply = ____  # TODO
 fig_apply.write_html(str(OUTPUT_DIR / "01_dqn_inventory_comparison.html"))
 print(f"  Saved: {OUTPUT_DIR / '01_dqn_inventory_comparison.html'}")
 
@@ -628,7 +626,7 @@ inv_dqn.eval()
 for sl in stock_levels:
     state = torch.tensor([sl, 0.3, 0.3], dtype=torch.float32, device=device)
     with torch.no_grad():
-        action = ____  # TODO: int(inv_dqn(state).argmax().item())
+        action = ____  # TODO: greedy action index (Python int)
     policy_actions.append(action_names[action])
 
 policy_df = pl.DataFrame(

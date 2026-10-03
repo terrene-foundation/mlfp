@@ -135,13 +135,10 @@ class ActorCritic(nn.Module):
 
     def __init__(self, obs_dim: int, n_actions: int, hidden: int = 64):
         super().__init__()
-        # TODO: Build the actor MLP — 2 hidden layers (Tanh), output n_actions logits
-        # Hint: nn.Sequential(nn.Linear(obs_dim, hidden), nn.Tanh(),
-        #   nn.Linear(hidden, hidden), nn.Tanh(), nn.Linear(hidden, n_actions))
+        # TODO: Build the actor MLP — obs_dim -> hidden -> hidden -> one logit
+        # per action, Tanh after each hidden layer (nn.Sequential)
         self.actor = ____  # TODO
-        # TODO: Build the critic MLP — same shape but a single scalar output
-        # Hint: nn.Sequential(nn.Linear(obs_dim, hidden), nn.Tanh(),
-        #   nn.Linear(hidden, hidden), nn.Tanh(), nn.Linear(hidden, 1))
+        # TODO: Build the critic MLP — same body, but ONE output: V(s)
         self.critic = ____  # TODO
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -151,8 +148,8 @@ class ActorCritic(nn.Module):
         """Select action using current policy. Returns (action, log_prob, value)."""
         s = torch.from_numpy(state.astype(np.float32)).to(device)
         logits, value = self.forward(s)
-        # TODO: Create a Categorical distribution from logits and sample an action
-        # Hint: dist = Categorical(logits=logits); a = dist.sample()
+        # TODO: Turn the logits into a distribution over actions and sample
+        # Hint: torch.distributions.Categorical accepts logits directly
         dist = ____  # TODO
         a = ____  # TODO
         return int(a.item()), dist.log_prob(a).detach(), value.detach()
@@ -206,19 +203,17 @@ def compute_gae(
     advantages = [0.0] * len(rewards)
     gae = 0.0
     next_value = 0.0
-    # TODO: Compute GAE by iterating BACKWARDS through the trajectory
-    # For each timestep t (in reverse):
-    #   1. nonterminal = 1.0 - float(dones[t])
-    #   2. delta = rewards[t] + gamma * next_value * nonterminal - float(values[t])
-    #   3. gae = delta + gamma * lam * nonterminal * gae
-    #   4. advantages[t] = gae
-    #   5. next_value = float(values[t])
+    # TODO: Compute GAE by iterating BACKWARDS through the trajectory,
+    # using the delta_t and A_t definitions from the Task 1 theory.
+    # Hint: a 0/1 "nonterminal" mask stops both the bootstrap and the
+    # running sum from leaking across an episode boundary; values[t] is a
+    # tensor, so convert it with float().
     for t in reversed(range(len(rewards))):
         nonterminal = ____  # TODO
         delta = (
-            ____  # TODO: TD error = reward + gamma * next_value * nonterminal - V(s)
+            ____  # TODO: one-step TD error
         )
-        gae = ____  # TODO: accumulate GAE = delta + gamma * lam * nonterminal * gae
+        gae = ____  # TODO: discounted (gamma * lam) running sum of deltas
         advantages[t] = gae
         next_value = float(values[t])
     returns = [a + float(v) for a, v in zip(advantages, values)]
@@ -296,24 +291,24 @@ async def train_ppo_async(
                     dist = Categorical(logits=logits)
                     new_lp = dist.log_prob(a_t[mb])
 
-                    # TODO: Compute the clipped surrogate objective
-                    # 1. ratio = exp(new_log_prob - old_log_prob) — how much policy changed
-                    # 2. surr1 = ratio * advantage — unclipped objective
-                    # 3. surr2 = clamp(ratio, 1-clip_eps, 1+clip_eps) * advantage — clipped
-                    # 4. policy_loss = -min(surr1, surr2).mean() — take the pessimistic bound
-                    ratio = ____  # TODO: torch.exp(new_lp - old_lp_t[mb])
-                    surr1 = ____  # TODO: ratio * adv_t[mb]
-                    surr2 = ____  # TODO: torch.clamp(ratio, 1 - clip_eps, 1 + clip_eps) * adv_t[mb]
-                    policy_loss = ____  # TODO: -torch.min(surr1, surr2).mean()
+                    # TODO: Clipped surrogate objective (Task 1, idea 3)
+                    # Hint: the probability ratio pi_new/pi_old is computed in
+                    # log space from new_lp and the stored old_lp_t; clip it
+                    # with torch.clamp to [1 - clip_eps, 1 + clip_eps]; the
+                    # loss is the NEGATED minibatch mean of the pessimistic
+                    # (smaller) of the two surrogates.
+                    ratio = ____  # TODO
+                    surr1 = ____  # TODO: unclipped surrogate
+                    surr2 = ____  # TODO: clipped surrogate
+                    policy_loss = ____  # TODO
 
-                    # TODO: Compute value loss and entropy bonus
-                    # Hint: value_loss = F.mse_loss(vpred, ret_t[mb])
-                    # Hint: entropy = dist.entropy().mean()
+                    # TODO: Critic regression loss against the GAE returns,
+                    # and the policy's mean entropy for this minibatch
                     value_loss = ____  # TODO
                     entropy = ____  # TODO
 
-                    # TODO: Combine into total loss
-                    # Hint: loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
+                    # TODO: Total loss = policy loss + 0.5 x value loss, MINUS
+                    # 0.01 x entropy (an entropy BONUS rewards exploration)
                     loss = ____  # TODO
 
                     opt.zero_grad()
@@ -442,8 +437,7 @@ print("=" * 70)
 viz = ModelVisualizer()
 
 # ── Plot 1: PPO reward curve ─────────────────────────────────────────
-# TODO: Plot PPO returns using viz.training_history()
-# Hint: metrics={"PPO avg episode return": ppo_returns}
+# TODO: Plot the per-iteration PPO returns with ModelVisualizer
 fig1 = ____  # TODO
 fig1.write_html(str(OUTPUT_DIR / "02_ppo_reward_curve.html"))
 print(f"  Saved: {OUTPUT_DIR / '02_ppo_reward_curve.html'}")
@@ -459,7 +453,7 @@ print(f"  Saved: {OUTPUT_DIR / '02_ppo_entropy.html'}")
 # DECREASING as the agent becomes more confident, but NOT collapsing to
 # zero (which means it's stuck on one action regardless of state).
 
-# ── Plot 3: Advantage distribution (first vs last iteration) ─────────
+# ── Plot 3: Advantage distribution (trained policy) ──────────────────
 # Re-collect a trajectory to show advantage distribution
 states_final, _, _, values_final, rewards_final, dones_final = collect_trajectory(
     cartpole_env, ppo_model, 1024
@@ -469,8 +463,7 @@ advantages_final, _ = compute_gae(rewards_final, values_final, dones_final)
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# TODO: Create histogram of advantage values using go.Histogram
-# Hint: go.Figure() with go.Histogram(x=advantages_final, nbinsx=50, ...)
+# TODO: Histogram (about 50 bins) of advantages_final with plotly
 fig3 = ____  # TODO
 fig3.update_layout(
     title="PPO Advantage Distribution (Trained Policy)",
@@ -488,9 +481,7 @@ print(f"  Saved: {OUTPUT_DIR / '02_ppo_advantage_dist.html'}")
 # training they are re-normalised to mean 0, std 1 before the PPO update.
 
 # ── Plot 4: Actor loss vs critic loss ────────────────────────────────
-# TODO: Plot actor and critic losses using viz.training_history()
-# Hint: metrics={"Actor (policy) loss": ppo_actor_losses,
-#   "Critic (value) loss": ppo_critic_losses}
+# TODO: Plot the actor and critic loss histories as two named series
 fig4 = ____  # TODO
 fig4.write_html(str(OUTPUT_DIR / "02_ppo_actor_critic_loss.html"))
 print(f"  Saved: {OUTPUT_DIR / '02_ppo_actor_critic_loss.html'}")
@@ -596,24 +587,23 @@ class RideHailingPricingEnv(gym.Env):
         demand, supply, time_of_day, weather = self.state
         multiplier = self.PRICE_MULTIPLIERS[action]
 
-        # TODO: Compute price elasticity effects on demand and supply
-        # Hint: price_demand_effect = 1.0 - 0.3 * (multiplier - 1.0) — demand drops with price
-        # Hint: price_supply_effect = 1.0 + 0.2 * (multiplier - 1.0) — supply rises with price
-        # Then clip effective_demand and effective_supply to [0, 1]
+        # TODO: Price elasticity. BUSINESS RULES (the environment's spec):
+        #   - each +1.0 of multiplier above 1.0x cuts demand by 30%
+        #   - each +1.0 of multiplier above 1.0x adds 20% driver supply
+        #   - effective demand and supply stay within [0, 1]
         price_demand_effect = ____  # TODO
         price_supply_effect = ____  # TODO
         effective_demand = ____  # TODO
         effective_supply = ____  # TODO
 
-        # TODO: Compute rides completed and revenue
-        # Hint: rides_completed = min(effective_demand, effective_supply)
-        # Hint: revenue = rides_completed * multiplier
+        # TODO: A ride needs both a rider and a driver; revenue scales with
+        # the multiplier
         rides_completed = ____  # TODO
         revenue = ____  # TODO
 
-        # TODO: Compute customer satisfaction based on price multiplier
-        # Hint: satisfaction = 0.95 if multiplier <= 1.0, 0.85 if <= 1.3,
-        #   0.65 - 0.1*weather if <= 1.8, else 0.4 - 0.15*weather
+        # TODO: Satisfaction rules: above 1.3x and up to 1.8x it is 0.65 minus 0.1 per unit
+        # of weather; above 1.8x it is 0.4 minus 0.15 per unit of weather
+        # (rain makes riders more price-sensitive)
         if multiplier <= 1.0:
             satisfaction = 0.95
         elif multiplier <= 1.3:
@@ -727,10 +717,10 @@ revenue_pct = (
 print(f"  Improvement: {revenue_improvement:+.1f} ({revenue_pct:+.1f}%)")
 
 # ── Visualise: PPO vs fixed-rule pricing ─────────────────────────────
-# TODO: Create a box plot comparing PPO vs fixed-rule weekly performance
-# Hint: pl.DataFrame with "Policy" and "Weekly Revenue x Satisfaction" columns
+# TODO: Long-format polars DataFrame ("Policy": "Fixed Rules" / "PPO
+# Learned"; "Weekly Revenue x Satisfaction") and a ModelVisualizer box plot
 pricing_comparison_df = ____  # TODO
-fig_apply = ____  # TODO: viz.box_plot(...)
+fig_apply = ____  # TODO
 fig_apply.write_html(str(OUTPUT_DIR / "02_ppo_pricing_comparison.html"))
 print(f"  Saved: {OUTPUT_DIR / '02_ppo_pricing_comparison.html'}")
 

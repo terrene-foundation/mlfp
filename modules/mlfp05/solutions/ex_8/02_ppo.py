@@ -450,7 +450,7 @@ print(f"  Saved: {OUTPUT_DIR / '02_ppo_entropy.html'}")
 # DECREASING as the agent becomes more confident, but NOT collapsing to
 # zero (which means it's stuck on one action regardless of state).
 
-# ── Plot 3: Advantage distribution (first vs last iteration) ─────────
+# ── Plot 3: Advantage distribution (trained policy) ──────────────────
 # Re-collect a trajectory to show advantage distribution
 states_final, _, _, values_final, rewards_final, dones_final = collect_trajectory(
     cartpole_env, ppo_model, 1024

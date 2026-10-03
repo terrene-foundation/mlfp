@@ -157,32 +157,34 @@ class ChurnPreventionEnv(gym.Env):
         # Action 1 = discount: satisfaction +0.1, usage +0.05, cost 1.0
         # Action 2 = support call: tickets -0.15, satisfaction +0.05, cost 0.5
         # Action 3 = feature upgrade: usage +0.1, cost 1.5
-        # Hint: clip satisfaction and usage to [0, 1] using min()
+        # Every state variable must stay inside the [0, 1] observation space.
         intervention_cost = 0.0
         if action == 1:  # discount
-            satisfaction = ____  # TODO: min(1.0, satisfaction + 0.1)
-            usage = ____  # TODO: min(1.0, usage + 0.05)
+            satisfaction = ____  # TODO
+            usage = ____  # TODO
             intervention_cost = 1.0
         elif action == 2:  # support call
-            tickets = ____  # TODO: max(0.0, tickets - 0.15)
-            satisfaction = ____  # TODO: min(1.0, satisfaction + 0.05)
+            tickets = ____  # TODO
+            satisfaction = ____  # TODO
             intervention_cost = 0.5
         elif action == 3:  # feature upgrade
-            usage = ____  # TODO: min(1.0, usage + 0.1)
+            usage = ____  # TODO
             intervention_cost = 1.5
 
-        # TODO: Natural drift — satisfaction decays, tickets accumulate
-        # Hint: satisfaction -= 0.02 + noise, usage drifts slightly, tickets grow
-        satisfaction = ____  # TODO: max(0.0, satisfaction - 0.02 + np_random.normal(0, 0.02))
-        usage = ____  # TODO: max(0.0, min(1.0, usage - 0.01 + np_random.normal(0, 0.02)))
-        tickets = ____  # TODO: max(0.0, min(1.0, tickets + 0.02 + np_random.normal(0, 0.01)))
+        # TODO: Natural drift per day (draw noise from self.np_random):
+        #   satisfaction: -0.02 + Normal(0, 0.02), floor at 0
+        #   usage:        -0.01 + Normal(0, 0.02), kept in [0, 1]
+        #   tickets:      +0.02 + Normal(0, 0.01), kept in [0, 1]
+        satisfaction = ____  # TODO
+        usage = ____  # TODO
+        tickets = ____  # TODO
         tenure = min(1.0, tenure + 1.0 / self.max_steps)
 
         self.state = np.array([satisfaction, usage, tenure, tickets], dtype=np.float32)
 
-        # TODO: Compute churn probability and determine if customer churns
-        # Hint: churn_prob = max(0.0, 0.3 - satisfaction * 0.4 + tickets * 0.3)
-        # Hint: churned = self.np_random.random() < churn_prob
+        # TODO: Churn rule: probability = 0.3, minus 0.4 x satisfaction, plus
+        # 0.3 x tickets, never below 0; then draw one uniform number from
+        # self.np_random to decide whether this customer churns today
         churn_prob = ____  # TODO
         churned = ____  # TODO
 
@@ -246,22 +248,20 @@ class PortfolioRebalancingEnv(gym.Env):
         weights = self.state[:3].copy()
         market_vol, interest, momentum = self.state[3], self.state[4], self.state[5]
 
-        # TODO: Decode action and apply weight shifts
-        # Hint: decisions = self._decode_action(action)
-        # Hint: shifts = [[-0.05, 0.0, 0.05][d] for d in decisions]
-        # Hint: transaction_cost = 0.005 * sum(abs(shifts))
-        # Hint: weights = clip(weights + shifts, 0, 1) then normalise
+        # TODO: Decode the flat action into one decision per asset (the class
+        # has a helper), map decrease/hold/increase to a weight shift of
+        # -0.05 / 0 / +0.05 (as a float32 array), and charge 0.5% of the
+        # total absolute shift as transaction cost
         decisions = ____  # TODO
         shifts = ____  # TODO
         transaction_cost = ____  # TODO
-        weights = np.clip(weights + np.array(shifts, dtype=np.float32), 0.0, 1.0)
+        weights = np.clip(weights + shifts, 0.0, 1.0)
         weights = weights / (weights.sum() + 1e-8)
 
-        # TODO: Simulate asset returns
-        # Hint: stock_return = np_random.normal(0.01 + momentum * 0.02, market_vol * 0.1)
-        # Hint: bond_return = np_random.normal(interest * 0.005, 0.02)
-        # Hint: cash_return = 0.001
-        # Hint: portfolio_return = dot(weights, [stock, bond, cash])
+        # TODO: Monthly returns (draw from self.np_random):
+        #   stocks ~ Normal(mean 0.01 + 0.02 x momentum, sd 0.1 x market_vol)
+        #   bonds  ~ Normal(mean 0.005 x interest, sd 0.02)
+        # The portfolio return is the weight-averaged asset return.
         stock_return = ____  # TODO
         bond_return = ____  # TODO
         cash_return = 0.001
@@ -320,9 +320,9 @@ class QueueManagementEnv(gym.Env):
         queues = self.state[:3].copy()
         staff = self.state[3:].copy()
 
-        # TODO: Reallocate staff based on action (0-5 = shift pairs, 6 = do nothing)
-        # Hint: shift_pairs = [(0,1),(0,2),(1,0),(1,2),(2,0),(2,1)]
-        # Hint: if action < 6: move 0.08 staff from src to dst, cost = 0.15
+        # Reallocate staff: actions 0-5 move up to 0.08 of headcount between a
+        # (source, destination) hall pair at a disruption cost of 0.15;
+        # action 6 does nothing
         shift_pairs = [(0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1)]
         realloc_cost = 0.0
         if action < 6:
@@ -350,16 +350,14 @@ class QueueManagementEnv(gym.Env):
         )
         arrivals = np.clip(arrivals, 0, 1)
 
-        # TODO: Queue dynamics — arrivals add, staff serving removes
-        # Hint: service_rate = staff * 0.3
-        # Hint: queues = clip(queues + arrivals - service_rate, 0, 1)
+        # TODO: Queue dynamics — each unit of staff clears 0.3 of its hall's
+        # queue per period; arrivals add; queues stay within [0, 1]
         service_rate = ____  # TODO
         queues = ____  # TODO
 
-        # TODO: Compute reward
-        # Hint: avg_queue = mean(queues), max_queue = max(queues)
-        # Hint: wait_penalty = 2.0 * avg_queue + 3.0 * max_queue
-        # Hint: service_bonus = 1.0 if max_queue < 0.3 else 0.0
+        # TODO: Reward rules: wait penalty = 2 x average queue + 3 x longest
+        # queue (one overloaded hall hurts most); +1.0 service bonus when
+        # every queue is below 0.3
         avg_queue = ____  # TODO
         max_queue = ____  # TODO
         wait_penalty = ____  # TODO
@@ -407,11 +405,9 @@ class EnergyTradingEnv(gym.Env):
         self.step_count += 1
         price, reserve, demand, solar, time_of_day = self.state
 
-        # TODO: Execute trading action
-        # Hint: trade_amounts = [-0.15, -0.05, 0.0, 0.05, 0.15]
-        # Hint: trade_cost = abs(trade) * 0.01
-        # If buying (trade > 0): reserve += trade, pnl = -trade * price
-        # If selling (trade < 0): actual_sell = min(-trade, reserve), pnl = actual_sell * price
+        # TODO: Execute the trade at the spot price. Buying adds to the reserve
+        # (capped at 1.0) and costs money; selling can only sell what the
+        # reserve holds, earns money, and the reserve never goes below 0.
         trade_amounts = [-0.15, -0.05, 0.0, 0.05, 0.15]
         trade = trade_amounts[action]
         trade_cost = abs(trade) * 0.01
@@ -514,11 +510,9 @@ class TrafficSignalEnv(gym.Env):
         self.step_count += 1
         queue_ns, queue_ew, flow_ns, flow_ew = self.state
 
-        # TODO: Allocate green time and compute service
-        # Hint: ns_green_fraction = [0.20, 0.35, 0.50, 0.65, 0.80][action]
-        # Hint: ew_green_fraction = 1.0 - ns_green_fraction
-        # Hint: ns_served = min(queue_ns, ns_green_fraction * 0.5)
-        # Hint: ew_served = min(queue_ew, ew_green_fraction * 0.5)
+        # TODO: Allocate green time (the docstring lists the 5 NS shares; EW
+        # gets the rest). A full cycle of green clears up to 0.5 of a queue,
+        # in proportion to the green share — but never more than is waiting.
         ns_green_fraction = ____  # TODO
         ew_green_fraction = ____  # TODO
 
@@ -636,7 +630,6 @@ async def _train_churn_dqn_async():
 
             while not done:
                 # TODO: Epsilon-greedy action selection (same pattern as 01_dqn.py)
-                # Hint: random action with probability churn_epsilon, else argmax of churn_dqn
                 if random.random() < churn_epsilon:
                     action = ____  # TODO
                 else:
@@ -653,16 +646,15 @@ async def _train_churn_dqn_async():
                 state = next_state
                 total_reward += reward
 
-                # TODO: Train on minibatch when replay has enough samples
-                # Hint: same DQN training pattern — sample, compute Q-values,
-                #   compute targets with churn_target, MSE loss, backprop
+                # TODO: DQN update (same pattern as 01_dqn.py, gamma = 0.99,
+                # next-state values from churn_target)
                 if len(churn_replay) >= 300:
                     s_b, a_b, r_b, ns_b, d_b = churn_replay.sample(64)
-                    q_vals = ____  # TODO: churn_dqn(s_b).gather(1, a_b.unsqueeze(1)).squeeze(1)
+                    q_vals = ____  # TODO
                     with torch.no_grad():
-                        next_q = ____  # TODO: churn_target(ns_b).max(dim=1).values
-                        targets = ____  # TODO: r_b + 0.99 * next_q * (1.0 - d_b)
-                    loss = ____  # TODO: F.mse_loss(q_vals, targets)
+                        next_q = ____  # TODO
+                        targets = ____  # TODO
+                    loss = ____  # TODO
                     churn_opt.zero_grad()
                     loss.backward()
                     churn_opt.step()
@@ -923,8 +915,7 @@ all_labels = (
     ["Do Nothing"] * n_eval + ["Always Discount"] * n_eval + ["DQN Learned"] * n_eval
 )
 eval_df = pl.DataFrame({"Policy": all_labels, "Monthly Reward": all_rewards})
-# TODO: Create box plot comparing the three policies
-# Hint: viz.box_plot(eval_df, "Monthly Reward", group_by="Policy")
+# TODO: ModelVisualizer box plot of eval_df's monthly reward by policy
 fig_eval = ____  # TODO
 fig_eval.write_html(str(OUTPUT_DIR / "03_churn_business_impact.html"))
 print(f"\n  Saved: {OUTPUT_DIR / '03_churn_business_impact.html'}")

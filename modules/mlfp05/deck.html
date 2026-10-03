@@ -3144,13 +3144,13 @@ print(v.valid, v.max_diff)</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The LSTM is the most important sequence architecture before transformers. The key insight: additive cell state. Gradients flow through the addition in C_t = f_t * C_{t-1} + i_t * candidate. Even if f_t is near 1, the gradient passes through unchanged.
+    Time: ~3 min. The LSTM is the most important sequence architecture before transformers. The key insight: additive cell state. Gradients flow through the addition in C_t = f_t * C_{t-1} + i_t * candidate: dC_t/dC_{t-1} = f_t, so when f_t is near 1 the gradient passes through nearly unchanged &mdash; the forget gate decides how much gradient survives.
   </aside>
 </section>
 
 <!-- SLIDE 33: LSTM Gate Equations -->
 <section class="equation-dense">
-  <h2>LSTM: All Five Equations</h2>
+  <h2>LSTM: The Six Equations (1&ndash;4)</h2>
   <span class="marker marker-theory">Theory</span>
   <div class="derivation-step">
     <div class="step-label">Forget Gate</div>
@@ -3167,11 +3167,11 @@ print(v.valid, v.max_diff)</code></pre>
     <p class="small">Controls how much of the new candidate to add.</p>
   </div>
   <div class="derivation-step">
-    <div class="step-label">Cell Update</div>
+    <div class="step-label">Candidate &amp; Cell Update</div>
     <div class="equation-box" style="margin: 4px 0;">
-      <span class="katex-display">C_t = f_t \odot C_{t-1} + i_t \odot \tanh(W_C \cdot [h_{t-1}, x_t] + b_C)</span>
+      <span class="katex-display">\tilde{C}_t = \tanh(W_C \cdot [h_{t-1}, x_t] + b_C), \qquad C_t = f_t \odot C_{t-1} + i_t \odot \tilde{C}_t</span>
     </div>
-    <p class="small">Forget old + add new. The additive structure preserves gradients.</p>
+    <p class="small">Candidate = new information. Forget old + add new: the additive structure preserves gradients.</p>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
@@ -3183,7 +3183,7 @@ print(v.valid, v.max_diff)</code></pre>
 
 <!-- SLIDE 34: LSTM Output Gate and Hidden State -->
 <section>
-  <h2>LSTM: Output Gate and Hidden State</h2>
+  <h2>LSTM: Output Gate and Hidden State (5&ndash;6)</h2>
   <span class="marker marker-theory">Theory</span>
   <div class="derivation-step">
     <div class="step-label">Output Gate</div>
@@ -3200,7 +3200,7 @@ print(v.valid, v.max_diff)</code></pre>
     <p class="small">The hidden state is a filtered, squashed version of the cell state. This is the output at time t.</p>
   </div>
   <div class="callout callout-theory" style="margin-top: 12px;">
-    <strong>5 equations, 4 gates:</strong> forget (<span class="katex-inline">f_t</span>), input (<span class="katex-inline">i_t</span>), cell update (<span class="katex-inline">C_t</span>), output (<span class="katex-inline">o_t</span>), hidden state (<span class="katex-inline">h_t</span>). Every gate takes the same inputs: <span class="katex-inline">[h_{t-1}, x_t]</span>. The difference is the learned weight matrices.
+    <strong>6 equations, 3 gates + candidate:</strong> forget (<span class="katex-inline">f_t</span>), input (<span class="katex-inline">i_t</span>), candidate (<span class="katex-inline">\tilde{C}_t</span>), cell update (<span class="katex-inline">C_t</span>), output (<span class="katex-inline">o_t</span>), hidden state (<span class="katex-inline">h_t</span>). The gates and candidate all read <span class="katex-inline">[h_{t-1}, x_t]</span>; only the learned weights differ.
   </div>
   <div class="callout callout-advanced" style="margin-top: 8px;">
     <strong>Parameter count:</strong> For input size <span class="katex-inline">d</span> and hidden size <span class="katex-inline">h</span>, an LSTM has <span class="katex-inline">4(d \cdot h + h \cdot h + h)</span> parameters &mdash; four weight matrices, four bias vectors.
@@ -3209,7 +3209,7 @@ print(v.valid, v.max_diff)</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Complete the five equations. The hidden state h_t is what goes to the next time step AND what is used for prediction. The cell state C_t is internal memory only. Emphasise: tanh(C_t) squashes the cell state before outputting, and o_t selects which dimensions to expose.
+    Time: ~3 min. Complete the six equations (three gates, the candidate, the cell update and the hidden state). The hidden state h_t is what goes to the next time step AND what is used for prediction. The cell state C_t is internal memory only. Emphasise: tanh(C_t) squashes the cell state before outputting, and o_t selects which dimensions to expose.
   </aside>
 </section>
 

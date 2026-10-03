@@ -20,7 +20,7 @@
 #   2. Build — fit four linkage methods on a subsample
 #   3. Train — score each linkage partition against the others
 #   4. Visualise — the Ward dendrogram
-#   5. Apply — Singapore NTUC FairPrice store-cluster taxonomy
+#   5. Apply — Singapore supermarket store-cluster taxonomy
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -178,7 +178,14 @@ try:
         p=30,
         ax=ax,
         leaf_font_size=9,
-        color_threshold=0.7 * hier_results["ward"]["Z"][-CUT_K, 2],
+        # Z[-CUT_K] is the merge that leaves CUT_K clusters and Z[-(CUT_K-1)]
+        # the next one; any height strictly between them colours exactly
+        # CUT_K branches, so use the midpoint.
+        color_threshold=(
+            hier_results["ward"]["Z"][-CUT_K, 2]
+            + hier_results["ward"]["Z"][-(CUT_K - 1), 2]
+        )
+        / 2,
     )
     ax.set_title(f"Ward Dendrogram — cut at K={CUT_K}")
     ax.set_xlabel("Cluster size (leaves)")
@@ -200,16 +207,17 @@ print("\n  [ok] Checkpoint 3 passed — dendrogram rendered\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: NTUC FairPrice Store-Cluster Taxonomy
+# TASK 5 — APPLY: Supermarket Store-Cluster Taxonomy
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: FairPrice's ~230 stores get a tree-structured taxonomy.
+# SCENARIO: A Singapore supermarket chain's ~230 stores get a
+# tree-structured taxonomy.
 # Merchandising thinks in trees; give them a dendrogram. Different K
 # values serve different decisions (4 for national, 12 for regional).
 #
-# BUSINESS IMPACT: ~S$128M / year trade-promotion spend. Data-driven
-# clustering recovers ~10% waste = S$12.8M / year.
+# BUSINESS IMPACT (illustrative assumptions): ~S$128M / year trade-promotion
+# spend. If data-driven clustering recovers ~10% waste = S$12.8M / year.
 
-print("  APPLY — NTUC FairPrice Store Taxonomy")
+print("  APPLY — Supermarket Store Taxonomy")
 print("  ─────────────────────────────────────────────────────────────────")
 ward_labels = hier_results["ward"]["labels"]
 
@@ -218,7 +226,8 @@ ward_labels = hier_results["ward"]["labels"]
 sizes = ____
 for i, n in enumerate(sizes):
     print(f"    Ward cluster {i}: {n:>5,} customers ({n/n_hier:6.1%})")
-print("    Estimated annual promo waste recovery: S$12.8M.")
+print("    (In the supermarket scenario each node is a STORE, not a customer.)")
+print("    Illustrative annual promo waste recovery: S$12.8M (10% of S$128M).")
 
 
 # ── Checkpoint 4 ──────────────────────────────────────────────────────────
@@ -232,16 +241,13 @@ print("\n  [ok] Checkpoint 4 passed — Ward taxonomy valid\n")
 # ════════════════════════════════════════════════════════════════════════
 # The four linkage methods all log into the SAME m4_clustering_zoo
 # experiment so you can compare against the kmeans run from lesson 01.
-# Best linkage = the one with the highest silhouette in `hier_results`.
-
-best_method = max(hier_results.items(), key=lambda x: x[1]["silhouette"])
+# best_method comes from Task 3.
 
 # TODO: call track_run with run_name f"hierarchical_{best_method[0]}" and
-# scalar metrics constructed by dict-merging four per-method dicts:
-#   {f"{m}_silhouette": float(r["silhouette"]) for m, r in hier_results.items()}
-#   | {f"{m}_calinski_harabasz": float(r["ch"]) for m, r in hier_results.items()}
-#   | {f"{m}_davies_bouldin": float(r["db"]) for m, r in hier_results.items()}
-#   | {f"{m}_time_s": float(r["time"]) for m, r in hier_results.items()}
+# scalar_metrics = ONE flat dict holding, for every linkage method m, the
+# keys f"{m}_silhouette", f"{m}_calinski_harabasz", f"{m}_davies_bouldin"
+# and f"{m}_time_s" (values from hier_results, cast to float).
+# Hint: merge per-metric dict comprehensions with the | operator
 track_run(
     tracker,
     exp_name,
@@ -261,7 +267,7 @@ print(f"  [tracked] linkage comparison logged to {exp_name}\n")
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — engine surface honesty for hierarchical
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1 ClusteringEngine ships kmeans/dbscan/spectral/gmm but
+# kailash-ml's ClusteringEngine ships kmeans/dbscan/spectral/gmm but
 # NOT hierarchical/agglomerative — it's the one mainstream clustering
 # family the engine doesn't yet wrap. The engine-first surface for THIS
 # lesson is therefore the ExperimentTracker we just used: every linkage
@@ -271,7 +277,7 @@ print(f"  [tracked] linkage comparison logged to {exp_name}\n")
 
 from kailash_ml.engines.clustering import ClusteringEngine
 
-print("  ClusteringEngine 1.5.1 algorithms:", ClusteringEngine.__doc__ or "")
+print("  ClusteringEngine algorithms:", ClusteringEngine.__doc__ or "")
 print("    Supported: kmeans, dbscan, spectral, gmm")
 print(
     "    Hierarchical / agglomerative: use scipy.cluster.hierarchy until"
@@ -293,14 +299,18 @@ print("=" * 70)
 print(
     """
   [x] Agglomerative merging builds a dendrogram bottom-up
-  [x] Four linkage methods produce different cluster shapes
+  [x] Four linkage methods produce different cluster shapes:
+      single (chains), complete (spheres), average (balanced), Ward (variance)
   [x] Read a dendrogram: height = merge distance; cut = partition
-  [x] Ward's is the production default for compact clusters
-  [x] Mapped the tree onto an NTUC FairPrice store taxonomy — S$12.8M/yr
+  [x] Ward's is the production default for compact, K-means-like clusters
+  [x] Mapped the tree onto a supermarket store taxonomy with an
+      illustrative S$12.8M / year promotional-waste recovery
 
   KEY INSIGHT: When the business thinks in a TREE, give them a tree.
+  K-means forces a single K; a dendrogram lets a team explore many K
+  values in one fit and pick the granularity that matches the decision.
 
-  Next: 03_density_based.py — clusters of arbitrary SHAPE.
+  Next: 03_density_based.py — clusters of arbitrary SHAPE, not just size.
 """
 )
 

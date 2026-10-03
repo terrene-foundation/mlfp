@@ -91,30 +91,54 @@
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    <code>FeatureEngineer</code> automates feature creation: temporal
-    features (lag, rolling, day-of-week), interaction terms, polynomial
-    expansions, and domain-specific transformations. It does not replace
-    domain knowledge — it amplifies it.
+    <code>FeatureEngineer</code> has two methods. <code>generate(df, schema,
+    strategies=[...])</code> creates candidate features from the columns a
+    <code>FeatureSchema</code> declares — <code>"temporal"</code> (month,
+    day-of-week, hour from a datetime) and <code>"interactions"</code>
+    (pairwise products of numeric fields). <code>select(data, generated,
+    target=..., top_k=...)</code> then ranks the candidates (by tree-model
+    importance) and keeps the best. It does not replace domain knowledge — it
+    amplifies it: you decide which raw fields go into the schema, and you
+    sanity-check what it selects. (The engine is marked experimental in
+    kailash-ml 2.2 and prints an <code>ExperimentalWarning</code>.)
   </p>
 </div>
 
-<pre><code class="language-python">from kailash_ml import FeatureEngineer
+<pre><code class="language-python">import polars as pl
+from kailash_ml import FeatureEngineer, FeatureField, FeatureSchema
+from shared.mlfp02.ex_8 import load_hdb_resale
 
-engineer = FeatureEngineer()
-
-# Temporal features
-df_features = engineer.create_temporal_features(
-    df, date_col="date",
-    features=["lag_1", "lag_3", "rolling_mean_6", "month", "quarter"]
+df = (
+    load_hdb_resale()                    # HDB file + parsed transaction_date
+    .with_row_index("id")
+    .with_columns(pl.col("transaction_date").cast(pl.Datetime))
+)
+schema = FeatureSchema(
+    name="hdb",
+    entity_id_column="id",
+    features=[
+        FeatureField("floor_area_sqm", "float64"),
+        FeatureField("lease_commence_date", "int64"),
+        FeatureField("transaction_date", "datetime"),
+    ],
 )
 
-# Interaction terms
-df_features = engineer.create_interactions(
-    df_features,
-    pairs=[("floor_area", "age"), ("town_premium", "floor_level")]
-)
+fe = FeatureEngineer(max_features=10)
+gen = fe.generate(df, schema, strategies=["temporal", "interactions"])
+print([c.name for c in gen.generated_columns])
 
-print(f"Original: {df.shape[1]} cols → Engineered: {df_features.shape[1]} cols")</code></pre>
+best = fe.select(gen.data, gen, target="resale_price", top_k=3)
+print(best.selected_columns)</code></pre>
+<pre><code class="language-text">['floor_area_sqm_x_lease_commence_date', 'transaction_date_dow', 'transaction_date_hour', 'transaction_date_month']
+['floor_area_sqm_x_lease_commence_date', 'floor_area_sqm', 'transaction_date_month']</code></pre>
+
+<p>
+  Sanity-check the candidates: <code>transaction_date_hour</code> and
+  <code>transaction_date_dow</code> are meaningless here, because the file
+  records only the sale <em>month</em> (every date is the 1st at midnight).
+  The engine generated them mechanically; your domain knowledge is what
+  throws them out.
+</p>
 
 <figure class="diagram">
 <svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
@@ -124,32 +148,32 @@ print(f"Original: {df.shape[1]} cols → Engineered: {df_features.shape[1]} cols
     </marker>
   </defs>
   <rect x="20" y="30" width="200" height="160" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
-  <text x="120" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">Raw features (8)</text>
+  <text x="120" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">Schema fields (3)</text>
   <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
-    <text x="40" y="85">date, price, area</text>
-    <text x="40" y="103">age, town, floor</text>
-    <text x="40" y="121">type, lease_start</text>
+    <text x="40" y="85">floor_area_sqm</text>
+    <text x="40" y="103">lease_commence_date</text>
+    <text x="40" y="121">transaction_date</text>
   </g>
   <line x1="225" y1="110" x2="310" y2="110" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr28b)"/>
   <rect x="315" y="30" width="200" height="160" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
   <text x="415" y="60" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">FeatureEngineer</text>
   <g font-family="Inter" font-size="10" fill="#334155">
-    <text x="335" y="85">+ lag_1, lag_3</text>
-    <text x="335" y="103">+ rolling_mean_6</text>
-    <text x="335" y="121">+ month, quarter</text>
-    <text x="335" y="139">+ area x age</text>
-    <text x="335" y="157">+ town x floor</text>
+    <text x="335" y="85">generate():</text>
+    <text x="335" y="103">+ date_month, date_dow</text>
+    <text x="335" y="121">+ date_hour</text>
+    <text x="335" y="139">+ area x lease_start</text>
+    <text x="335" y="157">select(top_k=3)</text>
   </g>
   <line x1="520" y1="110" x2="545" y2="110" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr28b)"/>
   <rect x="550" y="30" width="150" height="160" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
-  <text x="625" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#22C55E">Engineered (15)</text>
+  <text x="625" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#22C55E">Selected (3)</text>
   <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
-    <text x="565" y="85">8 original</text>
-    <text x="565" y="103">+ 5 temporal</text>
-    <text x="565" y="121">+ 2 interactions</text>
+    <text x="565" y="85">area x lease_start</text>
+    <text x="565" y="103">floor_area_sqm</text>
+    <text x="565" y="121">date_month</text>
   </g>
 </svg>
-<figcaption>FeatureEngineer: raw features in, enriched features out. Domain knowledge guides which features to create.</figcaption>
+<figcaption>FeatureEngineer: schema fields in, candidate features generated, the strongest selected. Domain knowledge decides which fields go in and which candidates make sense.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -158,31 +182,65 @@ print(f"Original: {df.shape[1]} cols → Engineered: {df_features.shape[1]} cols
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    <code>FeatureStore</code> manages features with point-in-time
-    correctness: when you ask for features as of January 2024, you get
-    exactly what was available in January 2024 — not features computed
-    from future data. This prevents data leakage in time-series problems.
+    <code>FeatureStore</code> (from <code>kailash_ml.features</code>) persists
+    feature tables through a DataFlow database and serves them with
+    point-in-time correctness: <code>get_features(schema, timestamp=T)</code>
+    returns only rows stamped at or before <code>T</code> — never values from
+    the future. Writing a feature group with <code>materialize</code> also
+    returns a <em>lineage hash</em> that identifies exactly which data
+    produced the stored features. The calls are asynchronous.
+  </p>
+  <p>
+    One detail trips people up: the store needs the
+    <code>FeatureSchema</code> from <code>kailash_ml.features</code> (the
+    top-level <code>kailash_ml.FeatureSchema</code> used by
+    <code>FeatureEngineer</code> above is a different type the store
+    rejects). Exercise 8's helpers in <code>shared.mlfp02.ex_8</code> wrap
+    that wiring for you.
   </p>
 </div>
 
-<pre><code class="language-python">from kailash_ml import FeatureStore
+<pre><code class="language-python">import asyncio
+from datetime import datetime
+from pathlib import Path
 
-store = FeatureStore()
-
-# Register features with timestamps
-store.register(
-    name="hdb_features",
-    df=df_features,
-    timestamp_col="date",
-    entity_col="town",
+from shared.mlfp02.ex_8 import (
+    build_schema_v1, compute_v1_features, create_feature_store,
+    load_hdb_resale, materialize_features, validate_v1_features,
 )
 
-# Retrieve point-in-time correct features
-features_jan = store.get_features(
-    name="hdb_features",
-    as_of="2024-01-01",
-    entities=["TAMPINES", "BISHAN"]
-)</code></pre>
+# Validated features: storey midpoint, remaining lease, price per sqm
+df, _ = validate_v1_features(compute_v1_features(load_hdb_resale()))
+schema = build_schema_v1()             # a kailash_ml.features.FeatureSchema
+
+# An absolute path for the SQLite file keeps DataFlow from losing it
+STORE_URL = f"sqlite:///{Path('mlfp02_ex8_features.db').resolve()}"
+
+
+async def store_then_read(when):
+    fs = create_feature_store(STORE_URL)        # FeatureStore(DataFlow(...))
+    result = await materialize_features(fs, schema, df)
+    snapshot = await fs.get_features(schema, timestamp=when)
+    return result, snapshot
+
+
+result, snap = asyncio.run(store_then_read(datetime(2023, 1, 1)))
+print(f"Stored {result['row_count']:,} rows, lineage {result['lineage_hash'][:16]}")
+print(f"Rows visible on 1 Jan 2023: {snap.height:,}")
+print(snap.columns)</code></pre>
+<pre><code class="language-text">Stored 46,614 rows, lineage sha256:…
+Rows visible on 1 Jan 2023: 37,017
+['transaction_id', 'floor_area_sqm', 'remaining_lease_years', 'storey_midpoint', 'price_per_sqm']</code></pre>
+
+<p>
+  The snapshot holds exactly the 37,017 validated sales dated on or before
+  1 January 2023; the 9,597 later sales are invisible to anything trained
+  "as of" that date. (The lineage hash depends on the exact rows stored, so
+  yours is printed in full rather than quoted here.) Writing ~46,600 rows
+  takes a few minutes. In Jupyter or Colab, use
+  <code>await store_then_read(...)</code> instead of
+  <code>asyncio.run(...)</code>.
+</p>
 
 <div class="callout theory">
   <span class="label">🔵 Theory</span>
@@ -190,115 +248,159 @@ features_jan = store.get_features(
     Point-in-time correctness is critical for any time-series model. If
     your training data for January includes features computed from February
     data, your model learns from the future — and performs worse in
-    production where the future is unknown. FeatureStore enforces this
-    automatically.
+    production where the future is unknown. The store enforces the cut-off
+    on retrieval; <em>you</em> still have to compute each feature from past
+    data only (Exercise 8.3 shifts its town-level rolling medians by one
+    month for exactly this reason).
   </p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Project Options</h2>
 
-<p>Choose one of three projects. All follow the same pipeline; the data and questions differ.</p>
+<p>Choose one of three projects. All follow the same pipeline — load → describe → engineer → model → test → report; the data and questions differ.</p>
 
-<div class="compare-grid">
-  <div class="col">
-    <h4>Option A: Wine Quality</h4>
-    <p>
-      Predict wine quality score from chemical properties. Build linear
-      regression, test which properties are significant, engineer
-      interaction terms, store features.
-    </p>
-  </div>
-  <div class="col">
-    <h4>Option B: Economic Indicators</h4>
-    <p>
-      Model Singapore CPI from employment, exchange rates, and trade data.
-      Build time-series regression with temporal features, test structural
-      breaks, store point-in-time features.
-    </p>
-  </div>
-</div>
-
-<div class="try-it">
-  <h3>Option C: Experiment Design and Analysis</h3>
-  <p>
-    Design an A/B test for a Singapore e-commerce platform. Compute sample
-    size, implement CUPED, detect SRM, and report results with business
-    recommendations.
-  </p>
-</div>
+<table>
+  <thead><tr><th>Option</th><th>Data</th><th>Key technique</th></tr></thead>
+  <tbody>
+    <tr><td><strong>A — HDB resale valuation</strong></td><td><code>mlfp01/hdb_resale.parquet</code> (the guided path in Exercise 8)</td><td>Regression + validated, point-in-time features</td></tr>
+    <tr><td><strong>B — Economic indicators</strong></td><td><code>mlfp01/economic_indicators.csv</code>: GDP growth, unemployment, inflation, trade balance</td><td>Time-series regression with temporal (lagged) features; check for structural breaks</td></tr>
+    <tr><td><strong>C — Experiment design and analysis</strong></td><td><code>mlfp02/experiment_data.parquet</code> (the four-arm A/B test)</td><td>SRM against the designed split, CUPED, a ship / do-not-ship recommendation</td></tr>
+  </tbody>
+</table>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Wine Quality Pipeline</h2>
+<h2>Worked Example: Option A — HDB Resale Valuation</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Build a complete statistical analysis of wine quality: EDA, feature
-    engineering, regression model, hypothesis tests, and a recommendation
-    report.
+    Explain HDB resale prices from floor area, storey and remaining lease:
+    validate the data, explore it, store the features, fit a regression,
+    test each predictor, and write a recommendation a non-specialist can act
+    on. These are the steps Exercise 8 guides you through, and the numbers
+    match the lesson slides.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — Load and profile.</span>
-    <pre><code class="language-python">df = loader.load("mlfp02", "wine_quality.csv")
-profile = run_profile(explorer, df)
-print(f"Shape: {df.shape}, Alerts: {len(profile.alerts)}")</code></pre>
+    <span class="step-label">Step 1 — Load, validate and profile.</span>
+    <p>
+      Exercise 8's helpers derive the features (storey midpoint from
+      <code>storey_range</code>, remaining lease from the sale year and
+      <code>lease_commence_date</code>, price per sqm) and then apply value
+      rules a dtype check cannot express: a lease cannot start after the
+      sale, the remaining lease must be within 99 years, and prices must be
+      plausible (the raw file contains sentinel values such as 10 and
+      9,000,000).
+    </p>
+    <pre><code class="language-python">from shared import run_profile
+from shared.mlfp02.ex_8 import compute_v1_features, load_hdb_resale, validate_v1_features
+
+raw = load_hdb_resale()
+df, violations = validate_v1_features(compute_v1_features(raw))
+profile = run_profile(df)                 # DataExplorer profile, run synchronously
+print(f"Shape: {df.shape}")
+print(f"Removed: {raw.height - df.height:,}")
+print(violations)
+print(f"Alerts: {len(profile.alerts)}")</code></pre>
+    <pre><code class="language-text">Shape: (46614, 16)
+Removed: 3,536
+{'remaining_lease_years &gt; 99': 3298, 'remaining_lease_years &lt;= 0': 0, 'lease commences after sale': 3298, 'resale_price outside bounds': 251, 'floor_area_sqm &lt;= 0': 0}
+Alerts: 9</code></pre>
+    <p>
+      3,298 sales are dated before their lease began (which is also why
+      their "remaining lease" exceeds 99 years) and 251 have impossible
+      prices; a few rows break both rules, so 3,536 rows go in total. Among
+      the profile's alerts, two matter: floor area is highly correlated with
+      price (expected — it is the main driver), and
+      <code>lease_commence_date</code> is almost collinear with
+      <code>remaining_lease_years</code> (they encode the same fact; use one).
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2 — EDA: distributions and correlations.</span>
-    <pre><code class="language-python"># Correlation matrix
-corr = df.select(pl.exclude("quality")).to_pandas().corr()
-# Top correlations with quality
-quality_corr = df.select(
-    pl.corr(pl.col(c), pl.col("quality")).alias(c)
-    for c in df.columns if c != "quality"
-)</code></pre>
+    <span class="step-label">Step 2 — EDA: correlations with price.</span>
+    <pre><code class="language-python">import polars as pl
+
+cols = ["floor_area_sqm", "storey_midpoint", "remaining_lease_years"]
+for col in cols:
+    r = df.select(pl.corr(col, "resale_price")).item()
+    print(f"  {col}: r = {r:.3f}")</code></pre>
+    <pre><code class="language-text">  floor_area_sqm: r = 0.910
+  storey_midpoint: r = 0.009
+  remaining_lease_years: r = -0.008</code></pre>
+    <p>
+      Floor area dominates; storey and lease show almost no linear
+      relationship. Correlation is a first look, not the test — Step 5 tests
+      each predictor while holding the others fixed.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 3 — Engineer features.</span>
-    <pre><code class="language-python">engineer = FeatureEngineer()
-df_eng = engineer.create_interactions(
-    df, pairs=[("alcohol", "volatile_acidity"),
-               ("citric_acid", "residual_sugar")]
-)
-# Store in FeatureStore
-store = FeatureStore()
-store.register(name="wine_features", df=df_eng)</code></pre>
+    <span class="step-label">Step 3 — Store the features.</span>
+    <p>
+      Materialise the validated features into the FeatureStore exactly as in
+      the FeatureStore section above (the same <code>df</code> and
+      <code>build_schema_v1()</code>). Record the lineage hash in your report:
+      it lets anyone confirm later that the model was trained on this exact
+      validated table.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 4 — Build regression model.</span>
-    <pre><code class="language-python">from kailash_ml import TrainingPipeline
+    <span class="step-label">Step 4 — Build the regression model.</span>
+    <p>
+      The model is the Lesson 2.5 normal equations, wrapped in two Exercise 8
+      helpers: <code>prepare_design_matrix</code> builds $[1, X]$ and drops
+      nulls; <code>fit_ols</code> returns coefficients, standard errors,
+      $t$, $p$, $R^2$ and $F$.
+    </p>
+    <pre><code class="language-python">from shared.mlfp02.ex_8 import fit_ols, prepare_design_matrix
 
-pipeline = TrainingPipeline(model="linear_regression")
-result = pipeline.fit(
-    df_eng.drop("quality"), df_eng["quality"]
-)
-print(f"R²: {result.r_squared:.4f}")
-print(f"Significant predictors: {result.significant_features(alpha=0.05)}")</code></pre>
+X, y, names = prepare_design_matrix(df, cols)
+fit = fit_ols(X, y)
+print(f"R²: {fit['r2']:.3f}   adj R²: {fit['adj_r2']:.3f}")
+print(f"F: {fit['f_stat']:,.0f}")</code></pre>
+    <pre><code class="language-text">R²: 0.828   adj R²: 0.828
+F: 75,042</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 5 — Hypothesis tests.</span>
-    <pre><code class="language-python"># H0: alcohol has no effect on quality
-# (t-test on the alcohol coefficient)
-t_alcohol = result.coefficients["alcohol"].t_stat
-p_alcohol = result.coefficients["alcohol"].p_value
-print(f"Alcohol: t = {t_alcohol:.2f}, p = {p_alcohol:.4f}")
+    <span class="step-label">Step 5 — Hypothesis tests on each coefficient.</span>
+    <pre><code class="language-python">from shared.mlfp02.ex_8 import format_p
 
-# H0: red and white wines have equal mean quality
-# (two-sample t-test)</code></pre>
+for name, b, se, t, p in zip(names, fit["beta"], fit["se"], fit["t"], fit["p"]):
+    print(f"  {name}: beta = {b:+,.0f}  SE = {se:,.1f}  t = {t:.1f}  p: {format_p(p)}")</code></pre>
+    <pre><code class="language-text">  intercept: beta = -22,419  SE = 3,369.0  t = -6.7  p: 2.88e-11
+  floor_area_sqm: beta = +9,096  SE = 19.2  t = 474.4  p: &lt; 1e-300
+  storey_midpoint: beta = -24  SE = 39.6  t = -0.6  p: 5.44e-01
+  remaining_lease_years: beta = +7  SE = 35.0  t = 0.2  p: 8.42e-01</code></pre>
+    <p>
+      $H_0$: "this predictor has no effect, holding the others fixed". It is
+      rejected decisively for floor area and not rejected for storey
+      ($p = 0.54$) or remaining lease ($p = 0.84$). The 95% CI for the area
+      effect is $9{,}096 \pm 1.96 \times 19.2$, i.e. about 9,060 to 9,130 per
+      square metre.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 6 — Report findings.</span>
+    <div class="callout foundations">
+      <strong>Summary:</strong> In 46,614 validated HDB resales, floor area
+      explains about 83% of the variation in price. Each extra square metre
+      adds about SGD 9,100 (95% CI SGD 9,060–9,130). Once size is accounted
+      for, we found no measurable effect of storey or remaining lease in
+      this data. <strong>Limitations:</strong> one model of three predictors;
+      town and flat type were left out; 3,536 records with impossible dates
+      or prices were removed. <strong>Recommendation:</strong> value a flat
+      first by its size; treat storey and lease adjustments as unproven
+      until a model that includes location confirms them.
+    </div>
     <p>
-      Summarise: which predictors matter, how much variance is explained,
-      what a winemaker should focus on to improve quality scores. Present
-      to a non-technical audience.
+      Every sentence is readable without statistics training, every number
+      comes from the output above, and the limitations are stated rather
+      than hidden.
     </p>
   </div>
 </div>
@@ -309,9 +411,11 @@ print(f"Alcohol: t = {t_alcohol:.2f}, p = {p_alcohol:.4f}")
 <div class="callout warning">
   <span class="label">⚠ Mistake 1: Feature leakage from the future</span>
   <p>
-    If you compute a 6-month rolling mean and include future months in the
-    window, your model sees the future. Use FeatureStore's point-in-time
-    retrieval to prevent this.
+    If you compute a 6-month rolling mean and include the current or future
+    months in the window, your model sees the future. Compute rolling
+    features from strictly earlier periods (shift before you roll, as
+    Exercise 8.3 does) and retrieve training data with FeatureStore's
+    point-in-time <code>get_features(schema, timestamp=...)</code>.
   </p>
 </div>
 
@@ -327,9 +431,9 @@ print(f"Alcohol: t = {t_alcohol:.2f}, p = {p_alcohol:.4f}")
 <div class="callout warning">
   <span class="label">⚠ Mistake 3: Reporting p-values without effect sizes</span>
   <p>
-    "Alcohol is significant ($p < 0.001$)" tells the reader nothing
-    useful. "Each additional percentage point of alcohol increases quality
-    by 0.3 points ($p < 0.001$)" tells them what to do.
+    "Floor area is significant ($p &lt; 0.001$)" tells the reader nothing
+    useful. "Each additional square metre adds about SGD 9,100 to the price
+    (95% CI SGD 9,060–9,130)" tells them what to do.
   </p>
 </div>
 
@@ -341,8 +445,9 @@ print(f"Alcohol: t = {t_alcohol:.2f}, p = {p_alcohol:.4f}")
   testing (2.3), experiment design (2.4), linear regression (2.5), logistic
   regression (2.6), and CUPED/DiD (2.7). The feature engineering and feature
   store concepts bridge directly to Module 3's ML pipeline, where
-  FeatureEngineer feeds TrainingPipeline and FeatureStore provides
-  point-in-time training data.
+  <code>TrainingPipeline</code> trains models from FeatureStore data (it
+  reports evaluation metrics; coefficient tests like Step 5 remain your
+  own computation).
 </p>
 
 <div class="reflection">

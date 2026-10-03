@@ -6,26 +6,30 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Score every clustering method on silhouette, DB, CH
-#   - Use kailash-ml AutoMLEngine with agent=True double-opt-in governance
+#   - Score every clustering method on the same internal metrics
+#     (silhouette, Davies-Bouldin, Calinski-Harabasz) and external
+#     agreement metrics (ARI, NMI)
+#   - Run a kailash-ml AutoMLEngine search over clustering algorithm and K
+#     (agent=False: no LLM; agent mode needs a double opt-in)
 #   - Profile clusters into business-meaningful segment descriptions
-#   - Match algorithm to downstream use case
+#   - Use the algorithm selection guide to pick the right tool for the job
 #
 # PREREQUISITES: 01_kmeans.py through 04_spectral.py.
 #
 # ESTIMATED TIME: ~40 min
 #
 # TASKS:
-#   1. Theory — internal vs external metrics
-#   2. Build — fit five methods and collect labels
-#   3. Train — AutoMLEngine config with cost cap
-#   4. Visualise — metric chart + cluster profiles
-#   5. Apply — DBS Bank segmentation selection guide
+#   1. Theory — internal vs external metrics and why profiling matters
+#   2. Build — fit five algorithms and collect labels
+#   3. Train — AutoMLEngine search (agent=False + cost cap) over algorithm/K
+#   4. Visualise — metric comparison bar chart and cluster profiles
+#   5. Apply — Singapore retail-bank customer segmentation selection guide
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
+import time
 
 import numpy as np
 import polars as pl
@@ -36,12 +40,8 @@ from sklearn.mixture import GaussianMixture
 from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 
 from kailash_ml import AutoMLEngine, ModelVisualizer
-
-# AutoMLConfig is not in kailash_ml.__all__ in 1.5.x; import from the
-# automl.engine submodule. AutoMLEngine remains a top-level export.
-from kailash_ml.automl.engine import (
-    AutoMLConfig,
-)  # pyright: ignore[reportMissingImports]
+from kailash_ml.automl import AutoMLConfig, ParamSpec, Trial, TrialOutcome
+from kailash_ml.engines.clustering import ClusteringEngine
 
 from shared.mlfp04.ex_1 import (
     RANDOM_STATE,
@@ -63,15 +63,12 @@ load_dotenv()
 tracker, exp_name = setup_engines()
 
 
-def _finite(x: float) -> float:
-    """Tracker rejects NaN/inf; coerce to 0.0 for collapsed partitions."""
-    return float(x) if x == x and x not in (float("inf"), float("-inf")) else 0.0
-
-
 try:
     import hdbscan as hdbscan_lib
-except ImportError:
-    hdbscan_lib = None
+except ImportError as e:  # pragma: no cover
+    raise ImportError(
+        "05_evaluation_profiling.py compares HDBSCAN too: uv add hdbscan"
+    ) from e
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -97,6 +94,10 @@ print("  Clustering Evaluation + Profiling on Singapore E-commerce Customers")
 print("=" * 70)
 print(f"  Samples={n_samples:,}  features={len(feature_cols)}")
 
+# Fixed for a like-for-like comparison. 01_kmeans.py showed silhouette and
+# the gap statistic need not agree on K for this data, so K=5 is a
+# business-granularity choice; the AutoMLEngine search in Task 3 lets the
+# silhouette criterion pick its own K on a subsample.
 BEST_K = 5
 all_labels: dict[str, np.ndarray] = {}
 
@@ -121,17 +122,20 @@ all_labels["Ward"] = knn.predict(X_scaled)
 nn = NearestNeighbors(n_neighbors=10).fit(X_scaled)
 distances, _ = nn.kneighbors(X_scaled)
 k_dist = np.sort(distances[:, -1])
-diffs2 = np.diff(np.diff(k_dist))
-eps_suggested = float(k_dist[int(np.argmax(diffs2)) + 2])
+# Kneedle elbow, as in 03_density_based.py: the point furthest from the
+# chord of the normalised k-distance curve (the 2nd-derivative argmax
+# latches onto the steepest tail jump and over-shoots).
+_x = np.linspace(0.0, 1.0, k_dist.size)
+_y = (k_dist - k_dist.min()) / (k_dist.max() - k_dist.min())
+eps_suggested = float(k_dist[int(np.argmax(np.abs(_y - _x)))])
 all_labels["DBSCAN"] = DBSCAN(eps=eps_suggested, min_samples=10, n_jobs=-1).fit_predict(
     X_scaled
 )
 
 # --- HDBSCAN ---
-if hdbscan_lib is not None:
-    all_labels["HDBSCAN"] = hdbscan_lib.HDBSCAN(
-        min_cluster_size=50, min_samples=10, cluster_selection_method="eom"
-    ).fit_predict(X_scaled)
+all_labels["HDBSCAN"] = hdbscan_lib.HDBSCAN(
+    min_cluster_size=50, min_samples=10, cluster_selection_method="eom"
+).fit_predict(X_scaled)
 
 # --- Spectral (subsample + KNN-extend) ---
 X_spec, idx_spec = subsample(X_scaled, n=2500, seed=RANDOM_STATE)
@@ -156,33 +160,83 @@ for name, labels in all_labels.items():
 
 
 # ── Checkpoint 1 ──────────────────────────────────────────────────────────
-assert len(results) >= 5, "Task 2: at least 5 methods should be scored"
+assert len(results) == 6, "Task 2: all six methods should be scored"
 assert all("silhouette" in r for r in results.values()), "Task 2: metric gap"
 print("\n  [ok] Checkpoint 1 passed — all methods scored\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — TRAIN: AutoMLEngine with agent=False double-opt-in
+# TASK 3 — TRAIN: AutoMLEngine search over algorithm and K
 # ════════════════════════════════════════════════════════════════════════
+# The kailash-ml AutoMLEngine runs the comparison as a governed SEARCH: you
+# declare the search space (ParamSpec) and a trial function that trains
+# one candidate and returns its metric (TrialOutcome); the engine proposes
+# trials, enforces the trial/time/cost budget and keeps the audit record.
+# The trainer here is ClusteringEngine, so each trial is one .fit() call.
+#
+# agent=True would let an LLM propose trials — that costs money and is
+# non-deterministic, so it is gated behind a DOUBLE opt-in (the flag plus
+# an explicit cost cap / approval). We keep agent=False: no LLM runs.
+
+AUTOML_SUBSAMPLE = 3000  # silhouette is O(n^2); search on a subsample
+X_auto, _ = subsample(X_scaled, n=AUTOML_SUBSAMPLE, seed=RANDOM_STATE)
+auto_df = pl.from_numpy(X_auto, schema=feature_cols)
+automl_clustering = ClusteringEngine()
+
+# TODO: Build an AutoMLConfig for a clustering search that MAXIMISES
+# "silhouette" with search_strategy="grid", max_trials=12, agent=False and
+# max_llm_cost_usd=1.0.
+config = ____
+# TODO: Declare the search space: a categorical "algorithm" over
+# ("kmeans", "gmm") and an int "n_clusters" from 3 to 8.
+# Hint: ParamSpec(name=..., kind="categorical", choices=(...)) / kind="int", low=, high=
+search_space = ____
 
 
-async def run_automl() -> AutoMLConfig:
-    """Build an AutoMLEngine config for clustering comparison."""
-    # TODO: Build an AutoMLConfig with task_type='clustering',
-    # metric_name='silhouette', direction='maximize',
-    # search_strategy='random', max_trials=20, agent=False,
-    # max_llm_cost_usd=1.0. Return the config.
-    config = ____
-    _ = AutoMLEngine
-    return config
+async def clustering_trial(trial: Trial) -> TrialOutcome:
+    """Fit one (algorithm, K) candidate with ClusteringEngine; report silhouette."""
+    t0 = time.perf_counter()
+    # TODO: call automl_clustering.fit on auto_df with the trial's
+    # "algorithm" and int("n_clusters") parameters.
+    result = ____
+    sil = result.silhouette_score
+    return TrialOutcome(
+        trial_number=trial.trial_number,
+        params=trial.params,
+        metric=float(sil) if sil is not None else float("nan"),
+        metric_name="silhouette",
+        direction="maximize",
+        duration_seconds=time.perf_counter() - t0,
+        error=None if sil is not None else "silhouette undefined (<2 clusters)",
+    )
 
 
-config = asyncio.run(run_automl())
-print("  AutoMLEngine config:")
-print(f"    task_type         = {config.task_type}")
-print(f"    metric_name       = {config.metric_name}")
-print(f"    agent             = {config.agent}  (False = no LLM)")
-print(f"    max_llm_cost_usd  = {config.max_llm_cost_usd}")
+automl = AutoMLEngine(config=config, tenant_id="mlfp04", actor_id="student")
+# TODO: run the search — automl.run is async; pass space= and trial_fn=.
+automl_result = ____
+
+print(f"  AutoMLEngine search ({config.search_strategy}, agent={config.agent}):")
+print(
+    f"    trials: {automl_result.completed_trials} completed, "
+    f"{automl_result.failed_trials} failed, {automl_result.denied_trials} denied"
+)
+print(f"    {'#':>3} {'algorithm':<10} {'K':>3} {'silhouette':>11}")
+for rec in automl_result.all_trials:
+    print(
+        f"    {rec.trial_number:>3} {rec.params['algorithm']:<10} "
+        f"{int(rec.params['n_clusters']):>3} {rec.metric_value:>11.4f}"
+    )
+best_trial = automl_result.best_trial
+if best_trial is not None:
+    print(
+        f"    Best: {best_trial.params['algorithm']} with "
+        f"K={int(best_trial.params['n_clusters'])} "
+        f"(silhouette={best_trial.metric_value:.4f}) on a "
+        f"{AUTOML_SUBSAMPLE:,}-row subsample"
+    )
+print("  No governance engine or database connection is attached here, so the")
+print("  engine logs that admission checks are skipped and trials are kept in")
+print("  memory only. In production you pass both to AutoMLEngine(...).")
 
 print("\n  External agreement (ARI / NMI):")
 method_names = list(all_labels.keys())
@@ -195,9 +249,11 @@ for i in range(len(method_names)):
 
 
 # ── Checkpoint 2 ──────────────────────────────────────────────────────────
-assert config.agent is False, "Task 3: agent must default to False"
+assert config.agent is False, "Task 3: agent must default to False (double opt-in)"
 assert config.max_llm_cost_usd > 0, "Task 3: cost cap must be positive"
-print("\n  [ok] Checkpoint 2 passed — AutoMLEngine configured with guardrails\n")
+assert automl_result.completed_trials > 0, "Task 3: the search should complete trials"
+assert best_trial is not None, "Task 3: the search should return a best trial"
+print("\n  [ok] Checkpoint 2 passed — AutoMLEngine search ran with guardrails\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -247,15 +303,17 @@ print("\n  [ok] Checkpoint 3 passed — metric chart + cluster profiles rendered
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: DBS Bank Singapore Segmentation Selection Guide
+# TASK 5 — APPLY: Singapore Retail-Bank Segmentation Selection Guide
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: DBS's consumer banking runs FIVE different segmentation
-# programs — loyalty tiers, wealth desk affinity, fraud rings, cross-sell
-# offers, RM-beat optimisation — each needs a DIFFERENT algorithm.
+# SCENARIO: A Singapore bank's consumer banking runs FIVE different
+# segmentation programs — loyalty tiers, wealth desk affinity, fraud rings,
+# cross-sell offers, RM-beat optimisation — each needs a DIFFERENT
+# algorithm.
 #
-# BUSINESS IMPACT: Estimated S$62M / year aggregate benefit.
+# BUSINESS IMPACT (illustrative assumptions, not reported figures):
+# ~S$62M / year aggregate benefit.
 
-print("  APPLY — DBS Bank Consumer Segmentation Selection Guide")
+print("  APPLY — Retail-Bank Consumer Segmentation Selection Guide")
 print("  ─────────────────────────────────────────────────────────────────")
 print(
     """
@@ -267,11 +325,11 @@ print(
   │ DBSCAN           │ No (eps, minPts)  │ Arbitrary    │ Yes (-1)     │ O(n log n)    │
   │ HDBSCAN          │ No (auto)         │ Arbitrary    │ Yes (-1)     │ O(n log n)    │
   │ Spectral         │ Yes               │ Non-convex   │ None         │ O(n^3)        │
-  │ GMM              │ Yes (BIC selects) │ Ellipsoidal  │ Soft         │ O(nK^2d)      │
+  │ GMM (full cov.)  │ Yes (BIC selects) │ Ellipsoidal  │ Soft         │ O(nKd^2)/iter │
   └──────────────────┴───────────────────┴──────────────┴──────────────┴───────────────┘
 """
 )
-print("  Estimated DBS annual benefit: S$62M across four segmentation programs.")
+print("  Illustrative annual benefit: S$62M across four segmentation programs.")
 
 
 # ── Checkpoint 4 ──────────────────────────────────────────────────────────
@@ -284,13 +342,13 @@ print("\n  [ok] Checkpoint 4 passed — selection guide delivered\n")
 # ════════════════════════════════════════════════════════════════════════
 # Method names (K-means / GMM / Ward / DBSCAN / HDBSCAN / Spectral) all
 # match the tracker key regex [a-zA-Z_][a-zA-Z0-9_.\-]* — no _slug() is
-# needed. silhouette CAN be NaN on a collapsed partition, so guard with
-# the _finite() helper above.
+# needed. silhouette CAN be NaN on a collapsed partition — track_run
+# reports and skips undefined metrics rather than logging a fake 0.0.
 
 per_method_scalars: dict[str, float] = {}
 for name, m in results.items():
     # TODO: For each method, write three scalar entries — silhouette,
-    # calinski_harabasz, davies_bouldin — wrapped in _finite(). Use keys
+    # calinski_harabasz, davies_bouldin — cast with float(). Use keys
     # f"{name}_silhouette", f"{name}_calinski_harabasz",
     # f"{name}_davies_bouldin".
     per_method_scalars[f"{name}_silhouette"] = ____
@@ -298,7 +356,7 @@ for name, m in results.items():
     per_method_scalars[f"{name}_davies_bouldin"] = ____
 
 # TODO: call track_run with run_name="evaluation_profiling". Headline
-# scalars: winner_silhouette (_finite of the best method's silhouette)
+# scalars: winner_silhouette (the best method's silhouette as a float)
 # and n_methods_scored. |-merge with per_method_scalars.
 track_run(
     tracker,
@@ -311,10 +369,15 @@ track_run(
         "automl_strategy": config.search_strategy,
         "automl_max_trials": config.max_trials,
         "automl_agent": config.agent,
+        "automl_best": (
+            f"{best_trial.params['algorithm']}_k{int(best_trial.params['n_clusters'])}"
+        ),
     },
     scalar_metrics={
         "winner_silhouette": ____,
         "n_methods_scored": float(len(results)),
+        "automl_best_silhouette": float(best_trial.metric_value),
+        "automl_completed_trials": float(automl_result.completed_trials),
     }
     | per_method_scalars,
 )
@@ -327,11 +390,11 @@ print(
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='kmeans')
 # ════════════════════════════════════════════════════════════════════════
-# The engine wraps every algorithm you fitted by hand in Task 2. The
-# AutoMLEngine config from Task 3 generalises this to a search across
-# the same .fit() surface — same engine, one strategy switch.
-
-from kailash_ml.engines.clustering import ClusteringEngine
+# kailash-ml's ClusteringEngine wraps four of the algorithms you fitted
+# by hand — kmeans, gmm, dbscan, spectral — under one .fit() surface (Ward
+# hierarchical and HDBSCAN stay with scipy / hdbscan). The AutoMLEngine
+# search in Task 3 already drove that surface: it proposed (algorithm, K)
+# trials and called ClusteringEngine.fit for each.
 
 cluster_df = pl.from_numpy(X_scaled, schema=feature_cols)
 
@@ -358,18 +421,28 @@ print("=" * 70)
 print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
-    """
-  [x] Scored five clustering methods on three internal metrics
-  [x] Measured pairwise agreement via ARI and NMI
-  [x] Configured AutoMLEngine with agent=False + cost cap
-  [x] Profiled the best partition via per-feature z-scores
-  [x] Applied the selection guide to DBS Bank — S$62M / year benefit
+    f"""
+  [x] Scored five clustering methods on silhouette, DB, CH
+  [x] Measured pairwise agreement via ARI and NMI — high agreement means
+      the structure is real; low agreement means the domain expert must
+      arbitrate
+  [x] Ran an AutoMLEngine search over algorithm and K with agent=False
+      + max_llm_cost_usd — the double opt-in pattern that makes LLM cost
+      explicit
+  [x] Profiled the best partition via per-feature z-scores to convert
+      statistical labels into actionable business segments
+  [x] Applied the selection guide to a retail bank: five use cases, five
+      different right algorithms, illustrative S$62M / year benefit
 
-  KEY INSIGHT: There is no universally best clustering algorithm.
-  Match the tool to the problem, then profile the result for the
-  business team.
+  KEY INSIGHT: There is no universally best clustering algorithm. The
+  choice depends on data size, cluster shape, need for noise detection,
+  need for soft assignments, and the downstream decision. The job of the
+  ML engineer is to match the algorithm to the problem — and to PROFILE
+  the result so the marketing/ops team can act on it.
 
-  Next: Exercise 2 — implement the EM algorithm behind GMM by hand.
+  Next: Exercise 2 digs into the EM algorithm behind GMM — implementing
+  the E-step and M-step by hand to see the log-likelihood improve every
+  iteration.
 """
 )
 

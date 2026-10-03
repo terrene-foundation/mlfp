@@ -35,7 +35,7 @@
   <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
     <strong style="color: #0D9488;">⏱ 55 minutes</strong> &nbsp; · &nbsp;
     <strong>Prereq:</strong> Lesson 1.2 &nbsp; · &nbsp;
-    <strong>Dataset:</strong> HDB resale (26 towns)
+    <strong>Dataset:</strong> HDB resale (27 towns)
   </div>
   <div class="slide-footer">MLFP — Module 1</div>
 </section>
@@ -56,10 +56,10 @@
         <rect x="20" y="72" width="220" height="22" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
         <text x="30" y="88">hdb.filter(town == "TOA PAYOH")</text>
         <rect x="20" y="99" width="220" height="22" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
-        <text x="30" y="115">hdb.filter(town == "JURONG")</text>
+        <text x="30" y="115">hdb.filter(town == "JURONG WEST")</text>
         <rect x="20" y="126" width="220" height="22" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
         <text x="30" y="142">...</text>
-        <text x="130" y="175" text-anchor="middle" fill="#F43F5E">26 filter calls 😩</text>
+        <text x="130" y="175" text-anchor="middle" fill="#F43F5E">27 filter calls 😩</text>
       </g>
       <line x1="255" y1="130" x2="330" y2="130" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-g1)"/>
       <text x="580" y="30" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Today</text>
@@ -70,7 +70,7 @@
         <text x="380" y="132">pl.col("price").median().alias("median"),</text>
         <text x="360" y="155">)</text>
       </g>
-      <text x="570" y="230" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488" font-style="italic">One call — 26 rows out</text>
+      <text x="570" y="230" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488" font-style="italic">One call — 27 rows out</text>
     </svg>
   </figure>
 </section>
@@ -85,7 +85,7 @@ def format_sgd(amount: float) -&gt; str:
 print(format_sgd(485_000))     # → S$485,000
 print(format_sgd(1_234_567))   # → S$1,234,567
   </code></pre>
-  <p>Four ingredients: <code>def</code>, name, parameters (with type hints), indented body, <code>return</code>.</p>
+  <p>Five ingredients: <code>def</code>, name, parameters (with type hints), indented body, <code>return</code>.</p>
 </section>
 
 <section>
@@ -107,7 +107,7 @@ print(format_sgd(1_234_567))   # → S$1,234,567
         <line x1="580" y1="45" x2="550" y2="75" stroke="#15803D" stroke-width="1"/>
       </g>
       <rect x="30" y="130" width="720" height="50" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
-      <text x="70" y="162" font-family="JetBrains Mono" font-size="16" fill="#1E293B">    return f"S${"{"}amount:,.0f{"}"}"</text>
+      <text x="70" y="162" font-family="JetBrains Mono" font-size="16" fill="#1E293B">    return f"S${amount:,.0f}"</text>
       <text x="70" y="205" font-family="Inter" font-size="12" fill="#3B82F6">body indented · return sends value back</text>
     </svg>
   </figure>
@@ -121,7 +121,7 @@ print(len(central))           # → 4
 print(central[0])             # → BISHAN
 
 medians = {"BISHAN": 715_000, "JURONG WEST": 455_000}
-print(medians["BISHAN"])      # → 715_000
+print(medians["BISHAN"])      # → 715000
 
 for town in central:
     print(f"Looking at {town}")
@@ -142,13 +142,13 @@ for town in central:
       <text x="130" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14">Input (hdb)</text>
       <g font-family="JetBrains Mono" font-size="11">
         <text x="35" y="80" fill="#0F766E">town      price</text>
-        <text x="35" y="100">BISHAN    720k</text>
-        <text x="35" y="117">JURONG    420k</text>
-        <text x="35" y="134">BISHAN    680k</text>
-        <text x="35" y="151">TOA PAYOH 650k</text>
-        <text x="35" y="168">JURONG    445k</text>
-        <text x="35" y="185">BISHAN    740k</text>
-        <text x="35" y="220" fill="#94A3B8">500k rows</text>
+        <text x="35" y="100">BISHAN    950k</text>
+        <text x="35" y="117">JURONG W. 820k</text>
+        <text x="35" y="134">BISHAN    930k</text>
+        <text x="35" y="151">TOA PAYOH 980k</text>
+        <text x="35" y="168">JURONG W. 850k</text>
+        <text x="35" y="185">BISHAN    960k</text>
+        <text x="35" y="220" fill="#94A3B8">50,150 rows</text>
       </g>
       <line x1="245" y1="140" x2="320" y2="140" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-gb2)"/>
       <text x="283" y="130" text-anchor="middle" font-size="12" fill="#0D9488">group_by("town")</text>
@@ -157,17 +157,17 @@ for town in central:
       <rect x="330" y="115" width="150" height="55" rx="6" fill="#E0F2F1" stroke="#0D9488"/>
       <text x="405" y="145" text-anchor="middle" font-size="13" fill="#0D9488" font-weight="600">TOA PAYOH</text>
       <rect x="330" y="180" width="150" height="55" rx="6" fill="#E0F2F1" stroke="#0D9488"/>
-      <text x="405" y="210" text-anchor="middle" font-size="13" fill="#0D9488" font-weight="600">JURONG</text>
+      <text x="405" y="210" text-anchor="middle" font-size="13" fill="#0D9488" font-weight="600">JURONG WEST</text>
       <line x1="485" y1="140" x2="560" y2="140" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-gb2)"/>
       <text x="523" y="130" text-anchor="middle" font-size="12" fill="#0D9488">agg(median)</text>
       <rect x="570" y="70" width="210" height="160" rx="8" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
       <text x="675" y="95" text-anchor="middle" font-weight="600" font-size="14" fill="#0D9488">Output</text>
       <g font-family="JetBrains Mono" font-size="12">
         <text x="585" y="130" fill="#0F766E">town       median</text>
-        <text x="585" y="155">BISHAN     715k</text>
-        <text x="585" y="175">TOA PAYOH  635k</text>
-        <text x="585" y="195">JURONG     432k</text>
-        <text x="585" y="215" fill="#0D9488">(26 rows)</text>
+        <text x="585" y="155">TOA PAYOH  974k</text>
+        <text x="585" y="175">BISHAN     946k</text>
+        <text x="585" y="195">JURONG W.  836k</text>
+        <text x="585" y="215" fill="#0D9488">(27 rows)</text>
       </g>
     </svg>
   </figure>
@@ -183,6 +183,8 @@ district_stats = (
         pl.col("resale_price").mean().alias("mean_price"),
         pl.col("resale_price").median().alias("median_price"),
         pl.col("resale_price").std().alias("std_price"),
+        pl.col("resale_price").quantile(0.25).alias("q25"),
+        pl.col("resale_price").quantile(0.75).alias("q75"),
     )
     .sort("median_price", descending=True)
 )
@@ -248,24 +250,24 @@ town_flat_stats = (
       <line x1="70" y1="270" x2="720" y2="270" stroke="#64748B" stroke-width="1"/>
       <!-- Axis labels -->
       <text x="390" y="298" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B">HDB Resale Price (S$)</text>
-      <text x="100" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">200k</text>
-      <text x="305" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">450k</text>
-      <text x="530" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">700k</text>
-      <text x="700" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">1M+</text>
+      <text x="100" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">400k</text>
+      <text x="305" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">800k</text>
+      <text x="530" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">1.2M</text>
+      <text x="700" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">up to 9M</text>
 
       <!-- Median line -->
       <line x1="280" y1="50" x2="280" y2="270" stroke="#F59E0B" stroke-width="2.5"/>
       <rect x="200" y="28" width="120" height="22" rx="4" fill="#FFFBEB" stroke="#F59E0B" stroke-width="1"/>
-      <text x="260" y="43" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#F59E0B">Median S$460k</text>
+      <text x="260" y="43" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#F59E0B">Median S$849k</text>
 
       <!-- Mean line -->
       <line x1="380" y1="50" x2="380" y2="270" stroke="#0D9488" stroke-width="2.5" stroke-dasharray="6 3"/>
       <rect x="320" y="10" width="120" height="22" rx="4" fill="#E0F2F1" stroke="#0D9488" stroke-width="1"/>
-      <text x="380" y="25" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Mean S$520k</text>
+      <text x="380" y="25" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Mean S$882k</text>
 
       <!-- Pull arrow -->
       <line x1="300" y1="47" x2="360" y2="28" stroke="#F43F5E" stroke-width="1.5" marker-end="url(#arr-gb2)"/>
-      <text x="470" y="42" font-family="Inter" font-size="11" fill="#F43F5E">million-dollar flats</text>
+      <text x="470" y="42" font-family="Inter" font-size="11" fill="#F43F5E">144 sales at S$9M</text>
       <text x="470" y="55" font-family="Inter" font-size="11" fill="#F43F5E">pull the mean right</text>
 
       <!-- Long tail annotation -->
@@ -350,8 +352,9 @@ for row in district_stats.head(10).iter_rows(named=True):
     reuse. Always parameterise.
   </div>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
-    <strong>2. Forgetting <code>.alias(...)</code>.</strong> Aggregations
-    get auto-named garbage without it. Always alias.
+    <strong>2. Forgetting <code>.alias(...)</code>.</strong> Without it, every
+    aggregation of <code>resale_price</code> is also named <code>resale_price</code>
+    &mdash; two of them collide and Polars raises <code>DuplicateError</code>. Always alias.
   </div>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
     <strong>3. Python loop instead of group_by.</strong> 10–100× slower.

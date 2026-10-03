@@ -326,17 +326,17 @@
       </div>
       <div class="kailash-bridge" style="margin-top: 12px;">
         <h3>InferenceServer</h3>
-        <p><code>predict</code>, <code>predict_batch</code>, <code>warm_cache</code> &mdash; serve production predictions. Used in Lesson 5.7.</p>
+        <p><code>from_registry</code> &rarr; <code>start</code> &rarr; <code>predict</code> &mdash; serve a registered ONNX model. Used in Lessons 5.2 and 5.7.</p>
       </div>
     </div>
     <div class="col">
       <div class="kailash-bridge">
         <h3>ModelVisualizer</h3>
-        <p>Visualise training curves, latent spaces, attention maps, and generated outputs across all lessons.</p>
+        <p>Plot training curves (<code>training_history</code>) and latent / embedding scatter plots (<code>scatter</code>) across the lessons.</p>
       </div>
       <div class="kailash-bridge" style="margin-top: 12px;">
         <h3>RLTrainer</h3>
-        <p>Train RL agents with DQN, PPO, SAC. Custom Gymnasium environments. Used in Lesson 5.8.</p>
+        <p><code>kailash_ml.rl.RLTrainer</code> / <code>km.rl_train</code> &mdash; DQN, PPO, A2C, SAC, DDPG on custom Gymnasium envs. Lesson 5.8.</p>
       </div>
     </div>
   </div>
@@ -344,7 +344,7 @@
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Four engines for this module. OnnxBridge and InferenceServer are about deployment. ModelVisualizer is used throughout. RLTrainer is new to this module. Pattern: learn the theory first, build manually, then see how the engine automates and extends it.
+    Time: ~2 min. Four engines for this module. OnnxBridge and InferenceServer are about deployment: export to ONNX, register the artifact in ModelRegistry, then InferenceServer.from_registry loads it and predict() serves it (both are async). ModelVisualizer draws training curves and latent/embedding scatter plots. RLTrainer lives in kailash_ml.rl (not top-level kailash_ml); km.rl_train is the one-call entry point. Its backend is Stable-Baselines3, an optional extra (kailash-ml[rl]) that is not installed by default &mdash; so the exercises hand-write DQN and PPO and show the library call as the production path. Pattern: learn the theory first, build manually, then see how the engine automates it.
   </aside>
 </section>
 
@@ -1005,7 +1005,7 @@ diag.report()   # auto-diagnoses vanishing / exploding
         <li><strong>Integrated gradients</strong> (any model, any input)</li>
       </ul>
       <div class="callout callout-advanced" style="margin-top: 6px; font-size: 0.76em;">
-        <strong>Healthcare &mdash; Zech et al., 2018 (<em>Nature Medicine</em>):</strong> a chest-X-ray classifier achieved 95%+ accuracy. Grad-CAM revealed it was looking at the hospital's <em>image watermark</em>, not the lung. Accuracy held on the same hospital, <em>collapsed</em> on transfer. Attribution caught a model that every other metric passed.
+        <strong>Healthcare &mdash; Zech et al., 2018 (<em>PLOS Medicine</em>):</strong> a pneumonia classifier trained on chest X-rays from several hospitals learned <em>which hospital</em> an image came from. Activation heatmaps showed it attending to hospital-specific markers (e.g. a metal token in the corner), not only the lung, and performance dropped on an external hospital. Attribution exposed what the internal test score hid.
       </div>
       <div class="callout callout-applications" style="margin-top: 6px; font-size: 0.76em;">
         <strong>Finance &mdash; the postcode proxy:</strong> a credit-risk model hits 89% AUC. SHAP/attribution reveals it uses <em>postcode</em> (a proxy for race/income) instead of the income feature you put in the brief. Legal says no, model says yes. Attribution is what forced the conversation.
@@ -1041,7 +1041,7 @@ diag.report()   # auto-diagnoses vanishing / exploding
   <aside class="notes">
     <strong>Time</strong>: 3 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;A model can be right for the wrong reason. Attribution is how you find out.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;If a chest-X-ray classifier looks at the image watermark instead of the lung, what metric would catch it?&rdquo; &rarr; expected wrong answer: &ldquo;accuracy on the test set&rdquo; &rarr; right answer: &ldquo;none &mdash; accuracy stays high on the same hospital. Only <em>transfer</em> testing or attribution would catch it. Zech 2018 is the canonical example.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If a chest-X-ray classifier looks at a hospital marker instead of the lung, what metric would catch it?&rdquo; &rarr; expected wrong answer: &ldquo;accuracy on the test set&rdquo; &rarr; right answer: &ldquo;none &mdash; accuracy stays high on the same hospital. Only <em>transfer</em> testing or attribution would catch it. Zech 2018 is the canonical example.&rdquo;<br/>
     <strong>If behind schedule</strong>: keep the Zech story, cut the three-method list &mdash; students will meet Grad-CAM and attention rollout in exercises anyway.<br/>
     <strong>Transition</strong>: &ldquo;Stats tell you the layer is alive. Attribution tells you it is looking at the right thing. Now we put it all on one screen: the dashboard.&rdquo;
   </aside>
@@ -1280,7 +1280,7 @@ m.register_forward_hook(hook)   # for every ReLU
         <td><strong>5.2</strong></td>
         <td>CNNs &amp; Vision</td>
         <td>All five</td>
-        <td>LR range test, Grad-CAM attribution, dead ReLUs in early conv blocks</td>
+        <td>Grad-CAM attribution, dead ReLUs in early conv blocks, train/val gap</td>
       </tr>
       <tr>
         <td><strong>5.3</strong></td>
@@ -1292,7 +1292,7 @@ m.register_forward_hook(hook)   # for every ReLU
         <td><strong>5.4</strong></td>
         <td>Transformers</td>
         <td>All five + attention maps</td>
-        <td>Warmup length, attention rollout, RMSNorm vs LayerNorm ablation</td>
+        <td>Attention heatmaps from the trained layer; gradient flow through the stack</td>
       </tr>
       <tr>
         <td><strong>5.5</strong></td>
@@ -1478,7 +1478,7 @@ m.register_forward_hook(hook)   # for every ReLU
         <td><strong>Hyperparameter transfer</strong></td>
         <td>Tune LR / init / etc. separately at every scale</td>
         <td>&mu;P (Maximal Update Parametrization)</td>
-        <td>Tune at 100M, transfer zero-shot to 7B+ (Yang &amp; Hu, 2021)</td>
+        <td>Tune small, transfer hyperparameters zero-shot to large (&mu;Transfer, Yang et al., 2022)</td>
       </tr>
       <tr>
         <td><strong>Precision</strong></td>
@@ -1606,7 +1606,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. This slide prevents a common student error: training for 5 epochs, seeing loss still decreasing, and concluding "autoencoders/transformers/RL don't work for my data." The Chinchilla rule says you need ~20 tokens per parameter MINIMUM; production models like Llama 3 train at 1,875 tokens per parameter because inference is where the real cost lives. For this course, the takeaway is: give your model enough data AND enough steps before declaring the architecture a failure.
+    Time: ~3 min. This slide prevents a common student error: training for 5 epochs, seeing loss still decreasing, and concluding "autoencoders/transformers/RL don't work for my data." The Chinchilla rule says ~20 tokens per parameter is the COMPUTE-OPTIMAL ratio (the cheapest way to reach a given quality), not a minimum; production models like Llama 3 train at 1,875 tokens per parameter because inference is where the real cost lives. For this course, the takeaway is: give your model enough data AND enough steps before declaring the architecture a failure.
   </aside>
 </section>
 
@@ -1764,7 +1764,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Walk through the code. Encoder compresses 784 (MNIST) to latent_dim (e.g., 32). Decoder reconstructs. Sigmoid output because MNIST pixels are [0,1]. This is the simplest autoencoder &mdash; everything else builds on this.
+    Time: ~3 min. Walk through the code. Encoder compresses 784 inputs (28&times;28 Fashion-MNIST pixels) to latent_dim (16 in Exercise 5.1). Decoder reconstructs. Sigmoid output because the pixels are scaled to [0,1]. This is the simplest autoencoder &mdash; everything else builds on this.
   </aside>
 </section>
 
@@ -2116,17 +2116,17 @@ result["figure"].show()     # the curve below
       <tr><td>Contractive AE</td><td>Penalty on Jacobian of encoder &mdash; small input changes, small latent changes</td><td>Robust representations</td></tr>
       <tr><td>Stacked AE</td><td>Train layer-by-layer, then fine-tune end-to-end</td><td>Very deep encoders</td></tr>
       <tr><td>Recurrent AE</td><td>LSTM/GRU encoder-decoder for sequences</td><td>Time series, text (Lesson 5.3)</td></tr>
-      <tr><td>CVAE</td><td>Conditional VAE &mdash; condition generation on class labels</td><td>Controlled generation</td></tr>
+      <tr><td>Contractive VAE</td><td>VAE + contractive Jacobian penalty &mdash; smoother latent interpolation</td><td>Similarity search (Ex 5.1 file 10)</td></tr>
     </tbody>
   </table>
   <div class="callout callout-advanced" style="margin-top: 8px;">
-    <strong>Research note:</strong> VQ-VAE (Vector Quantised) discretises the latent space. Used in DALL-E 1 for image generation. Bridges autoencoders and modern generative AI.
+    <strong>Research note:</strong> VQ-VAE (Vector Quantised) discretises the latent space; a related discrete VAE tokenised images for DALL-E 1. Not to be confused with CVAE, which conventionally means <em>Conditional</em> VAE (generation conditioned on a class label).
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Quick survey only. Students do not need to implement these. The point is awareness: there are many variants, each adding one constraint. The four we implemented (vanilla, denoising, VAE, convolutional) cover the core ideas. VQ-VAE is mentioned for advanced students interested in modern generative models.
+    Time: ~2 min. Survey in the lecture, but Exercise 5.1 does build these: files 04 (sparse), 05 (contractive, a real per-sample Jacobian penalty &mdash; not weight decay), 07 (stacked), 08 (LSTM recurrent) and 10 (Contractive VAE). The point is that each variant adds one constraint. The four core ideas are vanilla, denoising, VAE and convolutional. Naming trap: the exercise's &ldquo;Contractive VAE&rdquo; is not a CVAE &mdash; CVAE conventionally means Conditional VAE. VQ-VAE is mentioned for advanced students interested in modern generative models.
   </aside>
 </section>
 
@@ -2138,23 +2138,23 @@ result["figure"].show()     # the curve below
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Implement vanilla autoencoder on MNIST (latent dim=32)</li>
-        <li>Implement denoising autoencoder &mdash; compare reconstruction quality</li>
-        <li>Implement VAE with reparameterisation trick</li>
-        <li>Generate new digits by sampling from VAE latent space</li>
-        <li>Implement convolutional autoencoder &mdash; compare with FC variants</li>
+        <li>Overcomplete vs undercomplete AE on Fashion-MNIST (784 &rarr; 16) &mdash; see the identity-copy risk</li>
+        <li>Denoising, sparse and contractive (Jacobian-penalty) variants</li>
+        <li>Convolutional, stacked and LSTM-recurrent autoencoders</li>
+        <li>VAE with the reparameterisation trick &mdash; generate new images from <span class="katex-inline">z \sim \mathcal{N}(0, I)</span>; Contractive VAE</li>
+        <li>Grand comparison of all 10 variants (ModelVisualizer, ModelRegistry)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>All 4 variants implemented and trained</li>
+        <li>The 4 core variants (vanilla, denoising, VAE, convolutional) trained</li>
         <li>VAE generates plausible new images</li>
-        <li>Latent space visualisation shows meaningful structure (t-SNE or PCA)</li>
+        <li>Latent space visualisation shows meaningful structure (2-D projection, traversal)</li>
         <li>Reconstruction quality compared across variants</li>
       </ul>
       <div class="callout callout-theory" style="margin-top: 12px;">
-        <strong>Stretch goal:</strong> Interpolate between two digits in VAE latent space. Watch the smooth transition.
+        <strong>Built in:</strong> interpolate between two items in latent space &mdash; vanilla VAE vs Contractive VAE (file 10). Watch the smooth transition.
       </div>
     </div>
   </div>
@@ -2162,7 +2162,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. Students implement all four variants. The VAE generation task is the highlight &mdash; producing new images from pure noise. The latent space visualisation should show digit clusters separating in 2D.
+    Time: ~1 min. Exercise 5.1 is 11 short files on Fashion-MNIST with a 16-D latent: overcomplete then undercomplete AE, denoising, sparse, contractive, convolutional, stacked, LSTM-recurrent, VAE, Contractive VAE, and a grand comparison of all 10. The VAE generation task is the highlight &mdash; producing new clothing images from pure noise. The 2-D latent projections should show garment classes separating.
   </aside>
 </section>
 
@@ -2205,11 +2205,11 @@ result["figure"].show()     # the curve below
   <div class="columns" style="margin-top: 12px;">
     <div class="col">
       <div class="callout callout-applications">
-        <strong>Finance &mdash; Credit Card Fraud (DBS, UOB, OCBC)</strong>
-        <p class="small">Train a vanilla or denoising AE on millions of <em>normal</em> card transactions. At runtime, a transaction whose reconstruction error exceeds a threshold is flagged for review. Works without any labelled fraud examples &mdash; critical, because less than 0.1% of real transactions are ever labelled as fraud.</p>
+        <strong>Finance &mdash; Credit Card Fraud (a Singapore retail bank)</strong>
+        <p class="small">Train a vanilla or denoising AE on millions of <em>normal</em> card transactions. At runtime, a transaction whose reconstruction error exceeds a threshold is flagged for review. Works without any labelled fraud examples &mdash; critical, because only a tiny fraction of transactions are ever labelled as fraud.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Healthcare &mdash; Medical Imaging Anomalies (SGH, NUH)</strong>
+        <strong>Healthcare &mdash; Medical Imaging Anomalies (a public hospital)</strong>
         <p class="small">Train a convolutional AE on thousands of <em>normal</em> chest X-rays. Lesions, tumours, or effusions produce high reconstruction error because the model has never seen their texture. A radiologist triages from a ranked anomaly list instead of scanning every image.</p>
       </div>
     </div>
@@ -2219,8 +2219,8 @@ result["figure"].show()     # the curve below
         <p class="small">A Singapore semiconductor fab trains a conv-AE on wafer images of good dies. When the reconstruction error exceeds a threshold, the wafer is routed for manual inspection. No one has to hand-label every defect class &mdash; the AE learns what "normal" looks like and flags the rest.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Telecom &mdash; Network Intrusion Detection (Singtel, StarHub)</strong>
-        <p class="small">Train an AE on normal network-flow statistics. Attacker traffic &mdash; scans, exfiltration bursts, lateral movement &mdash; reconstructs poorly and triggers an alert. The same principle protects VAEs used for synthetic healthcare data, where sampling from the latent prior generates privacy-preserving patient records.</p>
+        <strong>Telecom &mdash; Network Intrusion Detection (a telco)</strong>
+        <p class="small">Train an AE on normal network-flow statistics. Attacker traffic &mdash; scans, exfiltration bursts, lateral movement &mdash; reconstructs poorly and triggers an alert. Caution: VAE <em>samples</em> are not private by default &mdash; they can reproduce training records. Synthetic patient data needs formal guarantees (e.g. DP-SGD) and membership-inference testing.</p>
       </div>
     </div>
   </div>
@@ -2231,7 +2231,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Walk through the fraud example first &mdash; it is the one everyone has an intuition for. Emphasise: "This is the same model you just built on Fashion-MNIST. The only thing that changes is the training data." That should land the message that the technique generalises across domains. If someone asks "why not just a supervised classifier?", answer: imbalanced data &mdash; fraud is less than 0.1%, and the bank cannot afford to miss the first few instances of a new attack pattern.
+    Time: ~3 min. Walk through the fraud example first &mdash; it is the one everyone has an intuition for. Emphasise: "This is the same model you just built on Fashion-MNIST. The only thing that changes is the training data." That should land the message that the technique generalises across domains. If someone asks "why not just a supervised classifier?", answer: imbalanced data &mdash; labelled fraud is a tiny fraction of transactions, and the bank cannot afford to miss the first few instances of a new attack pattern. The organisations on this slide are generic illustrations, not claims about any named institution's systems. If someone raises synthetic patient data: a generative model can memorise and regenerate training records, so synthetic data is only private with formal guarantees (DP-SGD) plus memorisation / membership-inference tests.
   </aside>
 </section>
 
@@ -2334,7 +2334,7 @@ result["figure"].show()     # the curve below
     <text x="380" y="65" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#64748B">dot product</text>
     <text x="310" y="220" text-anchor="middle" font-family="Inter, sans-serif" font-size="13" fill="#1E293B" font-weight="600">y[i,j] = &#931;&#8342;&#8344; w[m,n] &#183; x[i+m, j+n]</text>
     <text x="310" y="245" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#64748B">Output size: (W &#8722; F + 2P) / S + 1</text>
-    <text x="310" y="262" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#64748B">Same filter weights everywhere &#8594; translation invariance</text>
+    <text x="310" y="262" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#64748B">Same filter weights everywhere &#8594; translation equivariance</text>
   </svg>
   </div>
   <div class="slide-footer">
@@ -2431,7 +2431,7 @@ result["figure"].show()     # the curve below
     </tbody>
   </table>
   <div class="callout callout-theory" style="margin-top: 8px;">
-    <strong>The depth problem:</strong> VGG showed deeper = better, but training became unstable beyond ~20 layers. ResNet solved this with skip connections, enabling 152-layer networks that outperform shallower ones.
+    <strong>The depth problem:</strong> VGG showed deeper = better, but plain nets beyond ~20 layers had <em>higher training error</em> (the degradation problem) &mdash; not overfitting, and not mainly vanishing gradients (batch norm was in use) but an optimisation difficulty. Skip connections fixed it, enabling 152-layer networks.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
@@ -2519,7 +2519,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~4 min. The skip connection is the single most important architectural innovation in modern deep learning. Walk through the gradient: even if F(x) has vanishing gradients, the +1 from the identity ensures signal flows. This is why ResNets can be 152 layers deep where VGG fails at 20+.
+    Time: ~4 min. The skip connection is the single most important architectural innovation in modern deep learning. Walk through the gradient: even if F(x) contributes little gradient, the +1 from the identity gives the signal a direct path. Precise framing (He et al., 2015): the 20+-layer failure of plain nets was a degradation of TRAINING accuracy that they judged &ldquo;unlikely to be caused by vanishing gradients&rdquo; (batch norm kept gradients healthy). It was an optimisation difficulty: near-identity mappings are hard for stacked nonlinear layers to learn, but trivial when the block only has to learn a residual. That is why ResNets reach 152 layers.
   </aside>
 </section>
 
@@ -2650,7 +2650,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Walk through the diagram left to right. Point out the skip connection (green dashed) — the original feature maps bypass the squeeze/excite pathway and are multiplied by the learned weights. The channel importance bars show that not all channels matter equally. SE adds only ~2,500 parameters for a 64-channel layer but consistently adds 0.5-1% accuracy.
+    Time: ~2 min. Walk through the diagram left to right. Point out the skip connection (green dashed) — the original feature maps bypass the squeeze/excite pathway and are multiplied by the learned weights. The channel importance bars show that not all channels matter equally. SE is cheap: for a 64-channel layer with reduction 16 it adds 64&times;4 + 4 + 4&times;64 + 64 = 580 parameters. The original paper reports about 1.5 points of ImageNet top-1 for ResNet-50 &mdash; a modest but consistent gain.
   </aside>
 </section>
 
@@ -2662,7 +2662,7 @@ result["figure"].show()     # the curve below
     <div class="col">
       <h3>Initialisation</h3>
       <div class="gate-box">
-        <strong>Kaiming initialisation:</strong> <span class="katex-inline">W \sim \mathcal{N}(0, \sqrt{2/n_{\text{in}}})</span><br/>
+        <strong>Kaiming initialisation:</strong> <span class="katex-inline">W \sim \mathcal{N}(0,\, 2/n_{\text{in}})</span> (std <span class="katex-inline">\sqrt{2/n_{\text{in}}}</span>)<br/>
         <span class="small muted">Designed for ReLU networks. Prevents signal from vanishing or exploding through layers.</span>
       </div>
       <h3>Mixed Precision Training</h3>
@@ -2690,7 +2690,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. These are the techniques that separate research-grade from production-grade CNN training. Kaiming init is essential for deep networks. Mixed precision is free performance. Mixup and label smoothing are strong regularisers. Students should use all of these in the exercise.
+    Time: ~3 min. These are the techniques that separate research-grade from production-grade CNN training. Kaiming init is essential for deep networks. Mixed precision is free performance. Mixup and label smoothing are strong regularisers. What Exercise 5.2 actually exercises: SE blocks and automatic mixed precision (the PRECISION constant picks 16-mixed on MPS/CUDA), plus a flip-and-crop augmentation comparison in file 04. Kaiming init, Mixup and label smoothing are not yet in the exercise files &mdash; set them as a one-change-at-a-time extension: add one, rerun, compare the train/val gap. Notation check: N(0, 2/n_in) gives the VARIANCE; the standard deviation is sqrt(2/n_in).
   </aside>
 </section>
 
@@ -2764,7 +2764,7 @@ result["figure"].show()     # the curve below
     </div>
     <div class="col">
       <div class="callout callout-advanced" style="margin-top: 0;">
-        <strong>Key result:</strong> ViT outperforms CNNs on large datasets (ImageNet-21k). CNNs win on small datasets due to inductive biases (translation invariance, locality).
+        <strong>Key result:</strong> ViT outperforms CNNs on large datasets (ImageNet-21k). CNNs win on small datasets due to inductive biases (translation equivariance, locality).
       </div>
       <p class="small muted" style="margin-top: 8px;">Full transformer derivation in Lesson 5.4.</p>
     </div>
@@ -2785,32 +2785,34 @@ result["figure"].show()     # the curve below
     <h3>From Training to Deployment</h3>
     <div class="columns">
       <div class="col">
-        <pre style="font-size: 0.48em; line-height: 1.3"><code class="language-python">from kailash_ml import OnnxBridge
+        <pre style="font-size: 0.48em; line-height: 1.3"><code class="language-python">from pathlib import Path
+from kailash_ml import OnnxBridge
+from shared.mlfp05.ex_2 import FlatImageAdapter
 
 bridge = OnnxBridge()
+serving = FlatImageAdapter(resnet_se).eval()
+path = Path("resnet_se_cifar10.onnx")
+# 2-row sample: a batch of 1 can freeze the batch size
+x = torch.randn(2, 3 * 32 * 32)
 
-# Export trained model to ONNX
-bridge.export(
-    model=resnet,
-    input_shape=(1, 1, 28, 28),
-    output_path="resnet_fmnist.onnx"
-)
+res = bridge.export(serving, "torch",
+                    output_path=path, sample_input=x)
+assert res.success, res.error_message
 
-# Verify exported model
-result = bridge.validate(
-    "resnet_fmnist.onnx"
-)
-print(result.status)  # "valid"</code></pre>
+# Parity check: PyTorch vs ONNX Runtime
+v = bridge.validate(serving, path, x.numpy(),
+                    tolerance=1e-3)
+print(v.valid, v.max_diff)</code></pre>
       </div>
       <div class="col">
         <h3>Why ONNX?</h3>
         <ul>
           <li><strong>Framework-agnostic:</strong> train in PyTorch, deploy anywhere</li>
-          <li><strong>Optimised inference:</strong> ONNX Runtime is faster than native PyTorch</li>
+          <li><strong>Optimised inference:</strong> ONNX Runtime is often faster than native PyTorch (measure it &mdash; file 03 does)</li>
           <li><strong>Edge deployment:</strong> run on mobile, browser, embedded</li>
         </ul>
         <div class="callout callout-kailash" style="margin-top: 12px;">
-          <strong>Pattern:</strong> Train with PyTorch &rarr; Export with OnnxBridge &rarr; Serve with InferenceServer (Lesson 5.7).
+          <strong>Pattern:</strong> Train with PyTorch &rarr; <code>export</code> &rarr; <code>validate</code> &rarr; register in ModelRegistry &rarr; serve with InferenceServer (Exercise 5.2 file 03, Lesson 5.7).
         </div>
       </div>
     </div>
@@ -2819,7 +2821,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. OnnxBridge wraps the PyTorch ONNX exporter with validation and metadata. Students export their CNN at the end of the exercise. This is the first step toward production deployment, completed in Lesson 5.7.
+    Time: ~2 min. OnnxBridge wraps the PyTorch ONNX exporter. Three API facts students trip on: (1) the framework argument is &quot;torch&quot; (&quot;pytorch&quot; is not supported and returns success=False); (2) export does NOT validate and does not raise on failure &mdash; check res.success, then call validate() separately, which runs the model's predict() and ONNX Runtime on the same rows; (3) trace with at least 2 rows. FlatImageAdapter (from the exercise helpers) reshapes flat pixel rows back to (3, 32, 32) because InferenceServer feeds one flat row per request record. Students export their CIFAR-10 ResNet-SE in Exercise 5.2 file 03, register it, and serve it; Lesson 5.7 repeats the flow for the transfer model.
   </aside>
 </section>
 
@@ -2831,20 +2833,19 @@ print(result.status)  # "valid"</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Build a simple CNN for Fashion-MNIST classification</li>
-        <li>Add ResBlock with skip connections &mdash; compare accuracy</li>
-        <li>Add SE block &mdash; measure improvement</li>
-        <li>Apply Mixup augmentation and label smoothing</li>
-        <li>Export final model to ONNX with OnnxBridge</li>
+        <li>Simple CNN on full CIFAR-10 (Lightning) &mdash; visualise filters and feature maps</li>
+        <li>ResNet + SE blocks vs the simple CNN &mdash; Grad-CAM heatmaps</li>
+        <li>Export to ONNX with OnnxBridge, validate parity, register, serve with InferenceServer; benchmark latency</li>
+        <li>Hyperparameter study: learning-rate sweep + augmentation (none vs flip + crop)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>Architecture progressively improved (baseline &rarr; ResBlock &rarr; SE)</li>
-        <li>Training enhancements measurably improve performance</li>
+        <li>Architecture progressively improved (simple CNN &rarr; ResNet-SE)</li>
+        <li>LR and augmentation choices measured and tracked with ExperimentTracker</li>
         <li>Training curves visualised with ModelVisualizer</li>
-        <li>ONNX export successful and validated</li>
+        <li>ONNX export successful, validated, and served</li>
       </ul>
     </div>
   </div>
@@ -2852,7 +2853,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. Progressive architecture: each enhancement builds on the previous. Students should see clear accuracy jumps at each stage. The ONNX export connects to the deployment story in Lesson 5.7.
+    Time: ~1 min. Exercise 5.2 is four files on CIFAR-10 (50K colour 32&times;32 images): 01 simple CNN, 02 ResNet-SE with Grad-CAM, 03 the production pipeline (OnnxBridge export + validate, ModelRegistry, InferenceServer, latency benchmark), 04 a learning-rate and augmentation study. Students should see a clear accuracy jump from the simple CNN to ResNet-SE. Mixup, label smoothing and Kaiming init are taught on the enhancements slide but are not in the files &mdash; offer them as an extension. The ONNX export connects to the deployment story in Lesson 5.7.
   </aside>
 </section>
 
@@ -2934,18 +2935,18 @@ print(result.status)  # "valid"</code></pre>
         <p class="small">ResNet with SE blocks, fine-tuned on a Singapore public-health chest X-ray corpus, classifies scans into "normal / pneumonia / tuberculosis / other" and ranks the worst cases to the top of the radiologist's queue. The same architecture you wrote in Exercise 2, trained on medical images instead of CIFAR.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Retail &mdash; Shelf Monitoring at FairPrice, Cold Storage</strong>
+        <strong>Retail &mdash; Shelf Monitoring at a Supermarket Chain</strong>
         <p class="small">Cameras above each aisle feed a CNN that counts SKUs, detects out-of-stocks, and identifies misplaced items. The store manager gets a dashboard ranked by lost-sales-per-hour, not a 200-aisle walkthrough. Latency budget: under 200ms per frame &mdash; exactly the kind of workload ONNX export was built for.</p>
       </div>
     </div>
     <div class="col">
       <div class="callout callout-applications">
         <strong>Manufacturing &mdash; Automated Quality Control</strong>
-        <p class="small">A Singapore precision-engineering firm uses a ResNet variant to grade machined parts on a conveyor belt. Mixed-precision training halved GPU cost during weekly retraining; SE blocks improved recall on a rare defect class from 71% to 89%. The trained model is exported to ONNX and served on the factory-floor edge server.</p>
+        <p class="small">A Singapore precision-engineering firm uses a ResNet variant to grade machined parts on a conveyor belt. Mixed-precision training cuts GPU cost of weekly retraining; SE blocks can lift recall on a rare defect class (illustratively, from 71% to 89%). The trained model is exported to ONNX and served on the factory-floor edge server.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Public Safety &mdash; MRT Crowd Density from CCTV</strong>
-        <p class="small">SMRT platforms use CNN-based crowd counting from existing CCTV feeds to predict overcrowding before it happens, triggering train dispatch or gate throttling. The output of the last conv layer is a density map, not a single number &mdash; the same "later layers = higher-level features" hierarchy you learned.</p>
+        <strong>Public Safety &mdash; Rail Crowd Density from CCTV</strong>
+        <p class="small">A rail operator can run CNN-based crowd counting on existing platform CCTV feeds to predict overcrowding before it happens, triggering train dispatch or gate throttling. The output of the last conv layer is a density map, not a single number &mdash; the same "later layers = higher-level features" hierarchy you learned.</p>
       </div>
     </div>
   </div>
@@ -2956,7 +2957,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The retail example lands best with business audiences &mdash; "every FairPrice you have ever shopped in has cameras, but none of them are doing this yet, and that is the opportunity". For technical audiences, the manufacturing ROI story is stronger. Tie back to the exercise: "You just exported a CNN to ONNX. That is the exact production format every one of these applications uses."
+    Time: ~3 min. The retail example lands best with business audiences &mdash; "most supermarkets you shop in already have cameras; turning them into a shelf monitor is the opportunity". The organisations and figures on this slide are illustrative scenarios, not reported results from named companies. For technical audiences, the manufacturing ROI story is stronger. Tie back to the exercise: "You just exported a CNN to ONNX. That is the exact production format every one of these applications uses."
   </aside>
 </section>
 
@@ -3143,13 +3144,13 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The LSTM is the most important sequence architecture before transformers. The key insight: additive cell state. Gradients flow through the addition in C_t = f_t * C_{t-1} + i_t * candidate. Even if f_t is near 1, the gradient passes through unchanged.
+    Time: ~3 min. The LSTM is the most important sequence architecture before transformers. The key insight: additive cell state. Gradients flow through the addition in C_t = f_t * C_{t-1} + i_t * candidate: dC_t/dC_{t-1} = f_t, so when f_t is near 1 the gradient passes through nearly unchanged &mdash; the forget gate decides how much gradient survives.
   </aside>
 </section>
 
 <!-- SLIDE 33: LSTM Gate Equations -->
 <section class="equation-dense">
-  <h2>LSTM: All Five Equations</h2>
+  <h2>LSTM: The Six Equations (1&ndash;4)</h2>
   <span class="marker marker-theory">Theory</span>
   <div class="derivation-step">
     <div class="step-label">Forget Gate</div>
@@ -3166,11 +3167,11 @@ print(result.status)  # "valid"</code></pre>
     <p class="small">Controls how much of the new candidate to add.</p>
   </div>
   <div class="derivation-step">
-    <div class="step-label">Cell Update</div>
+    <div class="step-label">Candidate &amp; Cell Update</div>
     <div class="equation-box" style="margin: 4px 0;">
-      <span class="katex-display">C_t = f_t \odot C_{t-1} + i_t \odot \tanh(W_C \cdot [h_{t-1}, x_t] + b_C)</span>
+      <span class="katex-display">\tilde{C}_t = \tanh(W_C \cdot [h_{t-1}, x_t] + b_C), \qquad C_t = f_t \odot C_{t-1} + i_t \odot \tilde{C}_t</span>
     </div>
-    <p class="small">Forget old + add new. The additive structure preserves gradients.</p>
+    <p class="small">Candidate = new information. Forget old + add new: the additive structure preserves gradients.</p>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
@@ -3182,7 +3183,7 @@ print(result.status)  # "valid"</code></pre>
 
 <!-- SLIDE 34: LSTM Output Gate and Hidden State -->
 <section>
-  <h2>LSTM: Output Gate and Hidden State</h2>
+  <h2>LSTM: Output Gate and Hidden State (5&ndash;6)</h2>
   <span class="marker marker-theory">Theory</span>
   <div class="derivation-step">
     <div class="step-label">Output Gate</div>
@@ -3199,7 +3200,7 @@ print(result.status)  # "valid"</code></pre>
     <p class="small">The hidden state is a filtered, squashed version of the cell state. This is the output at time t.</p>
   </div>
   <div class="callout callout-theory" style="margin-top: 12px;">
-    <strong>5 equations, 4 gates:</strong> forget (<span class="katex-inline">f_t</span>), input (<span class="katex-inline">i_t</span>), cell update (<span class="katex-inline">C_t</span>), output (<span class="katex-inline">o_t</span>), hidden state (<span class="katex-inline">h_t</span>). Every gate takes the same inputs: <span class="katex-inline">[h_{t-1}, x_t]</span>. The difference is the learned weight matrices.
+    <strong>6 equations, 3 gates + candidate:</strong> forget (<span class="katex-inline">f_t</span>), input (<span class="katex-inline">i_t</span>), candidate (<span class="katex-inline">\tilde{C}_t</span>), cell update (<span class="katex-inline">C_t</span>), output (<span class="katex-inline">o_t</span>), hidden state (<span class="katex-inline">h_t</span>). The gates and candidate all read <span class="katex-inline">[h_{t-1}, x_t]</span>; only the learned weights differ.
   </div>
   <div class="callout callout-advanced" style="margin-top: 8px;">
     <strong>Parameter count:</strong> For input size <span class="katex-inline">d</span> and hidden size <span class="katex-inline">h</span>, an LSTM has <span class="katex-inline">4(d \cdot h + h \cdot h + h)</span> parameters &mdash; four weight matrices, four bias vectors.
@@ -3208,7 +3209,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Complete the five equations. The hidden state h_t is what goes to the next time step AND what is used for prediction. The cell state C_t is internal memory only. Emphasise: tanh(C_t) squashes the cell state before outputting, and o_t selects which dimensions to expose.
+    Time: ~3 min. Complete the six equations (three gates, the candidate, the cell update and the hidden state). The hidden state h_t is what goes to the next time step AND what is used for prediction. The cell state C_t is internal memory only. Emphasise: tanh(C_t) squashes the cell state before outputting, and o_t selects which dimensions to expose.
   </aside>
 </section>
 
@@ -3377,6 +3378,48 @@ print(result.status)  # "valid"</code></pre>
   </aside>
 </section>
 
+<!-- SLIDE 36b: Stacked/Residual LSTMs + Spatial Attention (spec 5.3) -->
+<section>
+  <h2>Going Deeper: Stacked LSTMs &amp; Spatial Attention</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Multi-Layer with Residuals</h3>
+      <p class="small">Stack LSTMs so layer 2 reads layer 1&rsquo;s hidden states. Beyond 2&ndash;3 layers, add a residual + LayerNorm around each one &mdash; the same trick as ResNet (5.2).</p>
+      <pre style="font-size: 0.46em; line-height: 1.3"><code class="language-python">class ResidualLSTM(nn.Module):
+    def __init__(self, d, n_layers=3):
+        super().__init__()
+        self.lstms = nn.ModuleList(
+            nn.LSTM(d, d, batch_first=True)
+            for _ in range(n_layers))
+        self.norm = nn.LayerNorm(d)
+
+    def forward(self, x):            # (B, T, d)
+        for lstm in self.lstms:
+            out, _ = lstm(x)
+            x = self.norm(x + out)   # residual + norm
+        return x</code></pre>
+    </div>
+    <div class="col">
+      <h3>Spatial (Feature) Attention</h3>
+      <p class="small">Temporal attention asks <em>which time steps</em> matter. Spatial attention asks <em>which features relate</em>: treat each input feature as a token and let multi-head attention learn feature-to-feature links (e.g. volume &harr; price range).</p>
+      <pre style="font-size: 0.46em; line-height: 1.3"><code class="language-python"># x: (B, T, F) &mdash; F features over T steps
+embed = nn.Linear(T, d)              # embed each feature's history
+tokens = embed(x.transpose(1, 2))    # (B, F, d)
+mha = nn.MultiheadAttention(d, num_heads=4,
+                            batch_first=True)
+z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
+      <p class="small muted">Multi-head attention is derived properly in Lesson 5.4.</p>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. Two ways to get more out of a sequence model. Depth: stacking LSTMs (nn.LSTM(num_layers=...) does plain stacking) learns hierarchical temporal features, but deep stacks train badly for the same optimisation reason plain CNNs did &mdash; so wrap each layer in a residual connection plus LayerNorm. Spatial attention: temporal attention (previous slide) weights time steps; spatial attention weights relationships BETWEEN input features, using multi-head attention with each feature as a token. The (F, F) weight matrix is interpretable &mdash; which features each feature looks at. Both are previews: residual + LayerNorm + multi-head attention are exactly the ingredients of the transformer block in Lesson 5.4.
+  </aside>
+</section>
+
 <!-- SLIDE 37: Performance Metrics -->
 <section>
   <h2>Sequence Model Metrics</h2>
@@ -3442,7 +3485,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Two practical applications. Financial prediction is relevant for professionals. Text generation makes the technology tangible and connects to LLMs. The Shakespeare exercise is fun and pedagogically effective.
+    Time: ~2 min. Two practical applications. Financial prediction is relevant for professionals. Text generation makes the technology tangible and connects to LLMs. Be honest about scope: Exercise 5.3 forecasts prices from daily Close/High/Low/Volume; technical indicators and character-level generation (with perplexity = exp of the mean cross-entropy) are taught here but are not yet exercise files &mdash; set them as extensions.
   </aside>
 </section>
 
@@ -3454,19 +3497,20 @@ print(result.status)  # "valid"</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Build LSTM for Singapore stock price prediction with technical indicators</li>
-        <li>Add temporal attention layer &mdash; visualise attention weights</li>
-        <li>Compare LSTM vs GRU (accuracy and training speed)</li>
-        <li>Implement character-level text generation with LSTM</li>
+        <li>Vanilla RNN: 20-day windows of STI + APAC daily prices &rarr; 5-day forecast; watch gradients vanish</li>
+        <li>LSTM: the six gate equations as tensor ops; gradient preservation vs RNN</li>
+        <li>GRU vs LSTM: parameters, latency, accuracy</li>
+        <li>Temporal (additive) attention over LSTM states &mdash; attention heatmaps</li>
+        <li>Fair four-way comparison + multi-stock generalisation</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
         <li>LSTM gate equations implemented correctly</li>
-        <li>Attention improves prediction (quantified)</li>
+        <li>Attention vs plain LSTM quantified</li>
         <li>GRU vs LSTM comparison documented</li>
-        <li>Text generation produces coherent output</li>
+        <li>Extension: technical indicators; char-level generation</li>
       </ul>
       <div class="callout callout-warning" style="margin-top: 12px;">
         <strong>Gradient clipping:</strong> Essential for RNN training. Use <code>torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)</code>
@@ -3477,7 +3521,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. Gradient clipping is non-negotiable for RNN training. Without it, exploding gradients will crash training. Students should include it in every RNN training loop.
+    Time: ~1 min. Exercise 5.3 is five files on real daily prices for the STI and five APAC/US tickers (Close, High, Low, Volume; 20-day lookback, 5-day horizon): vanilla RNN, LSTM, GRU, LSTM + temporal attention, and a fair comparison. The spec's technical indicators (RSI, MACD, Bollinger) and character-level text generation are not in the files yet &mdash; offer them as extensions. Gradient clipping is non-negotiable for RNN training; the shared training loop clips at max_norm=1.0. Without it, exploding gradients can derail training.
   </aside>
 </section>
 
@@ -3490,11 +3534,12 @@ print(result.status)  # "valid"</code></pre>
   </div>
   <div class="columns" style="margin-top: 12px;">
     <div class="col">
-      <h3>Key Equations (5)</h3>
+      <h3>Key Equations (6)</h3>
       <ul class="small">
         <li>Forget: <span class="katex-inline">f_t = \sigma(W_f [h_{t-1}, x_t] + b_f)</span></li>
         <li>Input: <span class="katex-inline">i_t = \sigma(W_i [h_{t-1}, x_t] + b_i)</span></li>
-        <li>Cell: <span class="katex-inline">C_t = f_t \odot C_{t-1} + i_t \odot \tanh(W_C [h_{t-1}, x_t] + b_C)</span></li>
+        <li>Candidate: <span class="katex-inline">\tilde{C}_t = \tanh(W_C [h_{t-1}, x_t] + b_C)</span></li>
+        <li>Cell: <span class="katex-inline">C_t = f_t \odot C_{t-1} + i_t \odot \tilde{C}_t</span></li>
         <li>Output: <span class="katex-inline">o_t = \sigma(W_o [h_{t-1}, x_t] + b_o)</span></li>
         <li>Hidden: <span class="katex-inline">h_t = o_t \odot \tanh(C_t)</span></li>
       </ul>
@@ -3522,12 +3567,12 @@ print(result.status)  # "valid"</code></pre>
   <div class="columns" style="margin-top: 12px;">
     <div class="col">
       <div class="callout callout-applications">
-        <strong>Finance &mdash; SGX Price Forecasting &amp; Fraud Sequences</strong>
-        <p class="small">Quant desks at DBS and UOB run LSTM+attention models on minute-bar SGX data with the exact feature set from Exercise 3 (RSI, MACD, Bollinger Bands). The same architecture, trained on transaction sequences instead of prices, detects card-not-present fraud rings by their spending <em>cadence</em> &mdash; something a point-in-time classifier cannot see.</p>
+        <strong>Finance &mdash; Price Forecasting &amp; Fraud Sequences</strong>
+        <p class="small">A bank's quant desk can run LSTM+attention models on intraday price bars; Exercise 3's daily OHLCV features plus RSI, MACD and Bollinger Bands are the usual starting set. The same architecture, trained on transaction sequences instead of prices, detects card-not-present fraud rings by their spending <em>cadence</em> &mdash; something a point-in-time classifier cannot see.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
         <strong>Healthcare &mdash; ICU Vital Sign Early Warning</strong>
-        <p class="small">SGH's ICU deploys LSTMs over streams of heart rate, blood pressure, SpO2, and respiratory rate to predict deterioration 6&ndash;12 hours before it is clinically obvious. Temporal attention highlights <em>which</em> time steps mattered, giving clinicians an interpretable "why" alongside the alert.</p>
+        <p class="small">A hospital ICU can run LSTMs over streams of heart rate, blood pressure, SpO2, and respiratory rate to flag deterioration hours before it is clinically obvious. Temporal attention highlights <em>which</em> time steps mattered, giving clinicians an interpretable "why" alongside the alert.</p>
       </div>
     </div>
     <div class="col">
@@ -3536,19 +3581,19 @@ print(result.status)  # "valid"</code></pre>
         <p class="small">A Singapore distributor forecasts weekly SKU-level demand across 3,000 products using GRU networks (fewer parameters, faster training than LSTM &mdash; exactly the trade-off you measured in Exercise 3). Promo calendars and public holidays enter as auxiliary sequence features.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Transport &mdash; MRT Ridership Prediction</strong>
-        <p class="small">LTA forecasts MRT ridership per station per 15-minute bin using sequence models; operations uses the forecast to pre-position trains. Attention weights show the model leaning on "the same 07:45 slot from last week" during normal days and on "the last 30 minutes" when rain is falling &mdash; interpretable behaviour switching.</p>
+        <strong>Transport &mdash; Rail Ridership Prediction</strong>
+        <p class="small">A transit operator can forecast ridership per station per 15-minute bin with sequence models and pre-position trains. Attention weights show the model leaning on "the same 07:45 slot from last week" during normal days and on "the last 30 minutes" when rain is falling &mdash; interpretable behaviour switching.</p>
       </div>
     </div>
   </div>
   <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
-    <strong>Why this matters for YOU:</strong> when the question is "given what has happened, what happens next?", sequence models are your starting point. The business value is the <em>lead time</em> &mdash; six hours on ICU deterioration, a week on stock-outs, 30 min on crowding &mdash; converting emergencies into scheduled decisions.
+    <strong>Why this matters for YOU:</strong> when the question is "given what has happened, what happens next?", sequence models are your starting point. The business value is the <em>lead time</em> &mdash; hours on ICU deterioration, a week on stock-outs, 30 min on crowding (illustrative) &mdash; converting emergencies into scheduled decisions.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Focus on the "lead time, not prediction" framing &mdash; that is the line a non-technical exec will remember. The ICU example is the emotional hook. The MRT example works well as the "relatable" case for Singaporean audiences. Note the GRU-vs-LSTM trade-off: students measured it themselves in Exercise 3, so the retail distributor example closes the loop back to the notebook.
+    Time: ~3 min. Focus on the "lead time, not prediction" framing &mdash; that is the line a non-technical exec will remember. The ICU example is the emotional hook. The rail ridership example works well as the "relatable" case for Singaporean audiences. These are illustrative scenarios, not claims about any named organisation's systems. Note the GRU-vs-LSTM trade-off: students measured it themselves in Exercise 3, so the retail distributor example closes the loop back to the notebook.
   </aside>
 </section>
 
@@ -3844,7 +3889,7 @@ print(result.status)  # "valid"</code></pre>
   <div class="columns">
     <div class="col">
       <h3>The Problem</h3>
-      <p>Self-attention is <strong>permutation-invariant</strong>. "The cat sat on the mat" and "mat the on sat cat the" produce the same attention scores. Position information is lost.</p>
+      <p>Self-attention is <strong>permutation-equivariant</strong> (order-blind): shuffle "The cat sat on the mat" and each token's output is unchanged &mdash; just shuffled the same way. Position information is lost.</p>
       <h3>The Solution: Sinusoidal Encoding</h3>
       <div class="equation-box">
         <span class="katex-display">PE_{(pos, 2i)} = \sin\!\left(\frac{pos}{10000^{2i/d}}\right)</span>
@@ -3859,7 +3904,7 @@ print(result.status)  # "valid"</code></pre>
         <li><strong>Unique:</strong> each position gets a distinct encoding</li>
         <li><strong>Relative positions:</strong> for any fixed offset k, <span class="katex-inline">PE_{pos+k}</span> is a linear function of <span class="katex-inline">PE_{pos}</span></li>
         <li><strong>Bounded:</strong> values stay in [-1, 1]</li>
-        <li><strong>Extrapolation:</strong> works for sequences longer than training</li>
+        <li><strong>Any length:</strong> defined for positions beyond the training length (extrapolation quality is limited)</li>
       </ul>
       <div class="callout callout-advanced" style="margin-top: 8px;">
         <strong>Alternative:</strong> Learned positional embeddings (BERT, GPT). RoPE (Rotary Position Embedding) in modern LLMs. ALiBi for length extrapolation.
@@ -3867,7 +3912,7 @@ print(result.status)  # "valid"</code></pre>
     </div>
   </div>
   <figure style="text-align:center; margin: 4px 0;">
-  <svg viewBox="0 0 660 150" xmlns="http://www.w3.org/2000/svg" style="max-width: 90%; height: auto;" role="img" aria-label="Positional encoding heatmap showing sinusoidal patterns: low dimensions oscillate slowly, high dimensions oscillate rapidly">
+  <svg viewBox="0 0 660 150" xmlns="http://www.w3.org/2000/svg" style="max-width: 90%; height: auto;" role="img" aria-label="Positional encoding heatmap showing sinusoidal patterns: low dimensions oscillate rapidly, high dimensions oscillate slowly">
     <defs>
       <linearGradient id="pe-hot" x1="0" y1="0" x2="1" y2="0">
         <stop offset="0%" stop-color="#3B82F6"/><stop offset="50%" stop-color="#FCD34D"/><stop offset="100%" stop-color="#F43F5E"/>
@@ -3894,7 +3939,7 @@ print(result.status)  # "valid"</code></pre>
     <text x="225" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#64748B">10</text>
     <text x="259" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#64748B">12</text>
     <text x="293" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#64748B">14</text>
-    <!-- Heatmap grid: d=0 sin (slow oscillation, period ~628) -->
+    <!-- Heatmap grid: d=0 sin (fastest oscillation, period 2*pi ~ 6.3 positions) -->
     <!-- sin(pos/10000^(0/8)) = sin(pos) — fast for these positions -->
     <!-- d=0: sin(0)=0, sin(1)=.84, sin(2)=.91, sin(3)=.14, sin(4)=-.76, etc -->
     <rect x="42" y="16" width="17" height="12" rx="1" fill="#FCD34D" opacity="1.0"/>
@@ -4034,11 +4079,11 @@ print(result.status)  # "valid"</code></pre>
     <rect x="297" y="114" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.4"/>
     <!-- Annotation arrows -->
     <line x1="320" y1="24" x2="365" y2="24" stroke="#1E293B" stroke-width="1"/>
-    <text x="370" y="20" font-family="Inter" font-size="9" fill="#1E293B" font-weight="600">high dim: rapid oscillation</text>
-    <text x="370" y="30" font-family="Inter" font-size="8" fill="#64748B">(captures local position)</text>
+    <text x="370" y="20" font-family="Inter" font-size="9" fill="#1E293B" font-weight="600">low dim: rapid oscillation</text>
+    <text x="370" y="30" font-family="Inter" font-size="8" fill="#64748B">(fine, local position)</text>
     <line x1="320" y1="110" x2="365" y2="110" stroke="#1E293B" stroke-width="1"/>
-    <text x="370" y="106" font-family="Inter" font-size="9" fill="#1E293B" font-weight="600">low dim: slow oscillation</text>
-    <text x="370" y="116" font-family="Inter" font-size="8" fill="#64748B">(captures global position)</text>
+    <text x="370" y="106" font-family="Inter" font-size="9" fill="#1E293B" font-weight="600">high dim: slow oscillation</text>
+    <text x="370" y="116" font-family="Inter" font-size="8" fill="#64748B">(coarse, global position)</text>
     <!-- Color legend -->
     <rect x="550" y="50" width="14" height="10" rx="2" fill="#3B82F6"/>
     <text x="570" y="58" font-family="Inter" font-size="8" fill="#64748B">-1.0</text>
@@ -4052,7 +4097,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The sinusoidal encoding is beautiful mathematics. Each dimension oscillates at a different frequency. Low dimensions change slowly (capture global position), high dimensions change rapidly (capture local position). The linear function property means the model can learn to attend to relative positions.
+    Time: ~3 min. The sinusoidal encoding is beautiful mathematics. Each dimension pair oscillates at a different frequency, 10000^(-2i/d) radians per position. Low dimensions (small i) change RAPIDLY &mdash; at i = 0 the frequency is 1 rad/position &mdash; so they capture fine, local position. High dimensions change SLOWLY (frequency approaching 1e-4) and capture coarse, global position. Point at the heatmap: the top row flips colour every few positions; the bottom rows are almost flat. Common slip: many blogs state this backwards &mdash; check it from the formula. The linear function property means the model can learn to attend to relative positions.
   </aside>
 </section>
 
@@ -4221,7 +4266,7 @@ print(result.status)  # "valid"</code></pre>
       <tr><td>GPT</td><td>Decoder only</td><td>Autoregressive next-token</td><td>Generation (text, code)</td></tr>
       <tr><td>T5</td><td>Encoder-decoder</td><td>Text-to-text (unified)</td><td>Any NLP task</td></tr>
       <tr><td>Transformer-XL</td><td>Decoder + recurrence</td><td>Segment-level memory</td><td>Long contexts</td></tr>
-      <tr><td>Reformer</td><td>Efficient attention</td><td>LSH attention + reversible layers</td><td>Very long sequences</td></tr>
+      <tr><td>Reformer / Longformer</td><td>Efficient attention</td><td>LSH attention + reversible layers / sliding-window + global attention</td><td>Very long sequences</td></tr>
     </tbody>
   </table>
   <div class="callout callout-advanced" style="margin-top: 8px;">
@@ -4271,10 +4316,11 @@ print(result.status)  # "valid"</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Derive scaled dot-product attention from scratch (pen and paper + code)</li>
-        <li>Implement single-head attention in PyTorch</li>
-        <li>Fine-tune BERT for text classification (TREC-6 dataset)</li>
-        <li>Compare BERT vs LSTM baseline from 5.3 (accuracy, training time)</li>
+        <li>Derive scaled dot-product attention from scratch (<code>torch.einsum</code>) &mdash; heatmaps</li>
+        <li>Multi-head attention + positional encoding &rarr; Transformer encoder on AG News (4 news topics)</li>
+        <li>Bidirectional LSTM baseline on the same data</li>
+        <li>Fine-tune pre-trained BERT with layer-wise freezing</li>
+        <li>Three-way comparison (LSTM vs Transformer vs BERT), register, export to ONNX</li>
       </ol>
     </div>
     <div class="col">
@@ -4282,7 +4328,7 @@ print(result.status)  # "valid"</code></pre>
       <ul>
         <li>Self-attention implemented correctly from scratch</li>
         <li>BERT fine-tuning produces strong classification accuracy</li>
-        <li>BERT vs LSTM comparison quantified</li>
+        <li>Three-way comparison quantified (accuracy, training time)</li>
         <li>Can explain why <span class="katex-inline">\sqrt{d_k}</span> scaling is necessary</li>
       </ul>
     </div>
@@ -4291,7 +4337,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The from-scratch implementation is crucial. Students should be able to write the attention function without looking at a reference. The BERT fine-tuning uses HuggingFace Transformers library. The LSTM comparison quantifies the transformer advantage.
+    Time: ~1 min. Exercise 5.4 is five files, all on AG News (120K news headlines, 4 topic classes: World, Sports, Business, Sci/Tech): attention from scratch, a Transformer encoder, a BiLSTM baseline, BERT fine-tuning (bert-base-uncased, HuggingFace Transformers) and a three-way comparison. The from-scratch implementation is crucial &mdash; students should be able to write the attention function without a reference. Two reading traps to flag: report test accuracy for the checkpoint chosen on the validation split, not the best epoch on test; and a news-TOPIC classifier cannot score sentiment &mdash; high softmax confidence on out-of-domain text is not evidence of signal.
   </aside>
 </section>
 
@@ -4370,21 +4416,21 @@ print(result.status)  # "valid"</code></pre>
     <div class="col">
       <div class="callout callout-applications">
         <strong>Finance &mdash; Earnings Call &amp; SEC Filing Sentiment</strong>
-        <p class="small">Sell-side analysts fine-tune BERT on labelled earnings-call transcripts to score each quarter as beat / miss / guidance-cut &mdash; in the first minute after the call ends, not after a human has read it. A MAS-supervised fund house fine-tunes the same model on SGX filings to flag risk language (e.g., "going concern", "material weakness") for the credit desk.</p>
+        <p class="small">Sell-side analysts fine-tune BERT on labelled earnings-call transcripts to score each quarter as beat / miss / guidance-cut &mdash; in the first minute after the call ends, not after a human has read it. A regulated fund house can fine-tune the same model on listed-company filings to flag risk language (e.g., "going concern", "material weakness") for the credit desk.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
         <strong>Healthcare &mdash; Clinical Note Summarisation</strong>
-        <p class="small">Fine-tuned T5 and BART models at public hospitals convert 2,000-word admission notes into 200-word discharge summaries. The clinician edits the summary instead of writing it from scratch &mdash; saving 15 minutes per patient across 2M admissions a year. The self-attention mechanism is the same one you derived by hand.</p>
+        <p class="small">Fine-tuned T5 and BART models at a hospital can draft 200-word discharge summaries from 2,000-word admission notes. The clinician edits the draft instead of writing it from scratch &mdash; the time saving per patient is the business case. The self-attention mechanism is the same one you derived by hand.</p>
       </div>
     </div>
     <div class="col">
       <div class="callout callout-applications">
-        <strong>Customer Service &mdash; IRAS Tax Query Routing</strong>
-        <p class="small">A public-sector contact centre fine-tunes BERT on historical tickets to classify incoming queries into 40+ tax-topic buckets and route them to the right specialist. Accuracy on the first 20 classes exceeds the human baseline; the remaining 20 are human-in-the-loop. That is the <em>exact</em> 4-class AG News fine-tune you just ran, scaled up and domain-swapped.</p>
+        <strong>Customer Service &mdash; Tax Query Routing</strong>
+        <p class="small">A public-sector contact centre fine-tunes BERT on its own labelled tickets to route incoming queries into 40+ tax-topic buckets; low-confidence classes stay human-in-the-loop. Same <em>recipe</em> as your AG News fine-tune &mdash; new labels, retrained. The AG News model itself cannot route tax queries: its 4 labels are news topics.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
         <strong>Legal &mdash; Contract Review Assistance</strong>
-        <p class="small">Singapore law firms use fine-tuned transformers to extract obligations, liabilities, and termination clauses from draft contracts. The model highlights the spans; the associate reviews a ranked list. Multi-head attention visualisations are the interpretability layer &mdash; the partner wants to see <em>why</em> the model flagged a clause.</p>
+        <p class="small">A law firm can use fine-tuned transformers to extract obligations, liabilities, and termination clauses from draft contracts. The model highlights the spans; the associate reviews a ranked list. Multi-head attention visualisations are the interpretability layer &mdash; the partner wants to see <em>why</em> the model flagged a clause.</p>
       </div>
     </div>
   </div>
@@ -4395,7 +4441,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The IRAS example is the cleanest "you could deliver this on Monday" case &mdash; every organisation has a pile of customer tickets or emails that need routing. Emphasise the data-requirement drop: "A BERT fine-tune needs a few thousand labelled examples, not a few million. That is the difference between a six-month project and a six-week project."
+    Time: ~3 min. The tax-query routing example is the cleanest "you could deliver this on Monday" case (all organisations here are illustrative) &mdash; every organisation has a pile of customer tickets or emails that need routing. Emphasise the data-requirement drop: "A BERT fine-tune needs a few thousand labelled examples, not a few million. That is the difference between a six-month project and a six-week project."
   </aside>
 </section>
 
@@ -4525,7 +4571,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Walk through both perspectives. The practical training trick (maximise log D(G(z)) instead of minimise log(1-D(G(z)))) is important &mdash; the original objective has vanishing gradients when G is poor.
+    Time: ~3 min. Walk through both perspectives. The practical training trick (maximise log D(G(z)) instead of minimise log(1-D(G(z)))) is important &mdash; the original minimax G loss saturates when G is poor: D confidently rejects the fakes, D(G(z)) is near 0, and log(1-D(G(z))) is flat there. The non-saturating version keeps a strong gradient in exactly that regime. This is what Exercise 5 uses: BCE with &ldquo;real&rdquo; labels on the fakes, i.e. minimise -log D(G(z)). It does not make GANs stable &mdash; when real and fake supports don't overlap, JS divergence is stuck at log 2 and gives no useful direction. That motivates WGAN.
   </aside>
 </section>
 
@@ -4565,7 +4611,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. DCGAN established the standard architecture for convolutional GANs. The guidelines are empirical but effective. No pooling (use stride), batch norm everywhere, specific activation choices. This is what students implement in the exercise.
+    Time: ~3 min. DCGAN established the standard architecture for convolutional GANs. The guidelines are empirical but effective. No pooling (use stride), batch norm everywhere, specific activation choices. Be precise with students: Exercise 5's generator and discriminator are MLPs (fully connected), not DCGANs &mdash; the adversarial training loop is identical, only the networks differ. Swapping in this convolutional generator plus a strided-conv discriminator is the natural extension.
   </aside>
 </section>
 
@@ -4589,10 +4635,10 @@ print(result.status)  # "valid"</code></pre>
     <div class="col">
       <h3>Why WGAN Is Better</h3>
       <div class="callout callout-theory">
-        <strong>Mode collapse prevention:</strong> Standard GANs can collapse to generating one image. Wasserstein distance provides gradients that push toward covering the full data distribution.
+        <strong>Mode collapse reduction:</strong> Standard GANs can collapse to generating one image. Wasserstein distance provides gradients that push toward covering the full data distribution.
       </div>
       <div class="callout callout-theory" style="margin-top: 8px;">
-        <strong>Training stability:</strong> The Wasserstein loss correlates with generation quality. You can actually track convergence &mdash; unlike standard GAN loss which oscillates meaninglessly.
+        <strong>Training stability:</strong> The Wasserstein estimate tracks generation quality. The critic loss is <span class="katex-inline">\approx -W</span>, so it <em>rises toward 0</em> as quality improves &mdash; unlike standard GAN loss, which oscillates meaninglessly.
       </div>
     </div>
   </div>
@@ -4600,7 +4646,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. WGAN is a major improvement over the standard GAN. The key insight: Wasserstein distance (Earth Mover's Distance) provides gradients everywhere, unlike JS divergence which is zero when distributions don't overlap. The gradient penalty replaces weight clipping from the original WGAN paper.
+    Time: ~3 min. WGAN is a major improvement over the standard GAN. The key insight: Wasserstein distance (Earth Mover's Distance) varies smoothly with how far apart the distributions are, so G always gets a useful gradient. JS divergence does not: when the supports don't overlap it saturates at the constant log 2, so G receives no gradient. The gradient penalty replaces weight clipping from the original WGAN paper. Reading the curve: the critic loss (without the GP term) is about minus the Wasserstein distance, so as G improves it RISES toward 0. A more negative critic loss means the distributions are further apart.
   </aside>
 </section>
 
@@ -4630,7 +4676,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Survey only. FID is the standard evaluation metric for generative models. Students compute FID in the exercise. StyleGAN is mentioned for awareness &mdash; it produces the famous "this person does not exist" images.
+    Time: ~2 min. Survey only. FID is the standard evaluation metric for generative models: a distribution-level score (fidelity + diversity), not a per-image quality score. Students compute FID in the exercise with a small 64-d LeNet feature extractor trained on MNIST, not Inception, so their numbers are comparable only with each other &mdash; not with published Inception-FID thresholds. The exercise does not compute Inception Score. StyleGAN is mentioned for awareness &mdash; it produces the famous "this person does not exist" images.
   </aside>
 </section>
 
@@ -4824,18 +4870,18 @@ print(result.status)  # "valid"</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Implement DCGAN for MNIST image generation</li>
-        <li>Implement WGAN-GP &mdash; compare training stability</li>
-        <li>Compute FID score for both models</li>
+        <li>MLP GAN on full MNIST (60K) &mdash; non-saturating loss; read the D vs G balance</li>
+        <li>WGAN-GP critic &mdash; compare training stability</li>
+        <li>Evaluate: FID (LeNet features), mode coverage, entropy, nearest-neighbour novelty; register generators</li>
         <li>Document: when to use GANs vs VAE vs diffusion</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>DCGAN generates recognisable digits</li>
-        <li>WGAN is demonstrably more stable (loss curves)</li>
-        <li>FID computed and compared</li>
+        <li>The GAN generates recognisable digits</li>
+        <li>WGAN-GP demonstrably more stable (loss curves)</li>
+        <li>FID computed and compared (same extractor)</li>
         <li>Generation model selection guide understood</li>
       </ul>
     </div>
@@ -4844,7 +4890,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The key comparison is DCGAN vs WGAN-GP. Students should see that WGAN loss actually correlates with quality (smooth decrease) while DCGAN loss oscillates. FID provides an objective quality metric.
+    Time: ~1 min. Exercise 5.5 is three files on MNIST: a vanilla GAN (MLP networks, non-saturating BCE loss), WGAN-GP, and an evaluation file. The key comparison is vanilla GAN vs WGAN-GP. Students should see that the WGAN critic loss tracks quality &mdash; it rises smoothly toward 0 as the generator improves &mdash; while the vanilla GAN losses oscillate. FID gives an objective distribution-level comparison. The convolutional DCGAN is taught on the slides; building it is an extension.
   </aside>
 </section>
 
@@ -4881,38 +4927,38 @@ print(result.status)  # "valid"</code></pre>
   <h2>Lesson 5.5: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
-    DCGAN, WGAN-GP, and diffusion &mdash; the three generators you built in Exercise 5 &mdash; solve a class of problems where the business constraint is "we need more data, but we cannot collect it". Synthetic generation converts a hard collection problem into an ML problem.
+    The GAN and WGAN-GP you built in Exercise 5 &mdash; and the diffusion models from this lesson &mdash; target problems where the business constraint is "we need more data, but we cannot collect it". Synthetic generation converts a hard collection problem into an ML problem.
   </div>
   <div class="columns" style="margin-top: 12px;">
     <div class="col">
       <div class="callout callout-applications">
-        <strong>Healthcare &mdash; Privacy-Preserving Training Data</strong>
-        <p class="small">SGH cannot share patient CT scans with a research lab overseas, but it <em>can</em> share a diffusion model trained on them. The collaborator samples synthetic scans indistinguishable at the pixel level from real ones but containing no actual patient. This is how rare-disease classifiers get enough training data without violating PDPA or HIPAA.</p>
+        <strong>Healthcare &mdash; Synthetic Training Data (with care)</strong>
+        <p class="small">A hospital that cannot share CT scans may consider sharing a generative model or its samples instead. That is <em>not</em> private by default: GANs and diffusion models can memorise and regenerate training images (extraction attacks are documented). It needs formal guarantees (e.g. DP-SGD training), memorisation / membership-inference tests, and governance sign-off.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
         <strong>Retail &mdash; Virtual Try-On &amp; Product Visualisation</strong>
-        <p class="small">Shopee and Lazada use CycleGAN-style networks (the same adversarial loss family, just with two generators) to paste products onto user photos. A single SKU photo on white background becomes dozens of lifestyle shots &mdash; no photo studio, no models, no rental.</p>
+        <p class="small">An e-commerce marketplace can use image-to-image GANs (CycleGAN-style: the same adversarial loss family, with two generators) to place products into lifestyle scenes. A single SKU photo on white background becomes dozens of lifestyle shots &mdash; no photo studio, no models, no rental.</p>
       </div>
     </div>
     <div class="col">
       <div class="callout callout-applications">
         <strong>Finance &mdash; Synthetic Tabular Data for Fraud Models</strong>
-        <p class="small">Banks train fraud models on transaction history, but real fraud examples are rare and sharing them across teams or institutions is blocked by privacy law. Tabular GANs (like CT-GAN, same training dynamics as your WGAN-GP) generate synthetic transaction tables that preserve the joint distribution of fields without containing any real customer. Models trained on the synthetic data generalise to real data at 95%+ of the supervised ceiling.</p>
+        <p class="small">Banks train fraud models on transaction history, but real fraud examples are rare and sharing them across teams or institutions is blocked by privacy law. Tabular GANs (like CTGAN, same training dynamics as your WGAN-GP) generate synthetic transaction tables that approximate the joint distribution of fields. Whether they leak real customers must be <em>tested</em>, and how well models trained on them transfer to real data must be measured, not assumed.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
         <strong>Creative &mdash; Marketing Asset Generation</strong>
-        <p class="small">Agencies use Stable Diffusion for hero images, variant ads, and mood boards. The unit economics are brutal: a hero image that would cost $5,000 in a studio is generated in 30 seconds and iterated 200 times before the art director picks one. Business value is not the pixel quality &mdash; it is the <em>iteration rate</em>.</p>
+        <p class="small">Agencies use Stable Diffusion for hero images, variant ads, and mood boards. The unit economics are brutal (illustrative): a hero image that would cost thousands in a studio is generated in seconds and iterated hundreds of times before the art director picks one. Business value is not the pixel quality &mdash; it is the <em>iteration rate</em>.</p>
       </div>
     </div>
   </div>
   <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
-    <strong>Why this matters for YOU:</strong> synthetic data is the practical wedge for regulated industries &mdash; train models on distributions you cannot legally share. FID (Exercise 5) is the audit evidence: synthetic is close enough to real for the downstream model, without being real.
+    <strong>Why this matters for YOU:</strong> synthetic data can widen access to scarce data &mdash; but FID (Exercise 5) measures fidelity and diversity, <em>not</em> privacy: a model that copies its training images scores an excellent FID. Privacy evidence comes from DP guarantees and memorisation tests.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The privacy framing is what makes this lesson matter to decision-makers &mdash; pixel-pretty GAN outputs alone do not close a business case. Emphasise the tabular-GAN example because it is the one finance and healthcare audiences immediately grasp: "You cannot share the real fraud data, so you share a generator that produces fake fraud data that trains real models." Note the FID &harr; regulator connection &mdash; that is the answer to "how do we know the synthetic data is good enough?".
+    Time: ~3 min. Decision-makers in regulated industries need the honest version: synthetic data is NOT private by default. Generative models can memorise; extraction attacks on diffusion models are documented (Carlini et al., 2023). Sharing a model trained on patient or customer data, or its samples, needs formal privacy guarantees (DP-SGD), memorisation and membership-inference testing, and legal review. FID answers &ldquo;is the synthetic data realistic and diverse?&rdquo;, never &ldquo;is it private?&rdquo; &mdash; a copying model gets a great FID. Exercise 5's nearest-neighbour novelty check is a first memorisation test, not a privacy guarantee. The organisations here are generic illustrations.
   </aside>
 </section>
 
@@ -5140,6 +5186,56 @@ print(result.status)  # "valid"</code></pre>
   </aside>
 </section>
 
+<!-- SLIDE 66b: GIN + graph classification with torch_geometric (spec 5.6) -->
+<section>
+  <h2>GIN: Graph Isomorphism Network</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <div class="equation-box">
+        <span class="katex-display">h_v^{(k)} = \text{MLP}^{(k)}\Big((1+\epsilon)\, h_v^{(k-1)} + \sum_{u \in \mathcal{N}(v)} h_u^{(k-1)}\Big)</span>
+        <div class="annotation">Sum the neighbours, add yourself, then an MLP (Xu et al., 2019)</div>
+      </div>
+      <ul style="font-size: 0.8em;">
+        <li><strong>Sum, not mean or max:</strong> mean cannot tell neighbours {a, a} from {a}; sum can. Sum + MLP is injective on neighbour multisets.</li>
+        <li><strong>As expressive as the 1-WL test</strong> for graph isomorphism &mdash; the most a message-passing GNN can be.</li>
+        <li><strong>Best for graph-level tasks</strong> (molecules, proteins), with a sum readout.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <pre style="font-size: 0.44em; line-height: 1.3"><code class="language-python">from torch_geometric.datasets import TUDataset
+from torch_geometric.loader import DataLoader
+from torch_geometric.nn import GINConv, global_add_pool
+
+# MUTAG: 188 molecules, 7 atom features, 2 classes
+ds = TUDataset("data/TUDataset", name="MUTAG")
+loader = DataLoader(ds, batch_size=32, shuffle=True)
+
+def mlp(i, o):
+    return nn.Sequential(nn.Linear(i, o), nn.ReLU(),
+                         nn.Linear(o, o))
+
+class GIN(nn.Module):
+    def __init__(self, d_in, d, n_classes):
+        super().__init__()
+        self.conv1 = GINConv(mlp(d_in, d))
+        self.conv2 = GINConv(mlp(d, d))
+        self.head = nn.Linear(d, n_classes)
+
+    def forward(self, x, edge_index, batch):
+        x = self.conv1(x, edge_index).relu()
+        x = self.conv2(x, edge_index).relu()
+        return self.head(global_add_pool(x, batch))</code></pre>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. GIN completes the four architectures in the spec: GCN (normalised averaging), GraphSAGE (sampling), GAT (attention), GIN (sum aggregation). The key idea is expressiveness: mean and max aggregators lose information about how MANY neighbours share a feature, so two different neighbourhoods can map to the same vector. Summing and passing through an MLP keeps them apart, which makes GIN as discriminative as the Weisfeiler-Lehman test &mdash; the theoretical ceiling for message-passing GNNs. The code is the standard torch_geometric graph-classification pattern: TUDataset for a benchmark of many small graphs, the PyG DataLoader that batches graphs into one big disconnected graph plus a batch vector, conv layers, then a readout (global_add_pool) giving one row per graph. Exercise 5.6 itself does node classification on Cora with layers written from scratch; this graph-classification pattern is the extension.
+  </aside>
+</section>
+
 <!-- SLIDE 67: GNN Tasks -->
 <section>
   <h2>GNN Task Types</h2>
@@ -5258,19 +5354,20 @@ x = global_mean_pool(x, batch)
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Implement GCN for graph classification on TUDataset</li>
-        <li>Compare GCN vs GAT on the same task</li>
-        <li>Visualise learned node embeddings (t-SNE)</li>
-        <li>Examine GAT attention weights &mdash; which edges matter?</li>
+        <li>Write a GCN layer from scratch; node classification on Cora (2,708 papers)</li>
+        <li>GAT with masked attention &mdash; which citations matter?</li>
+        <li>GraphSAGE neighbour sampling (inductive)</li>
+        <li>Link prediction on held-out edges (AUC)</li>
+        <li>Compare GCN vs GAT vs GraphSAGE; register the best</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>GCN implemented correctly with torch_geometric</li>
+        <li>GCN implemented correctly (<span class="katex-inline">\sigma(\hat{A} H W)</span>)</li>
         <li>GAT comparison shows attention weight distribution</li>
-        <li>Node embeddings visualised and interpreted</li>
-        <li>Message passing concept explained in own words</li>
+        <li>Node embeddings visualised (2-D PCA) and interpreted</li>
+        <li>Model chosen on validation, not test, accuracy</li>
       </ul>
     </div>
   </div>
@@ -5278,7 +5375,7 @@ x = global_mean_pool(x, batch)
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. torch_geometric handles the graph data loading and batching. Students focus on building the GNN architecture and interpreting results. The attention weight visualisation is the highlight &mdash; it shows which molecular bonds or social connections the model considers important.
+    Time: ~1 min. Exercise 5.6 is five files on the Cora citation network (torch_geometric only loads the data): GCN, GAT and GraphSAGE layers written from scratch for node classification, link prediction scored on held-out edges, and a three-way comparison. Students focus on building the layers and interpreting results. The attention weight visualisation is the highlight &mdash; it shows which citations the model considers important. Selection discipline: pick the epoch by VALIDATION accuracy and report test accuracy at that epoch. Graph classification on TUDataset with GINConv/GCNConv + global pooling (previous slides) is the extension.
   </aside>
 </section>
 
@@ -5321,21 +5418,21 @@ x = global_mean_pool(x, batch)
     <div class="col">
       <div class="callout callout-applications">
         <strong>Pharma &amp; Biotech &mdash; Drug Discovery</strong>
-        <p class="small">Molecules are graphs: atoms are nodes, bonds are edges. GNNs predict solubility, toxicity, and drug-target binding affinity from the graph structure alone &mdash; no hand-crafted molecular descriptors. A*STAR's Bioinformatics Institute uses GNN-based virtual screening to narrow 10M-compound libraries down to 1,000 candidates for wet-lab testing.</p>
+        <p class="small">Molecules are graphs: atoms are nodes, bonds are edges. GNNs predict solubility, toxicity, and drug-target binding affinity from the graph structure alone &mdash; no hand-crafted molecular descriptors. A research institute can use GNN-based virtual screening to narrow a multi-million-compound library to a shortlist for wet-lab testing.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Finance &mdash; Anti-Money Laundering at MAS-Regulated Banks</strong>
-        <p class="small">Transactions form a graph: accounts are nodes, transfers are edges. AML teams at DBS and OCBC run GNN classifiers over the transaction graph to spot layering and smurfing patterns a rules engine would miss. A single account looks clean; its 3-hop neighbourhood reveals it is the hub of a mule network.</p>
+        <strong>Finance &mdash; Anti-Money Laundering at a Bank</strong>
+        <p class="small">Transactions form a graph: accounts are nodes, transfers are edges. A bank's AML team can run GNN classifiers over the transaction graph to spot layering and smurfing patterns a rules engine would miss. A single account looks clean; its 3-hop neighbourhood reveals it is the hub of a mule network.</p>
       </div>
     </div>
     <div class="col">
       <div class="callout callout-applications">
         <strong>Telecom &mdash; 5G Network Optimisation</strong>
-        <p class="small">Cell towers form a graph with geographic adjacency edges. Singtel and StarHub use GNNs to predict which towers will congest during Formula 1 weekend or the Lunar New Year commute crush &mdash; the GAT attention mechanism tells the ops team <em>which neighbouring tower</em> is about to offload traffic to the one in question.</p>
+        <p class="small">Cell towers form a graph with geographic adjacency edges. A telco can use GNNs to predict which towers will congest during a major race weekend or the Lunar New Year commute crush &mdash; the GAT attention mechanism tells the ops team <em>which neighbouring tower</em> is about to offload traffic to the one in question.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Logistics &mdash; PSA Port Cargo Network</strong>
-        <p class="small">Container flows through PSA Singapore are a directed graph: origin port &rarr; Singapore &rarr; destination port. GNNs predict dwell times and transhipment bottlenecks 48 hours ahead. The GraphSAGE inductive property matters: new ports and new routes can be scored without retraining the full model.</p>
+        <strong>Logistics &mdash; Port Cargo Network</strong>
+        <p class="small">Container flows through a transhipment port are a directed graph: origin port &rarr; hub &rarr; destination port. GNNs can predict dwell times and transhipment bottlenecks ahead of time. The GraphSAGE inductive property matters: new ports and new routes can be scored without retraining the full model.</p>
       </div>
     </div>
   </div>
@@ -5346,7 +5443,7 @@ x = global_mean_pool(x, batch)
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The AML example is the strongest business case for a finance audience &mdash; rules engines are expensive and brittle, GNNs generalise across new laundering typologies. The drug discovery example is the strongest ROI case generally: narrowing 10M compounds to 1,000 at 1% of the cost of wet-lab screening is an order-of-magnitude improvement. The PSA example grounds the lesson in Singapore's largest logistics operator.
+    Time: ~3 min. The AML example is the strongest business case for a finance audience &mdash; rules engines are expensive and brittle, GNNs generalise across new laundering typologies. The drug discovery example is the strongest ROI case generally: shrinking the wet-lab shortlist by orders of magnitude is where the money is. The port example grounds the lesson in Singapore's role as a transhipment hub. All organisations here are generic illustrations; the figures are not reported results. Note also that GraphSAGE is not the only inductive option &mdash; GAT is inductive too.
   </aside>
 </section>
 
@@ -5466,14 +5563,15 @@ x = global_mean_pool(x, batch)
       </ol>
       <pre><code class="language-python">import torchvision.models as models
 
-resnet = models.resnet50(pretrained=True)
+w = models.ResNet18_Weights.DEFAULT
+resnet = models.resnet18(weights=w)
 
 # Freeze all layers
 for param in resnet.parameters():
     param.requires_grad = False
 
-# Replace classifier head
-resnet.fc = nn.Linear(2048, num_classes)
+# New head: ResNet-18 has 512 features
+resnet.fc = nn.Linear(512, num_classes)
 
 # Optionally unfreeze last block
 for param in resnet.layer4.parameters():
@@ -5496,7 +5594,7 @@ for param in resnet.layer4.parameters():
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Walk through the code. The key decisions: which layers to freeze, what learning rate to use, how much augmentation. Progressive unfreezing is the safest strategy. Low learning rate is critical &mdash; too high and you destroy the pre-trained features.
+    Time: ~3 min. Walk through the code &mdash; it is the ResNet-18 recipe from Exercise 5.7 (weights= replaces the deprecated pretrained=True; DEFAULT is the ImageNet-1k checkpoint, ~1.28M images). The key decisions: which layers to freeze, what learning rate to use, how much augmentation. Progressive unfreezing is the safest strategy. Low learning rate is critical &mdash; too high and you destroy the pre-trained features.
   </aside>
 </section>
 
@@ -5541,8 +5639,14 @@ trainer.train()</code></pre>
         <li><strong>Warmup:</strong> gradual learning rate increase prevents early instability</li>
         <li><strong>Max sequence length:</strong> BERT supports up to 512 tokens</li>
       </ul>
-      <div class="callout callout-theory" style="margin-top: 8px;">
-        <strong>Adapter modules:</strong> Instead of fine-tuning all parameters, add small bottleneck layers between transformer layers. Train only the adapters. Much fewer parameters to update. Connects to LoRA in M6.
+      <p class="small" style="margin: 4px 0 0;"><strong>Inference with the Pipeline API:</strong></p>
+      <pre style="font-size: 0.38em; line-height: 1.3; margin-top: 2px;"><code class="language-python">from transformers import pipeline
+
+clf = pipeline("text-classification",
+               model=model, tokenizer=tokenizer)
+clf("Shares rallied after strong earnings")</code></pre>
+      <div class="callout callout-theory" style="margin-top: 6px;">
+        <strong>Adapter modules:</strong> add small bottleneck layers between transformer layers and train only those &mdash; ~1% of the parameters. Connects to LoRA in M6.
       </div>
     </div>
   </div>
@@ -5590,7 +5694,7 @@ trainer.train()</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. HuggingFace makes BERT fine-tuning straightforward. The key hyperparameters are learning rate and epochs. Adapter modules are mentioned as a preview for M6 (LoRA and parameter-efficient fine-tuning). Students should understand: full fine-tuning changes all weights, adapters change only a few.
+    Time: ~3 min. HuggingFace makes BERT fine-tuning straightforward: Trainer for training, the pipeline() API for inference (tokenise, forward pass and softmax in one call, returning a label and score). The key hyperparameters are learning rate and epochs. If students write their own TrainingArguments, the evaluation argument is eval_strategy (evaluation_strategy was removed in recent transformers versions). Adapter modules are mentioned as a preview for M6 (LoRA and parameter-efficient fine-tuning). Students should understand: full fine-tuning changes all weights, adapters change only a few.
   </aside>
 </section>
 
@@ -5617,7 +5721,7 @@ trainer.train()</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. This table is a key reference for professional practice. The "tabular data resists transfer" point is important &mdash; many professionals work with tabular data, and the advice is to use XGBoost/LightGBM, not deep learning. This connects back to M4 supervised learning.
+    Time: ~2 min. This table is a key reference for professional practice. The "tabular data resists transfer" point is important &mdash; many professionals work with tabular data, and the advice is to use XGBoost/LightGBM, not deep learning. This connects back to M3 supervised learning, where gradient boosting was taught.
   </aside>
 </section>
 
@@ -5629,40 +5733,48 @@ trainer.train()</code></pre>
     <h3>From Fine-Tuned Model to Production</h3>
     <div class="columns">
       <div class="col">
-        <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_ml import (
-    OnnxBridge, InferenceServer
-)
+        <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import asyncio
+from pathlib import Path
+from kailash_ml import OnnxBridge, InferenceServer
+from shared.mlfp05.ex_7 import (FlatImageAdapter, N_PIXELS,
+    attach_onnx_artifact, images_to_records, register_model)
 
-# Export fine-tuned model
-bridge = OnnxBridge()
-bridge.export(
-    model=fine_tuned_resnet,
-    input_shape=(1, 3, 224, 224),
-    output_path="mask_detector.onnx"
-)
+# 1. Export behind a flat-row adapter (2-row trace)
+serving = FlatImageAdapter(model).eval()
+path = Path("transfer_resnet18.onnx")
+res = OnnxBridge().export(serving, "torch", output_path=path,
+                          sample_input=torch.randn(2, N_PIXELS))
+assert res.success, res.error_message
 
-# Serve predictions
-server = InferenceServer(
-    model_path="mask_detector.onnx"
-)
-server.warm_cache()
+# 2. Register the model, attach model.onnx to that version
+v = register_model(registry, "cifar10_transfer", model, acc, loss)
+attach_onnx_artifact("cifar10_transfer", v.version, path)
 
-result = server.predict(image_tensor)
-print(result.label)      # "mask"
-print(result.confidence)  # 0.97</code></pre>
+# 3. Serve from the registry (all async)
+async def serve(images):
+    server = await InferenceServer.from_registry(
+        "cifar10_transfer", registry=registry,
+        version=v.version, runtime="onnx")
+    await server.start()
+    out = await server.predict(
+        {"records": images_to_records(images)})
+    await server.stop()
+    return out["predictions"]   # one logit row per image
+
+logits = asyncio.run(serve(images))</code></pre>
       </div>
       <div class="col">
-        <h3>InferenceServer API</h3>
+        <h3>InferenceServer API (async)</h3>
         <table>
-          <thead><tr><th>Method</th><th>Purpose</th></tr></thead>
+          <thead><tr><th>Call</th><th>Purpose</th></tr></thead>
           <tbody>
-            <tr><td><code>predict(x)</code></td><td>Single prediction</td></tr>
-            <tr><td><code>predict_batch(xs)</code></td><td>Batch predictions</td></tr>
-            <tr><td><code>warm_cache()</code></td><td>Pre-load model into memory</td></tr>
+            <tr><td><code>from_registry(name, registry=, version=, runtime=&quot;onnx&quot;)</code></td><td>Bind one registered model version</td></tr>
+            <tr><td><code>start()</code> / <code>stop()</code></td><td>Load <code>model.onnx</code> / release it</td></tr>
+            <tr><td><code>predict({&quot;records&quot;: [...]})</code></td><td>Returns a mapping: <code>{&quot;predictions&quot;: [...]}</code></td></tr>
           </tbody>
         </table>
         <div class="callout callout-kailash" style="margin-top: 12px;">
-          <strong>PredictionResult:</strong> Returns <code>.label</code>, <code>.confidence</code>, <code>.probabilities</code>, <code>.latency_ms</code>. Structured output, not raw tensors.
+          <strong>Batching</strong> = several records in one request. The output is a plain mapping of model outputs &mdash; you apply argmax / softmax yourself.
         </div>
       </div>
     </div>
@@ -5671,7 +5783,7 @@ print(result.confidence)  # 0.97</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. This is the deployment story. OnnxBridge exports, InferenceServer serves. The warm_cache() call pre-loads the model so the first prediction is fast. PredictionResult is a structured object, not raw numpy arrays. This pattern works for any model trained in this module.
+    Time: ~3 min. This is the deployment story, and it is exactly what Exercise 5.7 file 05 runs. Three steps: (1) OnnxBridge.export(model, &quot;torch&quot;, output_path=..., sample_input=...) &mdash; check res.success; trace with 2 rows so the batch size is not frozen. (2) Register the model in ModelRegistry and attach the .onnx file as model.onnx for that version. (3) InferenceServer.from_registry(...) is a coroutine: await it, await start() to load the ONNX file, then await predict() with {&quot;records&quot;: [...]} &mdash; one record per image, one key per pixel, which is why the CNN is exported behind FlatImageAdapter. predict returns a plain mapping ({&quot;predictions&quot;: [...]}); there is no predict_batch, warm_cache or PredictionResult in kailash-ml. The served predictions come from ONNX Runtime, not PyTorch &mdash; file 05 compares the two.
   </aside>
 </section>
 
@@ -5683,17 +5795,17 @@ print(result.confidence)  # 0.97</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Fine-tune ResNet for mask detection (CV transfer)</li>
-        <li>Fine-tune BERT for text classification (NLP transfer)</li>
-        <li>Compare transfer vs training from scratch (both domains)</li>
-        <li>Export both models to ONNX with OnnxBridge</li>
-        <li>Serve predictions with InferenceServer</li>
+        <li>From-scratch CNN baseline on CIFAR-10</li>
+        <li>Fine-tune ImageNet ResNet-18 (frozen backbone, new head)</li>
+        <li>Data efficiency: transfer vs scratch at 10/25/50/100% of the data</li>
+        <li>Bottleneck adapters &mdash; ~1% of parameters trainable</li>
+        <li>Export to ONNX, register, serve with InferenceServer</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>Both models fine-tuned successfully</li>
+        <li>Transfer model fine-tuned successfully</li>
         <li>Transfer outperforms from-scratch (quantified)</li>
         <li>ONNX export validated</li>
         <li>InferenceServer serves correct predictions</li>
@@ -5705,7 +5817,7 @@ print(result.confidence)  # 0.97</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. This is the most practical exercise in the module. Students build a complete pipeline from fine-tuning to deployment. The transfer vs from-scratch comparison is compelling: transfer learning should win convincingly, especially on small datasets.
+    Time: ~1 min. This is the most practical exercise in the module: five files, all on CIFAR-10 resized to 96&times;96 &mdash; scratch baseline, ResNet-18 transfer, a data-efficiency curve, adapters, and production deployment. There is no mask-detection dataset and no BERT here (BERT fine-tuning is Exercise 5.4). Adapters start as an exact identity (the adapter adds only its residual), so the pretrained features are untouched at step 0. The transfer vs from-scratch comparison is compelling: transfer learning should win convincingly, especially on small data fractions.
   </aside>
 </section>
 
@@ -5744,7 +5856,7 @@ print(result.confidence)  # 0.97</code></pre>
   <h2>Lesson 5.7: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
-    Exercise 7 showed transfer learning beating from-scratch ResNet on CIFAR-10 while using 10&times; less data. Every application below is built on that same insight: a pre-trained model is the single biggest free lunch in modern ML.
+    Exercise 7's data-efficiency curve compares transfer learning on 10% of CIFAR-10 against a from-scratch CNN on all of it. Every application below is built on that same insight: a pre-trained model is the single biggest free lunch in modern ML.
   </div>
   <div class="columns" style="margin-top: 12px;">
     <div class="col">
@@ -5753,8 +5865,8 @@ print(result.confidence)  # 0.97</code></pre>
         <p class="small">A public hospital collects 500 labelled scans of a rare condition. From scratch, that is not enough data to train a CNN. Fine-tuning ImageNet-pretrained ResNet or ViT reaches clinically usable accuracy with that exact 500-example budget. This is the only way rare-disease ML exists at all &mdash; and it is the exact data-efficiency experiment you ran in Exercise 7.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Finance &mdash; Domain-Specific Sentiment on SGX Analyst Reports</strong>
-        <p class="small">Off-the-shelf BERT sentiment trained on Yelp reviews gets the tone of a sell-side report badly wrong ("aggressive growth" is positive in finance, negative elsewhere). A few thousand labelled SGX analyst reports are enough to fine-tune BERT into a finance-specific model &mdash; the same NLP transfer pipeline from the exercise.</p>
+        <strong>Finance &mdash; Domain-Specific Sentiment on Analyst Reports</strong>
+        <p class="small">A general-purpose review-sentiment model can misread the tone of a sell-side report ("aggressive growth" is positive in finance, negative elsewhere). A few thousand labelled analyst reports can fine-tune BERT into a finance-specific model &mdash; the NLP transfer recipe from Exercise 5.4.</p>
       </div>
     </div>
     <div class="col">
@@ -5763,19 +5875,19 @@ print(result.confidence)  # 0.97</code></pre>
         <p class="small">A new product line has no historical defect data, but you need a quality classifier in six weeks. Solution: fine-tune a pre-trained vision backbone on the ~200 defect images you can collect, augmented aggressively. Production-usable accuracy in weeks, not the six months it would take to collect "enough" data.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Retail &mdash; Multimodal Product Search on Shopee / Lazada</strong>
+        <strong>Retail &mdash; Multimodal Product Search on a Marketplace</strong>
         <p class="small">CLIP-style models pre-trained on billions of (image, caption) pairs, fine-tuned on an e-commerce catalogue, let a user search "minimalist black dining chair" and retrieve the right SKU &mdash; without anyone having hand-tagged "minimalist" as an attribute. The pre-training captured the language-vision alignment; the fine-tune made it catalogue-aware.</p>
       </div>
     </div>
   </div>
   <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
-    <strong>Why this matters for YOU:</strong> transfer learning is the answer to "we don't have enough data" &mdash; the most common ML blocker. A pre-trained model plus a few thousand in-domain examples often closes the gap at 5% of the cost and 10% of the timeline.
+    <strong>Why this matters for YOU:</strong> transfer learning is the answer to "we don't have enough data" &mdash; the most common ML blocker. A pre-trained model plus a few thousand in-domain examples often closes the gap at a fraction of the cost and timeline.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. This slide is the "business case" slide for the module &mdash; transfer learning is often the single technique that lets an ML project ship at all. The rare disease example is the most emotionally resonant; the manufacturing one is the most commercially grounded. Tie back directly to the data-efficiency experiment from Exercise 7: "You measured this yourself &mdash; 10% of CIFAR-10 with transfer learning beat 100% from scratch."
+    Time: ~3 min. This slide is the "business case" slide for the module &mdash; transfer learning is often the single technique that lets an ML project ship at all. The rare disease example is the most emotionally resonant; the manufacturing one is the most commercially grounded. Tie back directly to the data-efficiency experiment from Exercise 7: "You measured this yourself &mdash; read your curve: where does transfer at 10% of CIFAR-10 sit against scratch at 100%?" Organisations here are generic illustrations.
   </aside>
 </section>
 
@@ -6307,7 +6419,7 @@ print(result.confidence)  # 0.97</code></pre>
         <li><strong>Scalable:</strong> easy to parallelise</li>
       </ul>
       <div class="callout callout-warning" style="margin-top: 8px;">
-        <strong>RLHF connection:</strong> PPO is the algorithm used to align LLMs with human preferences (ChatGPT, Claude). The reward model provides the signal, PPO optimises the policy. More in M6.
+        <strong>RLHF connection:</strong> PPO is the classic RLHF optimiser for LLMs: a reward model scores outputs, PPO updates the policy, and a <em>separate</em> KL penalty keeps it near the reference model. More in M6.
       </div>
     </div>
   </div>
@@ -6348,7 +6460,7 @@ print(result.confidence)  # 0.97</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~4 min. PPO is the most important RL algorithm to know. The clipped objective is the key innovation: it achieves the trust-region constraint of TRPO (don't change the policy too much) with a simple clipping operation. The RLHF connection is critical for M6 &mdash; PPO is how LLMs are fine-tuned from human feedback.
+    Time: ~4 min. PPO is the most important RL algorithm to know. The clipped objective is the key innovation: it achieves the trust-region constraint of TRPO (don't change the policy too much) with a simple clipping operation. The RLHF connection is critical for M6 &mdash; PPO is the classic optimiser in RLHF. Keep two mechanisms apart: PPO's clip bounds each update relative to the previous policy (pi_old); staying close to the original supervised model is enforced by a separate KL penalty to the reference model in the reward. The LLM's action is a discrete token from the vocabulary.
   </aside>
 </section>
 
@@ -6400,7 +6512,7 @@ class ChurnEnv(gym.Env):
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Custom environments are where RL becomes practical for business. The Gymnasium API is the standard. The reward function is the most important design decision &mdash; it defines what "success" means. Students create environments for customer churn and supply chain in the exercise.
+    Time: ~3 min. Custom environments are where RL becomes practical for business. The Gymnasium API is the standard. The reward function is the most important design decision &mdash; it defines what "success" means. Students build seven environments in the exercise (inventory, ride-hailing pricing, churn, portfolio, queue, energy, traffic). The helpers on this slide (_get_customer, _compute_reward, ...) are a sketch &mdash; the exercise's ChurnPreventionEnv implements them in full. Remember: Gymnasium's step returns (obs, reward, terminated, truncated, info); end the loop on terminated OR truncated.
   </aside>
 </section>
 
@@ -6412,29 +6524,27 @@ class ChurnEnv(gym.Env):
     <h3>RL Training with Kailash</h3>
     <div class="columns">
       <div class="col">
-        <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_ml import RLTrainer
+        <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import kailash_ml as km
 
-trainer = RLTrainer(
-    algorithm="ppo",
-    env=ChurnEnv(),
-    policy="MlpPolicy",
-    learning_rate=3e-4,
-    n_steps=2048,
-    batch_size=64,
-    n_epochs=10,
-    gamma=0.99,
-    clip_range=0.2
+# env: a Gymnasium id, a zero-arg factory, or an env
+result = km.rl_train(
+    ChurnEnv,                 # factory: ChurnEnv()
+    algo="ppo",
+    total_timesteps=100_000,
+    hyperparameters={
+        "learning_rate": 3e-4,
+        "n_steps": 2048,
+        "batch_size": 64,
+        "gamma": 0.99,
+        "clip_range": 0.2,
+    },
 )
+print(result.mean_reward, result.std_reward)
 
-# Train the agent
-trainer.train(total_timesteps=100_000)
-
-# Evaluate
-metrics = trainer.evaluate(
-    n_episodes=100
-)
-print(f"Mean reward: {metrics.mean_reward}")
-print(f"Success rate: {metrics.success_rate}")</code></pre>
+# Class form for registries + lineage:
+from kailash_ml.rl import RLTrainer, RLTrainingConfig
+cfg = RLTrainingConfig(algorithm="PPO",
+                       total_timesteps=100_000)</code></pre>
       </div>
       <div class="col">
         <h3>Supported Algorithms</h3>
@@ -6446,10 +6556,11 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
             <tr><td>Soft Actor-Critic</td><td><code>"sac"</code></td></tr>
             <tr><td>Advantage Actor-Critic</td><td><code>"a2c"</code></td></tr>
             <tr><td>Proximal Policy Opt.</td><td><code>"ppo"</code></td></tr>
+            <tr><td>TD3</td><td><code>"td3"</code></td></tr>
           </tbody>
         </table>
         <div class="callout callout-kailash" style="margin-top: 12px;">
-          <strong>Pattern:</strong> Define environment &rarr; Choose algorithm &rarr; Train &rarr; Evaluate &rarr; Deploy. Same pattern as TrainingPipeline from M4, but for RL.
+          <strong>Backend:</strong> Stable-Baselines3, an optional extra (<code>pip install kailash-ml[rl]</code>) &mdash; not in the course environment. Exercise 5.8 hand-writes DQN and PPO; <code>rl_train</code> is the production path.
         </div>
       </div>
     </div>
@@ -6458,7 +6569,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. RLTrainer wraps the RL training loop with Kailash's standard interface. All five algorithms are supported. The evaluate() method runs the trained policy and reports metrics. Students use this for the exercise instead of writing raw training loops.
+    Time: ~3 min. km.rl_train is the one-call entry point: pass a Gymnasium id, a zero-argument env factory or an env instance, an algorithm string, a timestep budget and SB3 hyperparameters; it returns an RLTrainingResult (mean_reward, std_reward, reward_curve, artifact path, lineage). The class form lives in kailash_ml.rl (RLTrainer + RLTrainingConfig, used with environment and policy registries) &mdash; there is no top-level kailash_ml.RLTrainer. DDPG, SAC and TD3 need a continuous (Box) action space. Be candid about status: the backend, Stable-Baselines3, is an optional extra that is not installed in the course environment, so rl_train raises ImportError there. Students therefore hand-write DQN and PPO in the exercise &mdash; every moving part visible &mdash; and Exercise 8.4 closes by showing this call as the production path. Same define &rarr; train &rarr; evaluate shape as M3's TrainingPipeline.
   </aside>
 </section>
 
@@ -6470,10 +6581,10 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Implement DQN for customer churn prevention (custom environment)</li>
-        <li>Implement PPO for supply chain optimisation (custom environment)</li>
-        <li>Create custom Gymnasium environments for both</li>
-        <li>Compare convergence curves (DQN vs PPO)</li>
+        <li>DQN from scratch on CartPole (replay, target net, &epsilon;-greedy) &rarr; retail inventory env</li>
+        <li>PPO from scratch (actor-critic, GAE, clipping) &rarr; ride-hailing pricing env</li>
+        <li>Five custom Gymnasium envs; DQN on ChurnPrevention, register the policy</li>
+        <li>Random vs DQN vs PPO: sample efficiency, wall-clock</li>
         <li>Explain how PPO connects to RLHF (bridge to M6)</li>
       </ol>
     </div>
@@ -6482,7 +6593,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
       <ul>
         <li>Both algorithms converge (reward increases)</li>
         <li>Custom environments implement correct reward functions</li>
-        <li>PPO is more stable than DQN (demonstrated)</li>
+        <li>DQN vs PPO compared on the same environment</li>
         <li>PPO &rarr; RLHF connection articulated clearly</li>
       </ul>
       <div class="callout callout-theory" style="margin-top: 12px;">
@@ -6494,7 +6605,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The RLHF bridge to M6 is critical. Students who understand PPO here will have a head start on understanding LLM alignment. The custom environments are the creative part &mdash; designing reward functions that capture the business objective.
+    Time: ~1 min. Exercise 5.8 is four files: DQN and PPO written from scratch and trained on CartPole-v1, then applied to custom environments (retail inventory, ride-hailing pricing, and five more in file 03 &mdash; churn, portfolio, queue, energy, traffic). All exercise environments use discrete actions; PPO on a continuous action space, and DDPG/SAC/A2C, are covered on the slides and via km.rl_train, not in the files. The RLHF bridge to M6 is critical. Students who understand PPO here will have a head start on understanding LLM alignment. The custom environments are the creative part &mdash; designing reward functions that capture the business objective.
   </aside>
 </section>
 
@@ -6547,7 +6658,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
         <li>Bellman equations: recursive value definition</li>
         <li>DQN: neural network approximates Q-values</li>
         <li>PPO: clipped objective prevents catastrophic updates</li>
-        <li>RLTrainer: train any algorithm with Kailash</li>
+        <li><code>km.rl_train</code>: production RL in one call (SB3 backend)</li>
       </ul>
     </div>
     <div class="col">
@@ -6568,35 +6679,35 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
   <h2>Lesson 5.8: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
-    Unlike every other lesson, here the exercise environments <em>are</em> the applications &mdash; you are coding the same decision problems real operations teams face, with the same reward structure.
+    Unlike every other lesson, most exercise environments <em>are</em> the applications &mdash; simplified versions of decision problems operations teams face, with the same state / action / reward shape.
   </div>
   <div class="columns" style="margin-top: 6px;">
     <div class="col">
       <div class="callout callout-applications">
         <strong>Telecom &mdash; ChurnPrevention (DQN)</strong>
-        <p class="small">Singtel-style retention picks a discount tier per customer per month. Reward = retained revenue &minus; discount cost. DQN learns to save big discounts for customers about to churn, not those who would stay anyway.</p>
+        <p class="small">A telco retention team picks an intervention per customer per day (none / discount / call / upgrade). Reward = retention bonus &minus; churn penalty &minus; action cost. DQN learns to spend on customers about to churn, not those who would stay anyway.</p>
       </div>
       <div class="callout callout-applications">
-        <strong>Retail &mdash; DynamicPricing (SAC)</strong>
-        <p class="small">Lazada / Shopee price 100M SKUs in real time. SAC handles the continuous action (price in a range) and noisy demand &mdash; same continuous-action problem as your custom env, at warehouse scale.</p>
+        <strong>Ride-hailing &mdash; Dynamic Pricing (PPO &rarr; SAC)</strong>
+        <p class="small">A platform sets a surge multiplier each hour. Your env picks from 5 price levels (PPO); a continuous price range is where SAC or a Gaussian-policy PPO takes over.</p>
       </div>
       <div class="callout callout-applications">
-        <strong>Asset Mgmt &mdash; PortfolioRebalancing (PPO)</strong>
-        <p class="small">A quant fund rebalances weights under transaction cost and risk. PPO's clipped objective prevents wild reweighting &mdash; exactly the clipped-surrogate trick you coded.</p>
+        <strong>Asset Mgmt &mdash; PortfolioRebalancing</strong>
+        <p class="small">A fund rebalances weights under transaction cost and risk. Your env discretises the moves (27 actions); with continuous weights, PPO's clip prevents wild reweighting.</p>
       </div>
     </div>
     <div class="col">
       <div class="callout callout-applications">
-        <strong>Logistics &mdash; SupplyChainInventory (PPO)</strong>
-        <p class="small">An FMCG distributor sets daily replenishment for 3,000 SKUs across 40 partners. Reward = service level &minus; holding cost &minus; stockout. RL beats rolling safety-stock by learning real co-movement.</p>
+        <strong>Logistics &mdash; RetailInventory (DQN)</strong>
+        <p class="small">A supermarket sets daily reorder quantities for a perishable category. Reward = sales &minus; holding &minus; stockout &minus; order cost. At thousands of SKUs, PPO is the usual choice.</p>
       </div>
       <div class="callout callout-applications">
         <strong>Cloud Ops &mdash; ResourceAllocation (A2C)</strong>
-        <p class="small">A platform allocates CPU / memory / I/O across tenants under SLA. A2C's advantage baseline cuts policy-gradient variance &mdash; critical when reward is noisy and decisions are high-stakes.</p>
+        <p class="small">A platform allocates CPU / memory / I/O across tenants under SLA (not one of your envs). A2C's advantage baseline cuts policy-gradient variance when reward is noisy.</p>
       </div>
       <div class="callout callout-applications">
         <strong>Bridge to M6 &mdash; RLHF for LLMs</strong>
-        <p class="small">The PPO you wrote for CartPole is the same algorithm that aligns ChatGPT, Claude, Gemini. Reward = human preference score; action = next token. Exercise 8 is literally the modern LLM alignment loop.</p>
+        <p class="small">The PPO you wrote for CartPole is the classic RLHF optimiser. Reward = a learned preference score; action = next token (discrete). A separate KL penalty keeps the LLM near its reference model.</p>
       </div>
     </div>
   </div>
@@ -6607,7 +6718,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~4 min (this slide is the module finale for applications &mdash; give it an extra minute). Every bullet on this slide maps to a Gymnasium env the student has already coded &mdash; that is a rare thing and worth calling out explicitly: "You built ChurnPrevention. You built DynamicPricing. These are not toy problems &mdash; they are the real state/action/reward structure of the production systems at the companies listed." The bridge to M6 is the most important takeaway: PPO is not a CartPole trick, it is the training loop of the LLMs they use every day. This is the hook into Module 6.
+    Time: ~4 min (this slide is the module finale for applications &mdash; give it an extra minute). Five of the six cards map to a Gymnasium env the student has already coded (ChurnPrevention and PortfolioRebalancing in file 03, RetailInventory in file 01, RideHailingPricing in file 02); ResourceAllocation is conceptual. Call it out: "You built these. They are simplified, but they have the same state / action / reward shape a production system would." The bridge to M6 is the most important takeaway: PPO is not a CartPole trick, it is the classic optimiser in RLHF for LLMs &mdash; with two separate controls: the clip bounds each update, the KL-to-reference penalty keeps the model close to where it started. This is the hook into Module 6.
   </aside>
 </section>
 
@@ -6660,7 +6771,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
           <tr><td>Images</td><td>CNN &rarr; ViT</td><td>5.2</td></tr>
           <tr><td>Sequences</td><td>LSTM &rarr; Transformer</td><td>5.3, 5.4</td></tr>
           <tr><td>Graphs</td><td>GCN / GAT</td><td>5.6</td></tr>
-          <tr><td>Tabular</td><td>Gradient boosting (not DL)</td><td>M4</td></tr>
+          <tr><td>Tabular</td><td>Gradient boosting (not DL)</td><td>M3</td></tr>
         </tbody>
       </table>
     </div>
@@ -6695,24 +6806,24 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Quiz Component</h3>
+      <h3>Quiz (coding, 5 questions)</h3>
       <ul>
-        <li>Formula derivations (VAE ELBO, attention scaling, LSTM gates)</li>
-        <li>Architecture selection (given a problem, choose and justify)</li>
-        <li>Concept explanations (reparameterisation trick, skip connections, mode collapse)</li>
+        <li>MLP and CNN from scratch on MNIST; LSTM on a sequential signal</li>
+        <li>Diagnose a broken CNN &mdash; name the failure, apply the fix</li>
+        <li>Train-and-prescribe on Fashion-MNIST with the DL Diagnostics toolkit</li>
       </ul>
+      <p class="small muted">Pass / fail per question against a stated threshold. No multiple choice.</p>
     </div>
     <div class="col">
-      <h3>DL Architecture Project</h3>
+      <h3>Four Graded Coding Tasks (25% each)</h3>
       <ol>
-        <li>Choose a problem (image, text, graph, or RL)</li>
-        <li>Select and justify the architecture</li>
-        <li>Train the model with appropriate enhancements</li>
-        <li>Evaluate with proper metrics</li>
-        <li>Export to ONNX and deploy with InferenceServer</li>
+        <li><strong>Autoencoder</strong> anomaly detection on sensor telemetry (ROC-AUC)</li>
+        <li><strong>CNN</strong> from scratch on 8&times;8 digits (test accuracy)</li>
+        <li><strong>GRU</strong> forecast that beats a naive last-value baseline (MSE)</li>
+        <li><strong>Transformer</strong> text classifier on an AG News slice (accuracy)</li>
       </ol>
       <div class="callout callout-kailash" style="margin-top: 8px;">
-        <strong>Full pipeline:</strong> Problem &rarr; Architecture &rarr; Train &rarr; Evaluate &rarr; Export &rarr; Serve. End to end.
+        <strong>CPU-sized:</strong> small models, bundled or generated data, graded on the outcome your model reaches. ONNX export and serving are practised in Exercises 5.2 and 5.7.
       </div>
     </div>
   </div>
@@ -6720,7 +6831,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. The project is open-ended but structured. Students choose their domain, apply the architecture decision tree, and build a complete pipeline. The ONNX export and InferenceServer deployment ensure production readiness.
+    Time: ~2 min. Describe what exists in the module's quiz/ and assessment/ folders. The quiz is a 90-minute coding notebook: four build questions and one prescribe question that uses the DL Diagnostics toolkit; each is pass/fail against a threshold. The assessment is four auto-graded tasks, one per pillar (autoencoders, CNNs, sequences, transformers), each worth 25 marks and passed only when every grader check is true. They are deliberately CPU-sized: synthetic or bundled data, small models, no pretrained backbones. The export-and-serve pipeline (OnnxBridge, ModelRegistry, InferenceServer) is exercised in Exercises 5.2 and 5.7 rather than graded here.
   </aside>
 </section>
 

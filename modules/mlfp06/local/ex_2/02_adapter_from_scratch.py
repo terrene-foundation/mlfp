@@ -125,7 +125,7 @@ identity_gap = (x_test - y_adapter).abs().max().item()
 print(f"Adapter layer: d={D_MODEL}, bottleneck={ADAPTER_BOTTLENECK}")
 print(f"  Adapter params:       {adapter_params:,}")
 print(f"  Output shape:         {tuple(y_adapter.shape)}")
-print(f"  Identity gap at init: {identity_gap:.2e} (not exactly 0 due to LayerNorm)")
+print(f"  Identity gap at init: {identity_gap:.2e} (exactly 0: the zero-init up-projection outputs 0)")
 
 expected = count_adapter_params(D_MODEL, ADAPTER_BOTTLENECK, num_layers=1)
 
@@ -192,13 +192,13 @@ print("✓ Checkpoint 3 passed — trade-off curve saved\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore multi-tenant SaaS (12 clients, one base)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore HR-tech SaaS serves 12 enterprise clients.
+# SCENARIO (illustrative): A Singapore HR-tech SaaS serves 12 enterprise clients.
 # Each client wants the shared LLM to speak "in their voice" while
-# staying tenant-isolated (rules/tenant-isolation.md).
-# LoRA pros: tiny (~65K params per tenant at r=16) and mergeable into
-# the base for zero inference overhead.
+# staying tenant-isolated.
+# LoRA pros: small (r=16 on q_proj + v_proj of a 7B base ≈ 8.4M params,
+# ~17 MB in fp16) and mergeable into the base for zero inference overhead.
 # Adapter pros: stackable at runtime, nonlinear capacity per parameter.
-# Decision: LoRA r=16 per tenant. 12 LoRAs total ~10 MB on disk,
+# Decision: LoRA r=16 per tenant. 12 LoRAs total ~200 MB on disk,
 # drops VRAM from 12 x 14 GB to 1 x 14 GB shared base.
 
 print("Singapore multi-tenant SaaS decision:")
@@ -233,7 +233,7 @@ print(
   [x] Compared LoRA vs adapters across 4 dimensions
   [x] Visualised the params-vs-capacity trade-off curve
   [x] Applied the choice to a Singapore 12-tenant SaaS
-      (S$82,800/year saving by switching to LoRA r=16)
+      (illustrative S$82,800/year saving by switching to LoRA r=16)
 
   KEY INSIGHT: LoRA dominates single-task adaptation by merging into
   the base at inference.  Adapters shine when you need to STACK

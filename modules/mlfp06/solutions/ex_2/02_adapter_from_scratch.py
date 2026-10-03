@@ -132,7 +132,7 @@ class AdapterTransformerBlock(nn.Module):
 # TASK 2 — TRAIN: verify adapter structure + identity-at-init
 # ════════════════════════════════════════════════════════════════════════
 # The actual adapter training loop would mirror LoRA's (handled by
-# kailash-align in 05_sft_alignment_pipeline.py when target modules are
+# kailash-align in 06_sft_alignment_pipeline.py when target modules are
 # configured for adapter-style injection).  Here we verify the module
 # contract and count parameters.
 
@@ -151,7 +151,7 @@ identity_gap = (x_test - y_adapter).abs().max().item()
 print(f"Adapter layer: d={D_MODEL}, bottleneck={ADAPTER_BOTTLENECK}")
 print(f"  Adapter params:       {adapter_params:,}")
 print(f"  Output shape:         {tuple(y_adapter.shape)}")
-print(f"  Identity gap at init: {identity_gap:.2e} (not exactly 0 due to LayerNorm)")
+print(f"  Identity gap at init: {identity_gap:.2e} (exactly 0: the zero-init up-projection outputs 0)")
 
 expected = count_adapter_params(D_MODEL, ADAPTER_BOTTLENECK, num_layers=1)
 
@@ -163,8 +163,8 @@ assert (
 ), f"Adapter param count mismatch: got {adapter_params}, expected {expected}"
 print("✓ Checkpoint 1 passed — adapter structure verified\n")
 
-# INTERPRETATION: Adapter params = 2*d*b + 2*b + 2*d (down, up, norms).
-# For d=512, b=64: ~66K.  More than LoRA r=8 (~8K) but the GELU in the
+# INTERPRETATION: Adapter params = 2*d*b + b + 3*d (down d*b+b, up b*d+d,
+# LayerNorm 2*d). For d=512, b=64: 67,136.  More than LoRA r=8 (~8K) but the GELU in the
 # middle lets it model nonlinear transformations, which LoRA cannot.
 
 
@@ -192,7 +192,7 @@ comparison = pl.DataFrame(
         ],
         "Adapter": [
             "Bottleneck FC -> GELU -> FC inserted between layers",
-            "~2*d*b + 2*d params (nonlinear)",
+            "2*d*b + b + 3*d params (nonlinear)",
             "Moderate: new layers, residual path, zero-init strategy",
             "Stack multiple adapters per base model; cannot merge into W",
         ],
@@ -261,20 +261,21 @@ print("✓ Checkpoint 3 passed — trade-off curve saved\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore multi-tenant SaaS (12 clients, one base)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore HR-tech SaaS serves 12 enterprise clients.
+# SCENARIO (illustrative): A Singapore HR-tech SaaS serves 12 enterprise clients.
 # Each client wants the shared LLM to speak "in their voice": their
 # own job-ad tone, their own policy-explanation phrasing, their own
 # preferred Singlish/formal balance.  Legally, one client's fine-tuned
 # adaptation MUST NOT leak into another client's inference path
-# (tenant isolation — see rules/tenant-isolation.md).
+# (tenant isolation).
 #
 # CHOICE: LoRA or adapters?
 #
 #   LoRA pros:
-#     - Tiny adapters (~65K params each at r=16 for a 7B base)
+#     - Small adapters: r=16 on q_proj + v_proj of a 7B base
+#       (d=4096, 32 layers) is 2*4096*16*2*32 ≈ 8.4M params
 #     - Can be MERGED into the base for each tenant's dedicated
 #       inference pod, zero inference overhead
-#     - 12 LoRA checkpoints total ~10 MB on disk
+#     - ~17 MB per tenant in fp16, ~200 MB for all 12 checkpoints
 #
 #   Adapter pros:
 #     - STACKABLE at inference time: the same shared base model can
@@ -287,11 +288,11 @@ print("✓ Checkpoint 3 passed — trade-off curve saved\n")
 # DECISION: LoRA is the right default.  For a 12-tenant SaaS running
 # on a single shared GPU pool, LoRA merges into per-tenant inference
 # pods with zero latency penalty, and the 10 MB of adapters fits
-# trivially in a per-tenant secrets store.  Adapters would add
-# ~3 ms/request of overhead per adapter block at inference time — at
-# 2M requests/day that is ~100 minutes of extra compute.
+# easily in per-tenant artefact storage.  If adapters added, say,
+# ~3 ms/request at inference time, 2M requests/day would cost ~100
+# minutes of extra compute per day.
 #
-# BUSINESS IMPACT: previously the SaaS fine-tuned a full 7B model per
+# BUSINESS IMPACT (illustrative figures): previously the SaaS fine-tuned a full 7B model per
 # tenant (12 x S$600 = S$7,200/month in GPU cost, plus 12 x 14 GB of
 # VRAM).  LoRA drops that to one shared base (14 GB) plus 12 LoRAs at
 # ~S$25 each per re-train cycle = S$300/month — a S$6,900/month saving
@@ -327,7 +328,7 @@ print(
   [x] Compared LoRA vs adapters across 4 dimensions
   [x] Visualised the params-vs-capacity trade-off curve
   [x] Applied the choice to a Singapore 12-tenant SaaS
-      (S$82,800/year saving by switching to LoRA r=16)
+      (illustrative S$82,800/year saving by switching to LoRA r=16)
 
   KEY INSIGHT: LoRA dominates single-task adaptation by merging into
   the base at inference.  Adapters shine when you need to STACK

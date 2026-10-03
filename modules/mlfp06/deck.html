@@ -383,7 +383,7 @@
   </div>
   <aside class="notes">
     <strong>Time</strong>: 3 min (45 sec story + 2 min pair share).<br/>
-    <strong>Hook</strong> (literal words to open): &ldquo;In 2024 a major bank shipped a chatbot that cheerfully invented refund policies for three weeks before anyone noticed &mdash; the unit tests were green the whole time. A 10-line faithfulness check would have caught it on day one. That is what we are preventing today.&rdquo;<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Picture this &mdash; a hypothetical, but a very common shape of failure: a team ships a customer chatbot that cheerfully invents a refund policy, and it runs for three weeks before anyone notices &mdash; the unit tests were green the whole time. A 10-line faithfulness check would have caught it on day one. That is what we are preventing today.&rdquo;<br/>
     <strong>Key question for the room</strong>: &ldquo;Why do most ML engineers stop instrumenting the moment they switch from training to prompting?&rdquo; &rarr; expected wrong answer: &ldquo;because the model is a black box&rdquo; &rarr; right answer: &ldquo;because re-prompting feels faster than instrumenting &mdash; until the clock hits hour six and production is still hallucinating.&rdquo;<br/>
     <strong>If behind schedule</strong>: cut the pair share; keep the 45-second story &mdash; it is the emotional anchor for the whole section.<br/>
     <strong>Transition</strong>: &ldquo;You just named symptoms. Now let me give you the six lenses to diagnose them.&rdquo;
@@ -491,12 +491,12 @@
       <h3 style="margin-bottom: 4px;">Asks: is the generation coherent, factual, on-task?</h3>
       <ul style="font-size: 0.78em; margin: 4px 0;">
         <li><strong>Bounded tasks</strong>: perplexity, ROUGE, BLEU, BERTScore</li>
-        <li><strong>Open-ended</strong>: LLM-as-judge (bias-mitigated &mdash; swap positions, normalise length)</li>
+        <li><strong>Open-ended</strong>: LLM-as-judge (pairwise: swap positions, normalise length)</li>
         <li><strong>Hallucination</strong>: self-consistency (sample n, measure agreement) + retrieval grounding</li>
         <li><strong>Refusal calibration</strong>: refuse harmful prompts, do NOT over-refuse benign ones</li>
       </ul>
       <div class="callout callout-theory" style="font-size: 0.76em; margin-top: 6px;">
-        <strong>Why this lens first?</strong> 80% of production LLM failures surface here. If Output is clean, you rarely need to open the Attention lens.
+        <strong>Why this lens first?</strong> Most production LLM failures surface here first. If Output is clean, you rarely need to open the Attention lens.
       </div>
     </div>
     <div class="col">
@@ -546,44 +546,44 @@
 <section class="code-fit">
   <h2>Lens 1: Output &mdash; Code</h2>
   <span class="marker marker-theory">Theory</span>
-  <p class="small muted" style="margin-top: 0;">Routes through DeepEval + a Kaizen Delegate judge. No raw <code>openai.chat.completions.create</code>.</p>
-<pre style="font-size: 0.47em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
+  <p class="small muted" style="margin-top: 0;">The judge is a Kaizen Delegate on your local Ollama model. No raw <code>openai.chat.completions.create</code>.</p>
+<pre style="font-size: 0.47em; line-height: 1.35"><code class="language-python">from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+from shared.mlfp06.diagnostics import LLMObservatory
 
 obs = LLMObservatory()  # lazy init, no network call here
-
 # ── Faithfulness against retrieved context ───────────────────
 df = obs.output.faithfulness(
-    response="Refunds within 14 days, no exceptions.",
+    "Refunds within 14 days, no exceptions.",
     context=["Refund policy: 30-day window for unused items."])
-# df columns: claim, supported, support_source, grounding_score
-
-# ── Bias-mitigated LLM-as-judge (positions swapped, lengths normalised)
+# one-row DataFrame: faithfulness (0-1), mode, judge_model, rationale
+# ── LLM-as-judge on one response ─────────────────────────────
 verdict = obs.output.llm_as_judge(
-    prompt="Summarise the Q3 earnings call in 3 bullets.",
-    response=draft_answer, criteria="coherence, factual_accuracy, completeness")
+    "Summarise the Q3 earnings call in 3 bullets.", draft_answer,
+    criteria="coherence,factual_accuracy,completeness")
 # verdict.score in [0, 1], verdict.rationale is a short string
+# ── Hallucination via self-consistency: YOU sample, it compares
+question = "Which listing rule governs board independence?"
+samples = [(await run_delegate_text(make_delegate(temperature=0.8),
+                                    question))[0] for _ in range(5)]
+sc = obs.output.self_consistency(samples, prompt=question)
+# columns: agreement (mean pairwise similarity), is_outlier
+# ── Refusal calibration: score the MODEL'S RESPONSES ─────────
+obs.output.refusal_rate(harmful_responses)   # should be high
+obs.output.over_refusal(benign_responses)    # should be near zero
 
-# ── Hallucination via self-consistency ───────────────────────
-result = obs.output.self_consistency(
-    prompt="What is the SGX listing rule for board independence?", n=5)
-# result.agreement_rate, result.flagged_as_hallucination
-
-# ── Refusal calibration ──────────────────────────────────────
-obs.output.refusal_rate(harmful_prompts)        # should be high
-obs.output.over_refusal(benign_prompts)         # should be near zero
-
-obs.output.plot_output_dashboard().show()        # single figure, all 4 metrics
+obs.output.plot_output_dashboard().show()    # one figure, all metrics
 </code></pre>
   <div class="callout callout-theory" style="font-size: 0.78em; margin-top: 4px;">
-    <strong>Budget note:</strong> each judge call costs money. The observatory caps spend at <strong>~$2 per student per module run</strong> via small eval sets and result caching.
+    <strong>Budget note:</strong> every judge call is an LLM call. The observatory caps them (<code>max_judge_calls=50</code> by default); on local Ollama the cost is compute time, not dollars.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
   </div>
   <aside class="notes">
     <strong>Time</strong>: 3 min.<br/>
-    <strong>Hook</strong> (literal words to open): &ldquo;One object, four method calls, one dashboard. You never hand-roll a judge.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Why do we swap positions and normalise lengths inside the judge?&rdquo; &rarr; expected wrong answer: &ldquo;fairness&rdquo; &rarr; right answer: &ldquo;because unmitigated LLM judges preferring the LONGER answer by default; verbosity bias inflates apparent win rates by 15-25 points.&rdquo;<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;One object, a handful of method calls, one dashboard. You never hand-roll a judge.&rdquo;<br/>
+    <strong>Point out</strong>: <code>self_consistency</code> does not call the model &mdash; you generate the five samples, it measures agreement. The refusal metrics likewise score the model's <em>responses</em>, not the prompts.<br/>
+    <strong>Key question for the room</strong>: &ldquo;When we compare TWO answers (Exercise 6.3), why swap their positions and normalise length?&rdquo; &rarr; expected wrong answer: &ldquo;fairness&rdquo; &rarr; right answer: &ldquo;because unmitigated LLM judges favour the first-shown and the LONGER answer; judging both orders and averaging cancels position bias, and length normalisation stops verbosity inflating the win rate.&rdquo;<br/>
     <strong>If behind schedule</strong>: skip self-consistency; faithfulness + judge is the core pair.<br/>
     <strong>Transition</strong>: &ldquo;Output tells you the surface. Lens 2 tells you what is happening inside the model.&rdquo;
   </aside>
@@ -600,12 +600,12 @@ obs.output.plot_output_dashboard().show()        # single figure, all 4 metrics
         <li><strong>Attention heatmaps</strong> &mdash; token-to-token weights per head</li>
         <li><strong>Logit lens</strong> &mdash; read the model's prediction at every layer (nostalgebraist / Neel Nanda)</li>
         <li><strong>Sparse autoencoders</strong> &mdash; load Gemma Scope features, read what each latent fires on</li>
-        <li><strong>Circuits</strong> &mdash; the minimal subgraph that produces a token (activation patching)</li>
+        <li><strong>Linear probes</strong> &mdash; is a concept (e.g. sentiment) linearly readable at layer <em>L</em>?</li>
       </ul>
       <div class="callout callout-advanced" style="font-size: 0.76em; margin-top: 6px;">
         <strong>Mech interp in 2026:</strong> we read <em>features</em>, not neurons. The course default for SAE work is <strong>Gemma-2-2B</strong> &mdash; Gemma Scope is the best-covered pre-trained SAE suite available.
       </div>
-      <p class="small muted" style="margin-top: 6px;">API-only models (GPT, Claude, Gemini) cannot be X-rayed. The lens reports "not applicable" and falls back to Output + Agent Trace.</p>
+      <p class="small muted" style="margin-top: 6px;">Hosted API-only models cannot be X-rayed. The lens reports "not applicable" and falls back to Output + Agent Trace.</p>
     </div>
     <div class="col">
       <div class="diagram-container" style="text-align: center;">
@@ -667,7 +667,7 @@ obs.output.plot_output_dashboard().show()        # single figure, all 4 metrics
     <strong>Time</strong>: 3 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;If Output says 'wrong', Attention says 'why'. It is the only lens that looks through the model's skull.&rdquo;<br/>
     <strong>Key question for the room</strong>: &ldquo;Why Gemma-2-2B as the default, not Llama?&rdquo; &rarr; expected wrong answer: &ldquo;smaller&rdquo; &rarr; right answer: &ldquo;Gemma Scope ships pre-trained SAEs for every layer &mdash; students read features, they do not train them. No comparable suite exists for Llama-3 at course-friendly size.&rdquo;<br/>
-    <strong>If behind schedule</strong>: skip circuits &mdash; heatmap + logit lens is enough for the intuition.<br/>
+    <strong>If behind schedule</strong>: skip probes &mdash; heatmap + logit lens is enough for the intuition. (Circuit tracing / activation patching is a research topic beyond the course toolkit.)<br/>
     <strong>Transition</strong>: &ldquo;Here is the method surface in five lines.&rdquo;
   </aside>
 </section>
@@ -679,28 +679,29 @@ obs.output.plot_output_dashboard().show()        # single figure, all 4 metrics
   <p class="small muted" style="margin-top: 0;">Wraps <code>transformer_lens</code> + <code>sae_lens</code>. Open-weight models only; API models report <code>not_applicable</code>.</p>
 <pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
 
-obs = LLMObservatory()
+# The open-weight model is chosen ONCE, on the observatory
+obs = LLMObservatory(attention_model="google/gemma-2-2b")
 
 # ── Attention heatmap for one head ───────────────────────────
 fig = obs.attention.attention_heatmap(
-    prompt="The cat sat on the mat.", model="google/gemma-2-2b", layer=8, head=3)
+    "The cat sat on the mat.", layer=8, head=3)
 fig.show()
 
 # ── Logit lens: what does each layer predict? ────────────────
 df = obs.attention.logit_lens(
-    prompt="The Eiffel Tower is located in the city of", model="google/gemma-2-2b")
-# df columns: layer, top_token, top_prob  — crystallisation point surfaces
+    "The Eiffel Tower is located in the city of", top_k=5)
+# columns: layer, rank, token, prob  — crystallisation point surfaces
+obs.attention.plot_logit_lens(df).show()
 
 # ── Sparse autoencoder features (Gemma Scope) ────────────────
 features = obs.attention.sae_features(
-    prompt="I felt genuinely happy when the result came in.",
-    model="google/gemma-2-2b", layer=12, top_k=10)
-# features: [(feature_id, activation, human_readable_label), ...]
+    "I felt genuinely happy when the result came in.",
+    layer=12, top_k=10)
+# columns: feature_index, activation, mode
 
-# ── Circuit trace: minimal subgraph for a target token ───────
-circuit = obs.attention.circuit_trace(
-    prompt="Paris is the capital of", target_token=" France", model="google/gemma-2-2b")
-# circuit.nodes: {(layer, component): attribution_score}
+# ── Linear probe: is a concept linearly readable at layer 6? ─
+probe = obs.attention.probe(prompts, labels, layer=6)
+# dict: cv_accuracy, layer, n_prompts, n_classes, mode
 </code></pre>
   <div class="callout callout-advanced" style="font-size: 0.78em; margin-top: 4px;">
     <strong>Non-goal:</strong> we do NOT train SAEs in this course. We READ pre-trained ones. SAE training is a research topic; SAE reading is an M6 skill.
@@ -710,9 +711,9 @@ circuit = obs.attention.circuit_trace(
   </div>
   <aside class="notes">
     <strong>Time</strong>: 3 min.<br/>
-    <strong>Hook</strong> (literal words to open): &ldquo;Four method calls cover most mech-interp questions a practitioner asks this year.&rdquo;<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Four method calls cover most mech-interp questions a practitioner asks. Note the model is chosen once, on the observatory &mdash; the methods take only the prompt.&rdquo;<br/>
     <strong>Key question for the room</strong>: &ldquo;In the logit lens output, what does it mean if 'Paris' appears strongly at layer 5 but the model outputs 'Lyon'?&rdquo; &rarr; expected wrong answer: &ldquo;bug&rdquo; &rarr; right answer: &ldquo;the knowledge is in the residual stream but a later layer overrode it &mdash; now you know exactly where to intervene.&rdquo;<br/>
-    <strong>If behind schedule</strong>: skip <code>circuit_trace</code>; it reappears in 6.2.<br/>
+    <strong>If behind schedule</strong>: skip <code>probe</code>; heatmap + logit lens carry the intuition.<br/>
     <strong>Transition</strong>: &ldquo;Lens 3 leaves the model and looks at what we fed it.&rdquo;
   </aside>
 </section>
@@ -760,14 +761,14 @@ circuit = obs.attention.circuit_trace(
           <text x="305" y="94" font-size="8" fill="#64748B" text-anchor="middle">utilisation</text>
           <!-- Leaderboard -->
           <rect x="20" y="120" width="300" height="140" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
-          <text x="170" y="138" font-size="10" font-weight="700" fill="#0F172A" text-anchor="middle">Retriever leaderboard &mdash; 50 SG policy queries</text>
+          <text x="170" y="138" font-size="10" font-weight="700" fill="#0F172A" text-anchor="middle">Illustrative leaderboard &mdash; your Ex 6.4 run fills it in</text>
           <text x="30" y="158" font-size="9" fill="#64748B">retriever</text>
           <text x="180" y="158" font-size="9" fill="#64748B">recall@5</text>
           <text x="250" y="158" font-size="9" fill="#64748B">faithfulness</text>
           <text x="30" y="178" font-size="10" fill="#334155">BM25</text>
           <text x="200" y="178" font-size="10" fill="#334155" text-anchor="end">0.71</text>
           <text x="275" y="178" font-size="10" font-weight="700" fill="#166534" text-anchor="end">0.88</text>
-          <text x="30" y="196" font-size="10" fill="#334155">dense (bge-m3)</text>
+          <text x="30" y="196" font-size="10" fill="#334155">dense (nomic-embed)</text>
           <text x="200" y="196" font-size="10" fill="#334155" text-anchor="end">0.78</text>
           <text x="275" y="196" font-size="10" fill="#334155" text-anchor="end">0.81</text>
           <text x="30" y="214" font-size="10" fill="#334155">hybrid</text>
@@ -787,7 +788,7 @@ circuit = obs.attention.circuit_trace(
   <aside class="notes">
     <strong>Time</strong>: 3 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;Most RAG post-mortems stop at recall@5. That is why most RAG post-mortems are wrong.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Hybrid wins recall by 12 points but loses faithfulness by 15. Why?&rdquo; &rarr; expected wrong answer: &ldquo;hybrid is worse&rdquo; &rarr; right answer: &ldquo;hybrid retrieves MORE chunks &mdash; generator latches onto weaker ones and ungrounds. Classic over-retrieval pattern.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;In this illustrative board hybrid wins recall by 12 points but loses faithfulness by 15. How could that happen?&rdquo; &rarr; expected wrong answer: &ldquo;hybrid is worse&rdquo; &rarr; right answer: &ldquo;hybrid retrieves MORE chunks &mdash; generator latches onto weaker ones and ungrounds. Classic over-retrieval pattern.&rdquo;<br/>
     <strong>If behind schedule</strong>: skip MRR &mdash; the recall-vs-faithfulness tension is the insight.<br/>
     <strong>Transition</strong>: &ldquo;Code surface for the retrieval lens is short and scriptable.&rdquo;
   </aside>
@@ -797,43 +798,41 @@ circuit = obs.attention.circuit_trace(
 <section class="code-fit">
   <h2>Lens 3: Retrieval &mdash; Code</h2>
   <span class="marker marker-theory">Theory</span>
-  <p class="small muted" style="margin-top: 0;">Backs onto <code>ragas</code> + <code>trulens-eval</code>. Works for any retriever that exposes <code>retrieve(query, k)</code>.</p>
+  <p class="small muted" style="margin-top: 0;">Uses <code>ragas</code> when installed, a Kaizen judge otherwise. A retriever is any callable <code>(query, k) &rarr; [(doc_id, text, score)]</code>.</p>
 <pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
 
 obs = LLMObservatory()
-
-# ── Standard IR metrics ──────────────────────────────────────
-df = obs.retrieval.recall_at_k(
-    queries=eval_queries, relevant_ids=gold_chunk_ids, retriever=my_retriever, k=5)
-
+# ── Standard IR metrics for ONE query ────────────────────────
+r = obs.retrieval.recall_at_k(retrieved_ids, gold_ids, k=5)
+p = obs.retrieval.precision_at_k(retrieved_ids, gold_ids, k=5)
 # ── Retriever bake-off on identical queries ──────────────────
-leaderboard = obs.retrieval.compare_retrievers(
-    retrievers={"bm25": bm25, "dense": dense, "hybrid": hybrid, "hyde": hyde},
-    queries=eval_queries, relevant_ids=gold_chunk_ids, k=5)
-# leaderboard: Polars DataFrame with recall@k, precision@k, faithfulness, latency_ms
+eval_set = [{"query": q, "relevant_ids": [gold]} for q, gold in pairs]
+board = obs.retrieval.compare_retrievers(
+    {"bm25": bm25, "dense": dense, "hybrid": hybrid, "hyde": hyde},
+    eval_set, k=5)
+# columns: retriever, recall_at_k, precision_at_k, mrr, ndcg_at_k
 
 # ── Did the generator actually USE the context? ──────────────
-util = obs.retrieval.context_utilisation(
-    response=generated_answer, context=retrieved_chunks)
-# util.grounded_claims / util.total_claims, util.unused_chunks
+util = obs.retrieval.context_utilisation(answer, retrieved_chunks)
+# float in [0, 1] — token-overlap heuristic, no LLM call
 
-# ── Chunk-size sweep: find the empirical sweet spot ──────────
-sweep = obs.retrieval.chunk_size_sweep(
-    documents=policy_corpus, sizes=[256, 512, 1024, 2048], queries=eval_queries)
+# ── End-to-end scores per query (ragas if usable, else judge) ─
+scores = obs.retrieval.evaluate(queries, contexts_per_query, answers,
+                                ground_truth_ids=gold_ids_per_query)
 
-obs.retrieval.plot_retrieval_dashboard().show()  # recall + leaderboard + sweep
+obs.retrieval.plot_rag_dashboard().show()  # recall + leaderboard
 </code></pre>
   <div class="callout callout-theory" style="font-size: 0.78em; margin-top: 4px;">
-    <strong>First use:</strong> Exercise 6.4 &mdash; Singapore policy RAG leaderboard across four retrievers.
+    <strong>First use:</strong> Exercise 6.4 (<code>ex_4/05</code>) &mdash; hit@k leaderboard for BM25 / dense / hybrid / HyDE on a 1,000-document sample of the open <code>neural-bridge/rag-dataset-12000</code>.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
   </div>
   <aside class="notes">
     <strong>Time</strong>: 2 min.<br/>
-    <strong>Hook</strong> (literal words to open): &ldquo;<code>compare_retrievers</code> is one call. You will run it in 6.4 across four retrievers without writing a single for-loop yourself.&rdquo;<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;<code>compare_retrievers</code> is one call. In 6.4 you score four retrievers with it without hand-writing a single metric loop.&rdquo;<br/>
     <strong>Key question for the room</strong>: &ldquo;What happens if <code>context_utilisation</code> is 0.3? Which number do I change?&rdquo; &rarr; expected wrong answer: &ldquo;try a bigger model&rdquo; &rarr; right answer: &ldquo;tighten the prompt to cite chunks, OR re-rank so irrelevant chunks do not crowd the context window.&rdquo;<br/>
-    <strong>If behind schedule</strong>: skip chunk-size sweep &mdash; the bake-off is the headline.<br/>
+    <strong>If behind schedule</strong>: skip <code>evaluate</code> &mdash; the bake-off is the headline. (Chunk-size comparison is Exercise 6.4 part 1, <code>ex_4/01</code>.)<br/>
     <strong>Transition</strong>: &ldquo;Lens 4 is the one most teams never build &mdash; until the first 3am agent incident.&rdquo;
   </aside>
 </section>
@@ -845,14 +844,14 @@ obs.retrieval.plot_retrieval_dashboard().show()  # recall + leaderboard + sweep
   <div class="columns">
     <div class="col">
       <ul style="font-size: 0.78em; margin: 4px 0;">
-        <li><strong>ReAct capture</strong>: structured Thought / Action / Observation / Done events as JSONL</li>
-        <li><strong>Tool usage</strong>: per-tool call count, success rate, p50/p99 latency, cost share</li>
-        <li><strong>Loop detection</strong>: repeated (thought, action) pairs flagged as cycles</li>
-        <li><strong>Budget timeline</strong>: cumulative cost vs wall clock &mdash; where did the money go?</li>
-        <li><strong>Context utilisation</strong>: tokens consumed vs model window over time</li>
+        <li><strong>Run capture</strong>: every token, tool_start, tool_end and error event, timestamped (JSONL-ready)</li>
+        <li><strong>Tool usage</strong>: per-tool call count, errors, mean latency, cost</li>
+        <li><strong>Loop detection</strong>: repeated (tool, arguments) actions flagged as cycles</li>
+        <li><strong>Cost timeline</strong>: tool calls on a time axis + cumulative cost &mdash; where did the turns go?</li>
+        <li><strong>Across runs</strong>: cost per captured run, side by side</li>
       </ul>
       <div class="callout callout-foundations" style="font-size: 0.76em; margin-top: 6px;">
-        <strong>Backend:</strong> <strong>Langfuse self-hosted</strong> for production (OTEL-native, Foundation-independence compliant). Colab falls back to a <strong>Plotly-based viewer</strong> because Docker is unavailable.
+        <strong>Backend:</strong> in-memory traces plotted with <strong>Plotly</strong> (works in Colab). Optional export to a <strong>self-hosted, open-source Langfuse</strong> when <code>LANGFUSE_HOST</code> is set.
       </div>
     </div>
     <div class="col">
@@ -903,8 +902,8 @@ obs.retrieval.plot_retrieval_dashboard().show()  # recall + leaderboard + sweep
   <aside class="notes">
     <strong>Time</strong>: 3 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;Without this lens an agent failure is &lsquo;it got stuck&rsquo;. With it, failure is &lsquo;step 4 opened a loop that burned 78% of budget in 10 seconds&rsquo;. Same bug, two reports, one actionable.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Why does the course default to Langfuse self-hosted over LangSmith?&rdquo; &rarr; expected wrong answer: &ldquo;features&rdquo; &rarr; right answer: &ldquo;independence &mdash; LangSmith is a hosted SaaS; Langfuse self-hosted keeps the trace data inside the Foundation's stack.&rdquo;<br/>
-    <strong>If behind schedule</strong>: skip context utilisation; loop detection is the highest-value single capability.<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why is the optional trace backend a self-hosted, open-source one?&rdquo; &rarr; expected wrong answer: &ldquo;features&rdquo; &rarr; right answer: &ldquo;independence and data custody &mdash; a self-hosted backend keeps agent traces (which contain prompts and tool outputs) inside your own infrastructure.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip the across-runs view; loop detection is the highest-value single capability. (The $ figures on the diagram are illustrative &mdash; on local Ollama every call prices at $0, so watch turns and tokens.)<br/>
     <strong>Transition</strong>: &ldquo;Lens 4 reads what an agent DID. Lens 5 reads whether training TAUGHT it the right thing.&rdquo;
   </aside>
 </section>
@@ -913,49 +912,42 @@ obs.retrieval.plot_retrieval_dashboard().show()  # recall + leaderboard + sweep
 <section class="code-fit">
   <h2>Lens 4: Agent Trace &mdash; Code</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <p class="small muted" style="margin-top: 0;">Wraps Kaizen agent event streams into OpenTelemetry-compatible JSONL.</p>
-<pre style="font-size: 0.46em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
-from kaizen_agents import ReActAgent
+  <p class="small muted" style="margin-top: 0;">Wraps a Kaizen Delegate's event stream into a timestamped, OpenTelemetry-compatible trace.</p>
+<pre style="font-size: 0.46em; line-height: 1.35"><code class="language-python">from shared.mlfp06._ollama_bootstrap import make_delegate
+from shared.mlfp06.diagnostics import LLMObservatory
+from shared.mlfp06.ex_5 import build_tool_registry
 
 obs = LLMObservatory()
-agent = ReActAgent(tools=[search, calculator, summarise])
+# Tools must live in a ToolRegistry — a bare list of functions registers nothing
+agent = make_delegate(tools=build_tool_registry([search, calculator, summarise]),
+                      max_turns=8)       # model comes from OLLAMA_CHAT_MODEL
 
-# ── Capture a run with full trace ────────────────────────────
-with obs.agent.capture(agent, run_id="q3_summary_v1") as trace:
-    result = agent.run("Summarise Q3 filings for SGX listed banks.")
+# ── Capture a run with full trace (async) ────────────────────
+trace = await obs.agent.capture_run(
+    agent, "Summarise the Q3 filings in the corpus.", run_id="q3_summary_v1")
+# trace.events: token / tool_start / tool_end / error, each timestamped
 
-# trace is a JSONL file under runs/&lt;agent&gt;/&lt;timestamp&gt;.jsonl
-
-# ── Per-tool cost / latency / success breakdown ──────────────
-usage = obs.agent.tool_usage_summary(trace)
-# Polars DataFrame: tool, calls, success_rate, p50_ms, p99_ms, cost_usd_total
+# ── Per-tool breakdown ───────────────────────────────────────
+usage = obs.agent.tool_usage("q3_summary_v1")
+# columns: tool, calls, errors, mean_latency_ms, total_cost_usd
 
 # ── Loop detection ───────────────────────────────────────────
-loops = obs.agent.loop_detection(trace)
-# loops: [{"start_step": 4, "length": 10, "signature": "search,observe"}]
+loops = obs.agent.detect_loops("q3_summary_v1")
+# columns include tool, signature, repeats, first_idx
 
-# ── Budget timeline plot ─────────────────────────────────────
-obs.agent.budget_timeline(trace).show()
-
-# ── Counterfactual replay: what if step 3 returned differently?
-replay = obs.agent.replay(
-    trace,
-    step=3,
-    modified_output="0 results",
-)
-# replay.diverged_at_step, replay.new_total_cost, replay.new_outcome
-
-# ── Optional: export to Langfuse for the UI ──────────────────
-obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
+# ── Timeline + per-event cost ────────────────────────────────
+obs.agent.plot_trace("q3_summary_v1").show()
+costs = obs.agent.cost_breakdown("q3_summary_v1")
+print(obs.agent.report("q3_summary_v1"))
 </code></pre>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
   </div>
   <aside class="notes">
     <strong>Time</strong>: 2 min.<br/>
-    <strong>Hook</strong> (literal words to open): &ldquo;<code>capture</code> is a context manager &mdash; you wrap the agent run, it writes the trace. No bespoke logging.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Why is <code>replay</code> valuable when the agent has already run?&rdquo; &rarr; expected wrong answer: &ldquo;for testing&rdquo; &rarr; right answer: &ldquo;because it lets you attribute blame &mdash; if swapping step 3's observation fixes the outcome, step 3 was the failure point, not the model.&rdquo;<br/>
-    <strong>If behind schedule</strong>: skip <code>replay</code>; it recurs in 6.5.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;<code>capture_run</code> runs the agent for you and records every event. No bespoke logging.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why look at <code>detect_loops</code> when the agent already returned an answer?&rdquo; &rarr; expected wrong answer: &ldquo;it finished, so it is fine&rdquo; &rarr; right answer: &ldquo;a run can finish AND waste most of its turns repeating the same tool call &mdash; the trace tells you where the turns went, the answer does not.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip <code>cost_breakdown</code>; it recurs in 6.5.<br/>
     <strong>Transition</strong>: &ldquo;Now the lens for training: did our fine-tuning reward the right thing?&rdquo;
   </aside>
 </section>
@@ -1028,8 +1020,8 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
         <li><strong>Envelope snapshot</strong> &mdash; Financial, Operational, Temporal, Data Access, Communication per role</li>
         <li><strong>Budget consumption</strong> &mdash; spend, tokens, tool calls against each envelope dimension</li>
         <li><strong>Audit chain verification</strong> &mdash; hash-linked log, tamper-evident, returns first bad index on failure</li>
-        <li><strong>D/T/R addressing</strong> &mdash; who decided, who trusted, who responded (PACT grammar)</li>
-        <li><strong>Negative verdict drill</strong> &mdash; assert the DENY set stays denied; positive regression test</li>
+        <li><strong>D/T/R addressing</strong> &mdash; every verdict is tied to a Department / Team / Role address (PACT grammar)</li>
+        <li><strong>Negative verdict drill</strong> &mdash; assert the DENY set stays denied (only meaningful once roles have envelopes &mdash; see 6.7)</li>
       </ul>
       <div class="callout callout-foundations" style="font-size: 0.76em; margin-top: 6px;">
         <strong>Native to Kailash:</strong> this lens has zero external dependencies. PACT is the Foundation's own governance framework &mdash; the lens inspects <code>GovernanceEngine</code>, not a third-party policy engine.
@@ -1061,7 +1053,7 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
           <path d="M 50 193 L 50 215 L 290 215 L 290 193" stroke="#334155" stroke-width="1.2" fill="none"/>
           <rect x="60" y="220" width="220" height="40" rx="4" fill="#FEF2F2" stroke="#F43F5E"/>
           <text x="170" y="238" font-size="10" font-weight="700" fill="#BE123C" text-anchor="middle">hash-chained audit log</text>
-          <text x="170" y="252" font-size="9" fill="#334155" text-anchor="middle">verify_chain() &rarr; True | tampered_index</text>
+          <text x="170" y="252" font-size="9" fill="#334155" text-anchor="middle">verify_chain() &rarr; ok / broken per entry</text>
         </svg>
       </div>
     </div>
@@ -1073,6 +1065,7 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
     <strong>Time</strong>: 3 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;Every allowed action AND every denied action appends to the same hash-linked log. A broken chain means tampering &mdash; and you can name the exact index.&rdquo;<br/>
     <strong>Key question for the room</strong>: &ldquo;Why audit DENIALS, not just executions?&rdquo; &rarr; expected wrong answer: &ldquo;completeness&rdquo; &rarr; right answer: &ldquo;because the pattern of denials is how you detect an agent that is probing its envelope &mdash; systematic deny-then-retry patterns are a leading indicator of compromise or mis-aligned optimisation.&rdquo;<br/>
+    <strong>Caveat to state now</strong>: in the installed PACT (0.14.x) a role with NO envelope &mdash; or an address not in the org &mdash; is auto-approved. The &ldquo;no&rdquo; branch only exists for roles whose envelope you have attached. We prove this in 6.7.<br/>
     <strong>If behind schedule</strong>: skip D/T/R; envelope + chain is the headline.<br/>
     <strong>Transition</strong>: &ldquo;Six lenses, six responsibilities. Here is the modern stack that powers each.&rdquo;
   </aside>
@@ -1093,12 +1086,12 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
     <tbody>
       <tr>
         <td><strong>Output eval</strong></td>
-        <td>DeepEval, RAGAS</td>
+        <td>Kaizen judge, RAGAS</td>
         <td>Faithfulness, hallucination, LLM-as-judge (bias-mitigated)</td>
       </tr>
       <tr>
         <td><strong>Interpretability</strong></td>
-        <td>TransformerLens, nnterp, Gemma Scope SAEs</td>
+        <td>TransformerLens, SAELens + Gemma Scope SAEs</td>
         <td>Attention heatmaps, logit lens, feature reading (read, not train)</td>
       </tr>
       <tr>
@@ -1108,8 +1101,8 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
       </tr>
       <tr>
         <td><strong>Agent trace</strong></td>
-        <td>Langfuse (self-hosted), LangSmith, Phoenix</td>
-        <td>TAOD capture, OTEL spans, replay; Plotly viewer fallback for Colab</td>
+        <td>Langfuse (self-hosted), Phoenix &mdash; both open source</td>
+        <td>Event capture, OTEL-compatible spans; Plotly viewer for Colab</td>
       </tr>
       <tr>
         <td><strong>Alignment</strong></td>
@@ -1124,15 +1117,15 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
     </tbody>
   </table>
   <div class="callout callout-advanced" style="font-size: 0.78em; margin-top: 8px;">
-    <strong>Why this stack?</strong> Every tool is open-source or Foundation-native. Langfuse self-hosted over LangSmith; DeepEval over proprietary evals. Independence is a design constraint, not a suggestion.
+    <strong>Why this stack?</strong> Every tool is open-source or Foundation-native, and every one can run on your own machine &mdash; traces, prompts and judge calls never leave it. Independence is a design constraint, not a suggestion.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
   </div>
   <aside class="notes">
     <strong>Time</strong>: 2 min.<br/>
-    <strong>Hook</strong> (literal words to open): &ldquo;You will install each of these in the exercises. None of them is a mystery SDK &mdash; they are the tools the 2026 LLM engineering profession runs on.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Why does the Output row list TWO tools (DeepEval AND RAGAS)?&rdquo; &rarr; expected wrong answer: &ldquo;redundancy&rdquo; &rarr; right answer: &ldquo;DeepEval excels at open-ended judge metrics; RAGAS is RAG-specific. Different specialists. The observatory composes, it does not pick winners.&rdquo;<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;The observatory wraps these behind one object, so you rarely import them directly. None of them is a mystery SDK &mdash; they are open tools the LLM engineering profession runs on.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why does the Output row list TWO tools (a Kaizen judge AND RAGAS)?&rdquo; &rarr; expected wrong answer: &ldquo;redundancy&rdquo; &rarr; right answer: &ldquo;the judge handles open-ended criteria on any response; RAGAS is RAG-specific (faithfulness to retrieved context). Different specialists. The observatory composes, it does not pick winners.&rdquo;<br/>
     <strong>If behind schedule</strong>: skip the callout; the table is the artefact.<br/>
     <strong>Transition</strong>: &ldquo;Now for the map: which lens powers which lesson.&rdquo;
   </aside>
@@ -1156,7 +1149,7 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
         <td><strong>6.1</strong></td>
         <td>Prompting &amp; structured output</td>
         <td>Output</td>
-        <td>Attention (preview only &mdash; API models)</td>
+        <td>Attention (preview only &mdash; served model)</td>
       </tr>
       <tr>
         <td><strong>6.2</strong></td>
@@ -1208,7 +1201,7 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
   <aside class="notes">
     <strong>Time</strong>: 2 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;The six lenses stay the same for the next eight lessons. What changes is which lens takes the lead.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Why does 6.1's attention lens say 'preview only'?&rdquo; &rarr; expected wrong answer: &ldquo;too advanced&rdquo; &rarr; right answer: &ldquo;API-only models cannot be X-rayed &mdash; no weights exposed. Attention goes live in 6.2 when we load Gemma-2-2B.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why does 6.1's attention lens say 'preview only'?&rdquo; &rarr; expected wrong answer: &ldquo;too advanced&rdquo; &rarr; right answer: &ldquo;the chat model is reached through Ollama's HTTP API, which exposes text, not activations. The attention lens needs the weights loaded in-process (e.g. <code>LLMObservatory(attention_model=&quot;google/gemma-2-2b&quot;)</code>) &mdash; an optional, advanced extension.&rdquo;<br/>
     <strong>If behind schedule</strong>: skim 6.2&ndash;6.7; the headline is that the capstone uses ALL SIX.<br/>
     <strong>Transition</strong>: &ldquo;Last slide of the section: the protocol you run before every M6 build.&rdquo;
   </aside>
@@ -1296,7 +1289,7 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
   <ul>
     <li>Explain how LLMs are pre-trained and aligned</li>
     <li>Apply 5+ prompt engineering techniques effectively</li>
-    <li>Use Kaizen <code>Delegate</code> for structured LLM output with cost tracking</li>
+    <li>Use Kaizen <code>Delegate</code> and <code>Signature</code> for structured LLM output with token and cost accounting</li>
     <li>Understand basic inference optimisation concepts</li>
   </ul>
   <div class="callout callout-foundations" style="margin-top: 16px;">
@@ -1360,11 +1353,11 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
       <ul>
         <li>Performance improves predictably with more <strong>parameters</strong>, <strong>data</strong>, and <strong>compute</strong></li>
         <li>Kaplan et al. (2020): power-law relationship between loss and each factor</li>
-        <li>Chinchilla (2022): optimal allocation is roughly equal scaling of params and data</li>
+        <li>Hoffmann et al. (2022, &ldquo;Chinchilla&rdquo;): optimal allocation is roughly equal scaling of params and data</li>
       </ul>
       <div class="equation-box" style="margin-top:12px;">
-        <span class="katex-display">L(N, D) \approx \left(\frac{N_c}{N}\right)^{\alpha_N} + \left(\frac{D_c}{D}\right)^{\alpha_D}</span>
-        <div class="annotation">Loss as a function of model size N and dataset size D</div>
+        <span class="katex-display">L(N, D) \approx E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}}</span>
+        <div class="annotation">Chinchilla form (Hoffmann et al., 2022): <em>E</em> is the irreducible loss &mdash; more N and D shrink only the last two terms</div>
       </div>
     </div>
     <div class="col">
@@ -1372,7 +1365,7 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
       <table>
         <thead><tr><th>Model</th><th>Params</th><th>Key Innovation</th></tr></thead>
         <tbody>
-          <tr><td>GPT-4</td><td>~1.8T (MoE)</td><td>Mixture of Experts</td></tr>
+          <tr><td>GPT-4</td><td>Undisclosed (reported ~1.8T MoE)</td><td>Mixture of Experts (reported)</td></tr>
           <tr><td>Claude</td><td>Undisclosed</td><td>Constitutional AI</td></tr>
           <tr><td>Llama 3</td><td>8B-405B</td><td>Open weights, GQA</td></tr>
           <tr><td>Mistral</td><td>7B-8x22B</td><td>Sliding window attn</td></tr>
@@ -1499,7 +1492,7 @@ How many apples do they have?
 
 Let's think step by step."""</code></pre>
       <div class="callout callout-theory" style="margin-top:12px;">
-        <strong>Kojima et al. (2022):</strong> Adding "Let's think step by step" improves accuracy on GSM8K from 17.7% to 78.7% (zero-shot CoT vs standard zero-shot).
+        <strong>Kojima et al. (2022):</strong> Adding the five words "Let's think step by step" lifted zero-shot accuracy on MultiArith from 17.7% to 78.7%, and on GSM8K from 10.4% to 40.7% (text-davinci-002).
       </div>
     </div>
   </div>
@@ -1525,13 +1518,18 @@ Let's think step by step."""</code></pre>
         <li>More robust than single CoT &mdash; reduces variance</li>
       </ul>
       <pre><code class="language-python"># Sample 5 CoT paths, take majority answer
+from collections import Counter
+from shared.mlfp06._ollama_bootstrap import (
+    make_delegate, run_delegate_text)
+
 answers = []
-for _ in range(5):
-    response = delegate.generate(
-        prompt, temperature=0.7
-    )
-    answers.append(extract_answer(response))
-final = majority_vote(answers)</code></pre>
+for _ in range(5):  # fresh = independent
+    d = make_delegate(temperature=0.7)
+    text, _, _ = await run_delegate_text(
+        d, prompt)
+    answers.append(extract_answer(text))
+votes = Counter(answers)
+final = votes.most_common(1)[0][0]</code></pre>
     </div>
     <div class="col">
       <h3>Structured Output</h3>
@@ -1566,7 +1564,7 @@ Text: "The quarterly results exceeded..."
   <span class="marker marker-foundations">Foundations</span>
   <table>
     <thead>
-      <tr><th>Technique</th><th>When to Use</th><th>Cost</th><th>Accuracy Gain</th></tr>
+      <tr><th>Technique</th><th>When to Use</th><th>Cost</th><th>Typical Gain (illustrative)</th></tr>
     </thead>
     <tbody>
       <tr><td>Zero-shot</td><td>Simple, well-defined tasks</td><td>Lowest</td><td>Baseline</td></tr>
@@ -1584,7 +1582,7 @@ Text: "The quarterly results exceeded..."
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. This is the decision framework. Students should be able to pick the right technique for any given task. Cost matters: self-consistency multiplies your API bill by N.
+    Time: ~2 min. This is the decision framework. Students should be able to pick the right technique for any given task. The gain column is a rough, task-dependent illustration &mdash; Exercise 6.1 measures the real numbers on SST-2 with your model. Cost matters: self-consistency multiplies your API bill by N.
   </aside>
 </section>
 
@@ -1595,10 +1593,9 @@ Text: "The quarterly results exceeded..."
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>From Raw Prompts to Type-Safe Output</h3>
-    <pre style="font-size: 0.37em;"><code class="language-python">import os
-from dataclasses import dataclass
-from kaizen import Signature, InputField, OutputField
+    <pre style="font-size: 0.37em;"><code class="language-python">from kaizen import Signature, InputField, OutputField
 from kaizen.core.base_agent import BaseAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
 
 class SentimentSignature(Signature):
     """Classify sentiment of a product review."""
@@ -1606,32 +1603,31 @@ class SentimentSignature(Signature):
     sentiment: str = OutputField(description="positive, negative, or neutral")
     confidence: float = OutputField(description="Confidence score 0.0 to 1.0")
 
-@dataclass
-class SentimentConfig:
-    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
-    model: str = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-    temperature: float = 0.2
-    budget_limit_usd: float = 1.0
+# Local Ollama model; the name comes from OLLAMA_CHAT_MODEL
+config = {
+    "llm_provider": "ollama",
+    "model": DEFAULT_CHAT_MODEL,
+    "base_url": OLLAMA_BASE_URL,
+    "use_async_llm": True,             # required for run_async
+    "response_format": {"type": "json_object"},
+    "structured_output_mode": "explicit",
+}
+agent = BaseAgent(config=config, signature=SentimentSignature())
 
-class SentimentAgent(BaseAgent):
-    def __init__(self, config: SentimentConfig):
-        super().__init__(config=config, signature=SentimentSignature())
-
-agent = SentimentAgent(SentimentConfig())
 result = await agent.run_async(
     review="The battery life is incredible but the screen is dim."
 )
-print(result["sentiment"])    # "mixed" or "neutral"
-print(result["confidence"])   # 0.72</code></pre>
+print(result["sentiment"])    # e.g. "neutral"
+print(result["confidence"])   # e.g. 0.72</code></pre>
   </div>
   <div class="callout callout-theory">
-    <strong>Why Signature?</strong> Free-form text output is brittle. <code>Signature</code> enforces a schema: the LLM must return typed fields. If it does not, Kaizen retries with corrective prompting.
+    <strong>Why Signature?</strong> Free-form text output is brittle. <code>Signature</code> renders a schema into the prompt and parses the reply into typed fields. A missing field is a real failure &mdash; check for it, never fill a placeholder.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. This is the Kailash bridge: everything we just learned about prompting is wrapped in a type-safe interface. No more parsing JSON from raw text. The Delegate handles streaming, retries, and cost tracking. Show the cost attribute: students should always know how much they are spending.
+    Time: ~3 min. This is the Kailash bridge: everything we just learned about prompting is wrapped in a type-safe interface. No more parsing JSON from raw text. Point out the config: a local Ollama model named by <code>OLLAMA_CHAT_MODEL</code>, never a hard-coded hosted model. Students should always know what each call consumes &mdash; on local Ollama that is tokens and seconds, not dollars (a dollar cap such as <code>budget_limit_usd</code> only bites on a priced provider).
   </aside>
 </section>
 
@@ -1674,47 +1670,39 @@ print(result["confidence"])   # 0.72</code></pre>
     <div class="col">
       <h3>Task</h3>
       <ul>
-        <li>Build a classification system using Kaizen <code>Delegate</code></li>
-        <li>Compare zero-shot vs few-shot vs CoT on the same dataset</li>
-        <li>Measure cost and accuracy for each approach</li>
-        <li>Use <code>Signature</code> for all outputs</li>
+        <li>Classify SST-2 movie-review sentiment with a Kaizen <code>Delegate</code> on local Ollama</li>
+        <li>Six technique files (<code>ex_1/01&ndash;06</code>): zero-shot, few-shot, CoT, zero-shot CoT, self-consistency, <code>Signature</code> structured output</li>
+        <li>Measure accuracy, tokens and latency for each technique</li>
       </ul>
       <h3 style="margin-top:12px;">Assessment Criteria</h3>
       <ul>
-        <li>All three prompting techniques demonstrated</li>
+        <li>All techniques run on the same eval docs</li>
         <li>Accuracy comparison shows when each technique helps</li>
-        <li>Cost tracking working &mdash; total spend reported</li>
+        <li>Token usage reported, plus an illustrative hosted-price estimate (tokens &times; a reference price)</li>
       </ul>
     </div>
     <div class="col">
-      <pre><code class="language-python"># Skeleton
-import os
-from kaizen import Signature, InputField, OutputField
-from kaizen_agents import Delegate
+      <pre><code class="language-python"># Skeleton — local/ex_1/01_zero_shot.py (abridged)
+from shared.mlfp06.ex_1 import (
+    CATEGORIES, get_eval_docs, normalise_label, run_delegate)
 
-class ClassificationResult(Signature):
-    """Classify news article topic."""
-    article: str = InputField()
-    topic: str = OutputField()
-    reasoning: str = OutputField()
+async def zero_shot_classify(text: str) -> tuple[str, float, float]:
+    """Return (label, tokens, elapsed)."""
+    # TODO: task + CATEGORIES + review text, ask for the label only
+    prompt = ____
+    # TODO: call run_delegate(prompt)
+    response, tokens, elapsed = ____
+    # TODO: map free text to a label with normalise_label()
+    ____
 
-delegate = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    budget_usd=0.50,
-    signature=ClassificationResult,
-)
-
-# TODO: Implement zero_shot_classify()
-# TODO: Implement few_shot_classify()
-# TODO: Implement cot_classify()
-# TODO: Compare accuracy & cost</code></pre>
+# Files 02-05 change only the prompt; 06 swaps in a Signature</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. Walk through the exercise skeleton. Students implement three functions, run them on the same test set, and compare. The cost tracking is the engineering differentiator: this is not a toy exercise, it is a production evaluation.
+    Time: ~1 min. Walk through the exercise skeleton. Students work through six technique files on the same SST-2 eval docs and compare accuracy, tokens and latency. On local Ollama the dollar cost is zero, so the exercise reports tokens and converts them to an illustrative hosted price &mdash; that accounting is the engineering differentiator: this is not a toy exercise, it is a production evaluation.
   </aside>
 </section>
 
@@ -1846,7 +1834,7 @@ class LoRALayer(nn.Module):
         <div class="arr">&rarr;</div>
         <div class="box">Down <span class="katex-inline">W_d</span></div>
         <div class="arr">&rarr;</div>
-        <div class="box">ReLU</div>
+        <div class="box">GELU</div>
         <div class="arr">&rarr;</div>
         <div class="box">Up <span class="katex-inline">W_u</span></div>
         <div class="arr">&rarr;</div>
@@ -1860,7 +1848,7 @@ class LoRALayer(nn.Module):
         super().__init__()
         self.down = nn.Linear(
             hidden_size, bottleneck)
-        self.activation = nn.ReLU()
+        self.activation = nn.GELU()
         self.up = nn.Linear(
             bottleneck, hidden_size)
         # Init up-project near zero
@@ -2025,33 +2013,37 @@ class LoRALayer(nn.Module):
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>AlignmentPipeline &mdash; From Theory to One Call</h3>
-    <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_align import AlignmentPipeline, AlignmentConfig, AdapterRegistry
+    <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import os
+from datasets import Dataset
+from kailash_align import (AdapterRegistry, AdapterSignature,
+    AlignmentConfig, AlignmentPipeline, LoRAConfig, SFTConfig)
 
-# Configure LoRA fine-tuning
+# Configure SFT + LoRA (base model from SFT_BASE_MODEL; course default
+# is Qwen/Qwen2.5-0.5B-Instruct)
 config = AlignmentConfig(
-    method="lora",
-    model_name="meta-llama/Llama-3-8B",
-    rank=8,
-    alpha=16,
-    target_modules=["q_proj", "v_proj"],
-    learning_rate=2e-4,
-    num_epochs=3,
+    method="sft",
+    base_model_id=os.environ.get("SFT_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct"),
+    lora=LoRAConfig(rank=8, alpha=16, target_modules=("q_proj", "v_proj")),
+    sft=SFTConfig(num_train_epochs=3, learning_rate=2e-4),
 )
 
-# Train
+# Train — dataset is a HuggingFace Dataset with a "text" column
+train_ds = Dataset.from_dict(sft_frame.to_dict(as_series=False))
 pipeline = AlignmentPipeline(config)
-result = pipeline.train(dataset="imdb_sentiment")
+result = await pipeline.train(train_ds, adapter_name="sentiment-lora-v1")
+print(result.training_metrics["train_loss"], result.adapter_path)
 
-# Store adapter for later use
-registry = AdapterRegistry()
-registry.register("sentiment-lora-v1", result.adapter)
-print(f"Trainable params: {result.trainable_params:,}")  # ~262K</code></pre>
+# Store a versioned adapter for later use
+version = await AdapterRegistry().register_adapter(
+    name="sentiment-lora-v1", adapter_path=result.adapter_path,
+    signature=AdapterSignature(base_model_id=config.base_model_id,
+                               adapter_type="lora", training_method="sft"))</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. This is the Kailash bridge: everything we learned about LoRA, adapters, and quantisation is wrapped in AlignmentPipeline. The AdapterRegistry stores versioned adapters for deployment. Students implement from scratch first, then see how the engine does it.
+    Time: ~2 min. This is the Kailash bridge: the LoRA maths is wrapped in AlignmentPipeline (typed sub-configs: LoRAConfig, SFTConfig). Point out three API facts: <code>train()</code> is async and needs an <code>adapter_name</code>; the dataset is a HuggingFace <code>Dataset</code>, not a polars frame; losses come from <code>result.training_metrics</code>. The AdapterRegistry stores versioned adapters for deployment. Students implement from scratch first (ex_2/01&ndash;02), then run this in ex_2/06.
   </aside>
 </section>
 
@@ -2064,20 +2056,21 @@ print(f"Trainable params: {result.trainable_params:,}")  # ~262K</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Implement <code>LoRALayer</code> from scratch</li>
-        <li>Implement <code>AdapterLayer</code> from scratch</li>
-        <li>Fine-tune on IMDB sentiment with both approaches</li>
-        <li>Compare: accuracy, parameter count, training time</li>
-        <li>Merge two LoRA adapters with TIES</li>
+        <li>Implement <code>LoRALayer</code> from scratch; sweep parameter count over rank (<code>ex_2/01</code>)</li>
+        <li>Implement <code>AdapterLayer</code> from scratch; compare with LoRA (<code>02</code>)</li>
+        <li>Pick a technique with the landscape decision tree (<code>03</code>)</li>
+        <li>Merge task vectors with TIES and SLERP (<code>04</code>, synthetic deltas)</li>
+        <li>INT8 quantisation from scratch (<code>05</code>)</li>
+        <li>SFT + LoRA on IMDB instruction pairs with <code>AlignmentPipeline</code>; register the adapter (<code>06</code>)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>Both from-scratch implementations produce correct gradients</li>
-        <li>LoRA achieves comparable accuracy to full fine-tuning</li>
-        <li>Quantitative comparison table produced</li>
-        <li>Merged model retains both capabilities</li>
+        <li>Both from-scratch layers start as the identity and have the expected parameter counts</li>
+        <li>Quantitative LoRA-vs-adapter comparison table produced</li>
+        <li>Merge preserves weight norms as expected per strategy</li>
+        <li>SFT run reports a real training loss and a registered adapter</li>
       </ul>
       <div class="callout callout-warning" style="margin-top:8px;">
         <strong>Common mistake:</strong> Forgetting to freeze the original weights. If <code>W_0.requires_grad = True</code>, you are doing full fine-tuning, not LoRA.
@@ -2088,7 +2081,7 @@ print(f"Trainable params: {result.trainable_params:,}")  # ~262K</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The from-scratch implementations are the core of this exercise. Students must understand the maths before using AlignmentPipeline. The merging task is a stretch goal for advanced students.
+    Time: ~1 min. The from-scratch implementations are the core of this exercise. Students must understand the maths before using AlignmentPipeline. Merging (file 04) is a required file but works on synthetic task vectors &mdash; merging two trained adapters end-to-end is an extension for advanced students.
   </aside>
 </section>
 
@@ -2142,11 +2135,11 @@ print(f"Trainable params: {result.trainable_params:,}")  # ~262K</code></pre>
         <div class="annotation">
           <span class="katex-inline">y_w</span> = preferred response &nbsp;|&nbsp;
           <span class="katex-inline">y_l</span> = rejected response &nbsp;|&nbsp;
-          <span class="katex-inline">\beta</span> = deviation penalty
+          <span class="katex-inline">\beta</span> = KL-penalty strength (large &rarr; stays close to <span class="katex-inline">\pi_{\text{ref}}</span>)
         </div>
       </div>
       <p style="font-size:0.82em; margin-top:10px;">
-        <strong>Intuition:</strong> Increase probability of <span class="katex-inline">y_w</span> relative to reference. Decrease probability of <span class="katex-inline">y_l</span> relative to reference. <span class="katex-inline">\beta</span> controls how far the policy can deviate.
+        <strong>Intuition:</strong> Increase probability of <span class="katex-inline">y_w</span> relative to reference. Decrease probability of <span class="katex-inline">y_l</span> relative to reference. <span class="katex-inline">\beta</span> controls how far the policy can deviate: <strong>small &beta;</strong> = weak anchor, more drift; <strong>large &beta;</strong> = stays close to the reference.
       </p>
     </div>
   </div>
@@ -2205,17 +2198,18 @@ for batch in preference_dataloader:
   <span class="marker marker-advanced">Advanced</span>
   <div class="columns">
     <div class="col">
-      <h3>Key Innovation (DeepSeek-R1, 2025)</h3>
+      <h3>Key Innovation (Shao et al., 2024 &mdash; DeepSeekMath)</h3>
       <ul>
         <li>Sample <span class="katex-inline">G</span> completions for each prompt</li>
         <li>Score each completion with a verifier (not a learned reward model)</li>
         <li>Compute advantage relative to group mean</li>
-        <li>Update policy with clipped objective (like PPO, but group-normalised)</li>
+        <li>Update with a PPO-style clipped objective + KL penalty to <span class="katex-inline">\pi_{\text{ref}}</span>; no value network</li>
       </ul>
-      <div class="equation-box" style="margin-top:12px;">
-        <span class="katex-display">\hat{A}_i = \frac{r_i - \text{mean}(\mathbf{r})}{\text{std}(\mathbf{r})}</span>
-        <div class="annotation">Advantage of completion i relative to group statistics</div>
+      <div class="equation-box" style="margin-top:8px;">
+        <span class="katex-display">\hat{A}_i = \frac{r_i - \text{mean}(\mathbf{r})}{\text{std}(\mathbf{r}) + \epsilon}</span>
+        <div class="annotation">Advantage relative to the group (std-normalised: reward-scale invariant)</div>
       </div>
+
     </div>
     <div class="col">
       <h3>DPO vs GRPO</h3>
@@ -2237,7 +2231,7 @@ for batch in preference_dataloader:
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~4 min. GRPO is what powers DeepSeek-R1's reasoning ability. The key insight: if you can verify correctness (code compiles, math is right), you do not need preference pairs at all. Sample many attempts, score them, and learn from the relative differences. If beginners confused: "Imagine giving 10 students the same maths problem, marking all their answers, then telling each student how they did compared to the group average."
+    Time: ~4 min. GRPO was introduced by Shao et al. (2024) in DeepSeekMath and later used to train DeepSeek-R1 (2025). Dividing by the group std is what makes it insensitive to the reward's scale. Write the full objective on the board: J = E[ min(&rho;<sub>i</sub>&Acirc;<sub>i</sub>, clip(&rho;<sub>i</sub>, 1&plusmn;&epsilon;)&Acirc;<sub>i</sub>) ] &minus; &beta;&middot;KL(&pi;<sub>&theta;</sub> &Vert; &pi;<sub>ref</sub>), with &rho;<sub>i</sub> = &pi;<sub>&theta;</sub>(y<sub>i</sub>|x) / &pi;<sub>old</sub>(y<sub>i</sub>|x). The clip and the KL term keep each update small. The key insight: if you can verify correctness (code compiles, math is right), you do not need preference pairs at all. Sample many attempts, score them, and learn from the relative differences. If beginners confused: "Imagine giving 10 students the same maths problem, marking all their answers, then telling each student how they did compared to the group average."
   </aside>
 </section>
 
@@ -2323,31 +2317,33 @@ lm_eval --model hf --model_args pretrained=my-model \
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>AlignmentPipeline with method="dpo"</h3>
-    <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from kailash_align import AlignmentPipeline, AlignmentConfig
+    <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">import os
+from datasets import Dataset
+from kailash_align import (AlignmentConfig, AlignmentPipeline,
+                           DPOConfig, LoRAConfig)
 
 config = AlignmentConfig(
     method="dpo",
-    model_name="meta-llama/Llama-3-8B",
-    beta=0.1,           # Deviation penalty
-    lora_rank=8,         # Use LoRA for efficiency
-    learning_rate=5e-5,
-    num_epochs=1,
+    base_model_id=os.environ.get("SFT_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct"),
+    lora=LoRAConfig(rank=16, alpha=32, target_modules=("q_proj", "v_proj")),
+    dpo=DPOConfig(beta=0.1, learning_rate=5e-5, num_train_epochs=2),
 )
 
-pipeline = AlignmentPipeline(config)
-result = pipeline.train(
-    dataset="preference_pairs",  # (prompt, chosen, rejected) triples
-    eval_with="llm_judge",       # Auto-evaluate with LLM-as-judge
-)
+# (prompt, chosen, rejected) triples -> HuggingFace Dataset
+prefs = Dataset.from_dict(
+    train_pref.select(["prompt", "chosen", "rejected"]).to_dict(as_series=False))
+result = await AlignmentPipeline(config).train(
+    None, adapter_name="ultrafeedback_dpo_v1", preference_dataset=prefs)
 
-print(f"Win rate vs reference: {result.win_rate:.1%}")
-print(f"MMLU change: {result.mmlu_delta:+.1f}%")</code></pre>
+m = result.training_metrics     # raw TRL metrics dict
+print(m["train_loss"], m.get("rewards/margins"), result.adapter_path)
+# Win rate / benchmarks are YOUR evaluation step — not returned here</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. The Kailash bridge: AlignmentPipeline wraps the DPO training loop, handles LoRA setup, and provides built-in evaluation. Students implement the loss function from scratch first, then use the pipeline.
+    Time: ~2 min. The Kailash bridge: AlignmentPipeline wraps the DPO training loop and LoRA setup. The preference triples go in <code>preference_dataset</code>, not the positional slot; <code>beta</code> lives on <code>DPOConfig</code>. The pipeline does NOT evaluate &mdash; win rate (LLM-as-judge) and safety/benchmark checks are separate steps you run (ex_3/03 safety eval, ex_3/04 judge). Students implement the loss from scratch first (ex_3/02), then use the pipeline.
   </aside>
 </section>
 
@@ -2360,19 +2356,19 @@ print(f"MMLU change: {result.mmlu_delta:+.1f}%")</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Fine-tune a model with DPO on preference data</li>
-        <li>Evaluate using LLM-as-judge (measure position and verbosity bias)</li>
-        <li>Run lm-eval benchmarks before and after alignment</li>
-        <li>Report the alignment tax (capability degradation)</li>
+        <li>Load UltraFeedback Binarized preference pairs (GPT-4-rated, not human) (<code>ex_3/01</code>)</li>
+        <li>Implement the DPO loss; sweep &beta; (<code>02</code>)</li>
+        <li>Train a DPO adapter with AlignmentPipeline; compare base vs aligned refusal rates on adversarial prompts (<code>03</code>)</li>
+        <li>GRPO advantages; LLM-as-judge with position- and verbosity-bias tests and a swap-averaged judge; benchmark survey (<code>04</code>)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>DPO training converges (loss decreases)</li>
-        <li>LLM-as-judge biases measured and mitigated</li>
-        <li>Benchmarks show alignment impact quantitatively</li>
-        <li>Win rate vs reference model reported</li>
+        <li>DPO training reports a real loss and reward margin</li>
+        <li>&beta; interpreted correctly (large &beta; = closer to reference)</li>
+        <li>LLM-as-judge biases measured; position bias mitigated by swapping</li>
+        <li>Base-vs-aligned safety comparison reported quantitatively</li>
       </ul>
     </div>
   </div>
@@ -2380,7 +2376,7 @@ print(f"MMLU change: {result.mmlu_delta:+.1f}%")</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The exercise combines implementation with evaluation. Students must demonstrate that alignment worked (win rate up) without destroying general capability (benchmarks stable).
+    Time: ~1 min. The exercise combines implementation with evaluation. Students must show that alignment changed behaviour (refusals on adversarial prompts) and know how they would check it did not destroy general capability: running lm-eval before and after is the recommended extension (see the benchmarks slide). Remind them UltraFeedback's preferences are AI (GPT-4) ratings, not human labels.
   </aside>
 </section>
 
@@ -2505,21 +2501,23 @@ print(f"MMLU change: {result.mmlu_delta:+.1f}%")</code></pre>
     <div class="cell">
       <h4>Dense Retrieval</h4>
       <p>Embed query and documents into vectors. Find nearest neighbours by cosine similarity. Captures semantic meaning.</p>
-      <pre><code class="language-python">from sentence_transformers import (
-    SentenceTransformer)
-model = SentenceTransformer(
-    "all-MiniLM-L6-v2")
-q_emb = model.encode(query)
+      <pre><code class="language-python">from shared.mlfp06._ollama_bootstrap import (
+    make_embedder)
+embedder = make_embedder()
+# nomic-embed-text via Ollama
+q_emb = (await embedder.embed(
+    [query]))[0]
 # Cosine similarity search</code></pre>
     </div>
     <div class="cell">
       <h4>Sparse Retrieval (BM25)</h4>
       <p>Term frequency + inverse document frequency. Exact keyword matching. Fast, interpretable, no GPU needed.</p>
-      <pre><code class="language-python">from rank_bm25 import BM25Okapi
-bm25 = BM25Okapi(tokenized_docs)
-scores = bm25.get_scores(
-    tokenized_query)
-top_k = scores.argsort()[-5:]</code></pre>
+      <pre><code class="language-python"># BM25 built from scratch
+# in Exercise 6.4 (ex_4/03)
+bm25 = BM25(chunk_texts,
+            k1=1.5, b=0.75)
+hits = bm25.search(
+    query, top_k=5)</code></pre>
     </div>
     <div class="cell">
       <h4>Hybrid Retrieval</h4>
@@ -2573,18 +2571,19 @@ top_docs = [candidates[i]
         <li>Embed the hypothetical answer instead of the query</li>
         <li>The hypothetical answer is in "document space" &mdash; better cosine similarity</li>
       </ul>
-      <pre><code class="language-python">hypothetical = delegate.generate(
-    f"Write a passage that answers: {query}"
-)
-hyde_embedding = model.encode(hypothetical)
-# Search with hyde_embedding instead</code></pre>
+      <pre><code class="language-python">hypothetical, _, _ = await run_delegate_text(
+    make_delegate(),
+    f"Write a passage that answers: {query}")
+hyde_emb = (await make_embedder().embed(
+    [hypothetical]))[0]
+# Search with hyde_emb instead of q_emb</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Re-ranking is the standard production pattern: fast retrieval for candidates, then accurate re-ranking for final results. HyDE is clever: the generated answer does not need to be correct, it just needs to be in the right semantic neighbourhood.
+    Time: ~3 min. Re-ranking is the standard production pattern: fast retrieval for candidates, then accurate re-ranking for final results. The slide shows a dedicated cross-encoder model; Exercise 6.4 (ex_4/05) uses the local LLM as a stand-in cross-encoder (score each query&ndash;passage pair 0&ndash;10), so no extra model download is needed. HyDE is clever: the generated answer does not need to be correct, it just needs to be in the right semantic neighbourhood.
   </aside>
 </section>
 
@@ -2604,19 +2603,63 @@ hyde_embedding = model.encode(hypothetical)
       <tr><td><strong>Context Recall</strong></td><td>Did we retrieve all needed information?</td><td>Compare retrieved context to ground truth</td></tr>
     </tbody>
   </table>
-  <pre><code class="language-python">from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy, context_relevancy
-
-results = evaluate(
-    dataset=eval_dataset,  # questions + ground truth + retrieved contexts + answers
-    metrics=[faithfulness, answer_relevancy, context_relevancy],
-)
-print(results)  # {"faithfulness": 0.87, "answer_relevancy": 0.92, ...}</code></pre>
+  <pre><code class="language-python"># Exercise 6.4 (ex_4/05): the four RAGAS metrics as LLM-as-judge
+# scores on local Ollama, one judge prompt per metric
+metrics = await compute_ragas_metrics(
+    question=q, answer=answer,
+    context="\n\n".join(retrieved_chunks), ground_truth=gold_answer)
+print(metrics)
+# {"faithfulness": ..., "answer_relevance": ...,
+#  "context_relevance": ..., "context_recall": ...}  each in [0, 1]</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. RAGAS provides the four metrics that matter for RAG quality. Faithfulness is the most important: if the answer is not grounded in the retrieved documents, you have a hallucinating RAG system. If beginners confused: "Faithfulness asks: did the AI make this up, or did it actually find it in the documents?"
+    Time: ~3 min. RAGAS defines the four metrics that matter for RAG quality. The course computes them with its own LLM-as-judge prompts on local Ollama (the <code>ragas</code> package's own metrics need extra provider dependencies that are not part of the course environment). Faithfulness is the most important: if the answer is not grounded in the retrieved documents, you have a hallucinating RAG system. If beginners confused: "Faithfulness asks: did the AI make this up, or did it actually find it in the documents?"
+  </aside>
+</section>
+
+
+<!-- SLIDE 40b — Advanced RAG patterns + Kaizen RAG agents -->
+<section class="code-fit">
+  <h2>Advanced RAG Patterns &amp; Kaizen RAG Agents</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Beyond one-shot retrieval</h3>
+      <ul style="font-size:0.78em;">
+        <li><strong>Metadata filtering</strong>: filter chunks by source, date or department <em>before</em> similarity search &mdash; precision you cannot get from embeddings alone</li>
+        <li><strong>Multi-hop retrieval</strong>: retrieve, read, form a follow-up query, retrieve again &mdash; for questions whose answer spans two documents (HotpotQA-style, used in Exercise 6.5)</li>
+        <li><strong>Document summarisation</strong>: index a summary per document; retrieve the document first, then its chunks &mdash; keeps long documents findable</li>
+      </ul>
+      <div class="callout callout-advanced" style="font-size:0.74em; margin-top:6px;">
+        Multi-hop is where RAG meets agents: the &ldquo;follow-up query&rdquo; is a reasoning step, which is why 6.5 builds it as a ReAct loop.
+      </div>
+    </div>
+    <div class="col">
+      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kaizen_agents.agents import MemoryAgent, RAGResearchAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL
+
+# RAG agent: own vector store (local sentence-transformer
+# embeddings) + retrieve-then-answer in one run()
+rag = RAGResearchAgent(llm_provider="ollama",
+                       model=DEFAULT_CHAT_MODEL, top_k_documents=3)
+rag.add_document("d1", "Refund policy", policy_text)
+out = rag.run(query="How long is the refund window?")
+print(out["answer"], out["sources"], out["confidence"])
+
+# Memory agent: remembers earlier turns per session_id
+mem = MemoryAgent(llm_provider="ollama", model=DEFAULT_CHAT_MODEL)
+mem.run("I handle motor insurance claims.", session_id="u42")
+reply = mem.run("Which claims do I handle?", session_id="u42")
+print(reply["response"])</code></pre>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. Two halves. Left: three patterns that fix the commonest RAG failures &mdash; wrong-source chunks (metadata filter), answers that need two documents (multi-hop), long documents that never rank (summary index). Right: Kaizen ships ready-made agents for the two most common shapes. <code>RAGResearchAgent</code> keeps its own small vector store and answers with sources and a confidence; <code>MemoryAgent</code> keeps per-session conversation history. Both run on the course's local Ollama model. Point out the trade-off: the packaged agents are quick to start, but the hand-built pipeline from the previous slides is what you tune and evaluate. If beginners confused: "Metadata filtering is like telling the librarian 'only the 2024 shelf' before you ask the question."
   </aside>
 </section>
 
@@ -2629,22 +2672,22 @@ print(results)  # {"faithfulness": 0.87, "answer_relevancy": 0.92, ...}</code></
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Build RAG system on Singapore policy documents</li>
-        <li>Implement BM25, dense, and hybrid retrieval</li>
-        <li>Evaluate with RAGAS metrics</li>
-        <li>Implement HyDE and measure improvement</li>
+        <li>Compare chunking strategies (<code>ex_4/01</code>)</li>
+        <li>Dense retrieval with <code>nomic-embed-text</code> (<code>02</code>), BM25 from scratch (<code>03</code>), hybrid with RRF (<code>04</code>)</li>
+        <li>LLM re-ranker, RAGAS-style judge metrics, HyDE and a full pipeline (<code>05</code>)</li>
+        <li>hit@k leaderboard: BM25 vs dense vs hybrid vs HyDE</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
         <li>RAG pipeline end-to-end functional</li>
-        <li>Three retrieval methods compared quantitatively</li>
-        <li>RAGAS metrics computed for each approach</li>
-        <li>HyDE measurably improves retrieval quality</li>
+        <li>Retrieval methods compared quantitatively on the same eval questions</li>
+        <li>RAGAS-style metrics computed for the pipeline</li>
+        <li>HyDE measured against dense on the same hit@k &mdash; report whether it helps</li>
       </ul>
       <div class="callout callout-foundations" style="margin-top:8px;">
-        <strong>Data:</strong> Singapore government policy documents (public domain). Real data, real questions, real evaluation.
+        <strong>Data:</strong> a 1,000-document sample of the open <code>neural-bridge/rag-dataset-12000</code> (context, question, answer). Real data, real questions, real evaluation.
       </div>
     </div>
   </div>
@@ -2652,7 +2695,7 @@ print(results)  # {"faithfulness": 0.87, "answer_relevancy": 0.92, ...}</code></
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. This is a full engineering exercise. Students build a production-grade RAG pipeline with proper evaluation. The Singapore policy dataset ensures real-world complexity.
+    Time: ~1 min. This is a full engineering exercise. Students build a production-grade RAG pipeline with proper evaluation. The corpus is a public, general-domain RAG benchmark (downloaded on first run and cached), so every question has a known source document. Stress that HyDE is not guaranteed to win: students measure it on the same hit@k as dense and report what they find.
   </aside>
 </section>
 
@@ -2737,7 +2780,7 @@ print(results)  # {"faithfulness": 0.87, "answer_relevancy": 0.92, ...}</code></
   <span class="marker marker-theory">Theory</span>
   <div class="columns">
     <div class="col">
-      <h3>The ReAct Loop</h3>
+      <h3>The ReAct Loop <span class="small muted">(illustrative trace)</span></h3>
       <div class="step-box"><strong>Thought:</strong> I need to find the average HDB price in 2024.</div>
       <div class="step-box"><strong>Action:</strong> <code>data_explorer.describe(df.filter(pl.col("year") == 2024))</code></div>
       <div class="step-box"><strong>Observation:</strong> Mean price: $523,000. Median: $480,000. Count: 12,345.</div>
@@ -2754,7 +2797,7 @@ print(results)  # {"faithfulness": 0.87, "answer_relevancy": 0.92, ...}</code></
         <li>The trace is debuggable: you can see <em>why</em> the agent did what it did</li>
       </ul>
       <div class="callout callout-theory" style="margin-top:12px;">
-        <strong>Yao et al. (2023):</strong> ReAct outperforms act-only agents on HotpotQA by 6% and reduces hallucination rate by 40%. The "Thought" step is not overhead; it is the mechanism.
+        <strong>Yao et al. (ICLR 2023):</strong> on HotpotQA, ReAct beat act-only prompting (27.4 vs 25.7 exact match, PaLM-540B), and in their error analysis hallucination drove most chain-of-thought failures but almost none of ReAct's. The "Thought" step is not overhead; it is the mechanism.
       </div>
     </div>
   </div>
@@ -2860,35 +2903,37 @@ print(results)  # {"faithfulness": 0.87, "answer_relevancy": 0.92, ...}</code></
   <h2>Kaizen: Building Agents</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
-    <h3>BaseAgent &mdash; Custom Agent with Tools</h3>
-    <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import os
-from kaizen_agents.agents.specialized.react import ReActAgent
-from kailash_ml import DataExplorer, TrainingPipeline
+    <h3>Tool-Using Delegate &mdash; Tools Registered in a ToolRegistry</h3>
+    <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import polars as pl
+from kailash_ml import DataExplorer
+from kaizen_agents.delegate.loop import ToolRegistry
+from shared import MLFPDataLoader
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
 
-def explore_data(dataset: str) -> dict:
-    """Profile a dataset and return summary statistics."""
-    return DataExplorer().profile(dataset).to_dict()
+async def explore_data() -> str:
+    """Profile the HDB resale table (a Kailash engine as a tool)."""
+    return str((await DataExplorer().profile(df)).to_dict())[:2000]
+async def mean_price_by(column: str) -> str:
+    return str(df.group_by(column).agg(pl.col("resale_price").mean()))
 
-def train_model(dataset: str, target: str) -> dict:
-    """Train a classification model on the given dataset."""
-    pipeline = TrainingPipeline(task="classification")
-    result = pipeline.fit(dataset, target=target)
-    return {"accuracy": result.accuracy, "model_id": result.model_id}
-
-agent = ReActAgent(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[explore_data, train_model],
-    max_llm_cost_usd=1.00,   # $1 budget cap; agent halts when exceeded
-)
-result = await agent.run(
-    "Analyse the HDB resale dataset and predict price categories."
-)</code></pre>
+tools = ToolRegistry()   # a bare list of functions registers NOTHING
+tools.register(name="explore_data", description="Profile the HDB data",
+               parameters={"type": "object", "properties": {}},
+               executor=explore_data)
+tools.register(name="mean_price_by", description="Mean price by a column",
+               parameters={"type": "object", "required": ["column"],
+                           "properties": {"column": {"type": "string"}}},
+               executor=mean_price_by)
+agent = make_delegate(tools=tools, max_turns=8)  # model: OLLAMA_CHAT_MODEL
+answer, usage, secs = await run_delegate_text(agent, "Which flat type costs most?")</code></pre>
   </div>
+  <p class="small muted" style="margin-top:4px;">Ready-made: <code>kaizen_agents.agents.ReActAgent</code> and <code>ChainOfThoughtAgent</code> (step-by-step reasoning before answering) &mdash; both take <code>llm_provider=&quot;ollama&quot;</code>, and their <code>run()</code> is synchronous.</p>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Kailash bridge: BaseAgent wraps the ReAct pattern. The @tool decorator registers methods as tools the agent can call. The max_cost parameter is the engineering safety net: the agent stops when it hits the budget. Students should notice: the tools wrap Kailash engines. The agent can use DataExplorer and TrainingPipeline as tools.
+    Time: ~3 min. Kailash bridge: a Kaizen Delegate runs the Thought &rarr; Action &rarr; Observation loop itself; you supply tools. Three API facts to stress: (1) tools must be registered in a <code>ToolRegistry</code> with a name, description, JSON-schema parameters and an async executor &mdash; passing a plain list of functions silently registers nothing; (2) build the Delegate with <code>make_delegate()</code> and no <code>model=</code>, so the model comes from <code>OLLAMA_CHAT_MODEL</code>; (3) <code>max_turns</code> is the hard ceiling on loop length. Students should notice the tools wrap a Kailash engine (DataExplorer). Wrapping TrainingPipeline works the same way, but its constructor needs a feature store and model registry (M3), so keep that tool for the capstone. ChainOfThoughtAgent is the packaged &ldquo;reason step by step, then answer&rdquo; agent &mdash; no tools, a structured reasoning trace.
   </aside>
 </section>
 
@@ -2903,41 +2948,46 @@ result = await agent.run(
       <ul>
         <li>Agents make LLM calls in a loop</li>
         <li>A confused agent can make hundreds of calls before realising it is stuck</li>
-        <li>At $0.003/call, 500 calls = $1.50 per request</li>
-        <li>Production system with 10K daily users = $15,000/day</li>
+        <li>Illustrative hosted pricing: at $0.003/call, 500 calls = $1.50 per request</li>
+        <li>With 10K daily requests = $15,000/day</li>
+      </ul>
+      <h3 style="margin-top:8px;">Three ceilings</h3>
+      <ul style="font-size:0.8em;">
+        <li><strong>Turns</strong> &mdash; <code>max_turns</code>: works on every provider, incl. local Ollama</li>
+        <li><strong>Dollars</strong> &mdash; <code>budget_limit_usd</code>: only bites on a priced provider (Ollama prices at $0)</li>
+        <li><strong>Tokens</strong> &mdash; reported per run; tokens &times; price = real spend</li>
       </ul>
     </div>
     <div class="col">
-      <h3>The Solution: max_llm_cost_usd</h3>
-      <pre style="font-size: 0.55em;"><code class="language-python">import os
-from kaizen_agents.agents.specialized.react import (
-    ReActAgent,
-)
+      <h3>The Solution: set the cap at construction</h3>
+      <pre style="font-size: 0.5em;"><code class="language-python">from kaizen.core.base_agent import BaseAgent, BaseAgentConfig
+from shared.mlfp06._ollama_bootstrap import (
+    DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL, make_delegate)
 
-# Budget lives on the agent itself — no
-# separate LLMCostTracker class in 2.7.
-agent = ReActAgent(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[explore_data, train_model],
-    max_llm_cost_usd=0.50,
-)
+# 1. Turn ceiling on a tool-using Delegate
+agent = make_delegate(tools=tools, max_turns=8)
 
-# When budget exhausted:
-# -> Agent stops gracefully
-# -> Returns partial results
-# -> Emits a budget-exceeded event
-result = await agent.run("Analyse HDB data")
-print(result)</code></pre>
+# 2. Dollar cap: pass it AT CONSTRUCTION
+capped = BaseAgent(
+    config=BaseAgentConfig(
+        llm_provider="ollama", model=DEFAULT_CHAT_MODEL,
+        base_url=OLLAMA_BASE_URL, use_async_llm=True,
+        budget_limit_usd=0.50),
+    signature=BriefingSignature())
+assert capped.execution_context.budget_limit == 0.50
+
+# Trap: setting capped.config.budget_limit_usd LATER
+# changes the config object, not the enforcement.</code></pre>
     </div>
   </div>
   <div class="callout callout-warning">
-    <strong>Non-negotiable in production:</strong> Every agent must have a cost budget. No exceptions. An unbounded agent is a financial liability.
+    <strong>Non-negotiable in production:</strong> every agent gets a turn ceiling, and on a priced provider a dollar cap set at construction. An unbounded agent is a financial liability.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Cost tracking is not optional. In production, an agent without a budget is a blank cheque. The numbers are real: a stuck agent can burn through dollars in minutes. If beginners confused: "It is like giving a contractor a budget. They can spend up to that amount, then they stop and report what they accomplished."
+    Time: ~2 min. Cost tracking is not optional. In production, an agent without a budget is a blank cheque. The dollar figures are illustrative hosted prices, but the shape is real: a stuck agent can burn through money in minutes. Be explicit about the course stack: Kaizen prices local Ollama calls at $0, so a dollar cap can never trip here &mdash; which is why Exercise 6.5 (ex_5/02) bounds the loop with <code>max_turns</code> and reports tokens, and shows the dollar cap configured correctly for when you move to a priced provider. If beginners confused: "It is like giving a contractor a budget. They can spend up to that amount, then they stop and report what they accomplished."
   </aside>
 </section>
 
@@ -2950,10 +3000,10 @@ print(result)</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Build ReAct agent wrapping DataExplorer, TrainingPipeline, and ModelVisualizer as tools</li>
-        <li>Agent autonomously: explores data, selects model, trains, reports</li>
-        <li>Implement cost budget enforcement</li>
-        <li>Debug agent reasoning chain</li>
+        <li>ReAct agent: register four tools over HotpotQA multi-hop questions in a <code>ToolRegistry</code>; capture and read the real trace (<code>ex_5/01</code>)</li>
+        <li>Bound the loop: <code>max_turns</code> ceilings, a dollar cap set at construction, token accounting (<code>02</code>)</li>
+        <li>Structured agent: <code>BaseAgent</code> + <code>Signature</code> with typed, validated outputs (<code>03</code>)</li>
+        <li>Critic agent: Analyse &rarr; Critique &rarr; Refine loop (<code>04</code>)</li>
       </ol>
     </div>
     <div class="col">
@@ -2961,7 +3011,7 @@ print(result)</code></pre>
       <ul>
         <li>Agent reasons through steps (not random tool calls)</li>
         <li>Tools correctly invoked with valid parameters</li>
-        <li>Cost budget respected &mdash; agent stops gracefully</li>
+        <li>Loop bounded &mdash; the turn ceiling stops a stuck agent; tokens reported</li>
         <li>Results interpretable and correct</li>
       </ul>
     </div>
@@ -2970,7 +3020,7 @@ print(result)</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. This exercise wraps existing Kailash engines as agent tools. Students have already used DataExplorer and TrainingPipeline manually; now they let an agent orchestrate them. The reasoning chain is the key deliverable: students must demonstrate the agent thinks before it acts.
+    Time: ~1 min. This exercise gives an agent real tools and lets it choose the order. The tools in ex_5/01 search and summarise a HotpotQA sample; the slide before showed the same pattern wrapping a Kailash engine (DataExplorer), which students can try as an extension. The reasoning chain is the key deliverable: students must demonstrate, from the captured trace, that the agent thinks before it acts.
   </aside>
 </section>
 
@@ -3026,6 +3076,7 @@ print(result)</code></pre>
   <div class="callout callout-foundations" style="margin-top:12px;">
     <strong>Decision rule:</strong> Start with sequential (simplest). Add parallelism if sub-tasks are independent. Use supervisor-worker only when task decomposition is dynamic.
   </div>
+  <p style="font-size:0.72em; margin-top:6px;"><strong>Architecture checklist:</strong> <em>modularity</em> (one specialist = one Signature, swappable) &middot; <em>load balancing</em> (spread requests across agent replicas behind a router) &middot; <em>dynamic agent creation</em> (spawn a specialist per sub-task, inside a budget and depth limit) &middot; <em>isolation</em> (no data leaks between agents &mdash; 6.7).</p>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
@@ -3040,35 +3091,36 @@ print(result)</code></pre>
   <h2>Multi-Agent: Supervisor-Worker in Kaizen</h2>
   <span class="marker marker-theory">Theory</span>
   <div class="kailash-bridge">
-    <h3>Kaizen Multi-Agent Orchestration</h3>
-    <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">import os
-from kaizen_agents import Delegate, Pipeline
+    <h3>Fan-out to specialists, fan-in at the supervisor (Exercise 6.6, <code>ex_6/01</code>)</h3>
+    <pre style="font-size: 0.4em; line-height: 1.3"><code class="language-python">import asyncio
+import json
+from shared.mlfp06.ex_6 import build_specialists, build_synthesis, run_checked
 
-data_scientist = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[explore_data],
-    budget_usd=2.00,
-)
-feature_engineer = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[engineer_features],
-    budget_usd=2.00,
-)
+# Each specialist is a BaseAgent with its OWN typed Signature,
+# running on the course Ollama model (OLLAMA_CHAT_MODEL)
+factual, semantic, structural = build_specialists()
+supervisor = build_synthesis()
 
-# Supervisor orchestrates specialists via kaizen_agents.Pipeline —
-# the router selects the best specialist based on A2A capability cards.
-supervisor = Pipeline.router(
-    agents=[data_scientist, feature_engineer],
-)
-result = await supervisor.run(
-    objective="Profile the HDB dataset and engineer features",
-)</code></pre>
+async def supervisor_worker(doc: str, question: str) -> dict:
+    # Fan-out: independent specialists run concurrently
+    f, s, st = await asyncio.gather(
+        run_checked(factual, document=doc, question=question),
+        run_checked(semantic, document=doc, question=question),
+        run_checked(structural, document=doc, question=question),
+    )
+    # Fan-in: the supervisor reads three STRUCTURED outputs, not chat
+    return await run_checked(
+        supervisor, document=doc, question=question,
+        factual_analysis=json.dumps(f, default=str),
+        semantic_analysis=json.dumps(s, default=str),
+        structural_analysis=json.dumps(st, default=str),
+    )   # -> unified_answer, confidence, reasoning_chain</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The supervisor treats other agents as tools. It reasons about which specialist to call, passes the task, and processes the result. This is the same ReAct loop, but the "tools" are other agents.
+    Time: ~3 min. Here the supervisor's plan is fixed (all three specialists, then synthesis); in a dynamic supervisor the &ldquo;tools&rdquo; it chooses between are other agents. Point out: asyncio.gather makes fan-out latency roughly the slowest specialist, not the sum (Exercise 6.6 part 3 measures this). Every hand-off is a typed Signature output, which is what makes the audit trail readable. Kaizen also has <code>Pipeline.router()</code>, but it routes between <code>BaseAgent</code> instances (not Delegates) and its <code>run()</code> is synchronous &mdash; ex_6/03 builds an explicit LLM router instead.
   </aside>
 </section>
 
@@ -3120,41 +3172,40 @@ result = await supervisor.run(
       <ul>
         <li>Without MCP: every agent framework has its own tool format</li>
         <li>With MCP: one server, any client</li>
-        <li>Like REST APIs for humans, MCP is APIs for AI agents</li>
+        <li>One interface for tools, many agent clients &mdash; like a shared plug standard for devices</li>
       </ul>
     </div>
     <div class="col">
-      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_mcp import MCPServer, tool
-from kailash_ml import DataExplorer
+      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_mcp import MCPServer
 
-server = MCPServer("ml-tools")
+# Transport is chosen when the server is built
+server = MCPServer(name="ml-tools", transport="stdio")
 
-@server.tool
-def profile_dataset(
-    path: str,
-) -> dict:
-    """Profile a dataset and return
-    summary statistics."""
-    explorer = DataExplorer()
-    report = explorer.profile(path)
-    return report.to_dict()
+@server.tool()          # note the parentheses
+def search_corpus(query: str, top_k: int = 3) -> str:
+    """Search the corpus for passages matching a query.
 
-@server.tool
-def train_model(
-    dataset: str, target: str,
-) -> dict:
-    """Train a classifier on the
-    given dataset."""
-    # ... implementation ...
+    Args:
+        query: Search query text.
+        top_k: Maximum results to return.
+    """
+    hits = passages.filter(
+        passages["text"].str.contains(query, literal=True))
+    return "\n\n".join(hits["text"].head(top_k).to_list())
 
-server.run(transport="stdio")</code></pre>
+@server.tool()
+def get_corpus_stats() -> str:
+    """Size and topic coverage of the corpus."""
+    return f"{passages.height} passages"
+
+server.run()            # serves until the client disconnects</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. MCP is the interoperability standard for AI tools. You build one MCP server, and any agent (Kaizen, LangChain, Claude Desktop, etc.) can use it. If beginners confused: "Think of MCP as a USB port for AI tools. Any device that speaks USB can plug in."
+    Time: ~3 min. MCP is the interoperability standard for AI tools. You build one MCP server, and any MCP-compatible client (a Kaizen agent, an IDE, a desktop assistant) can use it. The type hints and docstring become the tool's published schema. Three API traps on the course stack: <code>@server.tool()</code> needs the parentheses (it is a decorator factory); the transport goes in the constructor; <code>run()</code> takes no arguments. In Exercise 6.6 (ex_6/04) an <code>MCPClient</code> launches the server over stdio, discovers the tools and calls them &mdash; including a tool that runs a specialist agent. If beginners confused: "Think of MCP as a USB port for AI tools. Any device that speaks USB can plug in."
   </aside>
 </section>
 
@@ -3200,17 +3251,18 @@ server.run(transport="stdio")</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Build multi-agent pipeline: DataScientist &rarr; FeatureEngineer &rarr; ModelSelector &rarr; ReportWriter</li>
-        <li>Build MCP server exposing ML tools</li>
-        <li>Test cross-agent coordination</li>
-        <li>Verify structured outputs between agents</li>
+        <li>Supervisor-worker: factual / semantic / structural specialists fan out, a supervisor synthesises (<code>ex_6/01</code>, SQuAD 2.0 passages)</li>
+        <li>Sequential pipeline extract &rarr; interpret &rarr; synthesise (<code>02</code>)</li>
+        <li>Parallel execution + LLM router vs keyword router (<code>03</code>)</li>
+        <li>MCP server with three typed tools, called from a real MCP client (<code>04</code>)</li>
+        <li>Short-term / long-term / entity memory + multi-agent security (<code>05</code>)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
         <li>Multi-agent pipeline produces correct end-to-end results</li>
-        <li>MCP server functional and callable from agents</li>
+        <li>MCP server discovered and called over stdio by a client</li>
         <li>Agents communicate via structured outputs (not free-form)</li>
         <li>Each agent stays within its specialisation</li>
       </ul>
@@ -3220,7 +3272,7 @@ server.run(transport="stdio")</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. This is the integration exercise: multiple agents coordinating through structured interfaces. The MCP server is a standalone component that any agent can use.
+    Time: ~1 min. This is the integration exercise: multiple agents coordinating through structured interfaces. The MCP server is a standalone component that any agent can use. The spec's DataScientist &rarr; FeatureEngineer &rarr; ModelSelector &rarr; ReportWriter chain is the same sequential pattern as ex_6/02 with ML-flavoured roles &mdash; a good extension for fast finishers.
   </aside>
 </section>
 
@@ -3266,32 +3318,31 @@ server.run(transport="stdio")</code></pre>
       </ul>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>Grammar:</strong> Dash-delimited path. Every <code>D</code> or <code>T</code> MUST be immediately followed by exactly one <code>R</code>.<br>
-        Example: <code>D1-R1-T1-R1</code> (department 1 head owns team 1, delegated to its responsible).
+        Example: <code>D1-R1-T1-R1</code> = Department 1 &rarr; its head Role R1 &rarr; Team 1 &rarr; that team's head Role R1. (Who <em>delegates</em> an envelope to whom is a separate concept &mdash; next slide.)
       </div>
     </div>
     <div class="col">
       <div class="kailash-bridge">
         <h3>GovernanceEngine</h3>
-        <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from pact import (
-    GovernanceEngine, load_org_yaml, Address)
+        <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash.trust.pact.yaml_resolvers import (
+    apply_governance_specs)
+from pact import (
+    Address, GovernanceEngine, load_org_yaml)
+from shared.mlfp06.ex_7 import write_org_yaml
 
-loaded = load_org_yaml("finance_org.yaml")
+loaded = load_org_yaml(write_org_yaml())  # course org
+# Structure only: departments, teams, roles
 engine = GovernanceEngine(loaded.org_definition)
+# Apply the YAML clearances + envelopes
+apply_governance_specs(engine, loaded)
 
-# Role address grammar: D1-R1-T1-R1
-#   D1    = department 1
-#   R1    = that department's head
-#   T1-R1 = team 1, owned by its responsible
 addr = Address.parse("D1-R1-T1-R1")
 verdict = engine.verify_action(
-    role_address="D1-R1-T1-R1",
-    action="read_pii",
-    context={
-        "data_classification": "confidential"},
-)
-# verdict.allowed, verdict.reason,
-# verdict.level ∈ {allowed, blocked,
-#                 warn, audit}</code></pre>
+    "D1-R1-T1-R1", "read_data",
+    context={"cost": 0.10})
+# verdict.allowed, verdict.reason, verdict.level
+# level: auto_approved | flagged | held | blocked
+# allowed is True for auto_approved and flagged</code></pre>
       </div>
     </div>
   </div>
@@ -3299,7 +3350,7 @@ verdict = engine.verify_action(
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. D/T/R addressing is how PACT identifies who is requesting what. Every agent, every API call, every data access has an address. The GovernanceEngine checks the address against the rules. If beginners confused: "D/T/R is like a postal address for permissions. The system checks your address to decide what you can access."
+    Time: ~3 min. D/T/R = Department / Team / Role &mdash; never anything else. Addressing is how PACT identifies who is requesting what. Every agent, every API call, every data access has an address. Stress the two-step build: <code>GovernanceEngine(loaded.org_definition)</code> compiles only the org structure; the YAML's clearances and envelopes take effect only after <code>apply_governance_specs</code> (the course helper <code>compile_governance()</code> does both). <code>verify_action</code> is the single decision call; its four levels are auto_approved, flagged, held and blocked. If beginners confused: "D/T/R is like a postal address for permissions. The system checks your address to decide what you can access."
   </aside>
 </section>
 
@@ -3317,55 +3368,54 @@ verdict = engine.verify_action(
         <li><strong>Monotonic tightening:</strong> child envelopes must be ≤ parent on every dimension; the framework catches violations via <code>RoleEnvelope.validate_tightening</code></li>
       </ul>
       <div class="callout callout-warning" style="margin-top:10px;">
-        <strong>Fail-closed:</strong> If the governance check fails (error, timeout), access is <strong>denied</strong>. Never fail-open. A broken guard is not a free pass.
+        <strong>Know the default:</strong> the installed PACT (0.14) is <strong>fail-open</strong> for roles with no envelope and for addresses not in the org &mdash; <code>verify_action</code> auto-approves them. Attach an envelope to every role (<code>engine.set_role_envelope(...)</code>); deny paths only exist where an envelope is attached.
       </div>
     </div>
     <div class="col">
       <pre style="font-size: 0.44em; line-height: 1.3"><code class="language-python">from pact import (
-    ConstraintEnvelopeConfig,
-    FinancialConstraintConfig,
-    OperationalConstraintConfig,
-    TemporalConstraintConfig,
-    DataAccessConstraintConfig,
-    CommunicationConstraintConfig,
+    CommunicationConstraintConfig as Comm,
     ConfidentialityLevel,
-    RoleEnvelope,
+    ConstraintEnvelopeConfig,
+    DataAccessConstraintConfig as Data,
+    FinancialConstraintConfig as Fin,
     MonotonicTighteningError,
-)
+    OperationalConstraintConfig as Ops,
+    RoleEnvelope,
+    TemporalConstraintConfig as Time)
 
 parent = ConstraintEnvelopeConfig(
     id="parent",
     description="Analyst envelope",
     confidentiality_clearance=
         ConfidentialityLevel.RESTRICTED,
-    financial=FinancialConstraintConfig(
-        max_spend_usd=5.00),
-    operational=OperationalConstraintConfig(
-        allowed_actions=[
-            "data_analysis",
-            "model_training"]),
-    temporal=TemporalConstraintConfig(),
-    data_access=DataAccessConstraintConfig(),
-    communication=
-        CommunicationConstraintConfig(),
-    max_delegation_depth=3,
-)
+    financial=Fin(max_spend_usd=5.00),
+    operational=Ops(allowed_actions=[
+        "data_analysis", "model_training"]),
+    temporal=Time(), data_access=Data(),
+    communication=Comm(),
+    max_delegation_depth=3)
 
-# Monotonic tightening enforced by the
-# framework — child must be ≤ parent
-# on every dimension.
-try:
+try:  # child must be <= parent everywhere
     RoleEnvelope.validate_tightening(
-        parent, child)
+        parent_envelope=parent,
+        child_envelope=child)  # keyword-only
 except MonotonicTighteningError as exc:
-    print(f"Escalation blocked: {exc}")</code></pre>
+    print(f"Escalation blocked: {exc}")
+
+# Attach: the head (D1-R1) defines the
+# envelope of its team role
+engine.set_role_envelope(RoleEnvelope(
+    id="analyst_env",
+    defining_role_address="D1-R1",
+    target_role_address="D1-R1-T1-R1",
+    envelope=parent))</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Operating envelopes are the key safety mechanism. Monotonic tightening is critical: a child agent can never have MORE permissions than its parent. This prevents privilege escalation attacks. If beginners confused: "An operating envelope is like a job description with hard limits. The agent can do anything within the envelope, but nothing outside it."
+    Time: ~3 min. Operating envelopes are the key safety mechanism. Say the default out loud: in pact 0.14 a role WITHOUT an envelope is auto-approved (&ldquo;No envelope constraints &mdash; action permitted&rdquo;), so the envelope is what creates the deny path. <code>validate_tightening</code> is keyword-only; a positional call raises TypeError, not MonotonicTighteningError. Monotonic tightening is critical: a child agent can never have MORE permissions than its parent. This prevents privilege escalation attacks. If beginners confused: "An operating envelope is like a job description with hard limits. The agent can do anything within the envelope, but nothing outside it."
   </aside>
 </section>
 
@@ -3378,11 +3428,10 @@ except MonotonicTighteningError as exc:
     <div class="col">
       <h3>How It Works</h3>
       <ul>
-        <li>Parent agent has a total budget: $10.00</li>
-        <li>Parent allocates portions to child agents</li>
-        <li>Child agents cannot exceed their allocation</li>
-        <li>When a child's budget runs out, it stops and reports partial results</li>
-        <li>Parent can reallocate remaining budget dynamically</li>
+        <li>Parent role's envelope caps spend: <code>max_spend_usd=10.00</code></li>
+        <li>Each child envelope's cap must be &le; the parent's &mdash; <code>validate_tightening</code> rejects a wider child</li>
+        <li><code>verify_action(..., context={"cost": c})</code> blocks an action whose cost exceeds the role's cap</li>
+        <li>Cumulative spend per child is tracked by a ledger (Exercise 6.7 part 3 builds one: allocate, spend, overspend denied)</li>
       </ul>
     </div>
     <div class="col">
@@ -3419,16 +3468,16 @@ supervisor_env = ConstraintEnvelopeConfig(
 )
 # Child envelopes follow the same shape with
 # max_spend_usd ∈ {3.00, 2.00, 4.00, 1.00}.
-# The framework halts a child when its cap
-# is exhausted; the supervisor's remaining
-# budget is never touched.</code></pre>
+# A child at 12.00 fails validate_tightening;
+# an action costing more than the child's cap
+# gets verdict.level == "blocked".</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Budget cascading prevents any single agent from consuming the entire budget. The dynamic reallocation pattern is important: if one agent finishes under budget, the surplus can be redirected to another that needs more.
+    Time: ~2 min. Budget cascading prevents any single agent from consuming the entire budget. Two layers: the envelope caps (checked structurally and per action by PACT) and a running ledger of what each child has actually spent (ex_7/03). Reallocation &mdash; moving one child's unused allocation to another &mdash; is a ledger operation the supervisor performs; it can never lift a child above the parent's cap. On local Ollama the dollar amounts are notional, so the exercise uses them as a teaching currency.
   </aside>
 </section>
 
@@ -3439,45 +3488,36 @@ supervisor_env = ConstraintEnvelopeConfig(
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>Agent + Governance = GovernedSupervisor</h3>
-    <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">from pact import GovernanceEngine, load_org_yaml
-from kaizen_agents import GovernedSupervisor
+    <pre style="font-size: 0.4em; line-height: 1.3"><code class="language-python">from kaizen_agents import GovernedSupervisor
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL
+from shared.mlfp06.ex_7 import compile_governance, make_llm_executor
 
-loaded = load_org_yaml("finance_org.yaml")
-engine = GovernanceEngine(loaded.org_definition)
+engine, org = compile_governance()  # org structure + YAML envelopes applied
 
 governed = GovernedSupervisor(
-    model="gpt-4o-mini",
+    model=DEFAULT_CHAT_MODEL,        # from OLLAMA_CHAT_MODEL
     budget_usd=2.00,
     tools=["data_analysis"],
-    data_clearance="restricted",
+    data_clearance="confidential",
 )
 
-async def executor(spec, inputs):
-    # Real LLM call or offline stub.
-    return {"result": "...", "cost": 0.01,
-            "prompt_tokens": 100,
-            "completion_tokens": 50}
-
-# Governed run — supervisor plans, executor runs.
+# The supervisor plans and governs; YOUR executor runs each step
+# on the local model (returns result, cost, token counts)
 result = await governed.run(
     objective="Analyse Q4 revenue data",
-    execute_node=executor,
+    execute_node=make_llm_executor(),
 )
 # result.success, result.budget_consumed, result.audit_trail
 
-# Asking for an action outside the envelope:
-verdict = engine.verify_action(
-    role_address="D1-R1-T1-R1",
-    action="delete_all_records",
-    context={"data_classification": "restricted"},
-)
-assert not verdict.allowed   # blocked + reason in verdict.reason</code></pre>
+# Organisation-level check on a role WITH an envelope attached:
+verdict = engine.verify_action("D1-R1-T1-R1", "delete_all_records")
+assert not verdict.allowed   # level "blocked"; reason names the rule</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. GovernedSupervisor is the modern pact agent entry point: it has a role address (D/T/R), an envelope (what it can do, budget, clearance), and a two-layer run contract where the supervisor plans the task and your execute_node callback runs the real LLM. The governance check happens before every step. To show a blocked action, call engine.verify_action on an action outside the envelope and read verdict.reason.
+    Time: ~3 min. GovernedSupervisor is the governed agent entry point: three knobs (budget, tool allow-list, data clearance) become its envelope, and it runs a two-layer contract &mdash; the supervisor plans the task and your <code>execute_node</code> callback runs the real LLM. It does not wrap an existing BaseAgent; the callback is where your model call lives. The governance check happens before every step and every step is written to its audit chain. The <code>verify_action</code> line is the organisation-level check from the engine; it blocks here only because <code>compile_governance()</code> attached the YAML envelopes &mdash; on a bare engine the same call is auto-approved.
   </aside>
 </section>
 
@@ -3498,38 +3538,41 @@ assert not verdict.allowed   # blocked + reason in verdict.reason</code></pre>
       </ul>
     </div>
     <div class="col">
-      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import pytest
+      <pre style="font-size: 0.4em; line-height: 1.3"><code class="language-python">import pytest
 from pact import (
-    RoleEnvelope, MonotonicTighteningError)
+    MonotonicTighteningError, RoleEnvelope)
+from shared.mlfp06.ex_7 import compile_governance
 
-def test_analyst_can_read_data():
-    verdict = engine.verify_action(
-        role_address="D1-R1-T1-R1",
-        action="read_data",
-        context={"data_classification":
-                 "restricted"})
-    assert verdict.allowed
+@pytest.fixture
+def engine():
+    eng, _ = compile_governance()  # envelopes ATTACHED
+    return eng
 
-def test_analyst_cannot_delete():
-    verdict = engine.verify_action(
-        role_address="D1-R1-T1-R1",
-        action="delete_customer_data",
-        context={"data_classification":
-                 "restricted"})
-    assert not verdict.allowed
+def test_analyst_can_read_data(engine):
+    assert engine.verify_action(
+        "D1-R1-T1-R1", "read_data").allowed
+
+def test_analyst_cannot_delete(engine):
+    v = engine.verify_action(
+        "D1-R1-T1-R1", "delete_customer_data")
+    assert not v.allowed and v.level == "blocked"
+
+def test_unknown_address_is_auto_approved(engine):
+    # Pins pact 0.14's fail-open default: if an
+    # upgrade changes it, this test tells you.
+    assert engine.verify_action(
+        "D99-R99-T99-R99", "read_data").allowed
 
 def test_envelope_tightening():
-    # Loosening raises structurally:
-    with pytest.raises(
-            MonotonicTighteningError):
+    with pytest.raises(MonotonicTighteningError):
         RoleEnvelope.validate_tightening(
-            parent_env, loosened_child_env)
+            parent_envelope=parent_env,
+            child_envelope=loosened_child_env)
 
-def test_zero_budget_stops_agent():
+async def test_budget_is_respected():  # pytest-asyncio
     result = await governed.run(
-        objective="Analyse data",
-        execute_node=executor)
-    assert result.budget_consumed <= 2.00</code></pre>
+        objective="Analyse data", execute_node=executor)
+    assert result.budget_consumed <= result.budget_allocated</code></pre>
     </div>
   </div>
   <div class="callout callout-warning">
@@ -3539,7 +3582,7 @@ def test_zero_budget_stops_agent():
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. This is the engineering differentiator. Many AI governance frameworks are just policy documents. PACT is code that is tested. If the test for "analyst cannot delete data" fails, you have a security vulnerability. If beginners confused: "We write tests to prove the locks on the doors actually work."
+    Time: ~3 min. This is the engineering differentiator. Many AI governance frameworks are just policy documents. PACT is code that is tested. Note the fixture: every deny test runs on an engine whose roles HAVE envelopes &mdash; on a bare engine &ldquo;analyst cannot delete&rdquo; would fail, because pact 0.14 auto-approves envelope-less roles. The third test deliberately pins that fail-open default so the team notices if it changes; production code should reject unknown addresses itself before calling the engine. If the test for "analyst cannot delete data" fails, you have a security vulnerability. If beginners confused: "We write tests to prove the locks on the doors actually work."
   </aside>
 </section>
 
@@ -3561,11 +3604,11 @@ def test_zero_budget_stops_agent():
 # hash-chained audit trail:
 trail = governed.audit.to_list()
 for entry in trail[-10:]:
-    print(f"{entry['timestamp']}: "
-          f"{entry['action']} -> "
-          f"{entry['verdict']}: "
-          f"{entry['reason']}")
-# Tamper-evidence check:
+    print(entry["record_type"],
+          entry["action"],
+          entry["record_hash"][:12])
+# Tamper-evidence check (False if any
+# record was altered):
 assert governed.audit.verify_chain()</code></pre>
     </div>
     <div class="col">
@@ -3574,14 +3617,15 @@ assert governed.audit.verify_chain()</code></pre>
         <thead><tr><th>Level</th><th>Access</th></tr></thead>
         <tbody>
           <tr><td>Public</td><td>Public data, read-only tools</td></tr>
-          <tr><td>Internal*</td><td>Internal data, analysis tools</td></tr>
+          <tr><td>Restricted (&ldquo;internal&rdquo;)</td><td>Internal data, analysis tools</td></tr>
           <tr><td>Confidential</td><td>PII, financial data</td></tr>
-          <tr><td>Restricted</td><td>System admin, model deployment</td></tr>
+          <tr><td>Secret</td><td>Department heads; model deployment, admin</td></tr>
+          <tr><td>Top secret</td><td>Rare: keys, regulator-sensitive material</td></tr>
         </tbody>
       </table>
       <div class="callout callout-theory" style="margin-top:8px;">
         Clearance levels map to role addresses. A role at <code>D1-R1-T1-R1</code> might carry "Confidential" clearance; a public support bot carries "Public".<br>
-        *In pact 0.8.1 the canonical five-level ladder is <code>PUBLIC &lt; RESTRICTED &lt; CONFIDENTIAL &lt; SECRET &lt; TOP_SECRET</code>. The course's "Internal" label is a historical alias that maps to <code>RESTRICTED</code> at the same tier as "Restricted" in the course ladder.
+        PACT's ladder, lowest to highest: <code>PUBLIC &lt; RESTRICTED &lt; CONFIDENTIAL &lt; SECRET &lt; TOP_SECRET</code>. &ldquo;Restricted&rdquo; is the <em>second-lowest</em> tier, not the top; <code>data_clearance="internal"</code> is an alias for it.
       </div>
     </div>
   </div>
@@ -3589,7 +3633,7 @@ assert governed.audit.verify_chain()</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Audit trails are the compliance mechanism. If something goes wrong, the audit trail tells you exactly what happened, who did it, and why the system allowed it. If beginners confused: "An audit trail is like CCTV for your AI system. It records every decision for review."
+    Time: ~2 min. Common trap: students read &ldquo;restricted&rdquo; as the most secret level. In PACT it sits just above public &mdash; giving your most privileged role &ldquo;restricted&rdquo; gives it LESS access than &ldquo;confidential&rdquo;. The course org gives department heads <code>secret</code>, and an escalation test asks for secret or top_secret. Audit trails are the compliance mechanism. If something goes wrong, the audit trail tells you exactly what happened, who did it, and why the system allowed it. If beginners confused: "An audit trail is like CCTV for your AI system. It records every decision for review."
   </aside>
 </section>
 
@@ -3602,11 +3646,10 @@ assert governed.audit.verify_chain()</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Define D/T/R organisational structure</li>
-        <li>Set operating envelopes (task and role)</li>
-        <li>Implement budget cascading across agent hierarchy</li>
-        <li>Write governance tests (allow + deny)</li>
-        <li>Generate and inspect audit trail</li>
+        <li>Define the D/T/R org in YAML and compile it (<code>ex_7/01</code>)</li>
+        <li>Operating envelopes + monotonic tightening (<code>02</code>)</li>
+        <li>Budget cascading ledger + 10 allow/deny <code>verify_action</code> cases, envelopes attached first (<code>03</code>)</li>
+        <li>GovernedSupervisor at three clearance tiers; deny paths; audit chain (<code>04</code>)</li>
       </ol>
     </div>
     <div class="col">
@@ -3624,7 +3667,7 @@ assert governed.audit.verify_chain()</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. This exercise combines everything from 6.5-6.7: agents, multi-agent coordination, and governance. The governance tests are the most important deliverable: if the tests pass, the system is safe.
+    Time: ~1 min. This exercise combines everything from 6.5-6.7: agents, multi-agent coordination, and governance. The governance tests are the most important deliverable &mdash; and they only prove something if every deny case runs against a role that has an envelope attached.
   </aside>
 </section>
 
@@ -3662,21 +3705,28 @@ assert governed.audit.verify_chain()</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>Nexus Multi-Channel Deployment</h3>
-    <pre><code class="language-python">from nexus import Nexus
-from kailash.workflow.builder import WorkflowBuilder
+    <pre style="font-size: 0.48em; line-height: 1.3"><code class="language-python">import os
+from kailash.trust.auth.jwt import JWTConfig
+from kailash.trust.rate_limit.config import RateLimitConfig
+from nexus import Nexus, NexusAuthPlugin
+from starlette.requests import Request
 
-# Describe the analysis workload as a built workflow
-analysis_wf = WorkflowBuilder()
-analysis_wf.add_node(
-    "PythonCodeNode",
-    "analyse",
-    {"code": "result = governed_agent.run_sync(parameters['query'])"},
-)
+jwt_config = JWTConfig(secret=os.environ["MLFP_JWT_SECRET"], algorithm="HS256")
+app = Nexus(api_port=8000,
+            cors_origins=["https://intranet.example.sg"])  # CORS allow-list
+app.add_plugin(NexusAuthPlugin(                  # plugins extend Nexus
+    jwt=jwt_config,
+    rate_limit=RateLimitConfig(requests_per_minute=10, burst_size=5)))
 
-# Nexus exposes it as API + CLI + MCP simultaneously
-app = Nexus()   # JWT middleware + rate limiting configured in project settings
-app.register("analysis", analysis_wf.build())
-# app.start()   # serve on the configured port</code></pre>
+async def serve_qa(question: str, request: Request) -> dict:
+    """Governed QA; the caller's role comes from the VERIFIED token."""
+    role = request.state.user.roles[0]
+    return await handle_qa(question, role=role,
+                           agents_by_role=agents_by_role, engine=engine)
+
+# ONE handler -> REST API + CLI + MCP tool
+app.handler_extract("serve_qa", serve_qa, description="Governed QA")
+# app.start()   # serve on port 8000</code></pre>
   </div>
   <div class="flow-arrow" style="margin-top:12px;">
     <div class="box">One Codebase</div>
@@ -3691,7 +3741,7 @@ app.register("analysis", analysis_wf.build())
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Nexus is the deployment layer. You write your service once, and Nexus exposes it as an API (for web apps), a CLI (for developers), and an MCP server (for AI agents). No code duplication. If beginners confused: "Think of it as one restaurant kitchen that serves dine-in, takeaway, and delivery from the same menu."
+    Time: ~3 min. Nexus is the deployment layer. You write your service once, and Nexus exposes it as an API (for web apps), a CLI (for developers), and an MCP server (for AI agents). No code duplication. Walk the middleware: the CORS allow-list is a constructor argument; JWT auth and rate limiting arrive as a plugin (<code>NexusAuthPlugin</code>) &mdash; plugins are how you extend Nexus. The signing secret comes from the environment, never source code. This is the exact shape of Exercise 6.8 (ex_8/03). If beginners confused: "Think of it as one restaurant kitchen that serves dine-in, takeaway, and delivery from the same menu."
   </aside>
 </section>
 
@@ -3709,43 +3759,41 @@ app.register("analysis", analysis_wf.build())
         <li>Permissions map to Nexus endpoints</li>
         <li>PACT D/T/R addresses map to RBAC roles</li>
       </ul>
-      <pre style="font-size: 0.55em;"><code class="language-python"># Nexus owns authentication (JWT); PACT
-# owns authorisation (verify_action).
-from nexus import Nexus
-
-app = Nexus()   # JWT middleware applied
-app.register("analyse", analyse_wf.build())
-app.register("deploy",  deploy_wf.build())
-
-# Inside each node (pseudo-code):
-#   caller_role = parameters["auth"]["role_address"]
-#   verdict = engine.verify_action(
-#       role_address=caller_role,
-#       action="deploy",
-#       context={"data_classification":
-#                "restricted"})
-#   if not verdict.allowed:
-#       raise PermissionError(verdict.reason)</code></pre>
+      <pre style="font-size: 0.5em;"><code class="language-python"># Nexus authenticates (JWT); PACT
+# authorises (verify_action) — inside
+# the handler, per request.
+async def serve_qa(question: str,
+                   request: Request) -> dict:
+    role = request.state.user.roles[0]
+    verdict = engine.verify_action(
+        TIER_ADDRESS[role], "answer_question",
+        {"cost": 0.0})
+    if not verdict.allowed:
+        return {"blocked": True,
+                "reason": verdict.reason}
+    governed = agents_by_role[role]
+    result = await governed.run(
+        objective=question,
+        execute_node=executor)
+    return {"success": result.success}</code></pre>
     </div>
     <div class="col">
       <h3>JWT Authentication</h3>
-      <pre style="font-size: 0.55em;"><code class="language-python"># Client-side
-import requests
+      <pre style="font-size: 0.5em;"><code class="language-python">import httpx
+from kailash.trust.auth.jwt import JWTValidator
 
-token = requests.post(
-    "http://localhost:8000/auth/token",
-    json={"username": "analyst1",
-          "password": "****"}
-).json()["token"]
+# Your identity provider issues tokens;
+# in the exercise we play that role
+token = JWTValidator(jwt_config).create_access_token(
+    "analyst1", roles=["qa"])
 
 # Authenticated request
-response = requests.post(
-    "http://localhost:8000/api/analyse",
-    headers={
-        "Authorization": f"Bearer {token}"
-    },
-    json={"query": "Analyse Q4 data"}
-)</code></pre>
+response = httpx.post(
+    "http://localhost:8000/workflows/serve_qa/execute",
+    headers={"Authorization": f"Bearer {token}"},
+    json={"inputs": {"question": "Analyse Q4 data"}},
+)
+# No / forged token -> 401 before the handler runs</code></pre>
       <div class="callout callout-warning" style="margin-top:8px;">
         Unauthenticated requests must be rejected with 401. No exceptions.
       </div>
@@ -3755,7 +3803,7 @@ response = requests.post(
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Auth is the production gate. RBAC controls what each user can do. JWT provides the authentication mechanism. PACT D/T/R addresses map naturally to RBAC roles: the same governance that controls agents controls human access.
+    Time: ~3 min. Auth is the production gate. JWT proves WHO is calling (Nexus rejects missing or forged tokens with 401); the role claim in the verified token picks a PACT tier, and <code>verify_action</code> on that tier's D/T/R address decides WHAT they may do. Remember the PACT default: an address with no envelope is auto-approved, so every tier the handler can route to must have an envelope attached (the capstone's <code>build_capstone_stack</code> does this). An unknown role should be refused by your handler before PACT is even asked.
   </aside>
 </section>
 
@@ -3830,29 +3878,33 @@ response = requests.post(
       </ul>
     </div>
     <div class="col">
-      <pre><code class="language-python">from kailash_ml import DriftMonitor
+      <pre style="font-size: 0.5em;"><code class="language-python">from kailash.db.connection import ConnectionManager
+from kailash_ml import DriftMonitor
 
-monitor = DriftMonitor(
-    reference_data=training_data,
-    model_id="sentiment-v1",
-    alert_threshold=0.05,
-)
+conn = ConnectionManager("sqlite:///drift.db")
+await conn.initialize()
+monitor = DriftMonitor(conn, tenant_id="mlfp_demo",
+                       psi_threshold=0.2)
+await monitor.set_reference_data(
+    "capstone_qa_model", reference_df,
+    ["question_length"])
 
 # In production: check each batch
 for batch in production_batches:
-    report = monitor.check(batch)
-    if report.drift_detected:
-        print(f"DRIFT: {report.feature} "
-              f"(p={report.p_value:.4f})")
-        # Trigger retraining pipeline
-        retrain(model_id="sentiment-v1")</code></pre>
+    report = await monitor.check_drift(
+        "capstone_qa_model", batch)
+    if report.overall_drift_detected:
+        psi = report.feature_results[0].psi
+        print(f"DRIFT {report.overall_severity}: "
+              f"PSI={psi:.3f}")
+        # trigger the retraining pipeline</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. DriftMonitor was introduced in M3. Here it is deployed in production. The key: monitoring is not optional. A deployed model without monitoring is a ticking time bomb. If beginners confused: "Think of it as a regular health check for your AI system."
+    Time: ~2 min. DriftMonitor was introduced in earlier modules; here it guards a deployed system. API facts: it persists reports through a <code>ConnectionManager</code>, is scoped by <code>tenant_id</code>, and both <code>set_reference_data</code> and <code>check_drift</code> are async. Read PSI as: &lt; 0.1 no drift, 0.1&ndash;0.2 investigate, &gt; 0.2 alert. In Exercise 6.8 (ex_8/04) the monitored feature is question length on the capstone QA traffic, and a deliberately shifted batch must trigger the alert. The key: monitoring is not optional. A deployed model without monitoring is a ticking time bomb. If beginners confused: "Think of it as a regular health check for your AI system."
   </aside>
 </section>
 
@@ -3864,20 +3916,24 @@ for batch in production_batches:
   <div class="columns">
     <div class="col">
       <h3>The Trace</h3>
-      <pre><code class="language-python">result = agent.run(
-    "Analyse HDB resale data",
-    trace=True
-)
+      <pre style="font-size: 0.5em;"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
 
-for step in result.trace:
-    print(f"[{step.type}] {step.content}")
-    if step.type == "action":
-        print(f"  Tool: {step.tool}")
-        print(f"  Args: {step.args}")
-        print(f"  Cost: ${step.cost:.4f}")
-    if step.type == "governance":
-        print(f"  Decision: {step.decision}")
-        print(f"  Reason: {step.reason}")</code></pre>
+obs = LLMObservatory()
+trace = await obs.agent.capture_run(
+    agent, "Analyse HDB resale data",
+    run_id="debug_1")
+
+for ev in trace.events:   # token / tool_* / error
+    print(ev.kind, ev.tool or "",
+          (ev.content or ev.error or "")[:60])
+
+print(obs.agent.tool_usage("debug_1"))
+print(obs.agent.detect_loops("debug_1"))
+
+# Governance decisions live in the
+# supervisor's hash-chained audit trail:
+for rec in governed.audit.to_list()[-5:]:
+    print(rec["record_type"], rec["action"])</code></pre>
     </div>
     <div class="col">
       <h3>Common Debugging Patterns</h3>
@@ -3897,7 +3953,7 @@ for step in result.trace:
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Debugging agents is different from debugging code. You read the reasoning trace, not a stack trace. The most common issue: the agent loops because it does not have the right tool. Fix the tools, not the prompts.
+    Time: ~2 min. Debugging agents is different from debugging code. You read the reasoning trace, not a stack trace. The trace comes from the observatory's <code>capture_run</code> (there is no <code>trace=True</code> flag on the agent); governance decisions are read from the supervisor's audit chain. The most common issue: the agent loops because it does not have the right tool. Fix the tools, not the prompts.
   </aside>
 </section>
 
@@ -3913,36 +3969,40 @@ for step in result.trace:
         <li><strong>Tool correctness:</strong> Each tool produces expected output for known input</li>
         <li><strong>Reasoning quality:</strong> Agent selects correct tools for a given task</li>
         <li><strong>Governance:</strong> Blocked actions stay blocked</li>
-        <li><strong>Budget:</strong> Agent stops at budget limit</li>
+        <li><strong>Bounds:</strong> Agent stops at its turn ceiling / budget</li>
         <li><strong>End-to-end:</strong> Full task produces correct final result</li>
       </ul>
     </div>
     <div class="col">
-      <pre><code class="language-python">def test_tool_selection():
-    """Agent selects explore tool for
-    data analysis tasks."""
-    result = agent.run(
-        "What is the average price?",
-        trace=True)
-    tools_used = [s.tool
-        for s in result.trace
-        if s.type == "action"]
-    assert "explore_data" in tools_used
+      <pre style="font-size: 0.5em;"><code class="language-python">import pytest
 
-def test_end_to_end():
-    """Full analysis produces a report."""
-    result = agent.run(
-        "Analyse and report on Q4 data")
-    assert result.success
-    assert "average" in result.output
-    assert result.cost < 1.00</code></pre>
+@pytest.mark.asyncio
+async def test_tool_selection():
+    """Agent picks the grouping tool for
+    a 'most expensive' question."""
+    agent = make_delegate(tools=tools,
+                          max_turns=8)
+    await obs.agent.capture_run(
+        agent, "Which flat type is most "
+        "expensive?", run_id="t1")
+    used = obs.agent.tool_usage("t1")
+    assert "mean_price_by" in used["tool"]
+
+def test_no_tool_loops():
+    assert obs.agent.detect_loops(
+        "t1").height == 0
+
+def test_blocked_stays_blocked(engine):
+    v = engine.verify_action(
+        "D1-R1-T1-R1", "delete_customer_data")
+    assert not v.allowed</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Agent testing is non-deterministic. You cannot test exact outputs, but you can test tool selection, governance enforcement, and budget compliance. The end-to-end test checks that the agent produces a reasonable result within budget.
+    Time: ~2 min. Agent testing is non-deterministic. You cannot test exact outputs, but you can test tool selection (from the captured trace), absence of loops, governance enforcement (on an engine whose roles have envelopes) and that the turn ceiling holds. Every test must be able to FAIL &mdash; Exercise 6.8 (ex_8/04) runs a five-test harness that includes two deny cases.
   </aside>
 </section>
 
@@ -4033,19 +4093,19 @@ python -m vllm.entrypoints.openai.api_server \
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Deploy the M6 multi-agent system via Nexus</li>
-        <li>Add JWT authentication with RBAC</li>
-        <li>Integrate DriftMonitor for production monitoring</li>
-        <li>Test end-to-end: query via API, CLI, and MCP</li>
-        <li>Verify governance enforces access controls at deployment level</li>
+        <li>Load a trained adapter from the AdapterRegistry; score it on MMLU (<code>ex_8/01</code>)</li>
+        <li>Compile the PACT org, attach envelopes, three governed tiers (<code>02</code>)</li>
+        <li>Serve ONE governed handler via Nexus with JWT, CORS and rate limit; call the API incl. 401s (<code>03</code>)</li>
+        <li>DriftMonitor on shifted traffic, debug a call, 5-test harness (<code>04</code>)</li>
+        <li>Compliance report generated from the live audit chain (<code>05</code>)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>System deployed and accessible via all 3 channels</li>
-        <li>Auth works (unauthenticated requests rejected with 401)</li>
-        <li>Drift monitoring active and alerting</li>
+        <li>Handler registered on API + CLI + MCP; API channel exercised end-to-end</li>
+        <li>Auth works (missing or forged tokens rejected with 401)</li>
+        <li>Drift monitoring alerts on the shifted batch only</li>
         <li>Governance enforced in production</li>
         <li>Complete audit trail generated</li>
       </ul>
@@ -4055,7 +4115,7 @@ python -m vllm.entrypoints.openai.api_server \
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The capstone. Students connect everything they built in 6.1-6.7 into a single deployed system. The emphasis is on integration, not new concepts. If it deploys, authenticates, monitors, and governs correctly, they have passed.
+    Time: ~1 min. The capstone. Students connect everything they built in 6.1-6.7 into a single deployed system. Be precise about channels: the exercise calls the API channel in-process (with real tokens); the CLI and MCP channels are registered by the same call, and exercising them is the stretch goal. The emphasis is on integration, not new concepts. If it deploys, authenticates, monitors, and governs correctly, they have passed.
   </aside>
 </section>
 
@@ -4108,7 +4168,7 @@ python -m vllm.entrypoints.openai.api_server \
     <span class="katex-display">\mathcal{L}_{\text{DPO}} = -\mathbb{E}\!\left[\log \sigma\!\left(\beta \log \frac{\pi_\theta(y_w|x)}{\pi_{\text{ref}}(y_w|x)} - \beta \log \frac{\pi_\theta(y_l|x)}{\pi_{\text{ref}}(y_l|x)}\right)\right]</span>
   </div>
   <div class="equation-box" style="margin-top:8px;">
-    <span class="katex-display">\hat{A}_i = \frac{r_i - \text{mean}(\mathbf{r})}{\text{std}(\mathbf{r})} \quad \text{(GRPO advantage)}</span>
+    <span class="katex-display">\hat{A}_i = \frac{r_i - \text{mean}(\mathbf{r})}{\text{std}(\mathbf{r}) + \epsilon} \quad \text{(GRPO advantage)}</span>
   </div>
   <div class="equation-box" style="margin-top:8px;">
     <span class="katex-display">\text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^T}{\sqrt{d_k}}\right)V</span>
@@ -4147,12 +4207,12 @@ python -m vllm.entrypoints.openai.api_server \
       <tr><th>Package</th><th>M6 Role</th><th>Key APIs Used</th></tr>
     </thead>
     <tbody>
-      <tr><td>kaizen / kaizen_agents</td><td>LLM calls, agent framework</td><td>BaseAgent, Signature, Delegate, ReActAgent, GovernedSupervisor</td></tr>
+      <tr><td>kaizen / kaizen_agents</td><td>LLM calls, agent framework</td><td>BaseAgent, Signature, Delegate + ToolRegistry, GovernedSupervisor</td></tr>
       <tr><td>kailash-align</td><td>Fine-tuning, alignment</td><td>AlignmentPipeline, AlignmentConfig, AdapterRegistry</td></tr>
-      <tr><td>pact</td><td>Governance, access control</td><td>GovernanceEngine, load_org_yaml, ConstraintEnvelopeConfig, RoleEnvelope</td></tr>
-      <tr><td>nexus</td><td>Multi-channel deployment</td><td>Nexus, app.register(name, built_workflow), JWT middleware</td></tr>
-      <tr><td>kailash-ml</td><td>Training, monitoring</td><td>TrainingPipeline, DriftMonitor, DataExplorer</td></tr>
-      <tr><td>kailash-mcp</td><td>Tool protocol server</td><td>MCPServer, @tool decorator</td></tr>
+      <tr><td>pact</td><td>Governance, access control</td><td>GovernanceEngine, load_org_yaml, verify_action, ConstraintEnvelopeConfig, RoleEnvelope</td></tr>
+      <tr><td>nexus</td><td>Multi-channel deployment</td><td>Nexus, handler_extract / register, NexusAuthPlugin (JWT, rate limit), cors_origins</td></tr>
+      <tr><td>kailash-ml</td><td>Profiling, monitoring</td><td>DataExplorer, DriftMonitor</td></tr>
+      <tr><td>kailash-mcp</td><td>Tool protocol server</td><td>MCPServer, @server.tool(), MCPClient</td></tr>
     </tbody>
   </table>
   <div class="slide-footer">
@@ -4284,8 +4344,8 @@ python -m vllm.entrypoints.openai.api_server \
     </thead>
     <tbody>
       <tr><td>Fine-tuning when RAG would work</td><td>Expensive, slow, model goes stale</td><td>Try RAG first; fine-tune only if insufficient</td></tr>
-      <tr><td>Agent without cost budget</td><td>Runaway API spending</td><td>Always set max_cost on every agent</td></tr>
-      <tr><td>No governance on agents</td><td>Security liability</td><td>GovernedSupervisor with pact operating envelopes</td></tr>
+      <tr><td>Agent without bounds</td><td>Runaway calls and spending</td><td>Always set <code>max_turns</code>; on priced providers also <code>budget_limit_usd</code> at construction</td></tr>
+      <tr><td>Roles without envelopes</td><td>PACT auto-approves them (fail-open default)</td><td>Attach an envelope to every role; test the deny path</td></tr>
       <tr><td>Testing LLM exact output</td><td>Non-deterministic; tests flake</td><td>Test tool selection, governance, budget</td></tr>
       <tr><td>Deploying without monitoring</td><td>Model degrades silently</td><td>DriftMonitor on every deployed model</td></tr>
       <tr><td>Using agents for simple tasks</td><td>Adds cost and latency</td><td>Pipeline first; agent only if reasoning needed</td></tr>
@@ -4389,7 +4449,7 @@ python -m vllm.entrypoints.openai.api_server \
         <li>Use Kaizen Delegate for structured output?</li>
         <li>Build a RAG pipeline?</li>
         <li>Create a ReAct agent with tools?</li>
-        <li>Set cost budgets on agents?</li>
+        <li>Bound agents (turn ceiling, cost budget)?</li>
         <li>Implement PACT access controls?</li>
         <li>Deploy via Nexus?</li>
       </ul>
@@ -4427,21 +4487,21 @@ python -m vllm.entrypoints.openai.api_server \
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Capstone Project</h3>
+      <h3>Four auto-graded tasks &mdash; 100 marks</h3>
       <ul>
-        <li>Deploy a complete governed AI system</li>
-        <li>Must include: prompting, fine-tuning, RAG, agents, governance, deployment</li>
-        <li>Presentation: 15 minutes + 5 minutes Q&amp;A</li>
-        <li>Demo: live queries via API, CLI, and MCP</li>
+        <li><strong>Task 1</strong> (20): prompt engineering &amp; structured output &mdash; <code>Signature</code> + <code>BaseAgent</code></li>
+        <li><strong>Task 2</strong> (25): RAG pipeline with evaluation &mdash; Ollama embeddings + <code>Delegate</code></li>
+        <li><strong>Task 3</strong> (25): tool-using agent over a real dataset &mdash; <code>Delegate</code> + <code>ToolRegistry</code></li>
+        <li><strong>Task 4</strong> (30): governance for a production agent fleet &mdash; PACT <code>GovernanceEngine</code></li>
       </ul>
     </div>
     <div class="col">
-      <h3>Comprehensive Quiz</h3>
+      <h3>Format</h3>
       <ul>
-        <li>Covers all 8 lessons</li>
-        <li>Mix of: conceptual, code interpretation, formula application</li>
-        <li>Open-book: you may reference your exercises</li>
-        <li>Duration: 60 minutes</li>
+        <li>Duration: 3 hours</li>
+        <li>Open-book; no AI assistants</li>
+        <li>Runs on local Ollama &mdash; no API keys, no internet</li>
+        <li>Complete each <code>starter.py</code>; graders check the return contract in each <code>problem.md</code></li>
       </ul>
       <div class="callout callout-warning" style="margin-top:8px;">
         <strong>Assessment focus:</strong> Can you build it, deploy it, govern it, and explain why your design decisions are correct? The code IS the answer.
@@ -4452,7 +4512,7 @@ python -m vllm.entrypoints.openai.api_server \
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Explain the assessment format. The capstone is the main assessment. The quiz covers breadth. Both are open-book because the skill is engineering, not memorisation.
+    Time: ~2 min. Explain the assessment format exactly as shipped in <code>assessment/README.md</code>: four auto-graded coding tasks, 100 marks, 3 hours, open-book, no AI assistants. Fine-tuning (6.2&ndash;6.3), multi-agent/MCP (6.6) and deployment (6.8) are assessed through their exercises, not the timed tasks. Make sure Ollama is running with both models pulled before the session starts.
   </aside>
 </section>
 
@@ -4468,7 +4528,7 @@ python -m vllm.entrypoints.openai.api_server \
         <li>Hu et al. (2021) &mdash; LoRA: Low-Rank Adaptation</li>
         <li>Houlsby et al. (2019) &mdash; Parameter-Efficient Transfer Learning</li>
         <li>Rafailov et al. (2023) &mdash; DPO: Direct Preference Optimization</li>
-        <li>Shao et al. (2024) &mdash; DeepSeek-R1 (GRPO)</li>
+        <li>Shao et al. (2024) &mdash; DeepSeekMath (introduces GRPO; later used in DeepSeek-R1, 2025)</li>
         <li>Yao et al. (2023) &mdash; ReAct: Reasoning and Acting</li>
         <li>Wei et al. (2022) &mdash; Chain-of-Thought Prompting</li>
         <li>Kojima et al. (2022) &mdash; Zero-shot CoT</li>
@@ -4509,7 +4569,7 @@ python -m vllm.entrypoints.openai.api_server \
     <div class="col">
       <ol>
         <li><strong>Prompting is an engineering skill.</strong> Start simple, escalate by measured need.</li>
-        <li><strong>LoRA democratised fine-tuning.</strong> 256x fewer parameters, same quality.</li>
+        <li><strong>LoRA democratised fine-tuning.</strong> Hundreds of times fewer trainable parameters, often near full fine-tuning quality.</li>
         <li><strong>DPO eliminated the reward model.</strong> Alignment is now accessible.</li>
         <li><strong>RAG is the production default.</strong> Ground LLMs in facts, not memory.</li>
       </ol>
@@ -4519,7 +4579,7 @@ python -m vllm.entrypoints.openai.api_server \
         <li><strong>Agents need tools, not just prompts.</strong> ReAct = reasoning + action.</li>
         <li><strong>Multi-agent systems need coordination protocols.</strong> MCP for tools, A2A for agents.</li>
         <li><strong>Governance is engineering, not philosophy.</strong> Code it. Test it. Ship it.</li>
-        <li><strong>Deploy with monitoring.</strong> A model without DriftMonitor is a liability.</li>
+        <li><strong>Deploy with monitoring.</strong> A model without DriftMonitor is a liability. And know your defaults: un-enveloped roles are auto-approved.</li>
       </ol>
     </div>
   </div>
@@ -4555,7 +4615,7 @@ python -m vllm.entrypoints.openai.api_server \
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Instructor-only slide. Total: ~23.5 hours across 8 lessons. The biggest risk is 6.2 (from-scratch implementations) and 6.8 (integration). Allocate buffer time for debugging in both. If running behind, the fine-tuning landscape survey (slide 22) can be assigned as reading.
+    Instructor-only slide. Total: ~23.5 hours across 8 lessons (round to ~24 h, the figure the textbook uses). The biggest risk is 6.2 (from-scratch implementations) and 6.8 (integration). Allocate buffer time for debugging in both. If running behind, the fine-tuning landscape survey (slide 22) can be assigned as reading.
   </aside>
 </section>
 

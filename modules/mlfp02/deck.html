@@ -857,6 +857,46 @@ fig = ModelVisualizer().histogram(
   </aside>
 </section>
 
+<!-- SLIDE 25b: 2.3 ADVANCED - BCa Intervals -->
+<section>
+  <h2>BCa Intervals: Fixing the Percentile Method</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Two Corrections</h3>
+      <ul>
+        <li><strong>Bias $\hat{z}_0$:</strong> is the bootstrap distribution centred on $\hat{\theta}$? $\hat{z}_0 = \Phi^{-1}$(share of replicates below $\hat{\theta}$)</li>
+        <li><strong>Acceleration $\hat{a}$:</strong> does the standard error change with $\theta$? Estimated by the jackknife</li>
+      </ul>
+      <div class="equation-box" style="margin-top: 12px; font-size: 0.85em;">
+        $$\alpha_{\text{adj}} = \Phi\!\left(\hat{z}_0 + \frac{\hat{z}_0 + z_{\alpha}}{1 - \hat{a}(\hat{z}_0 + z_{\alpha})}\right)$$
+        <div class="annotation">Read the CI at the adjusted percentiles instead of $\alpha/2$ and $1-\alpha/2$</div>
+      </div>
+    </div>
+    <div class="col">
+      <pre style="font-size: 0.5em;"><code class="language-python">import numpy as np
+from scipy.stats import bootstrap
+from shared import MLFPDataLoader
+
+prices = (MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+          .sample(n=200, seed=42)["resale_price"].to_numpy())
+res = bootstrap((prices,), np.median, method="BCa",
+                confidence_level=0.95, n_resamples=10_000,
+                random_state=42)
+print(res.confidence_interval)</code></pre>
+      <div class="callout callout-advanced" style="margin-top: 8px;">
+        <strong>When it matters:</strong> skewed statistics (median, ratios, variances) and small samples. With $\hat{z}_0 = \hat{a} = 0$, BCa reduces to the percentile interval.
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Timing: 3 min. Advanced slide. The percentile interval assumes the bootstrap distribution is centred on the estimate and equally spread on both sides; BCa corrects for median bias (z0) and for a standard error that changes with the parameter (a). On a 200-sale HDB sample the median is about 851K; the percentile and BCa intervals differ only slightly at the lower end (roughly 799K vs 797K), because a median of 200 prices is not very skewed. The gap grows with skew and with smaller n. Exercise 3.1 computes percentile, normal and BCa intervals side by side. If beginners confused: "BCa is the percentile interval with two automatic corrections; scipy does the arithmetic." If experts bored: "The acceleration comes from the jackknife skewness of the influence values (Efron, 1987)."
+  </aside>
+</section>
+
 <!-- SLIDE 26: 2.3 THEORY - Hypothesis Testing -->
 <section>
   <h2>Hypothesis Testing: Making Decisions</h2>

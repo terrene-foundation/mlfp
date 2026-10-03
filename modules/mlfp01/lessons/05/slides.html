@@ -73,12 +73,12 @@
           <text x="40" y="55" fill="#0F766E">town    month price</text>
           <text x="40" y="73">BISHAN  Jan   720</text>
           <text x="40" y="90">BISHAN  Feb   690</text>
-          <text x="40" y="107">JURONG  Jan   430</text>
-          <text x="40" y="124">JURONG  Feb   445</text>
+          <text x="40" y="107">YISHUN  Jan   430</text>
+          <text x="40" y="124">YISHUN  Feb   445</text>
           <text x="40" y="150" fill="#94A3B8">↓ collapse</text>
           <text x="40" y="175" fill="#0F766E">town    mean</text>
           <text x="40" y="193">BISHAN  705</text>
-          <text x="40" y="210">JURONG  437</text>
+          <text x="40" y="210">YISHUN  437</text>
           <text x="40" y="228" fill="#F43F5E">(month detail lost)</text>
         </g>
       </g>
@@ -89,8 +89,8 @@
           <text x="40" y="55" fill="#0F766E">town    month  price  mean_town</text>
           <text x="40" y="73">BISHAN  Jan    720    705</text>
           <text x="40" y="90">BISHAN  Feb    690    705</text>
-          <text x="40" y="107">JURONG  Jan    430    437</text>
-          <text x="40" y="124">JURONG  Feb    445    437</text>
+          <text x="40" y="107">YISHUN  Jan    430    437</text>
+          <text x="40" y="124">YISHUN  Feb    445    437</text>
           <text x="40" y="155" fill="#0D9488">same row count ✓</text>
           <text x="40" y="180" fill="#0D9488">every row carries</text>
           <text x="40" y="197" fill="#0D9488">its group's stat</text>
@@ -98,6 +98,28 @@
       </g>
     </svg>
   </figure>
+</section>
+
+<section>
+  <h2>Build the monthly series &mdash; on a complete calendar</h2>
+  <pre><code class="language-python" data-trim>
+hdb = hdb.with_columns(
+    pl.col("month").str.to_date("%Y-%m").alias("transaction_date"),
+    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+)
+monthly = (hdb.group_by("town", "transaction_date")
+    .agg(pl.col("price_per_sqm").median().alias("median_price_sqm")))
+
+# Windows count ROWS. Give every town every month first.
+grid = (monthly.select("town").unique()
+    .join(monthly.select("transaction_date").unique(), how="cross"))
+monthly_prices = (grid.join(monthly, on=["town", "transaction_date"], how="left")
+    .sort("town", "transaction_date"))   # 3,240 rows; 4 gaps now null
+  </code></pre>
+  <div style="background: #FFFBEB; padding: 10px 16px; border-left: 4px solid #F59E0B; border-radius: 4px; font-size: 0.85em;">
+    Only 3,236 of the 27 &times; 120 town-months have sales (BUKIT TIMAH misses 3 months,
+    CENTRAL AREA 1). Without the grid, "12 rows back" is not "12 months back".
+  </div>
 </section>
 
 <section>
@@ -229,7 +251,9 @@ monthly_prices = monthly_prices.with_columns(
   <p style="font-size: 0.88em;">
     <code>shift(12)</code> moves every value 12 rows forward, filling the
     first 12 rows with null. Combined with <code>over("town")</code>, each
-    town shifts independently.
+    town shifts independently. 12 rows = "same month last year" <em>only</em>
+    because the calendar is complete; without the grid, 40 rows compare
+    against the wrong month (e.g. CENTRAL AREA 2016-03 vs 2015-02).
   </p>
 </section>
 
@@ -276,11 +300,11 @@ print(rankings.tail(5))  # bottom 5
       <g transform="translate(20, 10)">
         <text x="180" y="20" text-anchor="middle" font-weight="600" font-size="14" fill="#F43F5E">Eager (default)</text>
         <rect x="20" y="30" width="330" height="28" rx="4" fill="#FFF1F2"/>
-        <text x="40" y="48" font-family="JetBrains Mono" font-size="11">load → 500k rows in memory</text>
+        <text x="40" y="48" font-family="JetBrains Mono" font-size="11">load → 50k rows in memory</text>
         <rect x="20" y="64" width="330" height="28" rx="4" fill="#FFF1F2"/>
-        <text x="40" y="82" font-family="JetBrains Mono" font-size="11">filter → 180k rows</text>
+        <text x="40" y="82" font-family="JetBrains Mono" font-size="11">filter → 24,904 rows</text>
         <rect x="20" y="98" width="330" height="28" rx="4" fill="#FFF1F2"/>
-        <text x="40" y="116" font-family="JetBrains Mono" font-size="11">group_by → 26 rows</text>
+        <text x="40" y="116" font-family="JetBrains Mono" font-size="11">group_by → 27 rows</text>
         <rect x="20" y="132" width="330" height="28" rx="4" fill="#FFF1F2"/>
         <text x="40" y="150" font-family="JetBrains Mono" font-size="11">sort → result</text>
         <text x="20" y="185" font-size="12" fill="#F43F5E">each step runs immediately</text>
@@ -304,8 +328,10 @@ print(rankings.tail(5))  # bottom 5
 <section>
   <h2>Lazy pipeline in code</h2>
   <pre><code class="language-python" data-trim>
+path = MLFPDataLoader().load_raw("mlfp01", "hdb_resale.parquet")
 result = (
-    pl.scan_parquet("hdb_resale.parquet")  # lazy: no data loaded
+    pl.scan_parquet(path)                   # lazy: no data loaded
+    .with_columns(pl.col("month").str.slice(0, 4).cast(pl.Int32).alias("year"))
     .filter(pl.col("year") >= 2020)
     .group_by("town")
     .agg(pl.col("resale_price").median().alias("median"))
@@ -314,7 +340,7 @@ result = (
 )
   </code></pre>
   <p style="font-size: 0.85em;">
-    <code>scan_*</code> = lazy. <code>read_*</code> = eager.
+    <code>load_raw</code> returns the file path. <code>scan_*</code> = lazy. <code>read_*</code> = eager.
     <code>collect()</code> executes. Polars optimises the whole chain
     before running anything.
   </p>
@@ -323,7 +349,7 @@ result = (
 <section>
   <h2>Four traps</h2>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
-    <strong>1. Not sorting before rolling.</strong> Windows depend on row order.
+    <strong>1. Not sorting &mdash; or not completing the calendar &mdash; before rolling.</strong> Windows depend on row order and count rows, not months.
   </div>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
     <strong>2. Rolling across groups without <code>over</code>.</strong> Windows will span unrelated partitions.

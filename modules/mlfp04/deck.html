@@ -1552,7 +1552,8 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
       <ul style="font-size: 0.85em;">
         <li>Recommend items similar to what user liked</li>
         <li>Uses item features (genre, price, description)</li>
-        <li>No cold-start for items (if features exist)</li>
+        <li>No cold-start for new items (if features exist)</li>
+        <li>Still cold for brand-new <em>users</em> (no profile yet)</li>
       </ul>
     </div>
     <div class="col">
@@ -1579,7 +1580,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <tr><th></th><th>User-Based CF</th><th>Item-Based CF</th></tr>
     <tr><td>Find similar...</td><td>Users</td><td>Items</td></tr>
     <tr><td>Recommend...</td><td>What similar users liked</td><td>Items similar to what user liked</td></tr>
-    <tr><td>Cold start</td><td>Hard for new users</td><td>Hard for new items</td></tr>
+    <tr><td>Cold start</td><td colspan="2">Both fail for brand-new users AND brand-new items (no ratings to compare)</td></tr>
     <tr><td>Stability</td><td>Changes as user base grows</td><td>More stable over time</td></tr>
     <tr><td>Scale</td><td>Expensive with many users</td><td>Expensive with many items</td></tr>
   </table>
@@ -1587,7 +1588,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. In practice, item-based CF is more common because item relationships are more stable than user relationships.
+    Timing: 2 min. In practice, item-based CF is more common because item relationships are more stable than user relationships. Cold start hits both: a new user has no ratings to find neighbours or to score items against, and a new item has no co-raters, so neither similarity can be computed. Content features fix the new-item case; new users need onboarding questions or popularity fallbacks.
   </aside>
 </section>
 
@@ -1620,10 +1621,11 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
   <div class="derivation-step">
     <div class="step-label">Alternating optimisation</div>
     <ol style="font-size: 0.9em;">
-      <li>Fix $V$, solve for $U$: $\;\mathbf{U} = (\mathbf{V}^T\mathbf{V} + \lambda \mathbf{I})^{-1} \mathbf{V}^T \mathbf{R}^T$</li>
-      <li>Fix $U$, solve for $V$: $\;\mathbf{V} = (\mathbf{U}^T\mathbf{U} + \lambda \mathbf{I})^{-1} \mathbf{U}^T \mathbf{R}$</li>
+      <li>Fix $V$; for each user $u$: $\;\mathbf{u}_u = (\mathbf{V}_{\Omega_u}^T\mathbf{V}_{\Omega_u} + \lambda \mathbf{I})^{-1} \mathbf{V}_{\Omega_u}^T \mathbf{r}_{u,\Omega_u}$</li>
+      <li>Fix $U$; for each item $i$: $\;\mathbf{v}_i = (\mathbf{U}_{\Omega_i}^T\mathbf{U}_{\Omega_i} + \lambda \mathbf{I})^{-1} \mathbf{U}_{\Omega_i}^T \mathbf{r}_{\Omega_i,i}$</li>
       <li>Repeat until convergence</li>
     </ol>
+    <p class="small muted" style="margin: 4px 0 0;">$\Omega_u$ = items user $u$ rated; $\mathbf{V}_{\Omega_u}$ = their rows of $V$. Only observed ratings enter &mdash; missing ones are not zeros.</p>
   </div>
   <div class="callout callout-foundations" style="margin-top: 12px;">
     <strong>Why ALS?</strong> The joint problem $\min_{U,V}$ is non-convex. But fixing one and solving the other is a least-squares problem (convex, closed-form). Alternating makes progress each step.
@@ -1632,7 +1634,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. ALS is to matrix factorisation what EM is to GMMs &mdash; alternate between two steps, each of which is easy, until convergence.
+    Timing: 3 min. ALS has the same rhythm as EM for GMMs &mdash; alternate between two steps, each of which is easy, until convergence &mdash; but it is block-coordinate least squares, not EM. Point at the subscripts: each user's vector is a small ridge regression on just the items that user rated. Writing it densely as (V&#7488;V + &lambda;I)&#8315;&sup1;V&#7488;R&#7488; would treat every missing rating as a zero rating, which is a different (and wrong) objective for explicit ratings. Exercise 7.4 also adds global, user and item biases.
   </aside>
 </section>
 
@@ -1653,9 +1655,9 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
       <h3>Hybrid Systems</h3>
       <ul style="font-size: 0.85em;">
         <li>Combine content-based + collaborative</li>
-        <li>Content features solve cold-start</li>
+        <li>Content features solve <em>item</em> cold-start</li>
         <li>CF captures latent preferences</li>
-        <li>Most production systems are hybrid</li>
+        <li>Tune blend weights on a validation split, never on the test set</li>
       </ul>
     </div>
   </div>
@@ -1701,7 +1703,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
   <h2>Visualising Learned Embeddings</h2>
   <span class="marker marker-foundations">Foundations</span>
   <ul>
-    <li>Project user/item embeddings to 2D using UMAP (4.3)</li>
+    <li>Project user/item embeddings to 2D with PCA (as in Exercise 7.4) or UMAP (4.3)</li>
     <li>Similar items cluster together in embedding space</li>
     <li>Similar users cluster together in embedding space</li>
     <li>The latent dimensions often correspond to interpretable concepts (genre, price range, quality)</li>
@@ -1713,7 +1715,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show a UMAP projection of item embeddings. "Look: comedy movies cluster together, action movies cluster together. Nobody told the algorithm about genres &mdash; it discovered them from ratings."
+    Timing: 2 min. Show the 2D projection of item embeddings from Exercise 7.4. On real catalogues this is where, say, comedy films cluster together and action films together &mdash; nobody told the algorithm about genres; it discovered them from ratings. The exercise data is synthetic with known true taste factors, so students can check how well ALS recovered them.
   </aside>
 </section>
 
@@ -1721,11 +1723,11 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
   <h2>Exercise 4.7: Recommender Systems</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Build recommender system on Singapore retail data.
+    <strong>Task:</strong> Recommend on a synthetic e-commerce rating matrix (300 users &times; 120 items; 10 brand-new items held out).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Implement user-based CF, item-based CF, and matrix factorisation (ALS)</li>
-      <li>Compare recommendation quality across approaches</li>
-      <li>Visualise learned embeddings using UMAP</li>
+      <li>Content-based, user-based CF, item-based CF, and biased matrix factorisation (ALS)</li>
+      <li>Hybrid with weights tuned on validation; compare RMSE, precision@k, MAP against no-skill baselines</li>
+      <li>Visualise learned embeddings (2D PCA projection)</li>
       <li>Articulate THE PIVOT: how does optimisation discover features?</li>
     </ul>
   </div>
@@ -1733,7 +1735,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Assessment: all three approaches implemented; embeddings visualised (2D projection shows meaningful clusters); the pivot concept articulated in writing.
+    Timing: 1 min. Assessment: all approaches implemented; embeddings visualised (2D projection shows meaningful clusters); the pivot concept articulated in writing. Insist on the baselines (global mean and item mean): a recommender that cannot beat them has learned nothing. Only content-based filtering can score the brand-new items; none of the methods can serve a brand-new user.
   </aside>
 </section>
 

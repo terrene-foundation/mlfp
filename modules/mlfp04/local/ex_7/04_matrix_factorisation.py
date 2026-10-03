@@ -333,7 +333,7 @@ print(
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Spotify-Style Music Recommendation at Scale
+# TASK 5 — APPLY: Music-Streaming Recommendation at Scale
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: A Southeast Asian music streaming service has 600M "plays"
 # per day across 80M tracks and 12M users.

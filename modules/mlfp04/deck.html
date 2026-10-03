@@ -1840,13 +1840,13 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <li>Add more hidden layers &rarr; model "writes its own parametric function"</li>
   </ul>
   <div class="callout callout-theory" style="margin-top: 12px;">
-    <strong>Universal approximation theorem:</strong> A network with 2+ hidden layers and nonlinear activations can represent ANY continuous function (given enough neurons).
+    <strong>Universal approximation theorem:</strong> ONE hidden layer with a non-polynomial activation and enough units can <em>approximate</em> any continuous function on a bounded (compact) domain to any accuracy. Depth buys parameter efficiency, not extra expressive power.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "Linear regression is a neural network with no hidden layers. Everything you learned in M3 is a special case. Adding hidden layers adds automatic feature engineering."
+    Timing: 2 min. "Linear regression is a neural network with no hidden layers. Everything you learned in M3 is a special case. Adding hidden layers adds automatic feature engineering." On the theorem (Cybenko 1989, Hornik 1991): one hidden layer is enough in principle, but it may need an impractically large number of units, and the theorem says nothing about whether gradient descent will find those weights or how well they generalise. Deeper networks can represent many functions with far fewer parameters &mdash; that is why we stack layers. Exercise 8.1 shows the smallest case: XOR, which no linear model can fit, is solved by a single hidden layer.
   </aside>
 </section>
 
@@ -1914,11 +1914,14 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
 <section>
   <h2>Activation Functions</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <table style="font-size: 0.68em;">
+  <table style="font-size: 0.58em;">
     <tr><th>Function</th><th>Formula</th><th>Use</th><th>Notes</th></tr>
     <tr><td>ReLU</td><td>$\max(0, z)$</td><td>Hidden layers (default)</td><td>Can "die" if $z < 0$ always</td></tr>
     <tr><td>Leaky ReLU</td><td>$\max(0.01z, z)$</td><td>Hidden layers</td><td>Prevents dying ReLU</td></tr>
+    <tr><td>PReLU</td><td>$\max(az, z)$, $a$ learned</td><td>Hidden layers</td><td>Leaky ReLU with a learned slope</td></tr>
+    <tr><td>ELU</td><td>$z$ if $z&gt;0$, else $\alpha(e^z - 1)$</td><td>Hidden layers</td><td>Smooth, negative outputs push mean toward 0</td></tr>
     <tr><td>GELU</td><td>$z \cdot \Phi(z)$</td><td>Transformers</td><td>Smooth approximation of ReLU</td></tr>
+    <tr><td>Swish / SiLU</td><td>$z \cdot \sigma(z)$</td><td>Hidden layers, modern CNNs / LLMs</td><td>Smooth, non-monotonic near 0</td></tr>
     <tr><td>Sigmoid</td><td>$\frac{1}{1+e^{-z}}$</td><td>Binary output</td><td>Saturates &rarr; vanishing gradients</td></tr>
     <tr><td>Tanh</td><td>$\frac{e^z - e^{-z}}{e^z + e^{-z}}$</td><td>RNNs</td><td>Zero-centred but still saturates</td></tr>
     <tr><td>Softmax</td><td>$\frac{e^{z_i}}{\sum_j e^{z_j}}$</td><td>Multi-class output</td><td>Outputs sum to 1</td></tr>
@@ -1927,7 +1930,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "ReLU for hidden layers, sigmoid for binary output, softmax for multi-class. That covers 90% of use cases. GELU is the modern choice for transformers."
+    Timing: 2 min. "ReLU for hidden layers, sigmoid for binary output, softmax for multi-class. That covers 90% of use cases. GELU is the modern choice for transformers." The ReLU variants (Leaky, PReLU, ELU) all exist to keep a non-zero gradient for negative inputs, which is the fix for dead units that Exercise 8.2 measures. Swish (PyTorch calls it SiLU) and GELU are the smooth modern defaults; Exercise 8.2 compares ReLU, GELU, Tanh and SiLU on the same task.
   </aside>
 </section>
 
@@ -2009,7 +2012,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
 <section>
   <h2>Loss Functions Taxonomy</h2>
   <span class="marker marker-theory">Theory</span>
-  <table style="font-size: 0.65em;">
+  <table style="font-size: 0.6em;">
     <tr><th>Loss</th><th>Task</th><th>Formula</th></tr>
     <tr><td>MSE</td><td>Regression</td><td>$\frac{1}{n}\sum(y - \hat{y})^2$</td></tr>
     <tr><td>MAE</td><td>Robust regression</td><td>$\frac{1}{n}\sum|y - \hat{y}|$</td></tr>
@@ -2017,6 +2020,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <tr><td>Binary CE</td><td>Binary classification</td><td>$-[y\log\hat{y} + (1-y)\log(1-\hat{y})]$</td></tr>
     <tr><td>Focal Loss</td><td>Imbalanced classes</td><td>$-(1-\hat{y})^\gamma y \log\hat{y}$</td></tr>
     <tr><td>Contrastive</td><td>Similarity learning</td><td>Pull similar, push dissimilar</td></tr>
+    <tr><td>Triplet</td><td>Metric learning</td><td>$\max(0,\; d(a,p) - d(a,n) + m)$</td></tr>
     <tr><td>KL Divergence</td><td>Distribution matching</td><td>$\sum P(x)\log\frac{P(x)}{Q(x)}$</td></tr>
     <tr><td>Reconstruction</td><td>Autoencoders</td><td>$\|x - \hat{x}\|^2$</td></tr>
   </table>
@@ -2024,7 +2028,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Reference slide. "The loss function defines what the network optimises. Choose the wrong loss and the network solves the wrong problem."
+    Timing: 2 min. Reference slide. "The loss function defines what the network optimises. Choose the wrong loss and the network solves the wrong problem." Note the SSE on the gradient-descent slide is (1/2)&Sigma;(y &minus; &#375;)&sup2;; MSE divides by n instead &mdash; same minimiser, different scale. Triplet loss takes an anchor a, a positive p and a negative n and asks d(a,p) to be at least a margin m smaller than d(a,n) &mdash; the basis of face-matching and embedding search.
   </aside>
 </section>
 
@@ -2085,57 +2089,59 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
   <div class="kailash-bridge">
     <h3>Theory &rarr; Engine</h3>
     <div class="theory-to-engine">
-      <span>Neural network training, export, inference</span>
+      <span>Trained network &rarr; portable inference graph</span>
       <span class="arrow">&rarr;</span>
       <span><code>OnnxBridge</code></span>
     </div>
   </div>
-  <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from kailash_ml import OnnxBridge, TrainingPipeline
+  <pre style="font-size: 0.5em; line-height: 1.3"><code class="language-python">from pathlib import Path
+import numpy as np
+import onnxruntime as ort
+import torch
+from torch import nn
+from kailash_ml import OnnxBridge
 
-# Train with Kailash
-pipeline = TrainingPipeline(
-    model="neural_network",
-    hidden_layers=[128, 64, 32],
-    activation="relu",
-    optimizer="adamw",
-    epochs=100,
-    early_stopping=True
-)
-pipeline.fit(X_train, y_train)
+model = nn.Sequential(nn.Linear(7, 32), nn.ReLU(), nn.Linear(32, 1))
+# ... train it in torch: AdamW, LR schedule, early stopping (Exercise 8.4-8.5) ...
+model.eval()
 
-# Export to ONNX for cross-platform inference
 bridge = OnnxBridge()
-bridge.export(pipeline.model, "model.onnx")
+print(bridge.check_compatibility(model, framework="torch").compatible)
+export = bridge.export(model, framework="torch", output_path=Path("model.onnx"),
+                       sample_input=torch.randn(1, 7))  # traces the forward pass
+print(export.success, export.onnx_status)
 
-# Load and run anywhere
-loaded = bridge.load("model.onnx")
-predictions = loaded.predict(X_test)</code></pre>
+batch = np.random.randn(10, 7).astype(np.float32)   # check: ONNX == torch
+session = ort.InferenceSession("model.onnx")
+onnx_out = session.run(None, {session.get_inputs()[0].name: batch})[0]
+with torch.no_grad():
+    print(np.abs(onnx_out - model(torch.from_numpy(batch)).numpy()).max())</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "OnnxBridge lets you train in Python and deploy anywhere: web, mobile, edge. ONNX is the universal format for neural network models."
+    Timing: 2 min. "You train the network in PyTorch; OnnxBridge checks whether the model can be exported, exports it to ONNX and reports the outcome as a result object instead of raising, so a pipeline can decide what to do when export fails." It does not train, checkpoint or serve the model &mdash; training is your torch loop, serving is ONNX Runtime (or InferenceServer in M5). Torch export needs a sample input because it traces the forward pass. Always compare ONNX and torch outputs on the same batch; on this toy model the maximum difference is around 1e-7. OnnxBridge.validate() does this comparison for scikit-learn-style models (it calls .predict), which is why the torch check here uses onnxruntime directly, exactly as Exercise 8.5 does. The installed exporter prints some warnings during torch export; they are harmless here.
   </aside>
 </section>
 
 <section>
-  <h2>Exercise 4.8: Neural Network from Scratch</h2>
+  <h2>Exercise 4.8: The Deep-Learning Training Toolkit</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Build a 3-layer neural network for HDB price prediction.
+    <strong>Task:</strong> Five PyTorch files, each isolating one part of the toolkit.
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Implement forward pass, loss (SSE), backpropagation, gradient descent</li>
-      <li>Add dropout, batch norm, Adam optimiser, LR schedule</li>
-      <li>Compare training curves with/without each technique</li>
-      <li>Export trained model with OnnxBridge</li>
-      <li>Articulate: "hidden layers are USML with error feedback"</li>
+      <li>8.1 XOR: a linear model is stuck near 50%; one hidden layer solves it</li>
+      <li>8.2 ReLU / GELU / Tanh / SiLU; zero vs Xavier vs Kaiming init, dead units</li>
+      <li>8.3 Small CNN with batch norm and a residual block on synthetic shape images</li>
+      <li>8.4 SGD, momentum, Adam, AdamW; warmup + cosine LR schedule</li>
+      <li>8.5 Dropout vs batch norm, gradient clipping, early stopping; export with OnnxBridge</li>
     </ul>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. The most important exercise in the module. Assessment: from-scratch implementation works (loss decreases); each training technique improves convergence (demonstrated with plots); the "unsupervised meets supervised" concept articulated.
+    Timing: 1 min. The most important exercise in the module (solutions/ex_8/01_xor_proof.py &hellip; 05_regularisation_training.py). Every comparison uses the same data and budget, so curves are comparable; the images in 8.3&ndash;8.5 are synthetic shapes the network can actually learn, so the differences between variants mean something. The from-scratch forward/backward pass is the one on the backpropagation and gradient-descent slides &mdash; work it through on the board with a small HDB price example. Assessment: training curves with and without each technique, and the "unsupervised meets supervised" idea articulated: hidden layers are USML with error feedback.
   </aside>
 </section>
 

@@ -347,8 +347,15 @@ plt.savefig(
 plt.show()
 
 # --- Visualisation 2: Visual comparison grid ---
-# TODO: 3-row grid: Original, JPEG at matched ratio, AE at 4ch
-# Save to OUTPUT_DIR / "ex1_compression_visual_comparison.png"
+ae_compare = ae_models[4]
+ae_compare.eval()
+target_ratio = ae_compare.compression_ratio
+jpeg_idx = np.argmin([abs(r[0] - target_ratio) for r in jpeg_results])
+jpeg_q = jpeg_results[jpeg_idx][4]
+
+# TODO: 3-row grid of the first 8 test images: Original, JPEG at quality
+#   jpeg_q (the JPEG setting closest to target_ratio), and ae_compare's
+#   reconstruction. Save to OUTPUT_DIR / "ex1_compression_visual_comparison.png"
 fig, axes = plt.subplots(3, 8, figsize=(18, 7))
 ____
 plt.tight_layout()

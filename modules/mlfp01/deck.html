@@ -2249,7 +2249,7 @@ Transition: "Now let us pick the right chart for the right data."
       <tr><td>How are values distributed?</td><td><strong>Histogram</strong></td><td>HDB price distribution</td></tr>
       <tr><td>How does a value change over time?</td><td><strong>Line chart</strong></td><td>Monthly median price</td></tr>
       <tr><td>How do categories compare?</td><td><strong>Vertical bar</strong></td><td>Average price by town</td></tr>
-      <tr><td>How do many categories rank?</td><td><strong>Horizontal bar</strong></td><td>26 towns ranked</td></tr>
+      <tr><td>How do many categories rank?</td><td><strong>Horizontal bar</strong></td><td>27 towns ranked</td></tr>
       <tr><td>What is the composition?</td><td><strong>Stacked bar</strong></td><td>Flat type mix per town</td></tr>
       <tr><td>How do two variables relate?</td><td><strong>Scatter plot</strong></td><td>Area vs price</td></tr>
       <tr><td>How do variables correlate?</td><td><strong>Heatmap</strong></td><td>Correlation matrix</td></tr>
@@ -2275,14 +2275,14 @@ Transition: "Let us build these charts with Plotly Express."
       <pre><code class="language-python">import plotly.express as px
 
 fig = px.histogram(
-    df.to_pandas(),
+    df,  # a Polars DataFrame, passed directly
     x="resale_price", nbins=50,
     title="HDB Resale Price Distribution"
 )
 fig.show()
 
 fig = px.line(
-    monthly.to_pandas(),
+    monthly,
     x="month", y="avg_price",
     color="town",
     title="Monthly Average Price by Town"
@@ -2291,14 +2291,14 @@ fig.show()</code></pre>
     </div>
     <div class="col">
       <pre><code class="language-python">fig = px.bar(
-    town_stats.to_pandas(),
+    town_stats,
     x="town", y="avg_price",
     title="Average Price by Town"
 )
 fig.show()
 
 fig = px.scatter(
-    df.to_pandas(),
+    df,
     x="floor_area_sqm",
     y="resale_price",
     color="flat_type",
@@ -2308,13 +2308,14 @@ fig.show()</code></pre>
     </div>
   </div>
   <div class="callout callout-warning">
-    <strong>Note:</strong> Plotly requires pandas. Use <code>.to_pandas()</code> to convert from Polars. This is the only place we use pandas.
+    <strong>Note:</strong> Plotly Express accepts Polars DataFrames directly &mdash; including <code>color=</code> grouping. No pandas anywhere in this course.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
 Time: ~3 min
 Talking points:
 - Plotly Express creates interactive charts with hover, zoom, pan built in.
+- Pass the Polars DataFrame straight in. Plotly 6 reads Polars natively, so there is no .to_pandas() step.
 - If beginners confused: copy the pattern, change the column names.
 - If experts bored: mention Plotly Graph Objects for fine-grained control.
 Transition: "Let us see how Kailash ModelVisualizer simplifies this."
@@ -2332,19 +2333,23 @@ Transition: "Let us see how Kailash ModelVisualizer simplifies this."
 
 viz = ModelVisualizer()
 
-viz.plot_correlation(df,
-    title="HDB Correlations")
+fig = viz.histogram(df, "resale_price",
+    bins=40, title="Price Distribution")
+fig.show()
 
-viz.plot_distribution(df,
-    column="resale_price",
-    title="Price Distribution")</code></pre>
+fig = viz.scatter(df, "floor_area_sqm",
+    "resale_price", color="flat_type",
+    title="Floor Area vs Price")
+
+fig = viz.box_plot(df, "resale_price",
+    group_by="flat_type", title="Price by Flat Type")</code></pre>
       </div>
       <div class="col">
         <ul>
-          <li>Consistent styling across all MLFP modules</li>
-          <li>Built-in best practices (no misleading axes)</li>
-          <li>Polars-native: no <code>.to_pandas()</code> needed</li>
-          <li>Extends into ML visualisations in later modules</li>
+          <li>EDA methods: <code>histogram</code>, <code>scatter</code>, <code>box_plot</code></li>
+          <li>Every call returns a Plotly figure &mdash; refine with <code>fig.update_layout()</code></li>
+          <li>Polars-native: pass the DataFrame directly</li>
+          <li>ML charts in later modules: <code>confusion_matrix</code>, <code>roc_curve</code>, <code>feature_importance</code></li>
         </ul>
         <div class="callout callout-kailash" style="margin-top:8px;">
           <strong>Pattern:</strong> Plotly for custom charts. ModelVisualizer for standard EDA.
@@ -2356,7 +2361,8 @@ viz.plot_distribution(df,
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- ModelVisualizer wraps Plotly with sensible defaults.
+- ModelVisualizer wraps Plotly with sensible defaults. The EDA methods are histogram(data, column, bins=, title=), scatter(data, x, y, color=, title=) and box_plot(data, column, group_by=, title=).
+- Most other methods are for models (confusion_matrix takes y_true/y_pred, not a correlation matrix), so a correlation heatmap is built with Plotly on the next slide.
 - Polars-native, so no conversion needed.
 - If beginners confused: it is a shortcut. Fall back to Plotly Express for custom charts.
 - If experts bored: mention the ModelVisualizer is extensible with custom themes.
@@ -2372,11 +2378,13 @@ Transition: "Let us build a heatmap and stacked bar chart."
       <pre><code class="language-python">numeric_cols = df.select(
     pl.col(pl.Float64, pl.Int64)
 )
-corr = numeric_cols.to_pandas().corr()
+corr = numeric_cols.corr()  # Polars
 
 fig = px.imshow(
-    corr, text_auto=".2f",
+    corr.to_numpy(), text_auto=".2f",
+    x=corr.columns, y=corr.columns,
     color_continuous_scale="RdBu_r",
+    zmin=-1, zmax=1,
     title="HDB Feature Correlations"
 )
 fig.show()</code></pre>
@@ -2385,11 +2393,11 @@ fig.show()</code></pre>
       <pre><code class="language-python">composition = (
     df
     .group_by("town", "flat_type")
-    .agg(pl.count().alias("n"))
+    .agg(pl.len().alias("n"))
 )
 
 fig = px.bar(
-    composition.to_pandas(),
+    composition,
     x="town", y="n",
     color="flat_type",
     title="Flat Type Mix by Town",
@@ -2402,7 +2410,8 @@ fig.show()</code></pre>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- Heatmaps show correlations: red = positive, blue = negative.
+- Heatmaps show correlations: with RdBu_r and zmin=-1, zmax=1, red = positive, blue = negative, white = zero. Without zmin/zmax the colour midpoint is not pinned at zero.
+- On the course data: area vs price r = 0.47 (moderate); lease_commence_date vs price r is about 0, the synthetic data has no age effect.
 - Stacked bars show composition per category.
 - If beginners confused: focus on reading the charts, not memorising code.
 - If experts bored: discuss limitations of Pearson correlation for non-linear relationships.
@@ -2417,7 +2426,7 @@ Transition: "Time for the exercise."
     <div class="col">
       <ol>
         <li><strong>Heatmap</strong> &mdash; price feature correlations</li>
-        <li><strong>Line chart</strong> &mdash; monthly price trend for 3 towns</li>
+        <li><strong>Line chart</strong> &mdash; annual median price for the 5 busiest towns</li>
         <li><strong>Bar chart</strong> &mdash; top 10 towns by average price</li>
         <li><strong>Scatter plot</strong> &mdash; floor area vs resale price</li>
         <li><strong>Histogram</strong> &mdash; price distribution</li>

@@ -46,11 +46,18 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # ════════════════════════════════════════════════════════════════════════
 # BUSINESS CONTEXT — Singapore retail bank credit scoring
 # ════════════════════════════════════════════════════════════════════════
-# These constants drive every technique file. A 100:1 cost ratio is
-# realistic for SEA consumer lending: the average charged-off unsecured
-# loan in Singapore is ~S$10,000 (MAS consumer credit report 2024), and
-# the operational cost of a false decline (manual review + lost NPV of
-# the customer relationship) is roughly S$100.
+# These constants drive every technique file. They are ILLUSTRATIVE round
+# numbers for an unsecured personal-loan book, not figures from any bank:
+#
+#   FN (approve someone who defaults)  ≈ S$10,000 charged-off principal
+#   FP (decline someone who would repay) ≈ S$1,500 forgone net interest
+#        margin over the life of the loan (plus the lost relationship)
+#
+# A ~7:1 ratio puts the Bayes-optimal threshold t* = FP / (FP + FN) ≈ 0.13,
+# close to the default rate — so the threshold genuinely matters. (A much
+# cheaper FP, e.g. S$100, would make "decline almost everyone" optimal and
+# no model could beat that trivial policy — check your cost numbers before
+# you trust any threshold.)
 
 
 @dataclass(frozen=True)
@@ -58,15 +65,19 @@ class CostMatrix:
     """Dollar cost of each confusion-matrix cell.
 
     fn = cost of missing a default (charge-off loss)
-    fp = cost of a false alarm (manual review + lost relationship NPV)
+    fp = cost of a false decline (forgone interest margin + relationship)
     """
 
     fn: float = 10_000.0
-    fp: float = 100.0
+    fp: float = 1_500.0
 
     @property
     def optimal_threshold(self) -> float:
-        """Bayes-optimal threshold for this cost matrix: t* = fp / (fp + fn)."""
+        """Bayes-optimal threshold t* = fp / (fp + fn).
+
+        Valid only for CALIBRATED probabilities from an UNWEIGHTED loss —
+        a class-weighted model has already shifted its scores.
+        """
         return self.fp / (self.fp + self.fn)
 
     def total_cost(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -75,9 +86,9 @@ class CostMatrix:
         return float(fp * self.fp + fn * self.fn)
 
 
-DEFAULT_COSTS = CostMatrix(fn=10_000.0, fp=100.0)
+DEFAULT_COSTS = CostMatrix(fn=10_000.0, fp=1_500.0)
 
-# Annual volume for ROI analysis — calibrated to a mid-tier SG retail bank.
+# Annual application volume for ROI projections (illustrative).
 ANNUAL_APPLICATIONS = 100_000
 
 
@@ -287,9 +298,9 @@ def print_roi(name: str, roi: dict[str, float]) -> None:
     print(f"    Defaults caught:    {roi['defaults_caught']:>12,.0f}")
     print(f"    Defaults missed:    {roi['defaults_missed']:>12,.0f}")
     print(f"    False alarms:       {roi['false_alarms']:>12,.0f}")
-    print(f"    Model cost:         ${roi['model_cost_usd']:>12,.0f}")
-    print(f"    No-model cost:      ${roi['no_model_cost_usd']:>12,.0f}")
-    print(f"    Annual savings:     ${roi['annual_savings_usd']:>12,.0f}")
+    print(f"    Model cost:        S${roi['model_cost_usd']:>12,.0f}")
+    print(f"    No-model cost:     S${roi['no_model_cost_usd']:>12,.0f}")
+    print(f"    Annual savings:    S${roi['annual_savings_usd']:>12,.0f}")
 
 
 # ════════════════════════════════════════════════════════════════════════

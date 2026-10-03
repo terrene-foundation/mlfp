@@ -148,6 +148,31 @@ def prepare_credit_split() -> dict[str, Any]:
     }
 
 
+def categorical_feature_indices(feature_names: list[str]) -> list[int]:
+    """Column indices (in ``feature_names``) of the dataset's string categoricals.
+
+    ``prepare_credit_split`` ordinal-encodes these (gender, race, region,
+    loan_purpose, ...). CatBoost can instead treat them as true categories.
+    """
+    schema = load_credit_data().schema
+    return [
+        i for i, name in enumerate(feature_names) if schema.get(name) == pl.String
+    ]
+
+
+def as_catboost_categoricals(X: np.ndarray, cat_idx: list[int]) -> np.ndarray:
+    """Return an object array where the categorical columns hold integer codes.
+
+    CatBoost refuses float-valued categorical columns; integer codes (or
+    strings) are accepted and treated as unordered categories, so the
+    arbitrary ordinal order no longer matters.
+    """
+    out = X.astype(object)
+    for i in cat_idx:
+        out[:, i] = X[:, i].astype(int)
+    return out
+
+
 # ════════════════════════════════════════════════════════════════════════
 # MODEL FACTORIES — identical defaults for fair comparison
 # ════════════════════════════════════════════════════════════════════════

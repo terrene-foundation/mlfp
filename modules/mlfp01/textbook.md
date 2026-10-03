@@ -18,7 +18,7 @@ By the end of this chapter you will be able to:
 - Write reusable helper functions that classify values, format numbers, and compute statistics, and apply them through `group_by` / `agg` pipelines.
 - Join multiple tables on shared keys, reason about left vs inner vs outer joins, and handle the NULLs that arise after a join.
 - Compute rolling averages, year-over-year changes, and rank within group using Polars window functions with `.over()` partitioning.
-- Create appropriate, honest, interactive visualisations (histogram, scatter, bar, heatmap, line) using the ModelVisualizer engine with Plotly underneath, and critique charts against Gestalt and Z-pattern reading principles.
+- Create appropriate, honest, interactive visualisations (histogram, scatter, bar, heatmap, line, stacked bar) using the ModelVisualizer engine and Plotly, and critique charts against Gestalt and Z-pattern reading principles.
 - Use the DataExplorer engine to profile a messy dataset automatically, configure AlertConfig thresholds to fit your domain, and interpret each of the eight alert types as a concrete cleaning action.
 - Use PreprocessingPipeline to impute missing values, scale numeric columns, and encode categoricals, producing a train/test split that downstream modules can consume without further preparation.
 - Assemble the above into a complete end-to-end pipeline that turns a raw, dirty dataset into a model-ready, auditable report.
@@ -2666,7 +2666,7 @@ Anscombe's quartet is a set of four datasets, each with eleven points. Every dat
 
 Every descriptive statistic you learned in Lessons 1.1 through 1.5 is a compression. Compressions lose information. A mean of $500,000 tells you nothing about whether the underlying distribution is a tight bell or a bimodal mess. A correlation of 0.6 could mean a clean linear trend or a parabola with a single outlier. The only way to see what the data is actually doing is to plot it.
 
-This lesson is about choosing the right chart for the right question and building it without introducing distortions. You will learn five chart types — histogram, scatter, bar, heatmap, line — each with a specific job. You will learn the Gestalt principles that govern what the eye can parse quickly and what it cannot. You will learn which chart types to avoid (3D charts, pie charts in most circumstances) and why. And you will build every one of them with `ModelVisualizer`, the Kailash engine that wraps Plotly behind a consistent API.
+This lesson is about choosing the right chart for the right question and building it without introducing distortions. You will learn six chart types — histogram, scatter, bar, heatmap, line, stacked bar — each with a specific job. You will learn the Gestalt principles that govern what the eye can parse quickly and what it cannot. You will learn which chart types to avoid (3D charts, pie charts in most circumstances) and why. And you will build them with `ModelVisualizer`, the Kailash engine that wraps Plotly behind a consistent API, dropping down to Plotly itself for the two chart types ModelVisualizer does not provide (heatmap and stacked bar).
 
 ## Core Concepts
 
@@ -2701,7 +2701,7 @@ A histogram divides a continuous range of values into buckets (*bins*) and count
 - A **symmetric bell** — most values near the centre, tapering equally on both sides. Temperature, height, measurement error. Mean ≈ median.
 - A **right-skewed** (long right tail) — most values are low with a few very high ones. Income, house prices, city populations. Mean > median.
 - A **left-skewed** (long left tail) — most values are high with a few very low ones. Age at death for a mortality dataset, test scores near a ceiling. Mean < median.
-- A **bimodal** — two distinct humps. The HDB flash crash distribution. The presence of two subpopulations mixed together.
+- A **bimodal** — two distinct humps. The presence of two subpopulations mixed together — for example, genuine sales mixed with a batch of mis-recorded ones.
 - A **uniform** — all values equally likely. Dice rolls, randomly sampled timestamps.
 
 The *number of bins* matters. Too few bins obliterates detail — a 5-bin histogram turns everything into a rough pyramid. Too many bins makes the chart noisy — a 500-bin histogram on 1,000 data points looks like random static. Start with 30–50 bins for a few thousand data points and adjust from there. There is no universally correct rule; inspect and iterate.
@@ -2737,7 +2737,7 @@ A line chart connects dots with line segments in the x-axis order. The implicit 
 What to look for:
 
 - **Trend.** An overall upward or downward direction over the full range.
-- **Seasonality.** A repeating pattern with a fixed period (weekly, monthly, yearly). The HDB transaction volume has a clear annual seasonality — more transactions in some months than others.
+- **Seasonality.** A repeating pattern with a fixed period (weekly, monthly, yearly) — for example, retail sales peaking every December. Test for it rather than assume it: Lesson 1.5 found none in the course HDB data.
 - **Level shifts.** Sudden jumps where the series moves to a new baseline and stays there. Indicates a regime change: a policy update, a recession, a product launch.
 - **Outliers.** Spikes that return to baseline. Indicates a one-off event.
 
@@ -2747,7 +2747,7 @@ Multiple lines on one chart work well when you are comparing a few series — ty
 
 A heatmap is a grid of coloured cells where colour encodes a numeric value. The two main uses are correlation matrices (showing Pearson correlation between every pair of variables in a dataset) and confusion matrices (showing classification errors — you will meet these in Module 3).
 
-For correlation matrices, use a *diverging* colour scale: one colour for negative, another for positive, white in the middle at zero. `RdBu_r` (red-blue reversed) is a standard choice — blue for positive, red for negative, white for zero. This makes the sign of the correlation pre-attentively visible; you do not need to read the numbers to see which pairs are positively or negatively correlated.
+For correlation matrices, use a *diverging* colour scale: one colour for negative, another for positive, white in the middle at zero. `RdBu_r` (red-blue reversed) is a standard choice — red for positive, blue for negative, white for zero. (Plain `RdBu` runs the other way; the `_r` suffix reverses it so that "hot" red means a strong positive relationship.) This makes the sign of the correlation pre-attentively visible; you do not need to read the numbers to see which pairs are positively or negatively correlated.
 
 Always cap the colour scale at -1 and +1 (`zmin=-1, zmax=1`). Without capping, the colour scale would stretch to fit the data, which makes different heatmaps incomparable and can wash out the meaning.
 
@@ -2755,13 +2755,14 @@ The diagonal of a correlation matrix is always 1 (every variable correlates perf
 
 ### FOUNDATIONS: Gestalt principles
 
-The Gestalt principles are a set of rules about how the human visual system groups elements. They come from early 20th century psychology but apply directly to chart design. The five that matter most for you:
+The Gestalt principles are a set of rules about how the human visual system groups elements. They come from early 20th century psychology but apply directly to chart design. The six that matter most for you:
 
 - **Proximity.** Elements close to each other are perceived as belonging to the same group. Use small gaps between related bars, larger gaps between unrelated ones.
 - **Similarity.** Elements that share a visual property (colour, shape, size) are perceived as belonging together. Use the same colour for the same series across multiple charts. Do not use colour randomly.
 - **Closure.** The visual system fills in gaps to see complete shapes. A line chart with a missing segment is still interpreted as a continuous line. But if gaps are meaningful (missing data), make them visually distinct.
 - **Continuity.** Smooth continuous lines draw the eye across a chart. This is why line charts work: the continuous line guides you through the temporal progression.
 - **Connection.** Elements connected by a line are perceived as strongly related. A scatter plot with a fitted line emphasises the relationship more than the cloud alone.
+- **Enclosure.** Elements inside a shared boundary — a shaded band, a box, a panel background — are perceived as a group, even if they are far apart. Shade the COVID months on a time series, or draw a light box around the three towns you are discussing, and the reader groups them instantly. Enclosure is one of the strongest grouping cues, so use it sparingly and only for the group you want noticed.
 
 The practical rule: make the elements you want the reader to compare look *similar* to each other (same colour, same style), and make the elements you want them to distinguish look *different*. Every deviation from that rule is a potential source of confusion.
 
@@ -2799,19 +2800,21 @@ Every ModelVisualizer method returns a Plotly `Figure` object. You can:
 - **Export to HTML:** `fig.write_html("name.html")` saves a standalone HTML file with the chart embedded. The HTML file is interactive — hover, zoom, pan all work — and can be emailed or posted.
 - **Customise further:** `fig.update_layout(...)` lets you tweak titles, axes, colours, margins, and anything else Plotly supports. The underlying object is a real Plotly figure; ModelVisualizer just made the initial construction easy.
 
-The five ModelVisualizer methods you will use most in Module 1:
+The ModelVisualizer methods you will use in Module 1, and the two chart types you build with Plotly directly:
 
-| Method | Chart type | Typical use |
-|---|---|---|
-| `histogram` | histogram | distribution of a numeric column |
-| `scatter` | scatter plot | relationship between two numeric columns |
-| `feature_importance` or `metric_comparison` | horizontal bar chart | comparison across categories |
-| `confusion_matrix` | heatmap | correlation or confusion matrix |
-| `training_history` | line chart | time series or training curves |
+| Method | Chart type | Typical use | Watch out for |
+|---|---|---|---|
+| `viz.histogram(data, column, bins=…, title=…)` | histogram | distribution of a numeric column | |
+| `viz.scatter(data, x, y, color=…, title=…)` | scatter plot | relationship between two numeric columns | |
+| `viz.box_plot(data, column, group_by=…, title=…)` | box plot | distribution per group | |
+| `viz.metric_comparison({name: {metric: value}})` | vertical grouped bars | comparison across categories | default axis titles are "Model"/"Score" — set real ones |
+| `viz.training_history({series: [values]}, x_label=…, y_label=…)` | line chart | time series | plots against 1..N — set the real x-values |
+| `px.imshow(matrix, …)` (Plotly) | heatmap | correlation matrix | |
+| `px.bar(df, x=…, y=…, color=…)` (Plotly) | stacked bar | composition | |
 
-Some method names hint at their origins in ML pipelines (`training_history` was designed for plotting training loss curves, `confusion_matrix` for classification evaluation), but they are general tools — a line chart is a line chart regardless of what the lines represent.
+Some method names hint at their origins in ML pipelines (`training_history` was designed for plotting training loss curves, `metric_comparison` for comparing model scores). They can be repurposed for general charts, but a repurposed chart keeps its original labels — "Epoch" on the x-axis, 1..N instead of years, "Model"/"Score" — until you fix them, and a mislabelled axis is a misleading chart. Two methods cannot be repurposed at all: `confusion_matrix(y_true, y_pred, labels)` builds a classification confusion matrix from label vectors (it cannot draw an arbitrary grid such as a correlation matrix), and `feature_importance` needs a fitted model. You will use both for their real purpose in Module 3.
 
-Polars DataFrames work directly as input. You do not need to convert to pandas. This is the "polars-native" principle at work.
+Polars DataFrames work directly as input — both to ModelVisualizer and to Plotly Express. You do not need to convert to pandas. This is the "polars-native" principle at work.
 
 ## Worked Example: Six HDB Charts
 
@@ -2820,6 +2823,7 @@ Polars DataFrames work directly as input. You do not need to convert to pandas. 
 ```python
 from __future__ import annotations
 
+import plotly.express as px
 import polars as pl
 from kailash_ml import ModelVisualizer
 
@@ -2837,28 +2841,45 @@ hdb = hdb.with_columns(
 viz = ModelVisualizer()
 ```
 
-### Step 1: Histogram of resale prices
+(`ModelVisualizer()` prints an `ExperimentalWarning` from kailash-ml when it is created. It is informational — the engine works — and you can ignore it.)
+
+### Step 1: Histogram of resale prices — and what it exposes
 
 ```python
 fig_hist = viz.histogram(
     data=hdb,
     column="resale_price",
     bins=40,
-    title="HDB Resale Price Distribution",
+    title="HDB Resale Price Distribution (raw)",
+)
+fig_hist.write_html("hdb_price_histogram_raw.html")
+```
+
+Open the HTML file in a browser. You will *not* see a nice bell or a skewed hump. With 40 bins stretched from S$10 to S$9,000,000, each bin is about S$225,000 wide: almost every sale is squashed into a few bars on the left, and a lone bar sits at the far right — the 144 planted S$9,000,000 sales. That is the histogram doing its most important job. It took one line to expose what Lesson 1.2's `.describe()` hinted at (max 9,000,000, skewness 11.4): the column contains impossible values, and they dominate the axis.
+
+To see the real shape, set the planted values aside. The cut-offs below are a provisional choice for charting — Lesson 1.7 profiles the data properly and Lesson 1.8 cleans it:
+
+```python
+hdb_clean = hdb.filter(pl.col("resale_price").is_between(50_000, 5_000_000))
+print(f"{hdb.height - hdb_clean.height} rows set aside")   # 251 rows set aside
+
+fig_hist = viz.histogram(
+    data=hdb_clean,
+    column="resale_price",
+    bins=40,
+    title="HDB Resale Price Distribution (planted errors removed)",
 )
 fig_hist.write_html("hdb_price_histogram.html")
 ```
 
-Open the HTML file in a browser. You will see a right-skewed distribution: most transactions clustered in the $350k–$600k range, tapering to a long tail of expensive transactions reaching past $1.2 million. The peak of the histogram (the *mode*, roughly) is around $450k–$500k. The mean is pulled higher than the median by the right tail.
-
-This single chart already tells you more than the `.describe()` output from Lesson 1.1. You now *see* the shape, not just read the numbers.
+Now the shape is visible: a single broad hump centred near the median of about S$850k, running from about S$215k to S$1.8M, with 90% of sales between about S$474k and S$1.34M. It is only mildly right-skewed (skewness 0.39, down from 11.4), so mean and median are close. The lesson generalises: always plot the raw distribution first, because the chart of the *raw* data is the one that tells you whether the data can be trusted.
 
 ### Step 2: Scatter plot of price vs floor area
 
-Scatter of 487,000 points is unusable — the dots overlap into a solid blob. Sample first:
+A scatter of 50,000 points is hard to read — the dots overlap into a solid blob. Sample first:
 
 ```python
-hdb_sample = hdb.sample(n=5_000, seed=42)
+hdb_sample = hdb_clean.sample(n=5_000, seed=42)
 
 fig_scatter = viz.scatter(
     data=hdb_sample,
@@ -2869,9 +2890,9 @@ fig_scatter = viz.scatter(
 fig_scatter.write_html("hdb_scatter.html")
 ```
 
-`hdb.sample(n=5_000, seed=42)` picks 5,000 rows at random. The `seed=42` makes the sample reproducible — running the code twice with the same seed produces the same sample. Reproducibility is a lifesaver when you are debugging and want to be sure a result you saw earlier is not an artifact of random sampling.
+`hdb_clean.sample(n=5_000, seed=42)` picks 5,000 rows at random. The `seed=42` makes the sample reproducible — running the code twice with the same seed produces the same sample. Reproducibility is a lifesaver when you are debugging and want to be sure a result you saw earlier is not an artifact of random sampling.
 
-The result is a scatter that clearly shows larger flats costing more, with wide vertical spread at every flat size. The spread reflects the influence of variables other than size: town, floor level, remaining lease, flat model. Floor area alone explains maybe 40–50% of price variance. A linear regression on this scatter would produce a reasonable slope, but a wide confidence interval — which is exactly what a scatter plot communicates without any regression.
+The result is a tight, rising band: larger flats cost more. Measure it: on the cleaned data, the correlation between floor area and price is r = 0.91, so area alone accounts for about 83% of the price variance ($r^2$). Now run the same correlation on the raw `hdb`: r = 0.47, and $r^2$ falls to about 22%. The relationship did not change; 251 bad rows (0.5% of the data) hid it. Had you sampled from the raw frame, about 25 of your 5,000 dots would sit at S$10 or S$9M, stretching the y-axis until the real band became a flat smear.
 
 ### Step 3: Bar chart of median price by town
 
@@ -2879,7 +2900,7 @@ First aggregate, then plot:
 
 ```python
 district_prices = (
-    hdb.group_by("town")
+    hdb_clean.group_by("town")
     .agg(
         pl.col("resale_price").median().alias("median_price"),
         pl.len().alias("transaction_count"),
@@ -2896,44 +2917,44 @@ price_by_town = {
 }
 
 fig_bar = viz.metric_comparison(price_by_town)
-fig_bar.update_layout(title="Median HDB Price by Town")
+# metric_comparison was built for model scores: its default axis titles are "Model"/"Score"
+fig_bar.update_layout(
+    title="Median HDB Price by Town",
+    xaxis_title="Town",
+    yaxis_title="Median resale price (S$)",
+)
 fig_bar.write_html("hdb_bar.html")
 ```
 
-The `metric_comparison` method was designed for comparing metrics across multiple models — it takes a dict of `{model_name: {metric_name: value}}`. We repurpose it as a bar chart by treating each town as a "model" and each value as its metric. The output is a horizontal bar chart sorted by value, which is what we want.
+The `metric_comparison` method was designed for comparing metrics across models — it takes a dict of `{model_name: {metric_name: value}}` and draws vertical grouped bars, one group per key, in the order of the dict. We repurpose it by treating each town as a "model". Because we sorted `district_prices` before building the dict, the bars come out ranked. Its default axis titles are "Model" and "Score", which would mislabel the chart — so we set the real titles. When you repurpose a tool, always check its labels. For 27 long town names, a horizontal bar reads better still: `px.bar(district_prices, x="median_price", y="town", orientation="h")`.
 
-The Python idiom on lines 5–10 is a *dict comprehension*: it builds a dictionary in one expression. Read it as "for each (town, price) pair in the zipped lists, create a key `town` with value `{"Median Price (S$)": price}`". Dict comprehensions are to dicts what list comprehensions are to lists; you will see them often.
+The chart shows the step you found in Lesson 1.3: seven central towns well above the rest, then twenty towns at almost the same level. Keep the y-axis starting at zero — the S$150k gap between top and bottom is about 18% of the price, and a truncated axis would make it look like a cliff.
+
+The Python idiom that builds `price_by_town` is a *dict comprehension*: it builds a dictionary in one expression. Read it as "for each (town, price) pair in the zipped lists, create a key `town` with value `{"Median Price (S$)": price}`". Dict comprehensions are to dicts what list comprehensions are to lists; you will see them often.
 
 ### Step 4: Correlation heatmap
 
-Select the numeric columns and compute the correlation matrix with numpy:
+Polars computes the correlation matrix itself; Plotly draws it:
 
 ```python
-import numpy as np
-import plotly.graph_objects as go
-
 numeric_cols = ["resale_price", "floor_area_sqm", "price_per_sqm", "year"]
-hdb_numeric = hdb.select(numeric_cols).drop_nulls()
+corr = hdb_clean.select(numeric_cols).corr()   # Polars correlation matrix
 
-np_data = hdb_numeric.to_numpy()
-corr_matrix = np.corrcoef(np_data, rowvar=False)
-
-fig_heatmap = go.Figure(data=go.Heatmap(
-    z=corr_matrix.tolist(),
-    x=numeric_cols,
-    y=numeric_cols,
-    colorscale="RdBu_r",
+fig_heatmap = px.imshow(
+    corr.to_numpy(),
+    x=corr.columns,
+    y=corr.columns,
+    text_auto=".2f",
+    color_continuous_scale="RdBu_r",
     zmin=-1, zmax=1,
-    text=[[f"{corr_matrix[i, j]:.3f}" for j in range(len(numeric_cols))] for i in range(len(numeric_cols))],
-    texttemplate="%{text}",
-))
-fig_heatmap.update_layout(title="Pearson Correlation Matrix — HDB Features", width=600, height=500)
+    title="Pearson Correlation Matrix — HDB Features",
+)
 fig_heatmap.write_html("hdb_heatmap.html")
 ```
 
-Two new libraries. `numpy` is Python's array library; its `np.corrcoef` computes the full Pearson correlation matrix in one call. `plotly.graph_objects as go` is the lower-level Plotly API, which you use when ModelVisualizer does not have a direct method for what you want. `ModelVisualizer.confusion_matrix` takes `y_true` and `y_pred` arrays for classification, not a raw matrix, so for a correlation heatmap we drop down to Plotly directly. This is fine — ModelVisualizer is a convenience wrapper, not a wall.
+`DataFrame.corr()` returns the Pearson correlation of every pair of columns as a square DataFrame. `plotly.express` (`px`) is the higher-level Plotly API; `px.imshow` draws any 2-D grid as a heatmap, and it takes the matrix as a NumPy array via `.to_numpy()`. Plotly Express also accepts Polars DataFrames directly — no pandas conversion needed. ModelVisualizer has no correlation-heatmap method (`ModelVisualizer.confusion_matrix` takes true and predicted *labels* for classification, not a matrix), so we drop down to Plotly. That is fine — ModelVisualizer is a convenience wrapper, not a wall.
 
-The resulting heatmap has a diagonal of all 1's (every variable correlates with itself) and off-diagonal values you can read visually. `resale_price` vs `floor_area_sqm` should be strongly positive (dark blue). `floor_area_sqm` vs `price_per_sqm` is often near zero or slightly negative. `year` vs `resale_price` is positive (prices have been rising over time).
+Read the result. The diagonal is all 1s (every variable correlates with itself). With `RdBu_r`, red is positive and blue is negative. `resale_price` vs `floor_area_sqm` is the darkest red off the diagonal (0.91). `resale_price` vs `price_per_sqm` is moderately red (0.45). `floor_area_sqm` vs `price_per_sqm` is near white (0.05): in this data a bigger flat costs more in total but not more per square metre. And `year` vs everything is white (about 0.00): prices in this synthetic dataset do not trend over time — the same finding as Lesson 1.5, now visible at a glance.
 
 ### Step 5: Line chart of annual median price
 
@@ -2945,7 +2966,7 @@ top_5_towns = (
 )
 
 annual = (
-    hdb.filter(pl.col("town").is_in(top_5_towns))
+    hdb_clean.filter(pl.col("town").is_in(top_5_towns))
     .group_by("year", "town")
     .agg(pl.col("resale_price").median().alias("median_price"))
     .sort("year")
@@ -2956,22 +2977,63 @@ price_series = {}
 for town in top_5_towns:
     town_data = annual.filter(pl.col("town") == town).sort("year")
     lookup = dict(zip(town_data["year"].to_list(), town_data["median_price"].to_list()))
-    price_series[town] = [float(lookup.get(y, 0)) for y in years]
+    price_series[town] = [float(lookup[y]) for y in years]
 
 fig_line = viz.training_history(
     metrics=price_series,
     x_label="Year",
     y_label="Median Resale Price (S$)",
 )
+# training_history plots every series against 1..N — put the real years on the x-axis
+fig_line.update_traces(x=years)
 fig_line.update_layout(title="Annual Median HDB Price — Top 5 Towns")
 fig_line.write_html("hdb_line.html")
 ```
 
-The chart reveals *divergence*: towns that started similarly in the earliest year grow apart over time. Premium towns pull ahead; peripheral towns grow more slowly. A crossing (one town overtaking another) is a notable event that deserves attention.
+`training_history` was built for loss curves, so it plots each list against 1, 2, 3, … and calls the x-axis "Epoch" by default. We pass `x_label="Year"` and then replace the x-values with the real years using `fig_line.update_traces(x=years)`; without that the axis would read 1–10, which is a misleading chart. (`lookup[y]` deliberately raises if a town has no sales in some year, rather than silently plotting a zero.)
 
-### Step 6: All charts in a directory
+The chart shows five nearly flat lines, every point between about S$796k and S$874k, wobbling by a few percent from year to year with no direction. There is no divergence and no crossing worth reporting. On real resale data this chart would show prices rising after 2020; on this synthetic file, the honest reading is "no trend" — and a flat line is a finding, not a failed chart.
 
-Saving six HTML files to the current directory gives you an informal dashboard you can open in a browser. For a proper dashboard, you would combine them into a single HTML page with layout — that is what Lesson 1.8 will do.
+### Step 6: Stacked bar of flat-type composition
+
+The sixth chart answers a composition question: what mix of flat types does each town sell?
+
+```python
+composition = (
+    hdb_clean.group_by("town", "flat_type")
+    .agg(pl.len().alias("count"))
+    .sort("town", "flat_type")
+)
+
+fig_stacked = px.bar(
+    composition,
+    x="town", y="count", color="flat_type",
+    title="Flat Type Composition by Town",
+)
+fig_stacked.write_html("hdb_stacked.html")
+```
+
+Plotly Express takes the Polars DataFrame directly. `color="flat_type"` splits each town's bar into coloured segments, one per flat type, stacked on top of each other (Plotly Express stacks coloured bars by default; `barmode="group"` would put them side by side). The total bar height is the town's transaction count, so the chart answers two questions at once: which towns are busiest (bar height) and what they sell (segments).
+
+Stacked bars have a weakness: only the bottom segment sits on a common baseline, so comparing the middle segments across towns is hard. When the question is *proportions* — "which town sells the largest share of 5-room flats?" — use a **100% stacked bar**, where every bar has the same height and each segment shows a share:
+
+```python
+composition_pct = composition.with_columns(
+    (pl.col("count") / pl.col("count").sum().over("town") * 100).alias("share_pct")
+)
+
+fig_pct = px.bar(
+    composition_pct,
+    x="town", y="share_pct", color="flat_type",
+    title="Flat Type Mix by Town (% of each town's sales)",
+)
+fig_pct.update_layout(yaxis_title="Share of town's sales (%)")
+fig_pct.write_html("hdb_stacked_pct.html")
+```
+
+`pl.col("count").sum().over("town")` is the Lesson 1.5 window pattern: each row is divided by its own town's total, so every town's segments add up to 100%. This is also the standard chart for survey and Likert-scale data (strongly disagree … strongly agree): one 100% bar per question, segments ordered from negative to positive.
+
+In this dataset the mix is strikingly similar across towns (4-room is between 37% and 44% of sales in every town) — another fingerprint of synthetic data. Saving these HTML files gives you an informal dashboard you can open in a browser; Lesson 1.8 combines charts into a single report.
 
 ## Try It Yourself
 
@@ -2981,9 +3043,11 @@ Saving six HTML files to the current directory gives you an informal dashboard y
 
 **Drill 3.** Build a bar chart of the *count* of transactions per flat type (not median price). Use `viz.metric_comparison` with `{flat_type: {"count": n}}`. Which flat type is most common?
 
-**Drill 4.** Create a line chart with one line per flat type showing annual median price. Use the same pattern as Step 5 but group by `(year, flat_type)` instead of `(year, town)`.
+**Drill 4.** Create a line chart with one line per flat type showing annual median price. Use the same pattern as Step 5 but group by `(year, flat_type)` instead of `(year, town)`. Remember to put the real years on the x-axis.
 
 **Drill 5.** Build a correlation heatmap for these columns: `resale_price`, `floor_area_sqm`, `price_per_sqm`, `year`, `lease_commence_date`. What is the correlation between `year` and `lease_commence_date`? Does it surprise you?
+
+**Drill 6.** Build a 100% stacked bar of flat-type share by *year* instead of by town (`x="year"`). Does the mix of flat types sold change over the decade?
 
 ## Cross-References
 
@@ -2996,31 +3060,42 @@ Saving six HTML files to the current directory gives you an informal dashboard y
 
 You should now be able to:
 
-- Choose an appropriate chart type for each of the six common data questions.
-- Instantiate a `ModelVisualizer` and call its `histogram`, `scatter`, `metric_comparison`, and `training_history` methods with Polars DataFrames.
+- Choose an appropriate chart type for each of the common data questions.
+- Instantiate a `ModelVisualizer` and call its `histogram`, `scatter`, `metric_comparison`, and `training_history` methods with Polars DataFrames, and fix the labels of a repurposed chart.
+- Build a correlation heatmap with `df.corr()` and `px.imshow`, and stacked / 100%-stacked bars with `px.bar`.
 - Export charts as standalone HTML with `fig.write_html()`.
-- Explain the five Gestalt principles in your own words and apply them to critique a chart.
+- Explain the six Gestalt principles (proximity, similarity, closure, continuity, connection, enclosure) in your own words and apply them to critique a chart.
 - Identify the most common misleading chart designs (3D, pie charts, dual y-axes, truncated y-axis on bar charts).
 - Sample a large dataset before plotting a scatter plot to keep the chart readable.
 
 ### Drill answers
 
 1. ```python
-   fig = viz.histogram(data=hdb.filter(pl.col("price_per_sqm").is_not_null()), column="price_per_sqm", bins=40)
+   fig = viz.histogram(data=hdb, column="price_per_sqm", bins=40)
+   print(hdb["resale_price"].skew(), hdb["price_per_sqm"].skew())   # about 11.4 and 22.1
    ```
-   The price-per-sqm histogram is less skewed than the price histogram, because normalising by area removes the size effect that creates the long tail.
+   On the raw data the price-per-sqm histogram is *more* skewed (22.1 vs 11.4): dividing the S$9M sales by a small floor area produces values near S$100,000 per sqm, an even longer tail. On `hdb_clean` both are nearly symmetric (0.27 for price per sqm, 0.39 for price). Normalising by area does not remove bad data — it can amplify it.
 2. ```python
-   fig = viz.scatter(data=hdb.sample(5_000, seed=42), x="floor_area_sqm", y="price_per_sqm")
+   fig = viz.scatter(data=hdb_clean.sample(5_000, seed=42), x="floor_area_sqm", y="price_per_sqm")
    ```
-   A weak negative trend — bigger flats have slightly lower price per sqm, because some "premium per sqm" comes from fixed costs (bathroom, entrance) that small flats amortise over fewer square metres.
+   Sample from `hdb_clean`, or the planted rows stretch the axis. There is essentially no trend: the correlation is about 0.05. A flat band means bigger flats cost more in total but not more (or less) per square metre. In real markets small flats often carry a per-sqm premium; this synthetic dataset was generated without one — which you can only learn by looking.
 3. ```python
    flat_counts = hdb.group_by("flat_type").agg(pl.len().alias("count")).sort("count", descending=True)
    data = {ft: {"count": float(c)} for ft, c in zip(flat_counts["flat_type"].to_list(), flat_counts["count"].to_list())}
    viz.metric_comparison(data).show()
    ```
-   4-ROOM is most common with roughly 40% of all transactions.
-4. Same pattern as Step 5 with `(year, flat_type)` group_by.
-5. `year` and `lease_commence_date` are strongly positively correlated — newer transactions tend to involve more recently built flats (newer flats tend to be in newer towns that only started transacting later). The correlation is around 0.3–0.5 depending on the dataset. Not surprising on reflection but easy to miss.
+   4 ROOM is most common with 20,299 of 50,150 transactions (about 40%). Set `fig.update_layout(xaxis_title="Flat type", yaxis_title="Transactions")` so the axes do not read "Model"/"Score".
+4. Same pattern as Step 5 with a `(year, flat_type)` group_by, a dict of one list per flat type, and `fig.update_traces(x=years)`. You will see six flat, well-separated lines (from about S$340k for 2-room to about S$1.5M for multi-generation): flat type matters a great deal, year does not.
+5. The correlation between `year` and `lease_commence_date` is about 0.002 — effectively zero. In real resale data you would expect a positive correlation (later sales include more recently completed flats), so this *should* surprise you: it is another sign that the course dataset was generated column by column rather than recorded. `lease_commence_date` is also uncorrelated with price (about −0.01), which a real market would not show. A heatmap is a fast way to check whether the relationships you expect are actually in the data.
+6. ```python
+   by_year = (
+       hdb_clean.group_by("year", "flat_type").agg(pl.len().alias("count"))
+       .with_columns((pl.col("count") / pl.col("count").sum().over("year") * 100).alias("share_pct"))
+       .sort("year", "flat_type")
+   )
+   px.bar(by_year, x="year", y="share_pct", color="flat_type").write_html("mix_by_year.html")
+   ```
+   Every year's bar looks the same: the flat-type mix is stable across the decade.
 
 ---
 

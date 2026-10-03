@@ -162,7 +162,9 @@ async def _train_dqn_timed():
                         action = ____  # TODO
                 next_state, reward, terminated, truncated, _ = cartpole_env.step(action)
                 done = terminated or truncated
-                replay.push(state, action, reward, next_state, done)
+                # `terminated`, not `done`: a 500-step truncation must still
+                # bootstrap from Q(s') (see 01_dqn.py).
+                replay.push(state, action, reward, next_state, terminated)
                 state = next_state
                 total_reward += reward
                 env_steps += 1
@@ -332,7 +334,7 @@ def ppo_policy(state):
         return int(logits.argmax().item())
 
 
-N_EVAL = 50  # more episodes for statistical significance
+N_EVAL = 50  # greedy episodes per policy (no significance test is run)
 random_returns = evaluate_policy(cartpole_env, random_policy, n_episodes=N_EVAL)
 dqn_eval_returns = evaluate_policy(cartpole_env, dqn_policy, n_episodes=N_EVAL)
 ppo_eval_returns = evaluate_policy(cartpole_env, ppo_policy, n_episodes=N_EVAL)
@@ -383,7 +385,13 @@ print(f"  Saved: {OUTPUT_DIR / '04_policy_comparison_boxplot.html'}")
 
 # ── Plot 2: Training curves on a common x-axis (env steps) ──────────
 # Normalise both algorithms to environment interactions for fair comparison
-dqn_cumulative_steps = np.cumsum([max(10, r) for r in dqn_rewards]).tolist()
+# CartPole pays +1 per step, so an episode's reward IS its length and the
+# cumulative sum of DQN episode rewards is the exact env-step count. The
+# 20-episode moving average starts at episode 20, so its x-values start
+# there too (dqn_ma_steps) — otherwise the curve is shifted left.
+dqn_cumulative_steps = np.cumsum(dqn_rewards).tolist()
+dqn_ma_rewards = moving_average(dqn_rewards, 20)
+dqn_ma_steps = dqn_cumulative_steps[len(dqn_rewards) - len(dqn_ma_rewards) :]
 ppo_cumulative_steps = [(i + 1) * STEPS_PER_ITER for i in range(len(ppo_returns))]
 
 # TODO: Create a line plot with DQN and PPO training curves on env-steps x-axis
@@ -391,11 +399,14 @@ ppo_cumulative_steps = [(i + 1) * STEPS_PER_ITER for i in range(len(ppo_returns)
 fig2 = ____  # TODO
 fig2.write_html(str(OUTPUT_DIR / "04_sample_efficiency.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_sample_efficiency.html'}")
-# INTERPRETATION: Sample efficiency measures how many environment
-# interactions are needed to reach a given performance level. PPO
-# uses more steps per iteration (1024 batch) but often reaches good
-# performance with fewer total iterations. DQN learns from replay
-# (data-efficient) but takes more episodes to converge.
+# INTERPRETATION: Sample efficiency = how many environment interactions
+# an algorithm needs to reach a given return. Read it off YOUR plot: pick
+# a return level (say 150) and see which curve crosses it at fewer env
+# steps. Expect a trade-off rather than a fixed winner: DQN re-uses every
+# transition many times from its replay buffer, while PPO throws each
+# 1024-step rollout away after 4 epochs but makes steadier updates. Note
+# the training curves include exploration (DQN's epsilon, PPO's sampling);
+# the greedy evaluation in Task 2 is the fair final-quality comparison.
 
 # ── Plot 3: Wall-clock training time comparison ──────────────────────
 # TODO: Create bar chart comparing DQN and PPO training times
@@ -459,7 +470,7 @@ decision_framework = pl.DataFrame(
             "DQN",
             "PPO",
             "DQN",
-            "PPO",
+            "DQN or PPO",
             "DQN",
             "DQN",
             "DQN or PPO",
@@ -467,9 +478,9 @@ decision_framework = pl.DataFrame(
         ],
         "Why": [
             "Small discrete space, clear reward signal, replay buffer helps with sparse reorders",
-            "Continuous prices need policy gradients; PPO handles smoothly",
+            "A continuous price needs a policy network (DQN cannot argmax over a continuum); 02_ppo.py discretises it into 5 levels",
             "Small discrete space, DQN learns value of each intervention",
-            "Large action space (27); PPO scales better than DQN",
+            "27 joint actions is still fine for DQN; PPO copes better if the joint action set grows combinatorially",
             "Small discrete space, DQN works well",
             "Small discrete space, fast convergence needed",
             "Either works; PPO if extending to continuous trade sizes",
@@ -502,7 +513,8 @@ print(
 )
 print(f"  {'Uses replay buffer':<30} {'Yes':>12} {'No':>12}")
 print(f"  {'On/off policy':<30} {'Off-policy':>12} {'On-policy':>12}")
-print(f"  {'Continuous actions':<30} {'No':>12} {'Yes':>12}")
+print(f"  {'Continuous actions':<30} {'No':>12} {'Yes*':>12}")
+print("  * with a Gaussian policy head; this file's PPO uses a Categorical head")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
 assert len(decision_framework) == 8, "Decision framework should cover 8 problems"

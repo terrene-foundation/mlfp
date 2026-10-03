@@ -619,7 +619,9 @@ async def _train_churn_dqn_async():
                 ep_actions.append(action)
                 next_state, reward, terminated, truncated, _ = churn_env.step(action)
                 done = terminated or truncated
-                churn_replay.push(state, action, reward, next_state, done)
+                # `terminated` (churn), not `done`: the end of the month is a
+                # time limit, so its target still bootstraps from Q(s').
+                churn_replay.push(state, action, reward, next_state, terminated)
                 state = next_state
                 total_reward += reward
 
@@ -880,11 +882,9 @@ def dqn_churn_policy(state):
         return int(churn_dqn(s).argmax().item())
 
 
-# Run 100 episodes for statistical significance
+# Every policy faces the same 100 simulated customers (seeds 2000-2099).
+# No significance test is run — compare means AND spreads in the box plot.
 n_eval = 100
-nothing_results = {"rewards": [], "churned": [], "costs": []}
-discount_results = {"rewards": [], "churned": [], "costs": []}
-dqn_results = {"rewards": [], "churned": [], "costs": []}
 
 
 def evaluate_churn_policy(env_cls, policy_fn, n_episodes):
@@ -944,8 +944,9 @@ for name, results in [
 
 # Revenue impact calculation
 monthly_revenue_per_customer = 50.0  # SGD — illustrative monthly revenue per customer
-intervention_cost_per_action = 5.0  # SGD average
+intervention_cost_per_action = 5.0  # SGD — illustrative cost per intervention
 
+net_values: dict[str, float] = {}
 for name, results in [
     ("Do Nothing", nothing_eval),
     ("Always Discount", discount_eval),
@@ -956,6 +957,7 @@ for name, results in [
     retained_revenue = retention_rate * monthly_revenue_per_customer
     total_cost = avg_interventions * intervention_cost_per_action
     net_value = retained_revenue - total_cost
+    net_values[name] = float(net_value)
     print(f"\n  {name}:")
     print(f"    Retention rate: {retention_rate*100:.1f}%")
     print(f"    Revenue retained: SGD {retained_revenue:.2f}/customer/month")
@@ -972,11 +974,16 @@ fig_eval = viz.box_plot(eval_df, "Monthly Reward", group_by="Policy")
 fig_eval.write_html(str(OUTPUT_DIR / "03_churn_business_impact.html"))
 print(f"\n  Saved: {OUTPUT_DIR / '03_churn_business_impact.html'}")
 
-# INTERPRETATION: The DQN learns to intervene SELECTIVELY — only when
-# churn risk is high, and with the most cost-effective action. "Always
-# Discount" has good retention but high cost. "Do Nothing" has low cost
-# but high churn. The DQN finds the sweet spot: high retention, moderate
-# cost, maximum net value per customer.
+# INTERPRETATION (computed from this run, not assumed): "Always Discount"
+# buys retention at a high intervention cost; "Do Nothing" costs nothing
+# but loses more customers. A good learned policy intervenes SELECTIVELY —
+# check the DQN's intervention count and churn rate above to see whether
+# it did. The verdict below uses the illustrative SGD figures.
+best_policy = max(net_values, key=net_values.get)
+print(
+    f"  Best net value on this simulator: {best_policy} "
+    f"(SGD {net_values[best_policy]:.2f}/customer/month)"
+)
 
 churn_env.close()
 
@@ -1008,13 +1015,13 @@ print(
   [x] Trained DQN on ChurnPrevention and registered in ModelRegistry
   [x] Visualised environment behaviour:
       - Training reward curves showing learning progress
-      - Action distribution evolution (random -> strategic)
+      - Action distribution evolution (random -> learned)
       - Single-episode trajectory with state + action timeline
   [x] Evaluated with business metrics:
       - Churn rate reduction vs baselines
       - Revenue retained per customer per month (SGD)
       - Net value: revenue minus intervention cost
-      - DQN learns SELECTIVE intervention (best net value)
+      - Found which policy gives the best net value on this simulator
 
   KEY INSIGHT:
   The ENVIRONMENT is the hardest part of applied RL. Get the state,

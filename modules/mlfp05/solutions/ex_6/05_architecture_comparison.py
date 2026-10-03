@@ -254,16 +254,24 @@ results = {
     },
 }
 
+# Every number below follows ONE rule: choose the epoch by VALIDATION
+# accuracy, then report the TEST accuracy of that epoch. (The harness has
+# already restored each model's best-validation weights.)
+for r in results.values():
+    r["best_epoch"] = int(np.argmax(r["val_accs"]))
+    r["best_val"] = r["val_accs"][r["best_epoch"]]
+    r["test_at_best_val"] = r["test_accs"][r["best_epoch"]]
+
 print(
-    f"\n{'Model':>12} {'Params':>8} {'Best Val':>10} {'Best Test':>10} "
+    f"\n{'Model':>12} {'Params':>8} {'Best Val':>10} {'Test@BestVal':>13} "
     f"{'Final Loss':>12} {'Conv@90%':>10}"
 )
-print("-" * 66)
+print("-" * 69)
 
 for name, r in results.items():
     n_params = sum(p.numel() for p in r["model"].parameters())
-    best_val = max(r["val_accs"])
-    best_test = max(r["test_accs"])
+    best_val = r["best_val"]
+    best_test = r["test_at_best_val"]
     final_loss = r["losses"][-1]
     # Convergence speed: epoch at which model first reaches 90% of its
     # best validation accuracy
@@ -273,16 +281,17 @@ for name, r in results.items():
         EPOCHS,
     )
     print(
-        f"{name:>12} {n_params:>8,} {best_val:>10.4f} {best_test:>10.4f} "
+        f"{name:>12} {n_params:>8,} {best_val:>10.4f} {best_test:>13.4f} "
         f"{final_loss:>12.4f} {conv_epoch:>10}"
     )
 
-# Determine the best model by best validation accuracy
-best_name = max(results, key=lambda k: max(results[k]["val_accs"]))
+# Determine the best model by best validation accuracy — never by test
+best_name = max(results, key=lambda k: results[k]["best_val"])
 best_model_obj = results[best_name]["model"]
-best_val_acc = max(results[best_name]["val_accs"])
-best_test_acc = max(results[best_name]["test_accs"])
+best_val_acc = results[best_name]["best_val"]
+best_test_acc = results[best_name]["test_at_best_val"]
 print(f"\nBest model by validation accuracy: {best_name} ({best_val_acc:.4f})")
+print(f"Its test accuracy (reported, not used to choose): {best_test_acc:.4f}")
 
 # ── Comparison Checkpoint ───────────────────────────────────────────
 assert len(results) == 3, "Should have results for all 3 architectures"
@@ -293,8 +302,11 @@ assert all(
 # - GCN is simplest (fewest params) but uses fixed aggregation weights
 # - GAT adds learnable attention but costs more parameters
 # - GraphSAGE separates self vs neighbour projections and uses sampling
-# Cora is a homogeneous citation graph where all three tend to perform
-# similarly. Differences become more pronounced on heterogeneous graphs.
+# Cora is a citation graph where neighbours usually share a label
+# (homophily), so all three tend to land close together — gaps of a point
+# or two from one split and one seed are within run-to-run noise.
+# Differences grow on graphs where neighbours often disagree
+# (heterophily) or where scale forces sampling.
 print("\n--- Comparison checkpoint passed --- all models evaluated\n")
 
 
@@ -358,7 +370,7 @@ for idx, (name, r) in enumerate(results.items()):
             label=f"Class {c}",
         )
     n_params = sum(p.numel() for p in model.parameters())
-    best_v = max(r["val_accs"])
+    best_v = r["best_val"]
     axes[idx].set_title(
         f"{name}\nval={best_v:.3f}, params={n_params:,}",
         fontsize=12,
@@ -387,8 +399,7 @@ model_names = list(results.keys())
 param_counts = [
     sum(p.numel() for p in results[n]["model"].parameters()) for n in model_names
 ]
-best_vals = [max(results[n]["val_accs"]) for n in model_names]
-best_tests = [max(results[n]["test_accs"]) for n in model_names]
+best_vals = [results[n]["best_val"] for n in model_names]
 colors = ["#2196F3", "#FF9800", "#4CAF50"]
 
 ax.scatter(
@@ -432,14 +443,13 @@ print(
   │ Choose GCN when │ - Graph is small-to-medium (< 100K nodes)        │
   │                 │ - Neighbours are roughly equally important        │
   │                 │ - You want the simplest, fastest baseline         │
-  │                 │ - Interpretability of attention is NOT needed     │
   │                 │ - Example: citation networks, molecular graphs    │
   ├─────────────────┼───────────────────────────────────────────────────┤
   │ Choose GAT when │ - Edge importance varies (some neighbours matter │
   │                 │   more than others)                               │
-  │                 │ - You need INTERPRETABLE attention weights        │
-  │                 │ - Regulated domain (finance, healthcare) needs    │
-  │                 │   explainable model decisions                     │
+  │                 │ - Attention weights would help investigators see  │
+  │                 │   which neighbours drove a score (a lead to check,│
+  │                 │   not a validated explanation)                    │
   │                 │ - Example: fraud detection, drug interaction      │
   ├─────────────────┼───────────────────────────────────────────────────┤
   │ Choose          │ - Graph is large (100K+ nodes) — need sampling   │
@@ -455,7 +465,7 @@ print(
   │ Data Type        │ Architecture                                     │
   ├──────────────────┼──────────────────────────────────────────────────┤
   │ Images           │ CNN / ViT + transfer learning (ImageNet)         │
-  │ Text             │ Transformer + transfer learning (BERT / GPT)     │
+  │ Text             │ Transformer + transfer learning (pre-trained LM) │
   │ Sequences        │ LSTM / Transformer                               │
   │ Graphs           │ GNN (GCN / GAT / GraphSAGE — task dependent)    │
   │ Tabular          │ Gradient boosting (fast, reliable, no pretrain)  │
@@ -478,7 +488,7 @@ if has_registry:
         model=best_model_obj,
         metrics=[
             MetricSpec(name="best_val_accuracy", value=best_val_acc),
-            MetricSpec(name="best_test_accuracy", value=best_test_acc),
+            MetricSpec(name="test_accuracy_at_best_val", value=best_test_acc),
             MetricSpec(name="final_loss", value=results[best_name]["losses"][-1]),
             MetricSpec(name="hidden_dim", value=float(HIDDEN_DIM)),
             MetricSpec(name="epochs", value=float(EPOCHS)),
@@ -500,40 +510,49 @@ print(
     f"\nDataset: {dataset_name} ({N} nodes, {graph_data['n_edges_undirected']} edges, "
     f"{n_classes} classes)"
 )
-print(f"\nNode Classification (best validation accuracy):")
+print(f"\nNode Classification (epoch chosen by validation accuracy):")
 for name, r in results.items():
     n_params = sum(p.numel() for p in r["model"].parameters())
     print(
-        f"  {name:>12}: val={max(r['val_accs']):.4f}  "
-        f"test={max(r['test_accs']):.4f}  params={n_params:,}"
+        f"  {name:>12}: val={r['best_val']:.4f}  "
+        f"test={r['test_at_best_val']:.4f}  params={n_params:,}"
     )
 print(f"\nBest model: {best_name}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# DESTINATION-FIRST CLOSE — km.diagnose
+# DIAGNOSTIC CHECKPOINT — the winning architecture, one kailash-ml call
 # ════════════════════════════════════════════════════════════════════════
-# This lesson walked the journey of graph neural networks — GCN, GAT,
-# GraphSAGE — each with custom message-passing and aggregation logic.
-# The kailash-ml SDK ships a single-call diagnostic primitive that
-# closes the production loop: km.diagnose inspects a trained model and
-# emits an auto-dashboard (loss curves, gradient flow, dead neurons,
-# activation stats, weight distributions). One cell. Every diagnostic
-# students would otherwise hand-roll, ready to surface in a Plotly
-# dashboard.
+# The comparison table judges OUTPUTS. The Prescription Pad judges the
+# winning network itself: run_diagnostic_checkpoint instruments it,
+# replays its real training objective on the full graph (no weights are
+# updated) and returns gradient-flow, dead-neuron and loss-trend readings.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
-from kailash_ml import diagnose
 
-# GNN forward signatures take (X, A_norm) tuples. We feed an iterable of
-# such tuples reusing the lesson's full-graph tensors. `kind='auto'`
-# dispatches by model type — DLDiagnostics for torch.nn.Module.
-graph_iter = [(X, A_norm) for _ in range(2)]
-report = diagnose(best_model_obj, kind="auto", data=graph_iter, show=False)
-report.plot_training_dashboard()
-print()
-print("km.diagnose: 1 line of code -> the same observability the lesson")
-print("body hand-rolled in 200+ lines. This is what 'destination-first'")
-print("means — when the journey is internalised, the SDK is one call.")
+def _node_loss(m, batch):
+    feats, graph, labels, mask = batch
+    return F.cross_entropy(m(feats, graph)[mask], labels[mask])
+
+
+best_arg = results[best_name]["forward_arg"]
+diag, findings = run_diagnostic_checkpoint(
+    best_model_obj,
+    [(X, best_arg, y, graph_data["train_mask"])] * 4,
+    _node_loss,
+    title=f"{best_name} (best by validation)",
+    n_batches=4,
+    train_losses=results[best_name]["losses"],
+    show=False,
+)
+print_prescription_pad(findings, f"{best_name} (best by validation)")
+# HOW TO READ IT: these GNNs apply their activations functionally
+# (F.relu / F.elu), so the dead-neuron instrument has no layer to hook
+# and an UNKNOWN reading there is expected. Gradient flow and loss trend
+# are live. Over-smoothing (all node embeddings converging as layers are
+# stacked) is NOT one of the three readings — with 2 layers it is rarely
+# the issue; measure embedding similarity yourself if you go deeper.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -550,9 +569,11 @@ print(
       fastest. Works well on homogeneous graphs like citation networks.
   [x] GAT: learned attention weights over neighbours
       Each node decides how much to attend to each neighbour based on
-      feature content. More expressive but more parameters. Interpretable.
+      feature content. More expressive but more parameters; attention
+      shows where the model looked (a lead, not a proof).
   [x] GraphSAGE: sample + aggregate with separate self/neighbour projections
-      INDUCTIVE — can generalise to unseen nodes at inference time.
+      Designed to be INDUCTIVE — it can embed unseen nodes; showing that
+      it generalises needs held-out nodes, which Cora's split does not have.
       Neighbourhood sampling provides regularisation and scalability.
 
   GNN TASKS:
@@ -566,20 +587,22 @@ print(
   ML ENGINEERING:
   [x] Tracked every GNN variant with ExperimentTracker (params, per-epoch
       loss, validation accuracy, test accuracy across {EPOCHS} epochs)
+  [x] Chose epochs AND the winning architecture by validation accuracy;
+      test accuracy was only reported, never used to choose
   [x] Registered best model in ModelRegistry with versioned metrics
   [x] Quantitative comparison table: parameters, accuracy, convergence
       speed — not eyeballing, but systematic tracked experiments
 
-  SINGAPORE APPLICATIONS:
-  [x] NUS/NTU research classification (GCN — citation graph)
-  [x] PayNow/NETS fraud detection (GAT — interpretable attention)
-  [x] GrabFood/foodpanda recommendations (GraphSAGE — scalable, inductive)
-  [x] SGH drug-disease interaction discovery (link prediction)
+  SINGAPORE APPLICATIONS (illustrative scenarios):
+  [x] University research classification (GCN — citation graph)
+  [x] Bank payment-network fraud detection (GAT — attention as leads)
+  [x] Food-delivery recommendations (GraphSAGE — scalable, inductive)
+  [x] Hospital drug-disease interaction discovery (link prediction)
 
   KEY INSIGHT: All three GNNs learn by aggregating information from
   neighbours, but they differ in HOW they aggregate:
     GCN        -> fixed weights (degree normalisation)
-    GAT        -> learned weights (attention) + interpretability
+    GAT        -> learned weights (attention), inspectable per edge
     GraphSAGE  -> sampled + learned (separate self/neighbour) + inductive
 
   Next: In Exercise 7, you'll apply transfer learning with a pre-trained
@@ -589,64 +612,3 @@ print(
 
 # Clean up
 asyncio.run(conn.close())
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Cross-architecture loss comparison
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (GNN Architecture Comparison (GCN vs GAT vs SAGE)) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        best_model,
-        [(features, labels)],
-        _diag_loss,
-        title="GNN Architecture Comparison (GCN vs GAT vs SAGE)",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow: all 3 architectures healthy (RMS ~1e-3).
-# [!] Over-smoothing detected at depth 4+: GCN worst (cosine sim 0.94),
-#     GAT intermediate (0.87), SAGE best (0.79).
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [X-RAY — GNN-SPECIFIC] Over-smoothing is THE GNN scalability
-#     problem. Cosine similarity ~1.0 across node embeddings means
-#     the model can't distinguish nodes. Slide 5.6 addresses this.
-#     >> Ranked by over-smoothing resistance:
-#        SAGE (inductive aggregation) > GAT (learned attention) > GCN (fixed)
-#     >> Prescription: depth 2-3 for GCN, up to 4 for GAT, up to 6+ for
-#        SAGE with skip connections.
-#
-#  [STETHOSCOPE] All three converge to similar validation accuracy
-#     on Cora — architecture choice matters more for SCALABILITY and
-#     INDUCTIVE capability than raw accuracy.

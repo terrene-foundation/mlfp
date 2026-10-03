@@ -416,7 +416,7 @@ plt.close(fig)
 print(f"  Saved: {filepath}")
 
 high_var = per_node_var > np.percentile(per_node_var, 90)
-low_var = per_node_var < np.percentile(per_node_var, 10)
+low_var = per_node_var <= np.percentile(per_node_var, 10)
 print(
     f"    High-variance nodes (top 10%): {int(high_var.sum())}, "
     f"mean degree {degrees[high_var].mean():.1f}"

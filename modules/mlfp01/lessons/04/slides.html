@@ -53,20 +53,20 @@
       <text x="110" y="75" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#64748B">town · price · area</text>
       <rect x="20" y="110" width="180" height="70" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
       <text x="110" y="135" text-anchor="middle" font-weight="600" font-size="14">MRT stations</text>
-      <text x="110" y="155" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#64748B">town · dist_km</text>
+      <text x="110" y="155" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#64748B">station · Town · lat/lng</text>
       <rect x="20" y="190" width="180" height="60" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
       <text x="110" y="215" text-anchor="middle" font-weight="600" font-size="14">Schools</text>
-      <text x="110" y="235" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#64748B">town · school_count</text>
+      <text x="110" y="235" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#64748B">school · Town · type</text>
       <line x1="210" y1="140" x2="330" y2="140" stroke="#0D9488" stroke-width="3" marker-end="url(#arj1)"/>
       <text x="270" y="130" text-anchor="middle" font-size="12" fill="#0D9488">join on town</text>
       <rect x="340" y="50" width="460" height="180" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
       <text x="570" y="80" text-anchor="middle" font-weight="600" font-size="14" fill="#0D9488">Enriched HDB</text>
       <g font-family="JetBrains Mono" font-size="11" fill="#1E293B">
-        <text x="360" y="115" fill="#0F766E">town   price  dist  schools</text>
-        <text x="360" y="140">BISHAN 720k   0.4   6</text>
-        <text x="360" y="160">JURONG 420k   0.8   4</text>
-        <text x="360" y="180">BISHAN 680k   0.4   6</text>
-        <text x="360" y="215" fill="#94A3B8">500k rows, spatial context attached</text>
+        <text x="360" y="115" fill="#0F766E">town         price  stations  schools</text>
+        <text x="360" y="140">BISHAN       950k   5         13</text>
+        <text x="360" y="160">JURONG WEST  820k   5         17</text>
+        <text x="360" y="180">BISHAN       930k   5         13</text>
+        <text x="360" y="215" fill="#94A3B8">50,150 rows, town context attached</text>
       </g>
     </svg>
   </figure>
@@ -136,18 +136,23 @@ def price_range_label(price: float) -&gt; str:
 <section>
   <h2>The basic join</h2>
   <pre><code class="language-python" data-trim>
-hdb_enriched = hdb.join(
-    mrt_stations.select("town", "nearest_mrt", "distance_to_mrt_km"),
-    on="town",
-    how="left",
+loader = MLFPDataLoader()
+hdb = loader.load("mlfp01", "hdb_resale.parquet")
+mrt_stations = loader.load("mlfp_assessment", "mrt_stations.parquet")
+
+# one row per town, key in the same case as HDB ("BISHAN")
+mrt_by_town = (
+    mrt_stations.with_columns(pl.col("town").str.to_uppercase())
+    .group_by("town").agg(pl.len().alias("station_count"))
 )
 
-print(hdb_enriched.shape)
-# same number of rows — left join preserves all HDB rows
+hdb_enriched = hdb.join(mrt_by_town, on="town", how="left")
+print(hdb_enriched.shape)   # (50150, 12): every HDB row kept
   </code></pre>
   <p style="font-size: 0.85em;">
     Four things: left DataFrame, right DataFrame, <code>on</code> key,
-    <code>how</code> join type.
+    <code>how</code> join type. The two prep steps exist because the raw
+    tables disagree &mdash; the next slides show why.
   </p>
 </section>
 
@@ -184,7 +189,7 @@ print(hdb_enriched.shape)
     </svg>
   </figure>
   <div style="background: #FFFBEB; padding: 10px 16px; border-left: 4px solid #F59E0B; border-radius: 4px; font-size: 0.85em;">
-    <strong>Rule of thumb:</strong> LEFT join 95% of the time for enrichment.
+    <strong>Rule of thumb:</strong> LEFT join for enrichment. In Polars, outer is <code>how="full"</code>.
   </div>
 </section>
 
@@ -195,14 +200,17 @@ hdb_towns = set(hdb["town"].unique().to_list())
 mrt_towns = set(mrt_stations["town"].unique().to_list())
 
 matched = hdb_towns & mrt_towns      # intersection
-unmatched = hdb_towns - mrt_towns    # difference
+print(f"HDB towns: {len(hdb_towns)}, matched: {len(matched)}")
+# → HDB towns: 27, matched: 0   ("BISHAN" vs "Bishan")
 
-print(f"HDB towns: {len(hdb_towns)}")
-print(f"Matched:   {len(matched)}")
-print(f"Unmatched: {len(unmatched)}")
+mrt_upper = {t.upper() for t in mrt_towns}
+unmatched = hdb_towns - mrt_upper    # difference
+print(f"Matched: {len(hdb_towns & mrt_upper)}, unmatched: {sorted(unmatched)}")
+# → Matched: 21, unmatched: ['BOON LAY', 'CENTRAL AREA', 'HOUGANG', ...]
   </code></pre>
   <p style="font-size: 0.85em;">
-    This check catches 90% of join errors before they happen.
+    A raw join here matches <em>nothing</em> and still returns 50,150 rows &mdash;
+    the row count looks fine while every new column is null. Check the keys first.
   </p>
 </section>
 
@@ -210,8 +218,10 @@ print(f"Unmatched: {len(unmatched)}")
   <h2>Aggregate one side if keys aren't unique</h2>
   <pre><code class="language-python" data-trim>
 # schools is one row per school; we want one row per town
+schools = loader.load("mlfp_assessment", "schools.parquet")
 school_counts = (
     schools
+    .with_columns(pl.col("town").str.to_uppercase())
     .group_by("town")
     .agg(pl.col("school_name").count().alias("school_count"))
 )
@@ -224,7 +234,8 @@ hdb_enriched = hdb_enriched.join(
   </code></pre>
   <p style="font-size: 0.85em;">
     If both sides have many rows per key, the join explodes into a
-    Cartesian product. Aggregate first.
+    Cartesian product. MRT has 150 stations over 32 towns: joined
+    unaggregated, 50,150 HDB rows become 186,997. Aggregate first.
   </p>
 </section>
 
@@ -232,7 +243,7 @@ hdb_enriched = hdb_enriched.join(
   <h2>Handling nulls after a left join</h2>
   <pre><code class="language-python" data-trim>
 # count the unmatched
-n_null = hdb_enriched["distance_to_mrt_km"].null_count()
+n_null = hdb_enriched["station_count"].null_count()   # 11,032
 
 # fill with a sentinel
 hdb_enriched = hdb_enriched.with_columns(
@@ -241,7 +252,7 @@ hdb_enriched = hdb_enriched.with_columns(
 
 # or drop the unmatched
 matched_only = hdb_enriched.filter(
-    pl.col("distance_to_mrt_km").is_not_null()
+    pl.col("station_count").is_not_null()
 )
   </code></pre>
   <p style="font-size: 0.85em;">
@@ -268,21 +279,21 @@ matched_only = hdb_enriched.filter(
 <section>
   <h2>A desirability classifier</h2>
   <pre><code class="language-python" data-trim>
-def desirability_tier(distance_km, schools):
-    if distance_km is None:
-        return "Unknown"
-    if distance_km &lt; 1.0 and schools &gt;= 5:
+def desirability_tier(stations, schools):
+    if stations is None:
+        return "Unknown"           # town not in the MRT table
+    if stations &gt;= 4 and schools &gt;= 10:
         return "Prime"
-    elif distance_km &lt; 1.0:
+    elif stations &gt;= 4:
         return "Good MRT access"
-    elif schools &gt;= 5:
-        return "School-rich, farther MRT"
+    elif schools &gt;= 10:
+        return "School-rich"
     else:
-        return "Further out"
+        return "Fewer amenities"
   </code></pre>
   <p style="font-size: 0.85em;">
-    The function combines MRT distance and school count into a single label.
-    <code>None</code> check handles unmatched left-join rows.
+    The function combines MRT access (stations in the town) and school count
+    into a single label. The <code>None</code> check handles unmatched left-join rows.
   </p>
 </section>
 
@@ -293,14 +304,14 @@ district_summary = (
     hdb_enriched.group_by("town")
     .agg(
         pl.col("resale_price").median().alias("median_price"),
-        pl.col("distance_to_mrt_km").first().alias("dist_km"),
+        pl.col("station_count").first().alias("stations"),
         pl.col("school_count").first().alias("schools"),
     )
 )
 
 # Apply the function row-by-row
 for row in district_summary.iter_rows(named=True):
-    tier = desirability_tier(row["dist_km"], row["schools"])
+    tier = desirability_tier(row["stations"], row["schools"])
     print(f"  {row['town']:&lt;20} {tier}")
   </code></pre>
   <p style="font-size: 0.85em; color: #64748B;">
@@ -312,7 +323,7 @@ for row in district_summary.iter_rows(named=True):
 <section>
   <h2>Four traps when joining</h2>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
-    <strong>1. Inner where left was meant.</strong> 20,000 rows disappear silently.
+    <strong>1. Inner where left was meant.</strong> 11,032 HDB sales (6 towns) disappear silently.
   </div>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
     <strong>2. Duplicate keys on both sides.</strong> Output explodes into Cartesian product.

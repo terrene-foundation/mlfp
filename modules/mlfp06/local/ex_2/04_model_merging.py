@@ -43,7 +43,8 @@ torch.manual_seed(42)
 # ════════════════════════════════════════════════════════════════════════
 # Task vector: tau = W_finetuned - W_base (everything the FT added).
 # Task arithmetic: W_merged = W_base + alpha*tau_A + beta*tau_B.
-# TIES fixes sign conflict; DARE randomly drops and rescales; SLERP
+# TIES fixes sign conflict (trim top-k%, elect sign by summed mass,
+# disjoint mean); DARE randomly drops and rescales; SLERP
 # walks the hypersphere arc instead of the straight chord (preserves
 # weight norms). All are training-free — merging is zero compute.
 
@@ -59,25 +60,39 @@ print("=" * 70)
 delta_A = torch.randn(128, 128) * 0.1
 delta_B = torch.randn(128, 128) * 0.1
 
-# TODO: TRIM step — zero entries with |delta| < 0.05 in copies of delta_A and delta_B
-trim_threshold = 0.05
-delta_A_trim = ____
-delta_B_trim = ____
+TRIM_DENSITY = 0.20  # keep the top 20% of each task vector by magnitude
 
-# TODO: ELECT SIGN — sign_A, sign_B = ... ; elected_sign = (sign_A + sign_B).sign()
+
+def trim_top_k(delta: torch.Tensor, density: float) -> torch.Tensor:
+    """Step 1 — TRIM: keep the top `density` fraction of |delta|, zero the rest."""
+    # TODO: k = number of entries to keep; threshold = smallest of the top-k
+    # |delta| values (Tensor.topk); return delta where |delta| >= threshold,
+    # else 0 (torch.where).
+    ____
+
+
+delta_A_trim = trim_top_k(delta_A, TRIM_DENSITY)
+delta_B_trim = trim_top_k(delta_B, TRIM_DENSITY)
+
+# TODO: ELECT SIGN — sign_A, sign_B of the trimmed deltas; elected_sign is
+# the sign of the SUMMED trimmed deltas (mass-weighted, not a vote count)
 sign_A = ____
 sign_B = ____
 elected_sign = ____
 
-# TODO: MERGE — average entries that agree with elected_sign. Use masks
-# (sign == elected_sign).float() and divide by (mask_A + mask_B + 1e-8)
+# TODO: DISJOINT MERGE — masks select entries that are non-zero AND agree
+# with elected_sign; average only those (divide by the mask count,
+# clamped to at least 1)
 mask_A = ____
 mask_B = ____
 merged_delta = ____
 
+both_kept = (delta_A_trim != 0) & (delta_B_trim != 0)
+conflicts = both_kept & (sign_A != sign_B)
 print(f"Original non-zero params (delta_A): {(delta_A != 0).sum().item():,}")
-print(f"After TRIM:                         {(delta_A_trim != 0).sum().item():,}")
-print(f"Sign agreement rate:                {(sign_A == sign_B).float().mean():.1%}")
+print(f"After TRIM (top {TRIM_DENSITY:.0%}):               {(delta_A_trim != 0).sum().item():,}")
+print(f"Entries kept by BOTH tasks:         {both_kept.sum().item():,}")
+print(f"  ...of which sign conflicts:       {conflicts.sum().item():,}")
 print(f"Merged delta Frobenius norm:        {merged_delta.norm():.4f}")
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────────
@@ -157,10 +172,12 @@ ts = [i / 10 for i in range(11)]
 slerp_norms = ____
 linear_norms = ____
 
-# TODO: Plot both curves vs t, axhlines at the input norms. Save to
-# OUTPUT_DIR / "ex2_slerp_vs_linear.png"
-____
 fname = OUTPUT_DIR / "ex2_slerp_vs_linear.png"
+fname.unlink(missing_ok=True)  # the checkpoint must see THIS run's plot
+
+# TODO: Plot both curves vs t, axhlines at the input norms. Save to fname
+# and close the figure.
+____
 print(f"  Saved: {fname}")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
@@ -171,7 +188,7 @@ print("✓ Checkpoint 3 passed — norm comparison visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — APPLY: Singapore fintech — merging three LoRAs
 # ════════════════════════════════════════════════════════════════════════
-# A Singapore digital bank has three LoRAs (KYC, fraud, explainer) on
+# (Illustrative) A Singapore digital bank has three LoRAs (KYC, fraud, explainer) on
 # the same 7B base. Three deployments = 3 x 14 GB VRAM + ~780 ms end-
 # to-end latency. A TIES merge into a single deployment costs ~2 hours
 # of eng time (vs ~6 weeks retraining) and drops latency + VRAM.

@@ -54,8 +54,15 @@ torch.manual_seed(42)
 # may update the same parameter in opposite directions, and averaging
 # cancels both out into noise.  TIES and DARE solve this.
 #
-# TIES (Yadav et al., 2023): TRIM small deltas, ELECT the majority sign,
-# then MERGE only the deltas that agree.  Reduces noise and conflict.
+# TIES (Yadav et al., 2023), three steps per parameter:
+#   TRIM  — keep only each task vector's top-k% largest-magnitude entries
+#           (k = "density", 20% in the paper); the rest is treated as noise
+#   ELECT — the merged sign is the sign of the SUMMED trimmed deltas, so
+#           the direction with more total mass wins a conflict (it is not
+#           zeroed out)
+#   MERGE — average only the non-zero deltas that agree with that sign
+#           (a "disjoint mean": tasks that were trimmed or disagree there
+#           do not dilute the average)
 #
 # DARE (Yu et al., 2023): randomly DROP a fraction of delta parameters
 # then RESCALE the survivors by 1/(1-drop).  Like dropout for merging.
@@ -80,28 +87,39 @@ print("=" * 70)
 delta_A = torch.randn(128, 128) * 0.1  # Task A fine-tuned delta
 delta_B = torch.randn(128, 128) * 0.1  # Task B fine-tuned delta
 
-# Step 1 — TRIM: zero out small-magnitude updates (treat as noise)
-trim_threshold = 0.05
-delta_A_trim = delta_A.clone()
-delta_A_trim[delta_A_trim.abs() < trim_threshold] = 0
-delta_B_trim = delta_B.clone()
-delta_B_trim[delta_B_trim.abs() < trim_threshold] = 0
+TRIM_DENSITY = 0.20  # keep the top 20% of each task vector by magnitude
 
-# Step 2 — ELECT SIGN: majority vote per parameter
+
+def trim_top_k(delta: torch.Tensor, density: float) -> torch.Tensor:
+    """Step 1 — TRIM: keep the top `density` fraction of |delta|, zero the rest."""
+    k = max(1, int(delta.numel() * density))
+    threshold = delta.abs().flatten().topk(k).values.min()
+    return torch.where(delta.abs() >= threshold, delta, torch.zeros_like(delta))
+
+
+delta_A_trim = trim_top_k(delta_A, TRIM_DENSITY)
+delta_B_trim = trim_top_k(delta_B, TRIM_DENSITY)
+
+# Step 2 — ELECT SIGN: sign of the summed (mass-weighted) trimmed deltas.
+# On a conflict the larger-magnitude update wins instead of both cancelling.
 sign_A = delta_A_trim.sign()
 sign_B = delta_B_trim.sign()
-elected_sign = (sign_A + sign_B).sign()
+elected_sign = (delta_A_trim + delta_B_trim).sign()
 
-# Step 3 — MERGE: average the deltas that agree with the elected sign
-mask_A = (sign_A == elected_sign).float()
-mask_B = (sign_B == elected_sign).float()
+# Step 3 — DISJOINT MERGE: average only the non-zero deltas whose sign
+# agrees with the elected sign.
+mask_A = ((sign_A == elected_sign) & (delta_A_trim != 0)).float()
+mask_B = ((sign_B == elected_sign) & (delta_B_trim != 0)).float()
 merged_delta = (delta_A_trim * mask_A + delta_B_trim * mask_B) / (
-    mask_A + mask_B + 1e-8
-)
+    mask_A + mask_B
+).clamp(min=1.0)
 
+both_kept = (delta_A_trim != 0) & (delta_B_trim != 0)
+conflicts = both_kept & (sign_A != sign_B)
 print(f"Original non-zero params (delta_A): {(delta_A != 0).sum().item():,}")
-print(f"After TRIM:                         {(delta_A_trim != 0).sum().item():,}")
-print(f"Sign agreement rate:                {(sign_A == sign_B).float().mean():.1%}")
+print(f"After TRIM (top {TRIM_DENSITY:.0%}):               {(delta_A_trim != 0).sum().item():,}")
+print(f"Entries kept by BOTH tasks:         {both_kept.sum().item():,}")
+print(f"  ...of which sign conflicts:       {conflicts.sum().item():,}")
 print(f"Merged delta Frobenius norm:        {merged_delta.norm():.4f}")
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────────
@@ -110,8 +128,11 @@ assert (delta_A_trim != 0).sum() < (delta_A != 0).sum(), "TRIM should zero some 
 print("✓ Checkpoint 1 passed — TIES merge complete\n")
 
 # INTERPRETATION: TIES prevents sign cancellation during merging.
-# Without it, two good task vectors that disagree on a parameter
-# produce a weaker merged result than either input alone.
+# With plain averaging, two task vectors that disagree on a parameter
+# cancel each other there. TIES keeps the update with more mass for each
+# conflicting entry and averages only agreeing, non-trimmed values.
+# (These are random synthetic deltas, so roughly half of the overlapping
+# entries conflict; real task vectors from one base usually agree more.)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -189,6 +210,9 @@ ts = [i / 10 for i in range(11)]
 slerp_norms = [slerp(t, W_task_A, W_task_B).norm().item() for t in ts]
 linear_norms = [((1 - t) * W_task_A + t * W_task_B).norm().item() for t in ts]
 
+fname = OUTPUT_DIR / "ex2_slerp_vs_linear.png"
+fname.unlink(missing_ok=True)  # the checkpoint must see THIS run's plot
+
 fig, ax = plt.subplots(1, 1, figsize=(9, 5))
 ax.plot(ts, slerp_norms, "o-", color="steelblue", linewidth=2, label="SLERP")
 ax.plot(ts, linear_norms, "s-", color="darkorange", linewidth=2, label="Linear")
@@ -202,7 +226,6 @@ ax.set_title("SLERP vs Linear — weight norm preservation", fontweight="bold")
 ax.legend()
 ax.grid(True, alpha=0.3)
 plt.tight_layout()
-fname = OUTPUT_DIR / "ex2_slerp_vs_linear.png"
 plt.savefig(fname, dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved: {fname}")
@@ -215,7 +238,7 @@ print("✓ Checkpoint 3 passed — norm comparison visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — APPLY: Singapore fintech — merging three LoRAs into one
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore digital bank has trained three independent LoRA
+# SCENARIO (illustrative): A Singapore digital bank has trained three independent LoRA
 # adapters on top of the same 7B base:
 #   tau_kyc     — KYC document extraction (NRIC, addresses, phone formats)
 #   tau_fraud   — Transaction-narrative fraud flagging
@@ -237,9 +260,9 @@ print("✓ Checkpoint 3 passed — norm comparison visualised\n")
 # DECISION: TIES merge (option C).  The $/capability trade-off favours
 # free merging unless the merged model drops >5 points on any eval.
 #
-# BUSINESS IMPACT:
-#   - Infra saving: drop from 3 * 14 GB to 1 * 14 GB per region (3
-#     regions = 28 GB freed).  At ~S$1.20/GB-month on managed GPU,
+# BUSINESS IMPACT (illustrative figures):
+#   - Infra saving: drop from 3 * 14 GB to 1 * 14 GB per region (28 GB
+#     freed in each of 3 regions).  At ~S$1.20/GB-month on managed GPU,
 #     that is ~S$33/region/month * 3 = S$99/month of inference VRAM.
 #   - Latency: end-to-end KYC -> fraud -> explain journey drops from
 #     ~780 ms (three hops) to ~320 ms (single inference).  On the

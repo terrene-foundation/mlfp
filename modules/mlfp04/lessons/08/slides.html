@@ -33,7 +33,7 @@
   <h1>DL Foundations — Neural Networks and the Training Toolkit</h1>
   <p style="font-size: 0.7em; color: #64748B;">Forward pass · Backprop · Activations · Dropout · Batch norm · Optimisers</p>
   <div style="margin-top: 2em; padding: 16px 20px; background: #E0E7FF; border-left: 4px solid #4F46E5;">
-    <strong>⏱ 120 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> build a neural network from scratch with full training toolkit
+    <strong>⏱ 120 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> build a network from scratch, then train real ones with the PyTorch toolkit
   </div>
 </section>
 
@@ -61,8 +61,8 @@
       <line x1="127" y1="130" x2="102" y2="140" stroke="#475569" stroke-width="1"/>
       <!-- Output -->
       <text x="90" y="170" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#1E293B">r = u^T v</text>
-      <text x="90" y="190" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">Linear only.</text>
-      <text x="90" y="202" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">No non-linearity.</text>
+      <text x="90" y="190" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">Bilinear: one dot</text>
+      <text x="90" y="202" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">product, no activation.</text>
 
       <!-- Arrow 1 -->
       <line x1="186" y1="120" x2="206" y2="120" stroke="#0D9488" stroke-width="2"/>
@@ -89,8 +89,8 @@
       <circle cx="290" cy="165" r="12" fill="#FEF3C7" stroke="#F59E0B"/>
       <text x="290" y="169" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#92400E">r</text>
       <line x1="290" y1="130" x2="290" y2="153" stroke="#475569" stroke-width="1"/>
-      <text x="290" y="200" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">Still linear.</text>
-      <text x="290" y="212" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">Same as MF.</text>
+      <text x="290" y="200" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">Still linear — and weaker</text>
+      <text x="290" y="212" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">than MF: can't express uᵀv.</text>
 
       <!-- Arrow 2 -->
       <line x1="386" y1="120" x2="406" y2="120" stroke="#0D9488" stroke-width="2"/>
@@ -153,7 +153,7 @@
       <text x="682" y="219" text-anchor="middle" font-family="Inter" font-size="8" fill="#4F46E5">embeddings.</text>
 
       <!-- Bottom caption -->
-      <text x="380" y="255" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B">MF is a neural network with no hidden layers and no activation function.</text>
+      <text x="380" y="255" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B">MF is a neural network with two embedding layers and a dot-product output — no hidden layer.</text>
       <text x="380" y="270" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B">Each addition (hidden layer, activation, depth) adds expressiveness.</text>
     </svg>
   </figure>
@@ -285,6 +285,24 @@ z3 = a2 @ W3 + b3;   y_hat = z3
   \[ \mathcal{L} = \frac{1}{n} \sum_{i=1}^{n} (y_i - \hat{y}_i)^2 \]
   <p>Classification: Cross-Entropy</p>
   \[ \mathcal{L} = -\frac{1}{n} \sum_{i=1}^{n} \sum_{c=1}^{C} y_{ic} \log \hat{y}_{ic} \]
+</section>
+
+<section>
+  <h2>Loss functions taxonomy</h2>
+  <table style="font-size: 0.62em;">
+    <thead><tr><th>Loss</th><th>Task</th><th>Formula</th></tr></thead>
+    <tbody>
+      <tr><td>MSE / MAE</td><td>Regression (MAE: robust)</td><td>$\frac{1}{n}\sum(y-\hat y)^2$ / $\frac{1}{n}\sum|y-\hat y|$</td></tr>
+      <tr><td>Binary CE</td><td>Binary classification</td><td>$-[y\log\hat y + (1-y)\log(1-\hat y)]$</td></tr>
+      <tr><td>Cross-entropy</td><td>Multi-class (after softmax)</td><td>$-\sum_k y_k \log \hat y_k$</td></tr>
+      <tr><td>Focal</td><td>Imbalanced classes</td><td>$-(1-\hat y)^\gamma\, y \log \hat y$</td></tr>
+      <tr><td>Contrastive</td><td>Similarity learning</td><td>pull similar pairs together, push dissimilar apart</td></tr>
+      <tr><td>Triplet</td><td>Metric learning</td><td>$\max(0,\ d(a,p) - d(a,n) + m)$</td></tr>
+      <tr><td>KL divergence</td><td>Distribution matching</td><td>$\sum P(x) \log \frac{P(x)}{Q(x)}$</td></tr>
+      <tr><td>Reconstruction</td><td>Autoencoders (M5.1)</td><td>$\lVert x - \hat x\rVert^2$</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">Reference slide; the loss defines what the network optimises. Triplet loss takes an anchor a, positive p and negative n and asks d(a,p) to be at least a margin m smaller than d(a,n) — the basis of face matching and embedding search. Focal loss down-weights easy examples so rare classes are not drowned out.</aside>
 </section>
 
 <section>
@@ -467,6 +485,21 @@ z3 = a2 @ W3 + b3;   y_hat = z3
 </section>
 
 <section>
+  <h2>More activations — and the output layer</h2>
+  <table style="font-size: 0.66em;">
+    <thead><tr><th>Function</th><th>Formula</th><th>Use</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>PReLU</td><td>$\max(az, z)$, $a$ learned</td><td>Hidden layers</td><td>Leaky ReLU with a learned slope</td></tr>
+      <tr><td>ELU</td><td>$z$ if $z&gt;0$, else $\alpha(e^z - 1)$</td><td>Hidden layers</td><td>Smooth; negative outputs push the mean toward 0</td></tr>
+      <tr><td>Swish / SiLU</td><td>$z \cdot \sigma(z)$</td><td>Hidden layers, modern CNNs / LLMs</td><td>Smooth, non-monotonic near 0</td></tr>
+      <tr><td>Softmax</td><td>$\dfrac{e^{z_i}}{\sum_j e^{z_j}}$</td><td>Multi-class output</td><td>Outputs positive, sum to 1</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size: 0.8em; color: #64748B;">Output layer by task: regression → identity; binary → sigmoid; multi-class → softmax (paired with cross-entropy). The ReLU variants all keep a non-zero gradient for $z &lt; 0$ — the dead-unit fix Exercise 8.2 measures.</p>
+  <aside class="notes">Spec 4.8 lists PReLU, ELU, Swish and softmax. PyTorch calls Swish SiLU. Exercise 8.2 compares ReLU, GELU, Tanh and SiLU on the same task and counts dead units under different initialisations.</aside>
+</section>
+
+<section>
   <h2>Dropout — regularisation by deletion</h2>
   <figure style="text-align: center;">
     <svg viewBox="0 0 500 180" xmlns="http://www.w3.org/2000/svg">
@@ -509,7 +542,7 @@ z3 = a2 @ W3 + b3;   y_hat = z3
     <tbody>
       <tr><td>SGD + momentum</td><td>Exponential average of gradients</td><td>Fine-grained control</td></tr>
       <tr><td>RMSProp</td><td>Per-parameter learning rate</td><td>Non-stationary problems</td></tr>
-      <tr><td>Adam</td><td>Momentum + RMSProp</td><td>Default first choice</td></tr>
+      <tr><td>Adam</td><td>Momentum + RMSProp</td><td>Default first choice (lr ≈ 10⁻³)</td></tr>
       <tr><td>AdamW</td><td>Decoupled weight decay</td><td>Transformers, modern default</td></tr>
     </tbody>
   </table>
@@ -549,24 +582,81 @@ z3 = a2 @ W3 + b3;   y_hat = z3
     <li>Hidden layers perform <em>unsupervised</em> feature discovery.</li>
     <li>Output layer performs <em>supervised</em> prediction.</li>
     <li>Node values = embeddings (same as 4.7, but non-linear).</li>
+    <li><strong>Universal approximation:</strong> ONE hidden layer with a non-polynomial activation and enough units can approximate any continuous function on a bounded domain to any accuracy. Depth buys <em>efficiency</em> (far fewer units), not possibility.</li>
   </ul>
 </section>
 
 <section>
-  <h2>From-scratch code</h2>
-  <pre><code class="language-python" data-trim>
-def forward(X, W1, b1, W2, b2, W3, b3):
-    z1 = X @ W1 + b1;   a1 = np.maximum(0, z1)  # ReLU
-    z2 = a1 @ W2 + b2;  a2 = np.maximum(0, z2)
-    z3 = a2 @ W3 + b3;  y_hat = z3
-    return z1, a1, z2, a2, z3, y_hat
+  <h2>From scratch: one hidden layer on HDB prices</h2>
+  <pre style="font-size: 0.45em;"><code class="language-python" data-trim>
+import numpy as np
+from shared import MLFPDataLoader
 
-# Training loop
+hdb = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet").sample(5000, seed=42)
+X = hdb.select("floor_area_sqm", "lease_commence_date").to_numpy().astype(float)
+y = hdb["resale_price"].to_numpy()[:, None] / 1e5          # price in S$100k
+X = (X - X.mean(0)) / X.std(0)                              # standardise
+
+rng = np.random.default_rng(42)
+W1 = rng.normal(0, np.sqrt(2 / 2), (2, 16)); b1 = np.zeros(16)   # He init
+W2 = rng.normal(0, np.sqrt(2 / 16), (16, 1)); b2 = np.zeros(1)
+lr, n = 0.05, len(X)
 for epoch in range(500):
-    _, a1, _, a2, _, y_hat = forward(X, W1, b1, W2, b2, W3, b3)
-    loss = np.mean((y_hat - y) ** 2)
-    # Backprop + update (see textbook for full code)
+    z1 = X @ W1 + b1; a1 = np.maximum(0, z1)                # forward
+    y_hat = a1 @ W2 + b2
+    d_out = 2 * (y_hat - y) / n                             # dL/dy_hat (MSE)
+    dW2 = a1.T @ d_out;  db2 = d_out.sum(0)                 # backward
+    d_z1 = (d_out @ W2.T) * (z1 > 0)                        # ReLU gate
+    dW1 = X.T @ d_z1;    db1 = d_z1.sum(0)
+    W1 -= lr * dW1; b1 -= lr * db1; W2 -= lr * dW2; b2 -= lr * db2
   </code></pre>
+  <p style="font-size: 0.75em; color: #64748B;">Run it: MSE falls from 107 to 26.4 (S$100k)². Two features explain only ~18% of price variance — location is missing, not the maths.</p>
+</section>
+
+<section>
+  <h2>Kailash OnnxBridge — trained network to portable graph</h2>
+  <pre style="font-size: 0.45em;"><code class="language-python" data-trim>
+from pathlib import Path
+import numpy as np
+import onnxruntime as ort
+import torch
+from torch import nn
+from kailash_ml import OnnxBridge
+
+model = nn.Sequential(nn.Linear(7, 32), nn.ReLU(), nn.Linear(32, 1))
+# ... train it in torch: AdamW, LR schedule, early stopping (Exercise 8.4-8.5) ...
+model.eval()
+
+bridge = OnnxBridge()
+print(bridge.check_compatibility(model, framework="torch").compatible)
+export = bridge.export(model, framework="torch", output_path=Path("model.onnx"),
+                       sample_input=torch.randn(1, 7))  # traces the forward pass
+print(export.success, export.onnx_status)
+
+batch = np.random.randn(10, 7).astype(np.float32)   # check: ONNX == torch
+session = ort.InferenceSession("model.onnx")
+onnx_out = session.run(None, {session.get_inputs()[0].name: batch})[0]
+with torch.no_grad():
+    print(np.abs(onnx_out - model(torch.from_numpy(batch)).numpy()).max())
+  </code></pre>
+  <div class="callout-slide kailash">
+    <strong>⚙ Kailash:</strong> OnnxBridge checks, exports and reports — it does not train, checkpoint or serve. Training is your torch loop; serving is ONNX Runtime (or InferenceServer in M5).
+  </div>
+  <aside class="notes">Same snippet as the master deck. Torch export needs a sample input because it traces the forward pass. OnnxBridge.validate() compares outputs for scikit-learn-style models (it calls .predict), so for torch the check uses onnxruntime directly, exactly as Exercise 8.5 does; on this toy model the maximum difference is about 1e-7. The installed exporter prints some warnings during torch export; they are harmless.</aside>
+</section>
+
+<section>
+  <h2>Exercise 4.8: the deep-learning training toolkit</h2>
+  <p>Five PyTorch files, each isolating one part of the toolkit — same data and budget, so curves are comparable:</p>
+  <ol style="font-size: 0.8em;">
+    <li><strong>8.1 XOR:</strong> a linear model is stuck near 50%; one hidden layer solves it.</li>
+    <li><strong>8.2</strong> ReLU / GELU / Tanh / SiLU; zero vs Xavier vs Kaiming init, dead units.</li>
+    <li><strong>8.3</strong> Small CNN with batch norm and a residual block on synthetic shape images.</li>
+    <li><strong>8.4</strong> SGD, momentum, Adam, AdamW; warmup + cosine LR schedule.</li>
+    <li><strong>8.5</strong> Dropout vs batch norm, gradient clipping, early stopping; export with OnnxBridge.</li>
+  </ol>
+  <p style="font-size: 0.75em; color: #64748B;"><code>modules/mlfp04/solutions/ex_8/</code> (<code>01_xor_proof.py</code> … <code>05_regularisation_training.py</code>). The from-scratch network is the previous slides' code.</p>
+  <aside class="notes">Mirrors the master deck's exercise slide. The images in 8.3–8.5 are synthetic shapes the network can actually learn, so differences between variants mean something.</aside>
 </section>
 
 <section>
@@ -576,6 +666,7 @@ for epoch in range(500):
     <li><strong>Dropout at inference</strong> — predictions become noisy. Turn it off.</li>
     <li><strong>LR too high</strong> — loss oscillates. Start 10⁻³, use schedule.</li>
     <li><strong>No early stopping</strong> — overfits for 1000 epochs when 200 was enough.</li>
+    <li><strong>Exploding gradients</strong> — loss jumps to NaN. Clip the gradient norm: <code>torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)</code>.</li>
   </ol>
 </section>
 
@@ -591,14 +682,14 @@ for epoch in range(500):
 <section>
   <h2>What you can now do</h2>
   <ul>
-    <li>✓ Build a neural network from scratch (forward, backprop, update).</li>
+    <li>✓ Build a neural network from scratch (forward, backprop, update) and export a trained one with OnnxBridge.</li>
     <li>✓ Explain how hidden layers are automated feature engineering.</li>
     <li>✓ Select activation, optimiser, and loss function.</li>
     <li>✓ Apply dropout, batch norm, LR schedule, early stopping.</li>
     <li>✓ Connect MF embeddings (4.7) to NN embeddings (non-linear).</li>
   </ul>
   <div class="callout-slide foundations">
-    <strong>Next:</strong> Module 5 — specialised architectures. Autoencoders, CNNs, RNNs, Transformers, GANs, GNNs, Transfer Learning, RL. The toolkit you learned today powers all of them.
+    <strong>Next:</strong> Module 5 — specialised architectures: autoencoders, CNNs, RNNs, transformers, GANs and diffusion, GNNs, transfer learning, RL. The toolkit you learned today powers all of them. LLMs, agents and RAG follow in Module 6.
   </div>
 </section>
 

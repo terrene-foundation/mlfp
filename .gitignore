@@ -37,6 +37,7 @@ data/mlfp05/fashion_mnist/
 data/mlfp05/cifar10/
 data/mlfp05/cora/
 data/mlfp05/agnews/
+data/mlfp05/ag_news_full_*.parquet
 
 # Smoke-test cache: notebook runners create data/ inside the notebook
 # directory because Colab's `/content` is the canonical CWD. These are

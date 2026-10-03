@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import polars as pl
 import torch
-import torch.nn.functional as F
 
 from shared.mlfp06.ex_3 import (
     OUTPUT_DIR,

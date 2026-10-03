@@ -6,7 +6,7 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Convert logistic regression coefficients to odds ratios: exp(b)
+#   - Convert logistic regression coefficients to odds ratios: exp(β)
 #   - Interpret odds ratios on the original (unscaled) feature scale
 #   - Optimise classification threshold using a domain cost matrix
 #   - Compare cost-optimal vs F1-optimal vs default thresholds

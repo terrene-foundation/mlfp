@@ -197,7 +197,7 @@ print("\n  [ok] Checkpoint 1 passed — spectral embeddings fitted\n")
 
 best_k_spec, best_stats = max(spectral_results.items(), key=lambda x: x[1]["sil"])
 print(f"  Best spectral K: {best_k_spec}  (silhouette={best_stats['sil']:.4f})")
-print(f"  Compare with K-means silhouette on the SAME subsample:")
+print("  Compare with K-means silhouette on the SAME subsample:")
 
 km_compare = KMeans(n_clusters=best_k_spec, random_state=RANDOM_STATE, n_init=10)
 km_labels_sub = km_compare.fit_predict(X_spec)

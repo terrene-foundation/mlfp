@@ -488,7 +488,7 @@ print("=" * 70)
 print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
-    f"""
+    """
   [x] Scored five clustering methods on silhouette, DB, CH
   [x] Measured pairwise agreement via ARI and NMI — high agreement means
       the structure is real; low agreement means the domain expert must

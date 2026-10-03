@@ -134,7 +134,7 @@ soft_probs = best_gmm.predict_proba(X_scaled)
 hard_labels = best_gmm.predict(X_scaled)
 
 profile = soft_vs_hard(soft_probs)
-print(f"\nConfidence bands (fraction of customers in each):")
+print("\nConfidence bands (fraction of customers in each):")
 print(f"  confident  (>0.95):     {profile['confident']:.1%}")
 print(f"  moderate   (0.70-0.95): {profile['moderate']:.1%}")
 print(f"  ambiguous  (0.50-0.70): {profile['ambiguous']:.1%}")
@@ -206,7 +206,7 @@ print("\n[ok] Checkpoint 2 passed — per-segment profile produced")
 
 # MoE gate demo on synthetic 2D data
 moe_demo = simple_moe_gate(X_scaled[:, :2])
-print(f"\nMoE gating demo on first 2 customer features:")
+print("\nMoE gating demo on first 2 customer features:")
 print(f"  Expert 0 active (gate > 0.5): {(moe_demo[:, 0] > 0.5).mean():.1%}")
 print(f"  Expert 1 active (gate > 0.5): {(moe_demo[:, 1] > 0.5).mean():.1%}")
 

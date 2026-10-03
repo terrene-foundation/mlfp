@@ -177,7 +177,7 @@ sil_eom = (
     else float("nan")
 )
 
-print(f"  HDBSCAN cluster-selection comparison:")
+print("  HDBSCAN cluster-selection comparison:")
 print(
     f"    EOM (Excess of Mass) : {n_eom} clusters  noise={noise_eom:.1%}  sil={sil_eom:.4f}"
 )

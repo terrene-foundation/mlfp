@@ -5563,14 +5563,14 @@ x = global_mean_pool(x, batch)
       </ol>
       <pre><code class="language-python">import torchvision.models as models
 
-resnet = models.resnet18(
-    weights=models.ResNet18_Weights.DEFAULT)
+w = models.ResNet18_Weights.DEFAULT
+resnet = models.resnet18(weights=w)
 
 # Freeze all layers
 for param in resnet.parameters():
     param.requires_grad = False
 
-# Replace classifier head (512 features in ResNet-18)
+# New head: ResNet-18 has 512 features
 resnet.fc = nn.Linear(512, num_classes)
 
 # Optionally unfreeze last block

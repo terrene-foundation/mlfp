@@ -145,7 +145,7 @@
   <!-- Supervisor -->
   <rect x="260" y="58" width="240" height="50" rx="8" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="2"/>
   <text x="380" y="78" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#6D28D9">Supervisor Agent</text>
-  <text x="380" y="96" text-anchor="middle" font-family="Inter" font-size="9" fill="#5B21B6">Total budget: $0.50 | Plans and delegates</text>
+  <text x="380" y="96" text-anchor="middle" font-family="Inter" font-size="9" fill="#5B21B6">Total budget: $0.50 (illustrative hosted prices) | Plans and delegates</text>
 
   <!-- Delegation arrows -->
   <line x1="300" y1="108" x2="120" y2="140" stroke="#8B5CF6" stroke-width="1.5" marker-end="url(#sd-arr)"/>
@@ -202,33 +202,39 @@
   <text x="127" y="318" text-anchor="middle" font-family="Inter" font-size="8" fill="#92400E">budgets &lt;= parent budget always</text>
 </svg></figure></section>
 
-<section><h2>Multi-agent ML pipeline</h2><pre><code class="language-python" data-trim>from kaizen_agents import BaseAgent, Delegate
+<section><h2>Multi-agent pipeline: fan-out, fan-in</h2><pre><code class="language-python" data-trim>import asyncio
+from shared.mlfp06.ex_6 import build_specialists, build_synthesis, run_checked
 
-data_agent = BaseAgent(name="DataScientist", ...)
-feature_agent = BaseAgent(name="FeatureEngineer", ...)
-model_agent = BaseAgent(name="ModelSelector", ...)
-report_agent = BaseAgent(name="ReportWriter", ...)
+# Three BaseAgent specialists, each with its own typed Signature
+factual, semantic, structural = build_specialists()
+supervisor = build_synthesis()
 
-# Supervisor delegates to workers with individual budgets
-supervisor = BaseAgent(
-    name="Supervisor",
-    workers=[data_agent, feature_agent,
-             model_agent, report_agent],
-    max_llm_cost_usd=5.00)
-result = await supervisor.run("Build model for HDB prices")</code></pre></section>
+async def supervisor_worker(doc: str, question: str) -> dict:
+    # Fan-out: independent workers run concurrently
+    f, m, s = await asyncio.gather(
+        run_checked(factual, document=doc, question=question),
+        run_checked(semantic, document=doc, question=question),
+        run_checked(structural, document=doc, question=question))
+    # Fan-in: the supervisor sees STRUCTURED outputs, not free text
+    return await run_checked(
+        supervisor, document=doc, question=question,
+        factual_analysis=str(f["factual_claims"]),
+        semantic_analysis=str(m["main_themes"]),
+        structural_analysis=str(s["key_entities"]))</code></pre><p style="font-size:.75em">Exercise 6.1 on SQuAD passages. Sequential (6.2) chains stages instead; 6.3 adds an LLM router that hands each query to the right specialist.</p></section>
 
-<section><h2>Agent memory</h2><table style="font-size:.7em"><thead><tr><th>Type</th><th>Scope</th><th>Use</th></tr></thead><tbody><tr><td>Short-term</td><td>Current conversation</td><td>Track context</td></tr><tr><td>Long-term</td><td>Persistent</td><td>User preferences</td></tr><tr><td>Entity</td><td>Structured</td><td>People, places, concepts</td></tr></tbody></table></section>
+<section><h2>Agent memory</h2><table style="font-size:.66em"><thead><tr><th>Type</th><th>Scope</th><th>Use</th><th>In this course</th></tr></thead><tbody><tr><td>Short-term</td><td>Current conversation</td><td>Track context</td><td>Sliding window (Ex 6.5); Kaizen <code>BufferMemory(max_turns=…)</code></td></tr><tr><td>Long-term</td><td>Persistent, across sessions</td><td>Facts, user preferences</td><td>Fact store with recall (Ex 6.5); production: a vector DB</td></tr><tr><td>Entity</td><td>Structured</td><td>People, places, concepts</td><td>Mini knowledge graph (Ex 6.5)</td></tr><tr><td>Shared</td><td>Across agents</td><td>Insights one agent leaves for others</td><td>Kaizen <code>SharedMemoryPool</code> (<code>write_insight</code> / <code>read_relevant</code>)</td></tr></tbody></table></section>
 
-<section><h2>MCP — Model Context Protocol</h2><pre><code class="language-python" data-trim>from kailash_mcp import MCPServer, tool
+<section><h2>MCP — Model Context Protocol</h2><pre><code class="language-python" data-trim>from kailash_mcp import MCPServer
 
-server = MCPServer("ml-tools")
+server = MCPServer(name="mlfp06-analysis-server", transport="stdio")
 
-@server.tool("explore")
-def explore_data(dataset: str) -> dict:
-    df = loader.load("mlfp06", dataset)
-    return {"shape": df.shape, "columns": df.columns}
+@server.tool()                    # note the parentheses: a decorator factory
+def search_corpus(query: str, top_k: int = 3) -> str:
+    """Search the document corpus for passages matching a query."""
+    hits = [t for t in passages["text"].to_list() if query.lower() in t.lower()]
+    return "\n\n".join(h[:200] for h in hits[:top_k]) or "No matches found."
 
-server.run(transport="stdio")</code></pre><div class="callout-slide kailash"><strong>Kailash:</strong> MCP exposes tools to any MCP-compatible client. Build once, use from any agent framework.</div></section>
+server.run()                      # serve over stdio until the client disconnects</code></pre><div class="callout-slide kailash"><strong>Kailash:</strong> type hints + docstring become the tool's published JSON schema. Clients discover tools with the JSON-RPC <code>tools/list</code> method and invoke them with <code>tools/call</code>; Exercise 6.4 does both through a real MCP client.</div></section>
 
 <section><h2>MCP: a universal protocol for LLM-tool integration</h2>
 <figure style="text-align:center"><svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
@@ -245,7 +251,7 @@ server.run(transport="stdio")</code></pre><div class="callout-slide kailash"><st
   <text x="110" y="108" text-anchor="middle" font-family="Inter" font-size="10" fill="#4338CA">Claude Desktop</text>
 
   <rect x="35" y="128" width="150" height="32" rx="5" fill="white" stroke="#4F46E5"/>
-  <text x="110" y="148" text-anchor="middle" font-family="Inter" font-size="10" fill="#4338CA">VS Code Copilot</text>
+  <text x="110" y="148" text-anchor="middle" font-family="Inter" font-size="10" fill="#4338CA">IDE assistant</text>
 
   <rect x="35" y="168" width="150" height="32" rx="5" fill="white" stroke="#4F46E5"/>
   <text x="110" y="188" text-anchor="middle" font-family="Inter" font-size="10" fill="#4338CA">Custom Agent</text>
@@ -269,11 +275,11 @@ server.run(transport="stdio")</code></pre><div class="callout-slide kailash"><st
   <!-- Request/Response arrows -->
   <text x="330" y="195" text-anchor="middle" font-family="Inter" font-size="9" fill="#78350F">Request flow:</text>
   <rect x="260" y="202" width="140" height="20" rx="3" fill="#4F46E5"/>
-  <text x="330" y="216" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="white">tools/call {"name": "explore"}</text>
+  <text x="330" y="216" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="white">tools/call {"name": "search_corpus"}</text>
 
   <text x="330" y="240" text-anchor="middle" font-family="Inter" font-size="9" fill="#78350F">Response flow:</text>
   <rect x="260" y="247" width="140" height="20" rx="3" fill="#0D9488"/>
-  <text x="330" y="261" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="white">{"shape": [1000, 12], ...}</text>
+  <text x="330" y="261" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="white">{"content": [{"type": "text", ...}]}</text>
 
   <!-- ===== RIGHT: MCP Server ===== -->
   <rect x="460" y="40" width="280" height="260" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
@@ -282,13 +288,13 @@ server.run(transport="stdio")</code></pre><div class="callout-slide kailash"><st
   <!-- Tools -->
   <rect x="478" y="88" width="245" height="58" rx="6" fill="white" stroke="#0D9488" stroke-width="1.5"/>
   <text x="488" y="105" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">Tools (functions)</text>
-  <text x="488" y="120" font-family="JetBrains Mono" font-size="8" fill="#0F766E">explore_data(dataset) -> dict</text>
-  <text x="488" y="133" font-family="JetBrains Mono" font-size="8" fill="#0F766E">train_model(config) -> metrics</text>
+  <text x="488" y="120" font-family="JetBrains Mono" font-size="8" fill="#0F766E">search_corpus(query, top_k) -> str</text>
+  <text x="488" y="133" font-family="JetBrains Mono" font-size="8" fill="#0F766E">analyse_passage(passage, type) -> str</text>
 
   <!-- Resources -->
   <rect x="478" y="155" width="245" height="48" rx="6" fill="white" stroke="#0D9488" stroke-width="1.5"/>
   <text x="488" y="172" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">Resources (data)</text>
-  <text x="488" y="187" font-family="JetBrains Mono" font-size="8" fill="#0F766E">file://data/hdb_prices.parquet</text>
+  <text x="488" y="187" font-family="JetBrains Mono" font-size="8" fill="#0F766E">file://data/mlfp06/squad/squad_v2_300.parquet</text>
   <text x="488" y="198" font-family="JetBrains Mono" font-size="8" fill="#0F766E">db://models/registry</text>
 
   <!-- Prompts -->
@@ -305,12 +311,12 @@ server.run(transport="stdio")</code></pre><div class="callout-slide kailash"><st
   <line x1="460" y1="170" x2="420" y2="170" stroke="#0D9488" stroke-width="2" marker-end="url(#mcp-arr-back)"/>
 
   <!-- Bottom summary -->
-  <text x="380" y="325" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">One server, many clients. Tools defined once, usable from Claude, VS Code, custom agents, or CLI.</text>
+  <text x="380" y="325" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">One server, many clients. Tools defined once, usable from desktop assistants, IDEs, custom agents, or the CLI.</text>
 </svg></figure></section>
 
-<section><h2>A2A protocol</h2><ul style="font-size:.85em"><li>Structured communication between agents.</li><li>Each message has: sender, recipient, content schema, metadata.</li><li>Enables agents built in different frameworks to interoperate.</li></ul></section>
+<section><h2>A2A protocol</h2><ul style="font-size:.82em"><li>Structured communication between agents, built from two Kaizen records (<code>kaizen.nodes.ai.a2a</code>):</li><li><strong><code>A2AAgentCard</code></strong> — who an agent is: <code>agent_id</code>, <code>agent_name</code>, <code>agent_type</code>, <code>version</code>, primary / secondary capabilities.</li><li><strong><code>A2ATask</code></strong> — what is being asked: <code>name</code>, <code>description</code>, <code>assigned_to</code>, <code>delegated_by</code>, requirements, constraints, success criteria, and a state lifecycle.</li><li>Capability cards let a router match tasks to agents — Exercise 6.3 routes on exactly this idea.</li></ul></section>
 
-<section><h2>Security considerations</h2><ul style="font-size:.85em"><li><strong>Data isolation:</strong> agents with different access levels must not leak data.</li><li><strong>Structured output:</strong> use schemas between agents, not free-form text.</li><li><strong>Audit trail:</strong> log every inter-agent message for compliance.</li></ul></section>
+<section><h2>Architecture and security considerations</h2><ul style="font-size:.8em"><li><strong>Modularity:</strong> one narrow Signature per specialist — swap or test an agent without touching the rest.</li><li><strong>Load balancing:</strong> run several instances of a busy specialist and spread calls across them; independent workers parallelise with <code>asyncio.gather</code>.</li><li><strong>Dynamic agent creation:</strong> a supervisor spawns a specialist only when a task needs it, inside its own budget and envelope.</li><li><strong>Data isolation:</strong> agents with different access levels must not leak data — mask identifiers before text crosses agents.</li><li><strong>Injection defence:</strong> keep data separate from instructions and limit what each agent's tools can do; keyword filters are beaten by paraphrase (Ex 6.5).</li><li><strong>Audit trail:</strong> log every inter-agent message for compliance.</li></ul><aside class="notes">Spec 6.6 architectural considerations (modularity, load balancing, dynamic agent creation) plus security. Exercise 6.5 shows a keyword guard failing on a paraphrased attack.</aside></section>
 
 <section><h2>Common mistakes</h2><ol style="font-size:.85em"><li><strong>Too many agents</strong> — start with 2–3.</li><li><strong>Free-form inter-agent communication</strong> — use structured schemas.</li><li><strong>No security boundaries</strong> — prevent cross-agent data leakage.</li></ol></section>
 

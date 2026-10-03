@@ -7,113 +7,93 @@
 
 <section><h2>Governance is code, not committee</h2><ul><li>Access controls that DENY unauthorised access.</li><li>Operating envelopes that RESTRICT agent behaviour.</li><li>Budget cascading that PREVENTS runaway costs.</li><li>Audit trails that PROVE compliance.</li></ul><div class="callout-slide foundations"><strong>🟢 Foundations:</strong> the code IS the governance. If it is not in code, it does not exist.</div></section>
 
-<section><h2>PACT D/T/R addressing</h2><pre><code class="language-python" data-trim>from pact import GovernanceEngine, load_org_yaml, Address
+<section><h2>PACT D/T/R addressing</h2><pre><code class="language-python" data-trim>from pact import Address
+from shared.mlfp06.ex_7 import compile_governance
 
-loaded = load_org_yaml("finance_org.yaml")
-engine = GovernanceEngine(loaded.org_definition)
+# load_org_yaml() + GovernanceEngine(loaded.org_definition) compiles only the
+# structure; compile_governance() then calls apply_governance_specs() so the
+# YAML clearances and envelopes are actually enforced
+engine, org = compile_governance()
 
-# Role address grammar: every D or T is followed by exactly one R
+# Department 1 → its head Role → Team 1 → its head Role (the Data Analyst)
 addr = Address.parse("D1-R1-T1-R1")
-verdict = engine.verify_action(
-    role_address="D1-R1-T1-R1",
-    action="read_customer_data",
-    context={"data_classification": "confidential"},
-)
-# verdict.allowed, verdict.reason, verdict.level</code></pre></section>
+verdict = engine.verify_action("D1-R1-T1-R1", "read_data")
+print(verdict.allowed, verdict.level, verdict.reason)
+# True auto_approved Action 'read_data' is within all constraint dimensions</code></pre><p style="font-size:.8em"><code>verify_action(role_address, action, context=None)</code> is the single decision call. It returns a <code>GovernanceVerdict</code> with <code>.allowed</code>, <code>.level</code> and <code>.reason</code>.</p></section>
 
-<section><h2>PACT: who Decides, Trusts, Responds</h2>
+<section><h2>PACT D/T/R: Department / Team / Role</h2>
 <figure style="text-align:center"><svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <marker id="dtr-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker>
-    <marker id="dtr-arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#22C55E"/></marker>
-    <marker id="dtr-arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#F43F5E"/></marker>
-  </defs>
+  <!-- ===== LEFT: compiled course org ===== -->
+  <text x="20" y="18" font-family="Inter" font-weight="700" font-size="11" fill="#334155">Course org (shared/mlfp06/ex_7.py), compiled</text>
+  <line x1="34" y1="62" x2="34" y2="95" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="64" y1="110" x2="64" y2="255" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="94" y1="150" x2="94" y2="175" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="94" y1="230" x2="94" y2="255" stroke="#94A3B8" stroke-width="1.5"/>
+  <rect x="20" y="28" width="310" height="34" rx="6" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="1.5"/>
+  <text x="30" y="43" font-family="JetBrains Mono" font-weight="700" font-size="10" fill="#6D28D9">D1</text>
+  <text x="30" y="56" font-family="Inter" font-size="9" fill="#6D28D9">DEPARTMENT · ML Engineering</text>
+  <rect x="50" y="78" width="280" height="32" rx="5" fill="#EDE9FE" stroke="#8B5CF6"/>
+  <text x="60" y="92" font-family="JetBrains Mono" font-weight="700" font-size="10" fill="#5B21B6">D1-R1</text>
+  <text x="60" y="104" font-family="Inter" font-size="9" fill="#5B21B6">ROLE (dept head) · Chief ML Officer · secret</text>
+  <rect x="80" y="118" width="250" height="32" rx="5" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="90" y="132" font-family="JetBrains Mono" font-weight="700" font-size="10" fill="#92400E">D1-R1-T1</text>
+  <text x="90" y="144" font-family="Inter" font-size="9" fill="#92400E">TEAM · Data Analysis</text>
+  <rect x="110" y="158" width="220" height="32" rx="5" fill="#CCFBF1" stroke="#0D9488"/>
+  <text x="120" y="172" font-family="JetBrains Mono" font-weight="700" font-size="10" fill="#0F766E">D1-R1-T1-R1</text>
+  <text x="120" y="184" font-family="Inter" font-size="9" fill="#0F766E">ROLE (team head) · Data Analyst · restricted</text>
+  <rect x="80" y="198" width="250" height="32" rx="5" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="90" y="212" font-family="JetBrains Mono" font-weight="700" font-size="10" fill="#92400E">D1-R1-T2</text>
+  <text x="90" y="224" font-family="Inter" font-size="9" fill="#92400E">TEAM · Model Training</text>
+  <rect x="110" y="238" width="220" height="32" rx="5" fill="#CCFBF1" stroke="#0D9488"/>
+  <text x="120" y="252" font-family="JetBrains Mono" font-weight="700" font-size="10" fill="#0F766E">D1-R1-T2-R1</text>
+  <text x="120" y="264" font-family="Inter" font-size="9" fill="#0F766E">ROLE (team head) · Model Trainer · confidential</text>
+  <text x="20" y="292" font-family="Inter" font-size="9" fill="#475569">Grammar: every D or T is immediately followed by its head R.</text>
+  <text x="20" y="306" font-family="Inter" font-size="9" fill="#475569">Envelope D1-R1 → D1-R1-T1-R1: allowed_actions = read_data,</text>
+  <text x="20" y="319" font-family="Inter" font-size="9" fill="#475569">summarise_data, generate_report · max_spend_usd = 20</text>
 
-  <!-- D: Decision-maker (top) -->
-  <rect x="250" y="10" width="260" height="60" rx="8" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="2"/>
-  <text x="280" y="35" font-family="Inter" font-weight="700" font-size="14" fill="#6D28D9">D</text>
-  <text x="300" y="35" font-family="Inter" font-weight="600" font-size="12" fill="#6D28D9">Decision-maker</text>
-  <text x="280" y="55" font-family="Inter" font-size="9" fill="#5B21B6">Sets policy: "max $1000 per agent action, no PII access"</text>
+  <!-- ===== RIGHT: verify_action verdicts (measured on the compiled org) ===== -->
+  <text x="365" y="18" font-family="JetBrains Mono" font-weight="700" font-size="11" fill="#334155">engine.verify_action(address, action)</text>
+  <rect x="365" y="28" width="385" height="54" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="375" y="44" font-family="JetBrains Mono" font-size="9" fill="#15803D">D1-R1-T1-R1 · read_data</text>
+  <text x="375" y="59" font-family="Inter" font-weight="700" font-size="10" fill="#15803D">auto_approved · allowed = True</text>
+  <text x="375" y="73" font-family="Inter" font-size="9" fill="#166534">inside every dimension of the attached envelope</text>
+  <rect x="365" y="90" width="385" height="54" rx="6" fill="#FFE4E6" stroke="#F43F5E" stroke-width="1.5"/>
+  <text x="375" y="106" font-family="JetBrains Mono" font-size="9" fill="#BE123C">D1-R1-T1-R1 · deploy_model</text>
+  <text x="375" y="121" font-family="Inter" font-weight="700" font-size="10" fill="#BE123C">blocked · allowed = False</text>
+  <text x="375" y="135" font-family="Inter" font-size="9" fill="#9F1239">not in the envelope's allowed_actions list</text>
+  <rect x="365" y="152" width="385" height="54" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="375" y="168" font-family="JetBrains Mono" font-size="9" fill="#92400E">D1-R1 · delete_all_records</text>
+  <text x="375" y="183" font-family="Inter" font-weight="700" font-size="10" fill="#92400E">auto_approved · allowed = True</text>
+  <text x="375" y="197" font-family="Inter" font-size="9" fill="#78350F">no envelope attached to this role: the default ALLOWS</text>
+  <rect x="365" y="214" width="385" height="54" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="375" y="230" font-family="JetBrains Mono" font-size="9" fill="#92400E">D99-R99-T99-R99 · read_data</text>
+  <text x="375" y="245" font-family="Inter" font-weight="700" font-size="10" fill="#92400E">auto_approved · allowed = True</text>
+  <text x="375" y="259" font-family="Inter" font-size="9" fill="#78350F">address not in the org, so no envelope: also ALLOWED</text>
+  <text x="365" y="292" font-family="Inter" font-weight="700" font-size="10" fill="#334155">Deny paths exist only where an envelope is attached.</text>
+  <text x="365" y="306" font-family="Inter" font-size="9" fill="#475569">kailash-pact 0.14.1 defaults to fail-OPEN for envelope-less</text>
+  <text x="365" y="319" font-family="Inter" font-size="9" fill="#475569">and unknown roles. Attach envelopes before you rely on a deny.</text>
+</svg></figure>
+<aside class="notes">D/T/R is Department / Team / Role — a positional address grammar, not three job titles. All four verdicts on the right were measured by calling verify_action on the compiled course org with its YAML envelopes applied. Stress the bottom two rows: the installed engine is fail-open where no envelope exists.</aside></section>
 
-  <!-- T: Trust-holder (middle) -->
-  <rect x="250" y="100" width="260" height="60" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
-  <text x="280" y="125" font-family="Inter" font-weight="700" font-size="14" fill="#92400E">T</text>
-  <text x="300" y="125" font-family="Inter" font-weight="600" font-size="12" fill="#92400E">Trust-holder</text>
-  <text x="280" y="145" font-family="Inter" font-size="9" fill="#78350F">Verifies: does this action comply with D's policy?</text>
+<section><h2>Operating envelopes</h2><figure style="text-align:center"><svg viewBox="0 0 600 180" xmlns="http://www.w3.org/2000/svg"><rect x="40" y="20" width="520" height="140" rx="8" fill="#FEE2E2" stroke="#EF4444" stroke-dasharray="4 3"/><text x="300" y="45" text-anchor="middle" font-size="11" fill="#EF4444">Outer boundary (never crossed)</text><rect x="100" y="55" width="400" height="90" rx="6" fill="#FEF3C7" stroke="#F59E0B"/><text x="300" y="80" text-anchor="middle" font-size="11" fill="#F59E0B">Role envelope</text><rect x="170" y="80" width="260" height="50" rx="4" fill="#DCFCE7" stroke="#22C55E"/><text x="300" y="108" text-anchor="middle" font-size="11" fill="#22C55E">Task envelope</text><text x="300" y="165" text-anchor="middle" font-size="10" fill="#64748B">Monotonically tightening: can only get stricter, never looser</text></svg></figure><ul style="font-size:.75em"><li>A <code>RoleEnvelope</code> wraps a <code>ConstraintEnvelopeConfig</code> with five dimensions: Financial, Operational, Temporal, Data Access, Communication — attached with <code>engine.set_role_envelope(...)</code>.</li><li>Clearance ladder (pact <code>ConfidentialityLevel</code>): <strong>public &lt; restricted &lt; confidential &lt; secret &lt; top_secret</strong>. "restricted" is the second-lowest rung, not the top; "internal" is an alias for it.</li></ul></section>
 
-  <!-- R: Responder (bottom) -->
-  <rect x="250" y="190" width="260" height="60" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
-  <text x="280" y="215" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">R</text>
-  <text x="300" y="215" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Responder</text>
-  <text x="280" y="235" font-family="Inter" font-size="9" fill="#0F766E">Executes within envelope: agent, API, function</text>
-
-  <!-- Vertical arrows between levels -->
-  <line x1="380" y1="70" x2="380" y2="100" stroke="#475569" stroke-width="1.5" marker-end="url(#dtr-arr)"/>
-  <text x="395" y="88" font-family="Inter" font-size="8" fill="#64748B">delegates authority</text>
-  <line x1="380" y1="160" x2="380" y2="190" stroke="#475569" stroke-width="1.5" marker-end="url(#dtr-arr)"/>
-  <text x="395" y="178" font-family="Inter" font-size="8" fill="#64748B">grants clearance</text>
-
-  <!-- ===== ALLOWED ACTION (left) ===== -->
-  <text x="60" y="270" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#22C55E">ALLOWED</text>
-
-  <!-- R proposes -->
-  <rect x="20" y="280" width="145" height="28" rx="4" fill="#F0FDFA" stroke="#0D9488"/>
-  <text x="92" y="298" text-anchor="middle" font-family="Inter" font-size="8" fill="#0D9488">R: "read sales report"</text>
-  <!-- Arrow up -->
-  <line x1="92" y1="280" x2="92" y2="262" stroke="#22C55E" stroke-width="1.5" marker-end="url(#dtr-arr-green)"/>
-  <text x="92" y="255" text-anchor="middle" font-family="Inter" font-size="7" fill="#22C55E">T verifies: cost $0.02 &lt; $1000</text>
-  <!-- Arrow continues up -->
-  <line x1="62" y1="248" x2="62" y2="238" stroke="#22C55E" stroke-width="1.5"/>
-  <text x="62" y="233" text-anchor="middle" font-family="Inter" font-size="7" fill="#22C55E">D's policy allows</text>
-  <!-- Arrow right = proceed -->
-  <line x1="165" y1="294" x2="195" y2="294" stroke="#22C55E" stroke-width="2" marker-end="url(#dtr-arr-green)"/>
-  <rect x="198" y="281" width="55" height="26" rx="4" fill="#22C55E"/>
-  <text x="225" y="298" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">Execute</text>
-
-  <!-- Audit log for allowed -->
-  <rect x="198" y="312" width="55" height="18" rx="3" fill="#DCFCE7" stroke="#22C55E"/>
-  <text x="225" y="324" text-anchor="middle" font-family="Inter" font-size="7" fill="#15803D">+ audit log</text>
-
-  <!-- ===== BLOCKED ACTION (right) ===== -->
-  <text x="580" y="270" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#F43F5E">BLOCKED</text>
-
-  <!-- R proposes -->
-  <rect x="520" y="280" width="160" height="28" rx="4" fill="#F0FDFA" stroke="#0D9488"/>
-  <text x="600" y="298" text-anchor="middle" font-family="Inter" font-size="8" fill="#0D9488">R: "deploy to prod" ($5000)</text>
-  <!-- Arrow up -->
-  <line x1="600" y1="280" x2="600" y2="262" stroke="#F43F5E" stroke-width="1.5" marker-end="url(#dtr-arr-red)"/>
-  <text x="600" y="255" text-anchor="middle" font-family="Inter" font-size="7" fill="#F43F5E">T verifies: $5000 > $1000 limit</text>
-  <!-- X mark -->
-  <line x1="680" y1="294" x2="710" y2="294" stroke="#F43F5E" stroke-width="2" marker-end="url(#dtr-arr-red)"/>
-  <rect x="712" y="281" width="40" height="26" rx="4" fill="#F43F5E"/>
-  <text x="732" y="298" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">Deny</text>
-
-  <!-- Audit log for blocked -->
-  <rect x="712" y="312" width="40" height="18" rx="3" fill="#FEE2E2" stroke="#F43F5E"/>
-  <text x="732" y="324" text-anchor="middle" font-family="Inter" font-size="7" fill="#BE123C">+ audit</text>
-</svg></figure></section>
-
-<section><h2>Operating envelopes</h2><figure style="text-align:center"><svg viewBox="0 0 600 180" xmlns="http://www.w3.org/2000/svg"><rect x="40" y="20" width="520" height="140" rx="8" fill="#FEE2E2" stroke="#EF4444" stroke-dasharray="4 3"/><text x="300" y="45" text-anchor="middle" font-size="11" fill="#EF4444">Outer boundary (never crossed)</text><rect x="100" y="55" width="400" height="90" rx="6" fill="#FEF3C7" stroke="#F59E0B"/><text x="300" y="80" text-anchor="middle" font-size="11" fill="#F59E0B">Role envelope</text><rect x="170" y="80" width="260" height="50" rx="4" fill="#DCFCE7" stroke="#22C55E"/><text x="300" y="108" text-anchor="middle" font-size="11" fill="#22C55E">Task envelope</text><text x="300" y="165" text-anchor="middle" font-size="10" fill="#64748B">Monotonically tightening: can only get stricter, never looser</text></svg></figure></section>
-
-<section><h2>Budget cascading</h2><figure style="text-align:center"><svg viewBox="0 0 500 180" xmlns="http://www.w3.org/2000/svg"><rect x="160" y="10" width="180" height="45" rx="6" fill="#FEF3C7" stroke="#F59E0B"/><text x="250" y="38" text-anchor="middle" font-weight="600" font-size="11" fill="#92400E">Supervisor: $10</text><rect x="20" y="90" width="140" height="40" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="90" y="114" text-anchor="middle" font-size="10">DataSci: $3</text><rect x="180" y="90" width="140" height="40" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="250" y="114" text-anchor="middle" font-size="10">ModelSel: $4</text><rect x="340" y="90" width="140" height="40" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="410" y="114" text-anchor="middle" font-size="10">Report: $3</text><line x1="200" y1="55" x2="90" y2="90" stroke="#475569" stroke-width="1"/><line x1="250" y1="55" x2="250" y2="90" stroke="#475569" stroke-width="1"/><line x1="300" y1="55" x2="410" y2="90" stroke="#475569" stroke-width="1"/><text x="250" y="155" text-anchor="middle" font-size="10" fill="#64748B">Child exhausts budget → stops gracefully. Parent total never exceeds $10.</text></svg></figure></section>
+<section><h2>Budget cascading</h2><figure style="text-align:center"><svg viewBox="0 0 500 180" xmlns="http://www.w3.org/2000/svg"><rect x="160" y="10" width="180" height="45" rx="6" fill="#FEF3C7" stroke="#F59E0B"/><text x="250" y="38" text-anchor="middle" font-weight="600" font-size="11" fill="#92400E">Supervisor: $10</text><rect x="20" y="90" width="140" height="40" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="90" y="114" text-anchor="middle" font-size="10">DataSci: $3</text><rect x="180" y="90" width="140" height="40" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="250" y="114" text-anchor="middle" font-size="10">ModelSel: $4</text><rect x="340" y="90" width="140" height="40" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="410" y="114" text-anchor="middle" font-size="10">Report: $3</text><line x1="200" y1="55" x2="90" y2="90" stroke="#475569" stroke-width="1"/><line x1="250" y1="55" x2="250" y2="90" stroke="#475569" stroke-width="1"/><line x1="300" y1="55" x2="410" y2="90" stroke="#475569" stroke-width="1"/><text x="250" y="155" text-anchor="middle" font-size="10" fill="#64748B">Child exhausts budget → stops gracefully. Parent total never exceeds $10.</text></svg></figure><ul style="font-size:.75em"><li><strong>Organisation layer:</strong> <code>FinancialConstraintConfig(max_spend_usd=...)</code> in each envelope. A child asking for more than its parent fails <code>validate_tightening</code> ("child max_spend_usd (12.0) exceeds parent (10.0)").</li><li><strong>Agent layer:</strong> <code>BaseAgentConfig(budget_limit_usd=...)</code> or <code>GovernedSupervisor(budget_usd=...)</code>, set at construction.</li><li>Dollar figures are illustrative: on local Ollama every call is priced $0.</li></ul></section>
 
 <section><h2>GovernedSupervisor</h2><pre><code class="language-python" data-trim>from kaizen_agents import GovernedSupervisor
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL
+from shared.mlfp06.ex_7 import make_llm_executor
 
 governed = GovernedSupervisor(
-    model="gpt-4o-mini",
-    budget_usd=5.00,
-    tools=["analyse_customer_data"],
-    data_clearance="restricted",
+    model=DEFAULT_CHAT_MODEL,             # from OLLAMA_CHAT_MODEL
+    budget_usd=50.0,
+    tools=["answer_question", "read_data"],
+    data_clearance="confidential",        # public &lt; restricted &lt; confidential &lt; secret
 )
-
-async def executor(spec, inputs):
-    return {"result": "...", "cost": 0.01,
-            "prompt_tokens": 100, "completion_tokens": 50}
-
-result = await governed.run(
-    objective="Analyse customer data", execute_node=executor,
-)
-# result.success, result.budget_consumed, result.audit_trail</code></pre><div class="callout-slide kailash"><strong>⚙ Kailash:</strong> every step passes through verify_action. Verdict levels: allowed, blocked, warn, audit. Audit trail is hash-chained and tamper-evident via <code>governed.audit.verify_chain()</code>.</div></section>
+# execute_node(spec, inputs) -&gt; {result, cost, prompt_tokens, completion_tokens}
+result = await governed.run(objective="Summarise this quarter's churn drivers",
+                            execute_node=make_llm_executor())
+print(result.success, result.budget_consumed, list(result.results))
+print(governed.audit.verify_chain())      # True unless a record was altered</code></pre><div class="callout-slide kailash" style="font-size:.75em"><strong>⚙ Kailash:</strong> a planner, not a wrapper: it plans steps and calls your <code>execute_node</code> for each, enforcing budget, tools and clearance. Audit records (<code>governed.audit.to_list()</code>) carry <code>record_type</code>, <code>action</code>, <code>details</code> and a hash link (<code>prev_hash</code> → <code>record_hash</code>).</div></section>
 
 <section><h2>Every action gets a verdict</h2>
 <figure style="text-align:center"><svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
@@ -135,7 +115,7 @@ result = await governed.run(
 
   <!-- ===== ALLOW (left branch) ===== -->
   <line x1="305" y1="108" x2="150" y2="108" stroke="#22C55E" stroke-width="2" marker-end="url(#gov-arr)"/>
-  <text x="225" y="100" text-anchor="middle" font-family="Inter" font-weight="700" font-size="9" fill="#22C55E">ALLOW</text>
+  <text x="225" y="100" text-anchor="middle" font-family="Inter" font-weight="700" font-size="9" fill="#22C55E">auto_approved</text>
 
   <rect x="40" y="88" width="110" height="40" rx="6" fill="#22C55E"/>
   <text x="95" y="107" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="white">Execute</text>
@@ -147,7 +127,7 @@ result = await governed.run(
 
   <!-- ===== WARN (upper right) ===== -->
   <line x1="455" y1="90" x2="570" y2="50" stroke="#F59E0B" stroke-width="2" marker-end="url(#gov-arr)"/>
-  <text x="520" y="60" text-anchor="middle" font-family="Inter" font-weight="700" font-size="9" fill="#F59E0B">WARN</text>
+  <text x="520" y="60" text-anchor="middle" font-family="Inter" font-weight="700" font-size="9" fill="#F59E0B">flagged</text>
 
   <rect x="572" y="28" width="160" height="55" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
   <text x="652" y="48" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#92400E">Execute + Flag</text>
@@ -156,11 +136,11 @@ result = await governed.run(
 
   <line x1="652" y1="83" x2="652" y2="100" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#gov-arr)"/>
   <rect x="592" y="102" width="120" height="26" rx="4" fill="#FEF3C7" stroke="#F59E0B"/>
-  <text x="652" y="119" text-anchor="middle" font-family="Inter" font-size="9" fill="#92400E">audit log (warned)</text>
+  <text x="652" y="119" text-anchor="middle" font-family="Inter" font-size="9" fill="#92400E">audit log (flagged)</text>
 
   <!-- ===== BLOCK (lower right) ===== -->
   <line x1="455" y1="125" x2="570" y2="170" stroke="#F43F5E" stroke-width="2" marker-end="url(#gov-arr)"/>
-  <text x="520" y="155" text-anchor="middle" font-family="Inter" font-weight="700" font-size="9" fill="#F43F5E">BLOCK</text>
+  <text x="520" y="155" text-anchor="middle" font-family="Inter" font-weight="700" font-size="9" fill="#F43F5E">blocked</text>
 
   <rect x="572" y="150" width="160" height="55" rx="6" fill="#F43F5E"/>
   <text x="652" y="172" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="white">Deny</text>
@@ -173,11 +153,11 @@ result = await governed.run(
 
   <!-- ===== ESCALATE (bottom) ===== -->
   <line x1="380" y1="148" x2="380" y2="200" stroke="#8B5CF6" stroke-width="2" marker-end="url(#gov-arr)"/>
-  <text x="395" y="178" font-family="Inter" font-weight="700" font-size="9" fill="#8B5CF6">ESCALATE</text>
+  <text x="395" y="178" font-family="Inter" font-weight="700" font-size="9" fill="#8B5CF6">held</text>
 
   <rect x="300" y="202" width="160" height="40" rx="6" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="1.5"/>
   <text x="380" y="220" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#6D28D9">Human Review</text>
-  <text x="380" y="234" text-anchor="middle" font-family="Inter" font-size="8" fill="#5B21B6">D or T decides manually</text>
+  <text x="380" y="234" text-anchor="middle" font-family="Inter" font-size="8" fill="#5B21B6">a human approver decides</text>
 
   <!-- Human review branches -->
   <line x1="335" y1="242" x2="200" y2="280" stroke="#22C55E" stroke-width="1.5" marker-end="url(#gov-arr)"/>
@@ -191,28 +171,32 @@ result = await governed.run(
   <text x="560" y="292" text-anchor="middle" font-family="Inter" font-size="9" fill="#BE123C">deny + audit</text>
 
   <!-- Key principle note -->
-  <text x="380" y="332" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#64748B">Every path ends with an audit log entry -- no untracked actions</text>
+  <text x="380" y="332" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#64748B">.allowed is True for auto_approved and flagged; held waits for a human. Every path is audited.</text>
 </svg></figure></section>
 
-<section><h2>Governance testing</h2><pre><code class="language-python" data-trim>from pact import RoleEnvelope, MonotonicTighteningError
+<section><h2>Governance testing</h2><pre><code class="language-python" data-trim>import pytest
+from pact import (ConstraintEnvelopeConfig, MonotonicTighteningError,
+                  OperationalConstraintConfig, RoleEnvelope)
+from shared.mlfp06.ex_7 import compile_governance
+
+engine, _ = compile_governance()   # runs apply_governance_specs: envelopes ATTACHED
 
 def test_denied_access_stays_denied():
-    verdict = engine.verify_action(
-        role_address="D1-R1-T1-R1",   # analyst
-        action="model_deployment",
-        context={"data_classification": "restricted"},
-    )
-    assert not verdict.allowed
+    # data_analyst's envelope allows read / summarise / report only
+    verdict = engine.verify_action("D1-R1-T1-R1", "deploy_model")
+    assert verdict.level == "blocked" and not verdict.allowed
 
 def test_envelope_only_tightens():
-    # Loosening a child envelope raises structurally:
-    with pytest.raises(MonotonicTighteningError):
-        RoleEnvelope.validate_tightening(
-            parent_envelope, loosened_child_envelope)</code></pre><div class="callout-slide warning"><strong>⚠ Key principle:</strong> test what does NOT happen. Governance tests verify denied access stays denied.</div></section>
+    parent = ConstraintEnvelopeConfig(id="parent", operational=
+        OperationalConstraintConfig(allowed_actions=["read_data"]))
+    child = ConstraintEnvelopeConfig(id="child", operational=
+        OperationalConstraintConfig(allowed_actions=["read_data", "deploy_model"]))
+    with pytest.raises(MonotonicTighteningError):   # keyword-only arguments
+        RoleEnvelope.validate_tightening(parent_envelope=parent, child_envelope=child)</code></pre><div class="callout-slide warning" style="font-size:.75em"><strong>⚠ Key principle:</strong> test what does NOT happen — and only after attaching an envelope. The same deny test against a role with no envelope would fail: the default is auto-approve.</div></section>
 
-<section><h2>Common mistakes</h2><ol style="font-size:.85em"><li><strong>Fail-open</strong> — if governance check fails, DENY. Never default to allow.</li><li><strong>Testing only happy paths</strong> — test denied access, not just allowed access.</li><li><strong>No audit trail</strong> — compliance needs proof. Log every access decision.</li></ol></section>
+<section><h2>Common mistakes</h2><ol style="font-size:.85em"><li><strong>Assuming the engine is fail-closed</strong> — kailash-pact 0.14.1 auto-approves roles with no envelope and addresses outside the org. Attach an envelope to every agent role, and reject unknown addresses before calling <code>verify_action</code>.</li><li><strong>Testing only happy paths</strong> — test denied access, not just allowed access.</li><li><strong>No audit trail</strong> — compliance needs proof. Log every access decision.</li></ol></section>
 
-<section><h2>What you can now do</h2><ul><li>✓ Implement PACT D/T/R addressing and access checks.</li><li>✓ Define and enforce operating envelopes.</li><li>✓ Implement budget cascading across agent hierarchies.</li><li>✓ Write governance tests that verify access controls.</li></ul><div class="callout-slide foundations"><strong>Next:</strong> 6.8 — Capstone. Deploy a complete governed AI system via Nexus. The culmination of the entire programme.</div></section>
+<section><h2>What you can now do</h2><ul><li>✓ Implement PACT D/T/R (Department / Team / Role) addressing and access checks.</li><li>✓ Define and enforce operating envelopes.</li><li>✓ Implement budget cascading across agent hierarchies.</li><li>✓ Write governance tests that verify access controls.</li></ul><div class="callout-slide foundations"><strong>Next:</strong> 6.8 — Capstone. Deploy a complete governed AI system via Nexus. The culmination of the entire programme.</div></section>
 </div></div>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script><script>Reveal.initialize({hash:true,slideNumber:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
 </body></html>

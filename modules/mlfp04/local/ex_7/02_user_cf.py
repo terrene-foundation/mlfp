@@ -18,9 +18,9 @@
 # TASKS:
 #   1. Theory — "users who agreed with me before will agree with me again"
 #   2. Build — user similarity matrix + top-k CF prediction
-#   3. Train — no training; neighbourhoods are looked up at inference
+#   3. Train — no training loop; neighbourhoods are looked up at inference
 #   4. Visualise — user similarity heatmap + neighbour quality
-#   5. Apply — Singapore streaming watchlist expansion
+#   5. Apply — Singapore streaming platform watchlist expansion
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -32,7 +32,9 @@ from shared.mlfp04.ex_7 import (
     N_USERS,
     build_rating_dataset,
     holdout_rmse,
+    print_baselines,
     print_method_scores,
+    print_warm_comparison,
     save_html,
 )
 
@@ -42,36 +44,52 @@ K_NEIGHBOURS = 20
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Why user-based CF works
 # ════════════════════════════════════════════════════════════════════════
-# If Alice and Bob agreed on 50 past items, Bob's opinion on a new item
-# is strong evidence for Alice. Find each user's nearest neighbours in
-# rating space and predict by a weighted average of their ratings.
+# Core intuition: if Alice and Bob agreed on 50 previous movies, Bob's
+# opinion on a new movie is a strong signal for Alice's taste. Find Alice's
+# nearest neighbours in rating space, then predict the new movie by a
+# weighted average of those neighbours' ratings.
 #
-# Mean-centring per user removes "generous rater" bias so the similarity
-# compares rankings, not absolute scores.
+# Why mean-centring matters:
+#   Generous raters give everything 4-5 stars; tough raters give 2-3.
+#   Ratings are all positive, so raw cosine similarity between ANY two
+#   users is high — a generous rater and a tough rater who rank items in
+#   OPPOSITE orders still look similar. Subtracting each user's mean turns
+#   ratings into "above / below my usual", so cosine compares how users
+#   RANK items, not how generous they are.
+#
+# Why top-k:
+#   - Averaging over all users drowns out signal with noise
+#   - Top-k focuses on the most reliable neighbours (20-50 typical)
+#
+# STRENGTHS: captures community taste that content features miss
+# WEAKNESSES: O(N^2) similarity compute, cold-start users still broken
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — BUILD similarity + predictor
+# TASK 2 — BUILD the user similarity matrix + CF predictor
 # ════════════════════════════════════════════════════════════════════════
 
 
 def user_similarity_matrix(
     R: np.ndarray, obs_mask: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Pairwise cosine similarity between users on mean-centred ratings."""
+    """Pairwise cosine similarity between users on mean-centred ratings.
+
+    Returns (sim_matrix, user_means). user_means is kept so the predictor
+    can add each user's mean back when forming predictions.
+    """
     n_users = R.shape[0]
     sim = np.zeros((n_users, n_users))
 
-    # TODO: Compute each user's mean rating (only over observed entries).
-    # Use np.nanmean on R[u, obs_mask[u]] and default to 0.0 when empty.
-    user_means = np.array([____ for u in range(n_users)])
-
-    # TODO: Build a mean-centred copy of R. Subtract user_means[u] from
-    # each user's observed entries and zero out the unobserved entries.
-    R_centred = R.copy()
-    for u in range(n_users):
-        ____
-    R_centred[~obs_mask] = 0.0
+    user_means = np.array(
+        [
+            float(np.nanmean(R[u, obs_mask[u]])) if obs_mask[u].any() else 0.0
+            for u in range(n_users)
+        ]
+    )
+    # TODO: Build R_centred: subtract each user's mean from their OBSERVED
+    # ratings and set unobserved cells to 0.0
+    R_centred = ____
 
     for u in range(n_users):
         for v in range(u, n_users):
@@ -82,7 +100,7 @@ def user_similarity_matrix(
             denom = np.linalg.norm(ru) * np.linalg.norm(rv)
             if denom < 1e-10:
                 continue
-            # TODO: cosine similarity of centred vectors ru, rv
+            # TODO: cosine similarity of the co-rated, centred vectors
             s = ____
             sim[u, v] = s
             sim[v, u] = s
@@ -97,16 +115,20 @@ def user_based_cf_predict(
     user_means: np.ndarray,
     k: int = K_NEIGHBOURS,
 ) -> np.ndarray:
-    """Predict ratings using the top-k most similar users."""
+    """Predict ratings using the top-k most similar users.
+
+    prediction(u, j) = mean_u + sum(sim(u, v) * (r(v, j) - mean_v))
+                                 / sum(|sim(u, v)|)
+    """
     n_users, n_items = R.shape
     predictions = np.full((n_users, n_items), np.nan)
 
     for u in range(n_users):
         similarities = sim[u].copy()
         similarities[u] = -np.inf
-        # TODO: Pick the top-k indices by similarity. Hint: np.argsort(...)[-k:]
-        top_k = ____
+        top_k = np.argsort(similarities)[-k:]
         top_k = top_k[similarities[top_k] > 0]
+
         if len(top_k) == 0:
             continue
 
@@ -118,16 +140,21 @@ def user_based_cf_predict(
             denom = np.abs(weights).sum()
             if denom < 1e-10:
                 continue
-            # TODO: weighted deviation of neighbours' ratings from their means
+            # TODO: similarity-weighted sum of the neighbours' DEVIATIONS from
+            # their own means, divided by denom, added to user u's mean
             weighted_dev = ____
-            predictions[u, j] = user_means[u] + weighted_dev / denom
+            predictions[u, j] = ____
 
     return np.clip(predictions, 1.0, 5.0)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — Precompute similarity, then inference is a lookup
+# TASK 3 — "TRAIN" (precompute similarity, then inference is a lookup)
 # ════════════════════════════════════════════════════════════════════════
+# There is no iterative training. We precompute the N x N similarity
+# matrix once, then every prediction is a top-k lookup + weighted average.
+# In production this precompute is rerun nightly (or incrementally when a
+# user rates a new item).
 
 print("\n" + "=" * 70)
 print("  User-Based CF on SG E-commerce Ratings")
@@ -139,10 +166,10 @@ R_observed = data["R_observed"]
 train_mask = data["train_mask"]
 holdout_mask = data["holdout_mask"]
 
-user_sim, user_means = user_similarity_matrix(R_train, train_mask)
-ubcf_predictions = user_based_cf_predict(
-    R_train, train_mask, user_sim, user_means, k=K_NEIGHBOURS
-)
+# TODO: Precompute the user similarity matrix on the training ratings,
+# then predict with your top-k user-CF function
+user_sim, user_means = ____
+ubcf_predictions = ____
 
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
@@ -157,20 +184,18 @@ print(
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE similarity structure
+# TASK 4 — VISUALISE the similarity structure
 # ════════════════════════════════════════════════════════════════════════
+# The similarity matrix is the model. Visualising it reveals whether the
+# population has distinct taste clusters (block structure) or is a single
+# blob (no useful neighbourhoods).
 
 order = np.argsort(user_means)
 sim_sorted = user_sim[np.ix_(order, order)]
 
-fig = px.imshow(
-    sim_sorted,
-    color_continuous_scale="RdBu",
-    zmin=-1,
-    zmax=1,
-    title="User-User Similarity Heatmap (sorted by mean rating)",
-    labels={"x": "user j", "y": "user i", "color": "cosine sim"},
-)
+# TODO: px.imshow heatmap of sim_sorted with a diverging colour scale
+# fixed to [-1, 1]
+fig = ____
 save_html(fig, "02_user_similarity_heatmap.html")
 
 neighbour_counts = [(user_sim[u] > 0).sum() - 1 for u in range(N_USERS)]
@@ -179,18 +204,47 @@ print(
     f"min={np.min(neighbour_counts)}, max={np.max(neighbour_counts)}"
 )
 
+print_baselines(R_train, train_mask, R_observed, holdout_mask)
 print_method_scores("User-CF", ubcf_predictions, R_observed, holdout_mask)
+# Coverage < 100% is expected: brand-new SKUs have no raters, so no
+# neighbour can vouch for them. Compare on warm SKUs to see ranking skill.
+print_warm_comparison(
+    "User-CF", ubcf_predictions, R_train, train_mask, R_observed, holdout_mask,
+    data["cold_items"],
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Singapore Streaming Watchlist Expansion
+# TASK 5 — APPLY: Singapore Streaming Platform Watchlist Expansion
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A SG/SEA streaming service (~2M MAU) runs a "because users
-# like you enjoyed..." row on its homepage. User-CF captures community
-# taste that content features miss.
+# SCENARIO: A Singapore-based streaming service runs a "because users
+# like you enjoyed..." row on its homepage. The item
+# catalogue is 30K shows, ratings are explicit thumbs-up/down, and the
+# platform has ~2M monthly active users across SG, MY, and ID.
 #
-# BUSINESS IMPACT: 18% watch-through lift ~ S$4.3M/year retained
-# subscription revenue on a 2M MAU S$12 ARPU platform.
+# Why user-CF fits:
+#   - Community-driven taste: "viewers who loved 'Ah Boys to Men' also
+#     rated 'Money No Enough 2' highly" is a signal pure content features
+#     would miss (both are SG comedies but the feature-level overlap is low)
+#   - The platform has years of rating history — similarity is stable
+#   - Row labels are explicit and explainable: "because u_042 liked this"
+#
+# BUSINESS IMPACT (illustrative assumptions, not measured figures): on a
+# 2M MAU platform with S$12 monthly ARPU, annual subscription revenue is
+# ~S$288M. If a good "users like you" row retained even 1.5% of that
+# revenue through lower churn, it would be worth ~S$4.3M/year. Whether a
+# row achieves that is an A/B-test question — the holdout P@5 and MAP
+# above only tell you the ranking beats the baselines offline.
+#
+# LIMITATIONS:
+#   - O(N^2) similarity: at 2M users that's 4 x 10^12 pairs; production
+#     systems approximate with locality-sensitive hashing or ANN libraries
+#   - Cold-start users (signed up today): still zero neighbours
+#   - Popularity bias: heavily-rated shows dominate every recommendation
+#
+# The next technique (03_item_cf.py) flips the matrix and computes
+# item-item similarity instead of user-user — attractive when the
+# catalogue is smaller and more stable than the user base.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -202,10 +256,16 @@ print("=" * 70)
 print(
     """
   [x] Computed pairwise user similarity on mean-centred ratings
-  [x] Borrowed preferences from top-k nearest neighbours
-  [x] Understood why mean-centring beats raw cosine
-  [x] Identified a SEA streaming scenario with S$4M/year in impact
+  [x] Borrowed preferences from top-k most similar neighbours
+  [x] Understood why mean-centring beats raw cosine for generous raters
+  [x] Measured holdout RMSE + ranking metrics against no-skill baselines
+  [x] Sized an (illustrative) SEA streaming scenario worth ~S$4M/year
 
-  Next: 03_item_cf.py — flip the direction and scale the algorithm.
+  KEY INSIGHT: User-CF's strength is community taste that features can't
+  capture. Its weakness is O(N^2) similarity compute that breaks at
+  internet scale without approximation.
+
+  Next: 03_item_cf.py — flip the similarity direction and see why
+  item-to-item CF became the classic choice for large retail catalogues.
 """
 )

@@ -112,15 +112,12 @@ def build_transfer_resnet(
     freeze_backbone: bool = True,
 ) -> nn.Module:
     """Build a ResNet-18 with frozen backbone and fresh classifier head."""
-    try:
-        weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1
-        model = torchvision.models.resnet18(weights=weights)
-        print(f"  Loaded pre-trained ResNet-18 (weights={weights})")
-    except Exception as exc:
-        # Offline fallback: random weights. Code path remains identical.
-        print(f"  Pre-trained weights unavailable ({type(exc).__name__}: {exc})")
-        print("  Falling back to randomly initialised ResNet-18.")
-        model = torchvision.models.resnet18(weights=None)
+    # No fallback to random weights: if the ImageNet download fails this
+    # raises, because a random frozen backbone would make every "transfer"
+    # result in this exercise meaningless.
+    weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1
+    model = torchvision.models.resnet18(weights=weights)
+    print(f"  Loaded pre-trained ResNet-18 (weights={weights})")
 
     if freeze_backbone:
         for p in model.parameters():
@@ -548,11 +545,13 @@ print("\n--- Checkpoint 4 passed --- visualisations complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 7 — Apply: Medical Image Classification at National Skin Centre
+# TASK 7 — Apply: Medical Image Classification at a Dermatology Clinic
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: The National Skin Centre (NSC) Singapore wants to build an
-# AI system to classify skin conditions from dermatology images. They
-# have only 2,000 labelled dermatology images across 10 condition types.
+# SCENARIO (illustrative): A public dermatology clinic in Singapore wants
+# to build an AI system to classify skin conditions from dermatology
+# images. It has only 2,000 labelled images across 10 condition types.
+# We have no dermatology data here, so 2,000 CIFAR-10 images stand in
+# for that small labelled set.
 #
 # Training a CNN from scratch on 2,000 images would give poor results.
 # Transfer learning from ImageNet provides a strong foundation: the
@@ -561,7 +560,7 @@ print("\n--- Checkpoint 4 passed --- visualisations complete\n")
 # photos.
 
 print("\n" + "=" * 70)
-print("  APPLY: Medical Image Classification — National Skin Centre SG")
+print("  APPLY: Medical Image Classification — Dermatology Clinic (illustrative)")
 print("=" * 70)
 
 # Simulate the medical scenario: only 2,000 labelled images
@@ -602,7 +601,7 @@ medical_s_losses, medical_s_accs, _ = train_model(
 best_medical_transfer = max(medical_t_accs)
 best_medical_scratch = max(medical_s_accs)
 
-print(f"\n  === National Skin Centre Scenario (2,000 images) ===")
+print(f"\n  === Dermatology Clinic Scenario (2,000 images) ===")
 print(f"  {'Method':<25} {'Val Accuracy':>15} {'Trainable Params':>18}")
 print("  " + "-" * 60)
 print(
@@ -617,22 +616,32 @@ print(
 )
 print(f"  {'Advantage':<25} {best_medical_transfer - best_medical_scratch:>+15.1%}")
 print()
-print(f"  COST-BENEFIT ANALYSIS:")
-print(f"  Labelling cost per image (dermatologist review): ~S$5.00")
-print(f"  Current labelled images: 2,000")
-print(f"  To match transfer accuracy from scratch: ~20,000+ images needed")
-print(f"  Labelling cost saved: ~18,000 images x S$5.00 = S$90,000")
-print(f"  Transfer learning: FREE (pre-trained weights are open-source)")
+LABEL_COST = 5.00  # S$ per image for dermatologist review — illustrative
+medical_advantage = best_medical_transfer - best_medical_scratch
+print(f"  COST-BENEFIT ANALYSIS (illustrative label cost):")
+print(f"  Labelling cost per image (dermatologist review): ~S${LABEL_COST:.2f}")
+print(f"  Current labelled images: {n_medical:,} (S${n_medical * LABEL_COST:,.0f})")
+print(
+    f"  Every extra 1,000 labels the scratch model would need to close the "
+    f"{medical_advantage:+.1%} gap costs S${1000 * LABEL_COST:,.0f}"
+)
+print(f"  (Part 3 measures how scratch accuracy grows with more labels.)")
+print(f"  Transfer learning: the pre-trained weights are free and open")
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
 assert (
     best_medical_transfer > 0.15
 ), f"Transfer with 2K data should beat random (acc={best_medical_transfer:.3f})"
-# INTERPRETATION: With only 2,000 images, transfer learning dramatically
-# outperforms training from scratch. In a medical context, this means
-# fewer misdiagnosed patients and S$90,000+ saved in labelling costs.
-# The pre-trained ResNet already knows edges, textures, and shapes —
-# it only needs to learn which combinations indicate each skin condition.
+# INTERPRETATION: With only 2,000 images, the transfer model starts from
+# features that already encode edges, textures, and shapes — it only
+# needs to learn which combinations indicate each class. Read the
+# printed advantage: a large positive gap means fewer misclassified
+# patients for the same labelling budget; a small or negative gap
+# would mean the ImageNet features transfer poorly to this domain.
+print(
+    f"  Transfer advantage at 2,000 images: {medical_advantage:+.1%} "
+    f"({'transfer wins' if medical_advantage > 0 else 'transfer did NOT win in this run'})"
+)
 print("\n--- Checkpoint 5 passed --- medical scenario complete\n")
 
 

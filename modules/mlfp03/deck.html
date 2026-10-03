@@ -2463,10 +2463,10 @@ asyncio.run(check(dev, batches, cols))</code></pre>
     <thead><tr><th>Engine</th><th>Lesson</th><th>Purpose</th></tr></thead>
     <tbody>
       <tr><td><code>FeatureEngineer</code></td><td>3.1</td><td>Generate and select features</td></tr>
-      <tr><td><code>FeatureStore</code></td><td>3.1</td><td>Versioned features with point-in-time correctness</td></tr>
-      <tr><td><code>TrainingPipeline</code></td><td>3.2-3.4</td><td>Unified training with CV and regularisation</td></tr>
-      <tr><td><code>AutoMLEngine</code></td><td>3.3</td><td>Systematic model comparison</td></tr>
-      <tr><td><code>EnsembleEngine</code></td><td>3.5</td><td>Stacking and blending (preview for M4)</td></tr>
+      <tr><td><code>FeatureStore</code></td><td>3.1</td><td>Point-in-time feature storage (via DataFlow)</td></tr>
+      <tr><td><code>TrainingPipeline</code></td><td>3.4-3.8</td><td>Train, score one holdout, register; calibrate</td></tr>
+      <tr><td><code>AutoMLEngine</code></td><td>3.3</td><td>Run and record a model sweep</td></tr>
+      <tr><td><code>EnsembleEngine</code></td><td>3.5</td><td>Stacking and blending (used again in M4)</td></tr>
       <tr><td><code>HyperparameterSearch</code></td><td>3.7</td><td>Bayesian hyperparameter optimisation</td></tr>
       <tr><td><code>ModelRegistry</code></td><td>3.7</td><td>Model versioning and lifecycle</td></tr>
       <tr><td><code>WorkflowBuilder</code></td><td>3.7</td><td>DAG-based pipeline orchestration</td></tr>
@@ -2522,35 +2522,21 @@ asyncio.run(check(dev, batches, cols))</code></pre>
 <section>
   <h2>Module 3 &mdash; Assessment</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <div class="columns">
-    <div class="col">
-      <h3>Quiz (40%)</h3>
-      <ul>
-        <li>Bias-variance decomposition</li>
-        <li>Regularisation (L1 vs L2 behaviour)</li>
-        <li>Model selection rationale</li>
-        <li>Metric selection for given scenarios</li>
-        <li>XGBoost split gain formula</li>
-        <li>Fairness impossibility theorem</li>
-      </ul>
-    </div>
-    <div class="col">
-      <h3>ML Pipeline Project (60%)</h3>
-      <ul>
-        <li>Full pipeline from raw data to monitored model</li>
-        <li>Feature engineering with domain rationale</li>
-        <li>Model comparison (minimum 3 algorithms)</li>
-        <li>Proper evaluation with appropriate metrics</li>
-        <li>SHAP-based interpretability</li>
-        <li>DataFlow persistence + DriftMonitor setup</li>
-        <li>Model card</li>
-      </ul>
-    </div>
-  </div>
+  <p>4 auto-graded coding tasks, <strong>100 marks</strong>, 3 hours, open-book, no AI assistants. One e-commerce dataset (50,000 customers); target <code>premium_response</code> (~25% positive).</p>
+  <table>
+    <thead><tr><th>Task</th><th>Focus</th><th>Marks</th></tr></thead>
+    <tbody>
+      <tr><td>1. Feature engineering &amp; leakage-free selection</td><td>Six engineered features ranked with <code>FeatureEngineer</code>, fitted on the train split only</td><td>20</td></tr>
+      <tr><td>2. The model zoo</td><td>Six algorithms trained and compared through <code>TrainingPipeline</code></td><td>25</td></tr>
+      <tr><td>3. Evaluation, imbalance &amp; interpretability</td><td>Baseline vs class weights; per-class recall; SHAP</td><td>25</td></tr>
+      <tr><td>4. Production pipeline</td><td><code>TrainingPipeline</code> &rarr; <code>ModelRegistry</code> (promote) &rarr; <code>DriftMonitor</code></td><td>30</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.8em; color:#64748B;">Marked on outcomes (held-out AUC floors, recall lift, promotion, drift caught on the shifted batch and not the clean one), not code style. Each task's <code>problem.md</code> states the exact contract.</p>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. The project is the capstone. It requires every skill from M3: features, models, evaluation, interpretation, and production deployment. The quiz tests conceptual understanding. Together they assess both the science and the engineering.</aside>
+  <aside class="notes">Timing: 2 min. There is no separate quiz and no free-form project in this module's assessment. Students complete solve() in each task's starter.py; an independent reference implementation re-derives the expected values from the data, and a task's marks are awarded only when all of its checks pass. Point out why the target is derived: the dataset's own churned column is a near-deterministic function of recency (the same leak removed from Exercise 3.3), so it is useless for modelling practice. Task 1 rewards exactly the discipline of Lesson 3.1: rank features on training rows only.</aside>
 </section>
 
 <!-- SLIDE 85 — Exercise Summary Table -->
@@ -2560,20 +2546,20 @@ asyncio.run(check(dev, batches, cols))</code></pre>
   <table>
     <thead><tr><th>Exercise</th><th>Dataset</th><th>Key Skills</th></tr></thead>
     <tbody>
-      <tr><td>3.1</td><td>HDB resale prices</td><td>Feature engineering, 3 selection methods</td></tr>
-      <tr><td>3.2</td><td>HDB resale prices</td><td>Bias-variance demo, regularisation comparison</td></tr>
-      <tr><td>3.3</td><td>E-commerce customers</td><td>5 model families, consistent comparison</td></tr>
-      <tr><td>3.4</td><td>Credit scoring</td><td>XGBoost vs LightGBM vs CatBoost</td></tr>
-      <tr><td>3.5</td><td>Credit scoring (imbalanced)</td><td>Metrics, SMOTE vs class weights, calibration</td></tr>
-      <tr><td>3.6</td><td>Credit scoring</td><td>SHAP, LIME, fairness metrics</td></tr>
-      <tr><td>3.7</td><td>Credit scoring</td><td>WorkflowBuilder, hyperparameter search, registry</td></tr>
-      <tr><td>3.8</td><td>Credit scoring</td><td>DataFlow, DriftMonitor, model card</td></tr>
+      <tr><td>3.1</td><td>ICU admissions (5 tables)</td><td>Point-in-time features, filter / wrapper / embedded selection</td></tr>
+      <tr><td>3.2</td><td>Synthetic sine; credit; ICU admissions</td><td>Bias-variance, Ridge / Lasso / ElasticNet, CV strategies</td></tr>
+      <tr><td>3.3</td><td>E-commerce churn</td><td>5 model families on the same folds, nested CV</td></tr>
+      <tr><td>3.4</td><td>Credit scoring (leak screened)</td><td>XGBoost vs LightGBM vs CatBoost, tuning</td></tr>
+      <tr><td>3.5</td><td>Credit scoring (imbalanced)</td><td>Metrics, SMOTE vs weights, focal loss, threshold, calibration</td></tr>
+      <tr><td>3.6</td><td>Credit scoring</td><td>SHAP, LIME, permutation, fairness audit</td></tr>
+      <tr><td>3.7</td><td>Credit scoring</td><td>WorkflowBuilder, DataFlow, Bayesian search, registry</td></tr>
+      <tr><td>3.8</td><td>Credit scoring</td><td>Conformal, DriftMonitor, model card, rollout gates</td></tr>
     </tbody>
   </table>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick reference for exercises. Notice the progression: HDB data for features and bias-variance (familiar from M2), then credit scoring for the full pipeline. Credit scoring is the running case study from 3.4 through 3.8.</aside>
+  <aside class="notes">Timing: 1 min. Quick reference for exercises. Notice the progression: ICU data for point-in-time feature engineering, a synthetic sine curve where the true function is known (so bias and variance can be measured), e-commerce churn for the model zoo, then the Singapore credit data as the running case study from 3.4 through 3.8. Every credit exercise drops customer_id and the planted future_default_indicator leak, leaving 33 features.</aside>
 </section>
 
 <!-- SLIDE 86 — Common Mistakes -->
@@ -2584,9 +2570,9 @@ asyncio.run(check(dev, batches, cols))</code></pre>
     <thead><tr><th>Mistake</th><th>Why It Fails</th><th>What to Do Instead</th></tr></thead>
     <tbody>
       <tr><td>Using accuracy on imbalanced data</td><td>Hides poor minority-class performance</td><td>Use F1, PR-AUC, or custom cost matrix</td></tr>
-      <tr><td>Fitting scaler before splitting</td><td>Preprocessing leakage</td><td>Fit inside CV loop (TrainingPipeline does this)</td></tr>
+      <tr><td>Fitting scaler before splitting</td><td>Preprocessing leakage</td><td>Split first; fit preprocessing on train only (sklearn <code>Pipeline</code> inside CV)</td></tr>
       <tr><td>Using future data for temporal features</td><td>Temporal leakage</td><td>Time-travel test every feature</td></tr>
-      <tr><td>Only trying one model</td><td>No Free Lunch &mdash; one model is not best</td><td>AutoMLEngine to compare 3+ models</td></tr>
+      <tr><td>Only trying one model</td><td>No Free Lunch &mdash; one model is not best</td><td>Compare 3+ models on the same CV folds</td></tr>
       <tr><td>Tuning then reporting same CV score</td><td>Optimistic performance estimate</td><td>Nested CV for unbiased estimate</td></tr>
       <tr><td>Deploying without drift monitoring</td><td>Model silently degrades</td><td>DriftMonitor with alerting thresholds</td></tr>
     </tbody>
@@ -2594,7 +2580,7 @@ asyncio.run(check(dev, batches, cols))</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. These are the mistakes professionals actually make in production. Every item on this list has caused a real-world ML failure. The Kailash engines are designed to prevent several of them automatically (TrainingPipeline prevents preprocessing leakage, DriftMonitor prevents silent degradation).</aside>
+  <aside class="notes">Timing: 2 min. These are the mistakes professionals actually make in production. Every item on this list is a common real-world failure. No engine prevents them automatically: PreprocessingPipeline.setup() learns from every row you pass it, so hold the test rows out first; DriftMonitor only helps if someone is alerted and acts.</aside>
 </section>
 
 <!-- SLIDE 87 — Model Selection Decision Tree -->
@@ -2614,12 +2600,12 @@ asyncio.run(check(dev, batches, cols))</code></pre>
     </ul>
     <p><strong>Is data primarily text?</strong> &rarr; Start with Naive Bayes, then boosting</p>
     <p><strong>Is there extreme imbalance?</strong> &rarr; Use focal loss + class weights with any model</p>
-    <p><strong>Always:</strong> Compare 3+ models with AutoMLEngine. Evaluate with the metric that matches business cost.</p>
+    <p><strong>Always:</strong> Compare 3+ models on the same CV folds. Evaluate with the metric that matches business cost.</p>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. This is the practical decision framework students can use in their projects. Not a rigid algorithm, but a starting point. The key message: always try multiple models, always use the right metric, always validate with proper CV.</aside>
+  <aside class="notes">Timing: 2 min. This is the practical decision framework students can use in their projects. Not a rigid algorithm, but a starting point: interpretability first decides between transparent models (regularised linear, a single tree) and the rest; then size decides between gradient boosting (LightGBM for speed, CatBoost for many categoricals) and random forest or a kernel SVM on smaller data. The key message: always try multiple models, always use the right metric, always validate with proper CV.</aside>
 </section>
 
 <!-- SLIDE 88 — The Complete Supervised Pipeline Diagram -->
@@ -2672,10 +2658,10 @@ asyncio.run(check(dev, batches, cols))</code></pre>
 
       <!-- Engine labels -->
       <text x="70" y="90" text-anchor="middle" font-size="9" fill="#0D9488" font-weight="600">FeatureEngineer</text>
-      <text x="215" y="90" text-anchor="middle" font-size="9" fill="#3B82F6" font-weight="600">TrainingPipeline</text>
+      <text x="215" y="90" text-anchor="middle" font-size="9" fill="#3B82F6" font-weight="600">PreprocessingPipeline</text>
       <text x="360" y="90" text-anchor="middle" font-size="9" fill="#0D9488" font-weight="600">AutoMLEngine</text>
       <text x="505" y="90" text-anchor="middle" font-size="9" fill="#F59E0B" font-weight="600">TrainingPipeline</text>
-      <text x="650" y="90" text-anchor="middle" font-size="9" fill="#8B5CF6" font-weight="600">ModelVisualizer</text>
+      <text x="650" y="90" text-anchor="middle" font-size="9" fill="#8B5CF6" font-weight="600">SHAP + LIME</text>
       <text x="805" y="90" text-anchor="middle" font-size="9" fill="#10B981" font-weight="600">WorkflowBuilder</text>
       <text x="732" y="178" text-anchor="middle" font-size="9" fill="#10B981" font-weight="600">DataFlow + DriftMonitor + ModelRegistry</text>
 
@@ -2696,30 +2682,30 @@ asyncio.run(check(dev, batches, cols))</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Module 4 &mdash; Unsupervised ML, Anomaly Detection &amp; NLP</h3>
-      <ul>
-        <li><strong>Clustering:</strong> K-means, DBSCAN, hierarchical</li>
-        <li><strong>Dimensionality reduction:</strong> PCA, t-SNE, UMAP</li>
-        <li><strong>Anomaly detection:</strong> Isolation Forest, autoencoders</li>
-        <li><strong>NLP:</strong> Text preprocessing, embeddings, topic modelling</li>
-        <li><strong>New engines:</strong> EnsembleEngine, InferenceServer</li>
+      <h3>Module 4 &mdash; Unsupervised ML and Advanced Techniques</h3>
+      <ul style="font-size:0.85em;">
+        <li><strong>Clustering:</strong> K-means, hierarchical, DBSCAN/HDBSCAN, spectral</li>
+        <li><strong>Mixtures:</strong> EM algorithm, Gaussian mixture models</li>
+        <li><strong>Dimensionality reduction:</strong> PCA, kernel PCA, t-SNE, UMAP</li>
+        <li><strong>Anomaly detection:</strong> z-score, Isolation Forest, LOF, blended scores</li>
+        <li><strong>Association rules</strong>, <strong>NLP topics</strong> (TF-IDF, NMF, LDA, BERTopic), <strong>recommenders</strong></li>
+        <li><strong>DL foundations:</strong> a neural network from scratch, then the training toolkit</li>
       </ul>
     </div>
     <div class="col">
       <h3>What Carries Forward</h3>
-      <ul>
-        <li>Everything from M3: feature engineering, evaluation, workflows</li>
-        <li>TrainingPipeline for unsupervised models</li>
-        <li>WorkflowBuilder for orchestration</li>
-        <li>DriftMonitor for production</li>
-        <li>SHAP for interpretation</li>
+      <ul style="font-size:0.85em;">
+        <li>Feature engineering &mdash; unsupervised learning is automated feature engineering</li>
+        <li>Honest evaluation &mdash; without labels the metrics change (silhouette, reconstruction error)</li>
+        <li><code>EnsembleEngine</code> to blend anomaly scores; <code>AutoMLEngine</code> and <code>ModelVisualizer</code></li>
       </ul>
+      <div class="callout callout-foundations"><strong>Module 4 completes the Foundation Certificate</strong> (Modules 1&ndash;4).</div>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Brief preview. M4 extends from labelled data (supervised) to unlabelled data (unsupervised). The tools from M3 carry forward. Evaluation changes (no labels means different metrics), but the pipeline thinking stays the same.</aside>
+  <aside class="notes">Timing: 1 min. Brief preview. M4 extends from labelled data (supervised) to unlabelled data (unsupervised): clustering on retail customers, EM and mixtures, PCA through UMAP, anomaly detection on financial transactions, market-basket rules, topics from news text, recommender systems, and finally a neural network built from scratch as the bridge to the Advanced Certificate (Modules 5 and 6: deep learning and vision, then language models and agents). kailash-ml's clustering, dimensionality-reduction and anomaly-detection engines are used alongside EnsembleEngine. Evaluation changes (no labels means different metrics), but the pipeline thinking stays the same.</aside>
 </section>
 
 <!-- SLIDE 90 — Closing -->
@@ -2732,7 +2718,7 @@ asyncio.run(check(dev, batches, cols))</code></pre>
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
     <span>Terrene Foundation &bull; Kailash Python SDK</span>
   </div>
-  <aside class="notes">Timing: 1 min. Thank the class. Remind them of the assessment schedule (quiz + project). Point to the exercise schedule. If beginners confused: "You just completed the supervised ML module. Review the formula reference slide and engine map." If experts bored: "The exercises have depth. Push yourself on 3.7 and 3.8 with nested CV and conformal prediction."</aside>
+  <aside class="notes">Timing: 1 min. Thank the class. Remind them of the assessment (four auto-graded tasks, 100 marks). Point to the exercise schedule. If beginners confused: "You just completed the supervised ML module. Review the formula reference slide and engine map." If experts bored: "The exercises have depth. Push yourself on nested CV in 3.2 and 3.3, and on conformal prediction and the readiness gates in 3.8."</aside>
 </section>
 
 </div><!-- .slides -->

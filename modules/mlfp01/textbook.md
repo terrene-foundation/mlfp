@@ -3640,11 +3640,11 @@ You should now be able to:
 
 ## Why This Matters
 
-Every previous lesson taught one piece of the puzzle. Lesson 1.1 taught you to look at raw data. Lessons 1.2 and 1.3 taught you to filter and aggregate. Lesson 1.4 taught you to join. Lesson 1.5 taught you to compute trends. Lesson 1.6 taught you to plot. Lesson 1.7 taught you to profile. This lesson puts all of it together into a single pipeline: load → profile → clean → feature-engineer → preprocess → visualise → re-profile. This is the shape of almost every exploratory data analysis project you will ever do, regardless of domain.
+Every previous lesson taught one piece of the puzzle. Lesson 1.1 taught you to look at raw data. Lessons 1.2 and 1.3 taught you to filter and aggregate. Lesson 1.4 taught you to join. Lesson 1.5 taught you to compute trends. Lesson 1.6 taught you to plot. Lesson 1.7 taught you to profile. This lesson puts all of it together into a single pipeline: extract → profile → clean → feature-engineer → preprocess → visualise → re-profile. This is the shape of almost every exploratory data analysis project you will ever do, regardless of domain.
 
-You will work on a deliberately messy dataset — Singapore taxi trip data with GPS errors, negative fares, zero-length trips, missing coordinates, and schema drift. The mess is not accidental; it is what real data looks like before anyone has touched it. Your job is to turn the raw mess into a model-ready dataset without losing signal to the noise and without introducing bugs along the way.
+You will work on a deliberately messy dataset — a synthetic log of Singapore taxi trips with swapped GPS coordinates, negative fares, trips with zero or negative passengers, trips dated years in the future, fifteen different spellings of four payment methods, and trip IDs reused for different trips. The mess is planted on purpose, but every one of those defects is the kind real data arrives with. Your job is to turn the raw mess into a model-ready dataset without losing signal to the noise and without introducing bugs along the way.
 
-This lesson also introduces `PreprocessingPipeline`, the third Kailash engine in Module 1. Where DataExplorer profiles, PreprocessingPipeline prepares: it imputes missing values, scales numerics, encodes categoricals, and splits into train/test sets. It is the bridge between raw data and the model-training steps you will meet in Module 3.
+This lesson also introduces `PreprocessingPipeline`, the third Kailash engine in Module 1. Where DataExplorer profiles, PreprocessingPipeline prepares: it imputes missing values, scales numerics, encodes categoricals, and splits rows into train and test sets. It is the bridge between raw data and the model-training steps you will meet in Module 3 — and it has one behaviour you must know about to use it safely.
 
 ## Core Concepts
 
@@ -3652,7 +3652,7 @@ This lesson also introduces `PreprocessingPipeline`, the third Kailash engine in
 
 Every data pipeline, regardless of scale or domain, has the same three stages:
 
-- **Extract.** Get the data from somewhere. Read a file, hit an API, query a database, receive a stream.
+- **Extract.** Get the data from somewhere. Read a file, call an API, query a database, receive a stream.
 - **Transform.** Clean it, enrich it, reshape it, compute features. This is where 80% of the work happens.
 - **Load.** Put the cleaned data somewhere downstream — a file, a database, a model, a dashboard.
 
@@ -3660,15 +3660,102 @@ The acronym is ETL (extract-transform-load). Sometimes you see ELT (extract-load
 
 For this lesson the pipeline will be:
 
-1. **Extract.** Load `sg_taxi_trips.parquet` from the course data loader.
-2. **Profile.** Use DataExplorer to identify quality issues.
-3. **Clean.** Drop impossible rows (GPS outside Singapore, negative fares, trips under 60 seconds).
-4. **Engineer.** Extract hour-of-day, day-of-week, peak-period, and haversine distance.
-5. **Preprocess.** Use PreprocessingPipeline to scale, encode, and split.
+1. **Extract.** Load `sg_taxi_trips.parquet` from the course data loader (and, in the section below, data from a REST API).
+2. **Profile.** Count domain-rule violations and run DataExplorer to identify quality issues.
+3. **Clean.** Repair swapped coordinates; drop impossible fares, passengers and dates; normalise payment labels; resolve duplicate IDs; fill nulls whose meaning is known.
+4. **Engineer.** Extract hour-of-day, day-of-week, weekend flag, time period, trip duration, distance from the CBD and average speed.
+5. **Preprocess.** Hold out test rows, then use PreprocessingPipeline to impute, encode and scale.
 6. **Visualise.** Produce diagnostic charts.
-7. **Re-profile.** Confirm that the cleaned data has fewer alerts than the raw data.
+7. **Re-profile.** Compare the cleaned data with the original and explain every alert that remains.
 
 Each stage has a clear handoff: the output of one stage is the input of the next. You can re-run any stage independently, which is essential for iteration.
+
+### FOUNDATIONS: Extracting data from a REST API
+
+Files are only one source. Much public data is served by web APIs — and the most common kind is a **REST API**: you send an HTTP request to a URL, and the server sends back data, almost always as **JSON** (JavaScript Object Notation — nested dictionaries and lists, which map directly onto Python `dict` and `list`).
+
+The two request types you need:
+
+- **GET** — "give me data". Everything that describes what you want goes into **query parameters**, the `?key=value&key2=value2` part of a URL.
+- **POST** — "here is data". You send a body (usually JSON) — for example, a record to store or a batch of inputs to score.
+
+Python's `httpx` library (installed with the course) makes both a single call. Singapore's OneMap service has a public search endpoint that needs no account:
+
+```python
+import httpx
+import polars as pl
+
+response = httpx.get(
+    "https://www.onemap.gov.sg/api/common/elastic/search",
+    params={"searchVal": "Tampines", "returnGeom": "Y", "getAddrDetails": "Y", "pageNum": 1},
+    timeout=10,
+)
+response.raise_for_status()      # stop with an error on a 4xx / 5xx status
+data = response.json()           # JSON text -> Python dict
+print(data["found"], "matches;", len(data["results"]), "on this page")
+```
+
+`params=` builds the query string for you (`?searchVal=Tampines&returnGeom=Y&…`). `timeout=10` stops the program waiting forever on a dead server. `raise_for_status()` turns an HTTP error — 404 not found, 500 server error — into a Python exception instead of letting you parse an error page as if it were data. The response is a dictionary: `found` (how many matches in total), `pageNum` and `totalNumPages` (results come back one page at a time), and `results`, a list of one dictionary per match.
+
+A list of flat dictionaries is exactly what `pl.DataFrame` accepts:
+
+```python
+locations = pl.DataFrame(data["results"]).select(
+    pl.col("SEARCHVAL").alias("place"),
+    pl.col("POSTAL").alias("postal_code"),
+    pl.col("LATITUDE").cast(pl.Float64).alias("lat"),
+    pl.col("LONGITUDE").cast(pl.Float64).alias("lng"),
+)
+print(locations.head(3))
+```
+
+Note the `.cast(pl.Float64)`: this API returns coordinates as *strings* (`"1.3433…"`), so you must convert them before any arithmetic. Check the types of everything an API gives you — the same discipline as checking a file's schema.
+
+A POST looks the same, with the payload in `json=` instead of `params=`. Here the public test service httpbin.org simply echoes back what it received:
+
+```python
+reply = httpx.post("https://httpbin.org/post", json={"town": "TAMPINES", "flat_type": "4 ROOM"}, timeout=10)
+reply.raise_for_status()
+print(reply.json()["json"])      # {'flat_type': '4 ROOM', 'town': 'TAMPINES'}
+```
+
+Three habits make API extraction reliable. Always set a timeout. Always check the status before parsing. And wrap the call in `try` / `except httpx.HTTPError` with a clear fallback — a saved copy of the last good response, or a clear error — because a pipeline that depends on a network call will eventually meet a day when the network is down. (The live results above change as the service's data changes; treat the counts as examples.)
+
+### FOUNDATIONS: Project structure — modules and imports
+
+A notebook or a single 900-line script is fine for exploring. A pipeline you will re-run, test and hand to a colleague should be split into **modules**: separate `.py` files, each owning one stage.
+
+```text
+taxi_pipeline/
+├── extract.py       # load_taxi_data(), fetch_locations()
+├── transform.py     # clean_taxi_data(), add_features(), preprocess()
+├── visualise.py     # create_charts()
+├── report.py        # write_report()
+└── main.py          # the orchestrator: calls the stages in order
+```
+
+Each file defines functions; `main.py` imports and calls them:
+
+```python
+# main.py
+from extract import load_taxi_data
+from report import write_report
+from transform import add_features, clean_taxi_data
+from visualise import create_charts
+
+
+def main() -> None:
+    raw = load_taxi_data()
+    clean = add_features(clean_taxi_data(raw))
+    charts = create_charts(clean)
+    write_report(raw, clean, charts)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+`from transform import clean_taxi_data` works because `transform.py` sits in the same folder: Python treats every `.py` file as a module you can import by its filename. The `if __name__ == "__main__":` line means "run `main()` only when this file is executed directly (`python main.py`), not when another file imports it" — so you can import `main.py`'s functions into a test or a notebook without triggering the whole pipeline. The payoff of this structure: each stage can be tested on its own, re-run on its own, and replaced without touching the others. Lesson 1.8's Drill 5 asks you to build exactly this.
 
 ### FOUNDATIONS: Null handling
 
@@ -3676,9 +3763,9 @@ Real datasets have missing values. The three decisions you have to make are:
 
 **1. How to detect a null.** Polars treats `null` (the typed missing marker) distinctly from NaN (not-a-number, used for undefined float results) and from empty strings. When loading from CSV, missing values appear as nulls; when reading from some other sources, they may appear as empty strings or a sentinel value like `-999`. Always check the null count per column after loading to know what you are dealing with.
 
-**2. Whether to impute or drop.** If the column is critical and the nulls are a small fraction, impute — fill with a sensible default (median for numeric, mode for categorical). If the column is not critical, drop it. If the nulls are concentrated in specific rows (and those rows are unusable for other reasons too), drop the rows.
+**2. Whether to impute, fill with a meaning, or drop.** Sometimes a null *has* a meaning: in the taxi log, a missing tip means no tip was given, so `0.0` is not an estimate but the truth. If the column is critical and the nulls are a small fraction, impute — fill with a sensible estimate (median for numeric, mode for categorical). If the column is not critical, drop it. If the nulls are concentrated in specific rows (and those rows are unusable for other reasons too), drop the rows.
 
-**3. Which imputation strategy.** Median is the safe default for numeric columns — it is robust to outliers and does not introduce bias. Mean is acceptable for symmetric distributions. Mode is the default for categoricals. For more sophisticated imputation (KNN, model-based), see `kailash_ml.imputation` — but for Module 1 the median is enough.
+**3. Which imputation strategy.** Median is the safe default for numeric columns — it is robust to outliers. Mean is acceptable for symmetric distributions. Mode is the default for categoricals. PreprocessingPipeline also offers `imputation_strategy="knn"`, which estimates a missing value from the most similar rows — but for Module 1 the median is enough.
 
 The Polars methods:
 
@@ -3693,10 +3780,13 @@ Generic rules ("drop negative values") are not always right. Domain-aware rules 
 
 For a Singapore taxi dataset:
 
-- **GPS bounding box.** Any latitude outside `[1.15, 1.47]` or longitude outside `[103.60, 104.05]` is not in Singapore — it is a GPS error, a driver in Malaysia, or a data pipeline bug. Drop.
-- **Fare range.** Negative fares are impossible. Zero fares might be cancelled rides but are not useful as training data. Extreme fares (top 0.1%) are usually data errors (meter left running). Drop or cap.
-- **Duration range.** Trips under 60 seconds are not real paid trips — they are meter misfires. Trips over 3 hours are implausible for a country the size of Singapore. Drop.
-- **Speed.** After computing distance and duration, you can compute speed. Speeds above 120 km/h are impossible in Singapore (the expressway speed limit is 90 km/h). Drop.
+- **GPS bounding box.** Singapore lies within latitude `[1.15, 1.47]` and longitude `[103.60, 104.05]`. A point outside it is a GPS error — but look before you drop: a "latitude" of 103.8 paired with a "longitude" of 1.35 is a Singapore point with the two fields swapped. That fix is unambiguous, so repair it. Drop only what cannot be repaired.
+- **Fares.** Negative fares are impossible, and zero fares are not useful training examples. Drop them.
+- **Passengers.** A paid trip has at least one passenger. Drop counts below 1.
+- **Dates.** A log extracted at the end of 2024 cannot contain a trip in 2027. Drop pickups after the extraction date.
+- **Categories.** Fifteen spellings of four payment methods (`"CASH"`, `"cash"`, `"Cash Payment"`, …) are one data-entry problem. Normalise them to canonical labels.
+- **Keys.** A `trip_id` should identify exactly one trip. If two *different* trips share an ID, you cannot tell which one owns it — drop both.
+- **Speed.** After computing duration, you can check distance against time. A whole-trip average above 120 km/h is impossible in Singapore (the expressway speed limit is 90 km/h); one below 2 km/h is slower than walking. Either way, distance or time was recorded wrongly.
 
 Each rule embeds domain knowledge. Generic outlier detection (like "drop values more than 3σ from the mean") would not know that Singapore's GPS box is what it is, or that 120 km/h is the hard ceiling. Always encode the domain knowledge you have; never rely on generic rules alone.
 
@@ -3705,41 +3795,46 @@ Each rule embeds domain knowledge. Generic outlier detection (like "drop values 
 Raw timestamps are useless to most ML models — the model cannot directly learn "Tuesday 8 AM is different from Saturday 8 AM". You have to decompose the timestamp into features the model can exploit:
 
 - **Hour of day.** `pickup_datetime.dt.hour()`. An integer 0–23.
-- **Day of week.** `pickup_datetime.dt.weekday()`. 0–6 in Polars (0 is Monday, 6 is Sunday).
+- **Day of week.** `pickup_datetime.dt.weekday()`. In Polars this is **1–7, Monday = 1, Sunday = 7** (the ISO convention). Friday is 5. Many other tools count 0–6, so check before you write a weekend rule.
 - **Day of month, month of year.** For seasonal effects.
-- **Is weekend.** A Boolean derived from day of week.
+- **Is weekend.** A Boolean derived from day of week: `dt.weekday() >= 6` (Saturday and Sunday). Writing `>= 5` would silently include Friday.
 - **Time period** (morning peak, evening peak, off-peak, late night). A categorical derived from hour.
-- **Time since epoch.** A continuous value that can capture overall trend.
+- **Duration.** Subtracting two datetime columns gives a Duration; `.dt.total_seconds()` turns it into a number.
 
-The hour-of-day decomposition is crucial for demand modelling. Trip volume has a huge diurnal pattern — two peaks at morning and evening commute, a dip in the middle of the night. Without the hour feature, a model would treat 8 AM trips and 3 AM trips as equivalent. With it, the model can learn that 8 AM trips are short and expensive (commute) while 3 AM trips are longer and to entertainment districts.
+The hour-of-day decomposition is crucial for demand modelling. In real cities, trip volume has a strong daily rhythm — peaks at the morning and evening commute, a trough in the middle of the night — and a model without an hour feature would treat 8 AM and 3 AM trips as equivalent. Whether *this* dataset has such a rhythm is something you check in the worked example rather than assume.
 
 ### FOUNDATIONS: Feature engineering for spatial data
 
 Raw latitude and longitude are also not great features. A few more useful derivatives:
 
-- **Haversine distance between pickup and dropoff.** The great-circle distance on a sphere — a direct measure of trip length.
-- **Bearing.** The compass direction from pickup to dropoff. Sometimes predictive (airport-bound trips go east; nightlife trips cluster around Clarke Quay).
-- **Distance from a reference point** (city centre, airport, MRT station). "How far is pickup from Raffles Place?" captures "is this a CBD trip?".
-- **Spatial binning.** Divide the city into a grid and turn each pickup/dropoff into a grid cell ID.
+- **Haversine distance between two points.** The great-circle distance on a sphere — a direct measure of trip length when you have both pickup and dropoff positions.
+- **Distance from a reference point** (city centre, airport, MRT station). "How far is the pickup from Raffles Place?" captures "is this a CBD trip?" — and needs only one position.
+- **Bearing.** The compass direction between two points. Sometimes predictive (airport-bound trips head east).
+- **Spatial binning.** Divide the city into a grid and turn each point into a grid cell ID.
 
-The haversine distance is worth implementing directly once, because it is a recurring pattern in any geospatial pipeline:
+The course taxi log has only a pickup position (plus a recorded `distance_km`), so the worked example uses distance from the CBD. The haversine formula is worth implementing directly once, because it is a recurring pattern in any geospatial pipeline. Here it is in pure Polars, measuring each pickup's distance to Raffles Place:
 
 ```python
-_RAD = pl.lit(3.141592653589793 / 180)
+import math
 
-taxi = taxi.with_columns(
+import polars as pl
+
+CBD_LAT, CBD_LNG = 1.2840, 103.8514   # Raffles Place
+_RAD = math.pi / 180
+
+trips = pl.DataFrame({"pickup_latitude": [1.3521, 1.2840], "pickup_longitude": [103.8198, 103.8514]})
+trips = trips.with_columns(
     (
         2 * 6371  # Earth radius in km
         * (
-            (
-                ((pl.col("dropoff_lat") - pl.col("pickup_lat")) * _RAD / 2).sin().pow(2)
-                + (pl.col("pickup_lat") * _RAD).cos()
-                * (pl.col("dropoff_lat") * _RAD).cos()
-                * ((pl.col("dropoff_lng") - pl.col("pickup_lng")) * _RAD / 2).sin().pow(2)
-            ).sqrt().arcsin()
-        )
-    ).alias("haversine_km")
+            ((pl.col("pickup_latitude") - CBD_LAT) * _RAD / 2).sin().pow(2)
+            + math.cos(CBD_LAT * _RAD)
+            * (pl.col("pickup_latitude") * _RAD).cos()
+            * ((pl.col("pickup_longitude") - CBD_LNG) * _RAD / 2).sin().pow(2)
+        ).sqrt().arcsin()
+    ).alias("km_from_cbd")
 )
+print(trips)   # about 8.35 km for the first point, 0.0 for Raffles Place itself
 ```
 
 The formula is the haversine great-circle distance:
@@ -3752,44 +3847,52 @@ where $\phi$ are latitudes, $\lambda$ are longitudes (both in radians), $\Delta 
 
 `PreprocessingPipeline` automates the final steps before model training:
 
-- **Split** the data into train and test sets.
-- **Impute** remaining nulls (median for numeric, mode for categorical).
-- **Scale** numeric features (standardise to mean 0, standard deviation 1).
+- **Impute** remaining nulls (median, mean or KNN for numeric; mode for categorical).
 - **Encode** categorical columns (one-hot or ordinal).
+- **Scale** numeric features (standardise to mean 0, standard deviation 1).
 - **Infer** the task type (regression if the target is continuous, classification if categorical).
+- **Split** the rows it was given into `train_data` and `test_data`.
 
 The call:
 
 ```python
 from kailash_ml import PreprocessingPipeline
 
-pipeline = PreprocessingPipeline()
+train_rows = pl.DataFrame({"distance_km": [2.0, 5.5, 9.1, 3.3, 12.0], "payment_type": ["Cash", "Card", "Card", "NETS", "Cash"], "fare_sgd": [6.1, 9.8, 14.2, 7.0, 18.5]})
+new_rows = pl.DataFrame({"distance_km": [4.0], "payment_type": ["Card"], "fare_sgd": [8.4]})
+
+pipeline = PreprocessingPipeline()      # no constructor arguments
 result = pipeline.setup(
-    data=pipeline_df,
-    target="fare",
-    train_size=0.8,
-    seed=42,
+    data=train_rows,
+    target="fare_sgd",
     normalize=True,
     categorical_encoding="onehot",
     imputation_strategy="median",
 )
 
-result.train_data        # Polars DataFrame, 80% of rows
-result.test_data         # Polars DataFrame, 20% of rows
-result.numeric_columns   # list of numeric feature columns
-result.categorical_columns  # list of categorical feature columns (after encoding)
-result.task_type         # "regression" or "classification"
+result.train_data           # Polars DataFrame — setup()'s own split of the rows you passed
+result.test_data            # Polars DataFrame
+result.numeric_columns      # list of numeric feature columns
+result.categorical_columns  # list of categorical feature columns
+result.task_type            # "regression" or "classification"
+result.original_shape, result.transformed_shape
+
+new_ready = pipeline.transform(new_rows)   # apply the SAME learned rules to new rows
 ```
 
-The key parameter is `target` — the column you are trying to predict. The pipeline excludes it from the feature set and uses it to infer the task type. If the target is continuous (like `fare`), the task is regression. If it is categorical (like `fare_bucket`), the task is classification.
+The key parameter is `target` — the column you are trying to predict. The pipeline excludes it from the feature set and uses it to infer the task type: classification if the target is a string, categorical or Boolean column, *or a numeric column with 20 or fewer distinct values*; regression otherwise. That rule has a sharp edge — the five-row toy example above has only five distinct fares, so it is inferred as classification, while the 35,000 real fares in the worked example are regression. Always print `result.task_type` and check it is what you meant. `normalize=True` standardises numeric columns to zero mean and unit variance. `categorical_encoding="onehot"` converts each categorical column into a set of binary columns (one per category). `imputation_strategy="median"` fills remaining nulls. `pipeline.transform(df)` re-applies exactly what `setup()` learned — the same medians, categories, means and standard deviations — without refitting.
 
-`train_size=0.8` means 80% of rows go to training and 20% to test. `seed=42` makes the split reproducible. `normalize=True` standardises numeric columns to zero mean and unit variance. `categorical_encoding="onehot"` converts each categorical column into a set of binary columns (one per unique value). `imputation_strategy="median"` fills remaining nulls with the median (for numerics) or mode (for categoricals).
+**The one thing to know: `setup()` fits on everything you give it, and only then splits.** In kailash-ml 2.2.2, `setup()` computes its imputation values, one-hot categories (and, with target encoding, per-category target means) and scaling statistics from *all* rows passed in, and only afterwards divides them into `train_data` and `test_data` (default `train_size=0.8`). So the "test" rows inside `result` have already influenced the transformations — the test-set contamination the next section warns about. The safe pattern, used in the worked example and Exercise 8, is:
 
-The result object is what Module 3 will consume directly. No further preprocessing is needed before training — that is the whole point.
+1. Hold out your test rows yourself, *before* any fitting (shuffle with a seed, take 20%).
+2. Call `setup()` on the training rows only. (Its internal split of those rows is a validation split you can use when choosing models.)
+3. Call `pipeline.transform(test_rows)` to prepare the held-out rows with the rules learned from training data.
+
+Never treat `setup(data=all_rows, train_size=0.8)` as a leak-free train/test split.
 
 ### ADVANCED: Why standardise numeric features
 
-Linear models (linear regression, logistic regression) and many neural network optimisers are sensitive to feature scale. If one feature has values in the range 0–1 and another in the range 0–1,000,000, the optimiser will effectively ignore the small-scale feature because its gradient is tiny. Standardising both features to mean 0 and std 1 puts them on equal footing.
+Linear models (linear regression, logistic regression) and many neural network optimisers are sensitive to feature scale. If one feature has values in the range 0–1 and another in the range 0–1,000,000, gradient-based optimisation is dominated by the large-scale feature: the loss surface is stretched along one direction, so a learning rate small enough to be stable for the big feature makes progress on the small one painfully slow. Standardising both features to mean 0 and std 1 puts them on equal footing.
 
 Tree-based models (decision trees, random forests, gradient boosting) do not need standardisation because they only care about the order of values, not the magnitude. If you are training only tree models, you can skip standardisation. But if you might train any model that uses gradients (as we will in Module 3), standardising is insurance.
 
@@ -3797,27 +3900,36 @@ The formula for standardisation is:
 
 $$z = \frac{x - \mu}{\sigma}$$
 
-where $\mu$ is the column mean and $\sigma$ is the column standard deviation, both computed on the *training* set. The same $\mu$ and $\sigma$ are then applied to the test set; you do not recompute them. This is the statistical equivalent of "train/test contamination" — computing scaling parameters on the test set would leak information. PreprocessingPipeline handles this correctly by default.
+where $\mu$ is the column mean and $\sigma$ is the column standard deviation, both computed on the *training* set only. The same $\mu$ and $\sigma$ are then applied to the test set; you do not recompute them. Computing them on data that includes the test rows lets information about the test set leak into training, which makes test scores optimistic. As described above, `PreprocessingPipeline.setup()` computes them on every row it is given — so give it training rows only, and use `transform()` for everything else.
 
 ## Worked Example: Taxi Trip Cleaning Pipeline
+
+This walkthrough follows Exercise 8. The dataset, `sg_taxi_trips.parquet`, is a synthetic log of 50,000 Singapore taxi trips, with data-quality problems planted on purpose. Its twelve columns are `trip_id, pickup_datetime, dropoff_datetime, pickup_zone, dropoff_zone, distance_km, fare_sgd, tip_sgd, payment_type, passengers, pickup_latitude, pickup_longitude` — note there is a pickup position but no dropoff position, and the trip length is already given as `distance_km`.
 
 ### Step 1: Load and inspect
 
 ```python
 from __future__ import annotations
 
-import asyncio
+import math
+from datetime import datetime
+
 import polars as pl
-from kailash_ml import DataExplorer, ModelVisualizer, PreprocessingPipeline
-from kailash_ml.engines.data_explorer import AlertConfig
-from shared import MLFPDataLoader
+from kailash_ml import AlertConfig, ModelVisualizer, PreprocessingPipeline
+
+from shared import MLFPDataLoader, run_compare, run_profile, run_report
 
 loader = MLFPDataLoader()
 taxi_raw = loader.load("mlfp01", "sg_taxi_trips.parquet")
 
 print(f"Shape: {taxi_raw.shape}")
-print(f"Columns: {taxi_raw.columns}")
 print(taxi_raw.describe())
+
+# The timestamps are stored as strings — parse them before any date arithmetic
+taxi_raw = taxi_raw.with_columns(
+    pl.col("pickup_datetime").str.to_datetime("%Y-%m-%d %H:%M:%S"),
+    pl.col("dropoff_datetime").str.to_datetime("%Y-%m-%d %H:%M:%S"),
+)
 
 for col in taxi_raw.columns:
     nc = taxi_raw[col].null_count()
@@ -3825,269 +3937,271 @@ for col in taxi_raw.columns:
         print(f"  {col}: {nc:,} nulls ({nc / taxi_raw.height:.1%})")
 ```
 
-You should see a range of issues in the describe output: a minimum fare that is negative, latitude values outside Singapore's bounding box, trip durations of zero or in the tens of thousands of seconds. Every one of these is a red flag — but the describe output is passive. Your job is to actively decide what to do about each.
+Read the `describe()` output's min and max rows before anything else. `pickup_latitude` has a maximum near 104 and `pickup_longitude` a minimum near 1.3 — Singapore sits at roughly latitude 1.3, longitude 103.8, so some rows have the two coordinates *swapped*. `fare_sgd` has a negative minimum (−49.97), `passengers` a minimum below 1, and the timestamp columns are strings whose min and max are alphabetical. After parsing, the latest pickup is in 2027 — for a log extracted at the end of 2024. The null scan finds 2,500 missing `pickup_zone` values (5.0%), plus nulls in `dropoff_zone` and `tip_sgd`. The `describe()` output is passive; your job is to decide what to do about each.
 
-### Step 2: Profile the raw data
+### Step 2: Count the problems, then profile
 
-```python
-async def profile_raw():
-    explorer = DataExplorer(alert_config=AlertConfig(
-        high_null_pct_threshold=0.02,
-        skewness_threshold=2.0,
-        high_cardinality_ratio=0.80,
-        zero_pct_threshold=0.10,
-        high_correlation_threshold=0.90,
-    ))
-    sample = taxi_raw.sample(n=min(200_000, taxi_raw.height), seed=42)
-    profile = await explorer.profile(sample)
-
-    print(f"Alerts: {len(profile.alerts)}")
-    for alert in profile.alerts:
-        print(f"  [{alert['severity'].upper()}] {alert['type']}: {alert.get('column', 'N/A')}")
-    return profile
-
-
-profile_raw = asyncio.run(profile_raw())
-```
-
-The alerts identify the problem columns systematically. You will likely see `high_skewness` on fare and distance, `high_nulls` on coordinate columns, possibly `duplicates` if the raw data has repeated rows.
-
-### Step 3: Domain-aware cleaning
+Domain rules first — the profiler cannot know that a fare must be positive:
 
 ```python
 SG_LAT_MIN, SG_LAT_MAX = 1.15, 1.47
 SG_LNG_MIN, SG_LNG_MAX = 103.60, 104.05
+DATA_EXTRACT_DATE = datetime(2025, 1, 1)   # the log was extracted at the end of 2024
 
+swapped_gps = taxi_raw.filter(
+    pl.col("pickup_latitude").is_between(SG_LNG_MIN, SG_LNG_MAX)
+    & pl.col("pickup_longitude").is_between(SG_LAT_MIN, SG_LAT_MAX)
+).height
+print(f"Swapped GPS:        {swapped_gps:,}")
+print(f"Fares <= 0:         {taxi_raw.filter(pl.col('fare_sgd') <= 0).height:,}")
+print(f"Passengers < 1:     {taxi_raw.filter(pl.col('passengers') < 1).height:,}")
+print(f"Future pickups:     {taxi_raw.filter(pl.col('pickup_datetime') >= DATA_EXTRACT_DATE).height:,}")
+print(f"Payment spellings:  {taxi_raw['payment_type'].n_unique()}")
+print(f"Colliding trip_ids: {taxi_raw.filter(pl.col('trip_id').is_duplicated()).height:,}")
+print(f"Exact duplicates:   {taxi_raw.height - taxi_raw.unique().height:,}")
+```
+
+Then the statistical view, using the `run_profile` helper from Lesson 1.7 (it works in scripts and notebooks alike):
+
+```python
+alert_config = AlertConfig(
+    high_null_pct_threshold=0.02,
+    skewness_threshold=2.0,
+    high_cardinality_ratio=0.80,
+    zero_pct_threshold=0.10,
+    high_correlation_threshold=0.90,
+)
+profile_raw = run_profile(taxi_raw, alert_config)
+
+print(f"Alerts: {len(profile_raw.alerts)}")
+for alert in profile_raw.alerts:
+    print(f"  [{alert['severity'].upper()}] {alert['type']}: {alert.get('column', alert.get('columns'))}")
+```
+
+The domain counts come out as: 250 swapped GPS rows, 1,000 fares at or below zero, 500 rows with fewer than one passenger, 500 pickups dated 2025 or later (up to December 2027), 15 spellings of `payment_type` (`"CASH"`, `"Cash Payment"`, `"cash"`, `"VISA"`, `"GrabPay"`, … for four real methods), 500 rows sharing a `trip_id` — and 0 exact duplicate rows. The profiler, with the thresholds above, raises 15 alerts: `high_nulls` on `pickup_zone`, `dropoff_zone` and `tip_sgd` (78% null — most trips have no tip recorded); `high_cardinality` on `trip_id` and the two timestamps (expected: they are near-unique); `high_skewness` and `high_cardinality` on the coordinates plus a `high_correlation` between latitude and longitude — all symptoms of the 250 swapped rows, which put a "latitude" of 104 into a column of 1.3s; `high_skewness` on `distance_km`; and `imbalanced` on the zone and payment columns.
+
+Compare the two views. The domain rules found the swapped coordinates, the impossible fares and passengers, the trips from the future and the colliding IDs; the profiler found the nulls and the near-unique ID column. Neither view is complete alone. Note especially the last two lines of Step 2: there are no exact duplicate rows, yet hundreds of rows share a `trip_id`. They are different trips given the same ID. `df.unique()` would never find them; only a key check does.
+
+### Step 3: Domain-aware cleaning, one logged step per problem
+
+```python
 taxi_clean = taxi_raw.clone()
 rows_before = taxi_clean.height
+cleaning_log: list[str] = []
 
-# GPS filter
-lat_cols = [c for c in taxi_clean.columns if "lat" in c.lower()]
-lng_cols = [c for c in taxi_clean.columns if "lng" in c.lower() or "lon" in c.lower()]
 
-for lat_col in lat_cols:
-    taxi_clean = taxi_clean.filter(
-        pl.col(lat_col).is_null()
-        | ((pl.col(lat_col) >= SG_LAT_MIN) & (pl.col(lat_col) <= SG_LAT_MAX))
-    )
+def log_step(message: str) -> None:
+    cleaning_log.append(message)
+    print(message)
 
-for lng_col in lng_cols:
-    taxi_clean = taxi_clean.filter(
-        pl.col(lng_col).is_null()
-        | ((pl.col(lng_col) >= SG_LNG_MIN) & (pl.col(lng_col) <= SG_LNG_MAX))
-    )
 
-# Fare filter
-if "fare" in taxi_clean.columns:
-    taxi_clean = taxi_clean.filter(pl.col("fare") > 0)
-    fare_p999 = taxi_clean["fare"].quantile(0.999)
-    taxi_clean = taxi_clean.filter(pl.col("fare") <= fare_p999)
+# 3a. Repair swapped GPS — the fix is unambiguous, so repair rather than drop
+is_swapped = pl.col("pickup_latitude").is_between(SG_LNG_MIN, SG_LNG_MAX) & pl.col(
+    "pickup_longitude"
+).is_between(SG_LAT_MIN, SG_LAT_MAX)
+taxi_clean = taxi_clean.with_columns(
+    pl.when(is_swapped).then(pl.col("pickup_longitude")).otherwise(pl.col("pickup_latitude")).alias("pickup_latitude"),
+    pl.when(is_swapped).then(pl.col("pickup_latitude")).otherwise(pl.col("pickup_longitude")).alias("pickup_longitude"),
+)
+log_step(f"GPS: swapped latitude/longitude back in {swapped_gps:,} rows")
 
-# Duration filter
-if "trip_duration_sec" in taxi_clean.columns:
-    taxi_clean = taxi_clean.filter(pl.col("trip_duration_sec") > 60)
-    taxi_clean = taxi_clean.filter(pl.col("trip_duration_sec") <= 10_800)
+# 3b. Drop what cannot be repaired
+before = taxi_clean.height
+taxi_clean = taxi_clean.filter(
+    pl.col("pickup_latitude").is_between(SG_LAT_MIN, SG_LAT_MAX)
+    & pl.col("pickup_longitude").is_between(SG_LNG_MIN, SG_LNG_MAX)
+    & (pl.col("fare_sgd") > 0)
+    & (pl.col("passengers") >= 1)
+    & (pl.col("pickup_datetime") < DATA_EXTRACT_DATE)
+)
+log_step(f"Impossible GPS / fare / passengers / future dates: removed {before - taxi_clean.height:,} rows")
 
-# Drop rows with missing coordinates (can't compute distance)
-critical = lat_cols + lng_cols
-if critical:
-    taxi_clean = taxi_clean.drop_nulls(subset=critical)
+# 3c. Normalise payment_type to four canonical labels
+payment_lower = pl.col("payment_type").str.to_lowercase()
+taxi_clean = taxi_clean.with_columns(
+    pl.when(payment_lower.str.contains("grab")).then(pl.lit("Grab"))
+    .when(payment_lower.str.contains("nets")).then(pl.lit("NETS"))
+    .when(payment_lower.str.contains("cash")).then(pl.lit("Cash"))
+    .when(payment_lower.str.contains("card|visa|mastercard|credit")).then(pl.lit("Card"))
+    .otherwise(pl.lit("Other"))
+    .alias("payment_type")
+)
+log_step(f"Payment labels -> {sorted(taxi_clean['payment_type'].unique().to_list())}")
+
+# 3d. trip_id collisions: we cannot tell which trip owns the ID, so drop them all
+before = taxi_clean.height
+taxi_clean = taxi_clean.filter(~pl.col("trip_id").is_duplicated())
+log_step(f"trip_id collisions: removed {before - taxi_clean.height:,} rows")
+
+# 3e. Fill nulls whose meaning is known
+taxi_clean = taxi_clean.with_columns(
+    pl.col("tip_sgd").fill_null(0.0),            # no tip recorded = no tip
+    pl.col("pickup_zone").fill_null("Unknown"),
+    pl.col("dropoff_zone").fill_null("Unknown"),
+)
+log_step("Nulls: tip_sgd -> 0.0, zones -> 'Unknown'")
 
 print(f"Rows: {rows_before:,} -> {taxi_clean.height:,} ({taxi_clean.height / rows_before:.1%} retained)")
 ```
 
-The retention rate tells you how dirty the data was. Typical: 85% or higher is good; 70% or below suggests systematic issues worth investigating upstream.
+Expected log: the GPS repair fixes 250 rows; the combined filter removes 1,975 rows (the impossible fares, passengers and future dates overlap slightly, so the total is less than 1,000 + 500 + 500); the payment labels collapse from 15 spellings to `['Card', 'Cash', 'Grab', 'NETS']`; the `trip_id` check removes 456 rows (the colliding IDs that survived the earlier filters); and 47,569 of 50,000 rows (95.1%) remain. A retention rate of 85% or more after a first pass is typical for a log like this; far lower would suggest a systematic upstream problem worth investigating before you clean further.
 
-Note the use of `pl.col(lat_col).is_null() | (range check)`. The `|` keeps rows with null coordinates *and* rows with in-range coordinates; we explicitly drop null-coordinate rows in the final `drop_nulls` step. This two-stage approach lets you make the null handling decision explicit rather than silently intertwining it with the range check.
+Two design choices are worth naming. First, *repair when the fix is unambiguous, drop when it is not*: a latitude of 103.8 paired with a longitude of 1.35 is obviously a swapped Singapore point, so we swap it back and keep the trip; a negative fare has no single correct value, so the row goes. Second, every step writes a line to `cleaning_log`, so the pipeline is auditable — anyone can see exactly what was removed and why.
 
 ### Step 4: Feature engineering
 
 ```python
-# Parse datetime columns
-datetime_cols = [c for c in taxi_clean.columns if "time" in c.lower() or "date" in c.lower()]
-for col in datetime_cols:
-    if taxi_clean[col].dtype == pl.Utf8:
-        taxi_clean = taxi_clean.with_columns(pl.col(col).str.to_datetime().alias(col))
+CBD_LAT, CBD_LNG = 1.2840, 103.8514   # Raffles Place
+_RAD = math.pi / 180
 
-pickup_col = next(
-    (c for c in taxi_clean.columns if "pickup" in c.lower() and ("time" in c.lower() or "date" in c.lower())),
-    None,
+taxi_clean = taxi_clean.with_columns(
+    # Temporal — Polars weekdays are ISO: Monday = 1 ... Sunday = 7
+    pl.col("pickup_datetime").dt.hour().alias("hour_of_day"),
+    pl.col("pickup_datetime").dt.weekday().alias("day_of_week"),
+    (pl.col("pickup_datetime").dt.weekday() >= 6).alias("is_weekend"),
+    # Duration: subtracting two Datetime columns gives a Duration
+    ((pl.col("dropoff_datetime") - pl.col("pickup_datetime")).dt.total_seconds() / 60).alias(
+        "trip_duration_min"
+    ),
+    # Spatial: haversine distance from the pickup point to the CBD
+    (
+        2 * 6371
+        * (
+            ((pl.col("pickup_latitude") - CBD_LAT) * _RAD / 2).sin().pow(2)
+            + math.cos(CBD_LAT * _RAD)
+            * (pl.col("pickup_latitude") * _RAD).cos()
+            * ((pl.col("pickup_longitude") - CBD_LNG) * _RAD / 2).sin().pow(2)
+        ).sqrt().arcsin()
+    ).alias("km_from_cbd"),
 )
 
-if pickup_col:
-    taxi_clean = taxi_clean.with_columns(
-        pl.col(pickup_col).dt.hour().alias("hour_of_day"),
-        pl.col(pickup_col).dt.weekday().alias("day_of_week"),
-        pl.col(pickup_col).dt.month().alias("month"),
-        (pl.col(pickup_col).dt.weekday() >= 5).alias("is_weekend"),
-    )
+taxi_clean = taxi_clean.with_columns(
+    pl.when(pl.col("hour_of_day").is_between(7, 9)).then(pl.lit("morning_peak"))
+    .when(pl.col("hour_of_day").is_between(17, 20)).then(pl.lit("evening_peak"))
+    .when((pl.col("hour_of_day") >= 22) | (pl.col("hour_of_day") <= 5)).then(pl.lit("late_night"))
+    .otherwise(pl.lit("off_peak"))
+    .alias("time_period"),
+    (pl.col("distance_km") / (pl.col("trip_duration_min") / 60)).alias("avg_speed_kmh"),
+)
 
-    taxi_clean = taxi_clean.with_columns(
-        pl.when((pl.col("hour_of_day") >= 7) & (pl.col("hour_of_day") <= 9)).then(pl.lit("morning_peak"))
-        .when((pl.col("hour_of_day") >= 17) & (pl.col("hour_of_day") <= 20)).then(pl.lit("evening_peak"))
-        .when((pl.col("hour_of_day") >= 22) | (pl.col("hour_of_day") <= 5)).then(pl.lit("late_night"))
-        .otherwise(pl.lit("off_peak"))
-        .alias("time_period")
-    )
-
-# Haversine distance
-if len(lat_cols) >= 2 and len(lng_cols) >= 2:
-    pickup_lat, dropoff_lat = lat_cols[0], lat_cols[1]
-    pickup_lng, dropoff_lng = lng_cols[0], lng_cols[1]
-    _RAD = pl.lit(3.141592653589793 / 180)
-
-    taxi_clean = taxi_clean.with_columns(
-        (
-            2 * 6371
-            * (
-                (
-                    ((pl.col(dropoff_lat) - pl.col(pickup_lat)) * _RAD / 2).sin().pow(2)
-                    + (pl.col(pickup_lat) * _RAD).cos()
-                    * (pl.col(dropoff_lat) * _RAD).cos()
-                    * ((pl.col(dropoff_lng) - pl.col(pickup_lng)) * _RAD / 2).sin().pow(2)
-                ).sqrt().arcsin()
-            )
-        ).alias("haversine_km")
-    )
-
-    if "trip_duration_sec" in taxi_clean.columns:
-        taxi_clean = taxi_clean.with_columns(
-            (pl.col("haversine_km") / (pl.col("trip_duration_sec") / 3600)).alias("avg_speed_kmh")
-        )
-        taxi_clean = taxi_clean.filter(
-            (pl.col("avg_speed_kmh") > 0) & (pl.col("avg_speed_kmh") <= 120)
-        )
-
-if "fare" in taxi_clean.columns and "haversine_km" in taxi_clean.columns:
-    taxi_clean = taxi_clean.with_columns(
-        (pl.col("fare") / pl.col("haversine_km")).alias("fare_per_km")
-    )
+# Derived-feature sanity check: a whole-trip average outside 2-120 km/h is impossible
+before = taxi_clean.height
+taxi_clean = taxi_clean.filter(pl.col("avg_speed_kmh").is_between(2, 120))
+log_step(f"Speed filter (outside 2-120 km/h): removed {before - taxi_clean.height:,} rows")
 ```
 
-Six new features: `hour_of_day`, `day_of_week`, `month`, `is_weekend`, `time_period`, `haversine_km`, `avg_speed_kmh`, `fare_per_km`. Each embeds a piece of domain knowledge. Each is something a model can learn from, whereas the raw pickup datetime is not.
+Seven new features: `hour_of_day`, `day_of_week`, `is_weekend`, `trip_duration_min`, `km_from_cbd`, `time_period` and `avg_speed_kmh`. Each embeds a piece of domain knowledge, and each is something a model can learn from, whereas the raw pickup timestamp is not. `is_weekend` uses `>= 6` because Polars numbers weekdays the ISO way (Saturday = 6, Sunday = 7). The speed filter is a consistency check between two columns: a trip that "covers" 20 km in one minute has a wrong distance or a wrong time, even though each value looked plausible on its own.
 
-The speed filter at the end is a derived-feature sanity check: after computing speed, any trip with an impossible speed was either a GPS error that slipped through the bounding-box filter or a duration error. Drop them.
-
-### Step 5: PreprocessingPipeline
+### Step 5: PreprocessingPipeline — hold out the test rows first
 
 ```python
-exclude = set(
-    ["fare", "fare_per_km"]  # target and its derivative
-    + datetime_cols          # raw datetimes (use extracted features)
-    + lat_cols + lng_cols     # raw coordinates (use haversine)
-)
 feature_cols = [
-    c for c in taxi_clean.columns
-    if c not in exclude and taxi_clean[c].dtype in (
-        pl.Float64, pl.Float32, pl.Int64, pl.Int32, pl.Utf8, pl.Boolean, pl.Categorical
-    )
+    "distance_km", "trip_duration_min", "avg_speed_kmh", "km_from_cbd", "passengers",
+    "hour_of_day", "day_of_week", "is_weekend", "time_period", "payment_type",
+    "pickup_zone",
 ]
+model_df = taxi_clean.select(feature_cols + ["fare_sgd"])
 
-# PreprocessingPipeline expects string columns as Categorical
-for col in feature_cols:
-    if taxi_clean[col].dtype == pl.Utf8:
-        taxi_clean = taxi_clean.with_columns(pl.col(col).cast(pl.Categorical))
-
-taxi_sample = taxi_clean.sample(n=min(50_000, taxi_clean.height), seed=42)
-pipeline_df = taxi_sample.select(feature_cols + ["fare"])
+# Hold out 20% of rows BEFORE fitting anything
+shuffled = model_df.sample(fraction=1.0, shuffle=True, seed=42)
+n_test = shuffled.height // 5
+test_rows, train_rows = shuffled.head(n_test), shuffled.slice(n_test)
 
 pipeline = PreprocessingPipeline()
 result = pipeline.setup(
-    data=pipeline_df,
-    target="fare",
-    train_size=0.8,
-    seed=42,
+    data=train_rows,
+    target="fare_sgd",
     normalize=True,
     categorical_encoding="onehot",
     imputation_strategy="median",
 )
+test_ready = pipeline.transform(test_rows)   # same learned rules, never refit
 
 print(f"Task: {result.task_type}")
-print(f"Train: {result.train_data.shape}")
-print(f"Test: {result.test_data.shape}")
+print(f"Train rows passed to setup(): {train_rows.height:,}  ->  {result.original_shape} -> {result.transformed_shape}")
+print(f"Held-out test rows after transform(): {test_ready.shape}")
 ```
 
-The task_type should be `"regression"` (fare is continuous). The train/test split is 80/20. Every numeric feature is now standardised. Every categorical feature (like `time_period`) is now a set of one-hot binary columns. The result is model-ready: you could hand `result.train_data` directly to a linear regression or a gradient boosting model without further preprocessing.
+Why split by hand when `setup()` has a `train_size` argument? Because `setup()` learns its imputation medians, one-hot categories and scaling means and standard deviations from **every row you pass it**, and only then splits those rows into `result.train_data` and `result.test_data`. If you passed all 43,934 rows, statistics of the "test" rows would already be baked into the transformations — a quiet form of leakage that makes test scores look better than they will be on genuinely new data. So we hold out 20% (8,786 rows) first, call `setup()` on the other 35,148 only, and apply the learned rules to the held-out rows with `pipeline.transform(test_rows)`, which never refits.
+
+Expected output: `Task: regression` (the target is continuous); `(35148, 12) -> (35148, 53)` — one-hot encoding expands the four categorical columns (`is_weekend`, `time_period`, `payment_type`, `pickup_zone`) into one 0/1 column per category; and the held-out rows come back as `(8786, 53)` with exactly the same columns. Inside `result`, `setup()` has still split the 35,148 training rows 80/20 (`result.train_data` 28,118 rows, `result.test_data` 7,030). Treat that inner split as a *validation* set for choosing models later; your untouched `test_rows` are the real test.
+
+The excluded columns are deliberate. `trip_id` is an identifier, not a feature. The raw timestamps have been turned into hour, weekday and duration. `tip_sgd` is only known *after* the fare is paid, so using it to predict the fare would be *target leakage* — a model that looks brilliant in testing and is useless in practice.
 
 ### Step 6: Visualise key patterns
 
 ```python
 viz = ModelVisualizer()
 
-# Fare distribution after cleaning
-fig = viz.feature_distribution(
-    values=taxi_clean["fare"].drop_nulls().to_list(),
-    feature_name="Fare (S$) — Cleaned",
-)
-fig.write_html("taxi_fare_distribution.html")
+fig_fare = viz.histogram(taxi_clean, "fare_sgd", bins=60, title="Taxi Fare Distribution (After Cleaning)")
+fig_fare.write_html("taxi_fare_distribution.html")
 
-# Hourly volume
-if "hour_of_day" in taxi_clean.columns:
-    hourly = taxi_clean.group_by("hour_of_day").agg(pl.len().alias("trip_count")).sort("hour_of_day")
-    fig_h = viz.training_history(
-        metrics={"Trip Volume": hourly["trip_count"].to_list()},
-        x_label="Hour of Day",
-        y_label="Number of Trips",
-    )
-    fig_h.write_html("taxi_hourly_volume.html")
+hourly = taxi_clean.group_by("hour_of_day").agg(pl.len().alias("trip_count")).sort("hour_of_day")
+fig_hourly = viz.training_history(
+    metrics={"Trip Volume": hourly["trip_count"].to_list()},
+    x_label="Hour of Day",
+    y_label="Number of Trips",
+)
+fig_hourly.update_traces(x=hourly["hour_of_day"].to_list())   # real hours 0..23, not 1..24
+fig_hourly.update_layout(title="Taxi Trip Volume by Hour of Day")
+fig_hourly.write_html("taxi_hourly_volume.html")
+
+fig_dist = viz.histogram(taxi_clean, "distance_km", bins=50, title="Trip Distance (km)")
+fig_dist.write_html("taxi_distance_distribution.html")
 ```
 
-The hourly volume chart shows the characteristic double-peak pattern: morning commute around 7–9 AM, evening commute around 5–8 PM, a trough at 3–5 AM. Late-night demand picks up again around 10 PM–1 AM (Clarke Quay, Orchard, nightlife). Demand is an emergent property of the city's schedule.
+Open the charts. The cleaned fares run from S$3.90 to S$50.72 with a median of S$9.64 — no more negative values. The hourly chart is the surprise: it is flat. Every hour of the day has between 1,743 and 1,893 trips, with no morning or evening commute peak. Real taxi demand has a strong daily rhythm; this synthetic log was generated without one, so the honest reading is "no hourly pattern in this data". (Check it by grouping by `time_period` too: average fares are S$9.71–9.74 in every period.) Notice the `update_traces(x=...)` line: without it, `training_history` would label the hours 1–24 instead of 0–23.
 
-### Step 7: Re-profile and compare
+### Step 7: Re-profile and compare original vs cleaned
 
 ```python
-async def profile_clean():
-    explorer = DataExplorer(alert_config=AlertConfig(
-        high_null_pct_threshold=0.01,
-        skewness_threshold=2.0,
-    ))
-    sample = taxi_clean.sample(n=min(200_000, taxi_clean.height), seed=42)
-    profile = await explorer.profile(sample)
+taxi_clean_original_cols = taxi_clean.select(taxi_raw.columns)
+profile_clean = run_profile(taxi_clean_original_cols, alert_config)
+print(f"Alerts before cleaning: {len(profile_raw.alerts)}")
+print(f"Alerts after cleaning:  {len(profile_clean.alerts)}")
 
-    print(f"Alerts before cleaning: {len(profile_raw.alerts)}")
-    print(f"Alerts after cleaning:  {len(profile.alerts)}")
+comparison = run_compare(taxi_raw, taxi_clean_original_cols)
+shape = comparison["shape_comparison"]
+print(f"Rows: {shape['rows_a']:,} -> {shape['rows_b']:,}")
+fare_a = next(c for c in comparison["profile_a"].columns if c.name == "fare_sgd")
+fare_b = next(c for c in comparison["profile_b"].columns if c.name == "fare_sgd")
+print(f"fare_sgd min: {fare_a.min_val:.2f} -> {fare_b.min_val:.2f}")
 
-    report_html = await explorer.to_html(sample, title="Taxi Trips — Cleaned")
-    with open("taxi_clean_profile.html", "w") as f:
-        f.write(report_html)
-    return profile
-
-
-profile_clean = asyncio.run(profile_clean())
+with open("taxi_clean_profile.html", "w") as f:
+    f.write(run_report(taxi_clean_original_cols, title="Taxi Trips — Cleaned", alert_config=alert_config))
 ```
 
-The alert count comparison is your quality proof. If `alerts_after < alerts_before`, the cleaning worked. A 50%+ reduction is a reasonable outcome for a single-pass clean; getting to zero usually requires multiple passes or domain-specific transformations (log of fare, log of distance) that we have not applied here.
+We profile only the original columns, with the same thresholds, so the two alert counts are comparable. Expected output: 15 alerts before and 11 after; rows 50,000 → 43,934; `fare_sgd` minimum −49.97 → 3.90. Read the 11 survivors rather than just counting them. Three are `high_cardinality` on `trip_id` and the two timestamps — correct for identifiers. Two are on `tip_sgd`: after filling nulls with 0, 78% of tips are zero (`high_zeros`) and the column is skewed — true facts about tipping, not errors. The coordinate alerts dropped to plain `high_cardinality` once the swapped rows were repaired. And one alert is *new*: `high_correlation` between `distance_km` and `fare_sgd` (r = 0.91). It was hidden by the negative fares; now that they are gone, the real link between distance and fare shows through. That is the sign of a successful clean — the goal is not zero alerts, it is alerts you can explain.
 
 ### Step 8: Pipeline summary
 
 ```python
 print(f"Stage 1 Load:       {taxi_raw.height:,} rows")
 print(f"Stage 2 Profile:    {len(profile_raw.alerts)} alerts")
-print(f"Stage 3 Clean:      {taxi_clean.height:,} rows retained")
+print(f"Stage 3 Clean:      {taxi_clean.height:,} rows retained ({len(cleaning_log)} logged steps)")
 print(f"Stage 4 Engineer:   {len([c for c in taxi_clean.columns if c not in taxi_raw.columns])} new features")
-print(f"Stage 5 Preprocess: {result.train_data.shape[0]:,} train / {result.test_data.shape[0]:,} test")
-print(f"Stage 6 Visualise:  charts saved")
+print(f"Stage 5 Preprocess: {train_rows.height:,} train / {test_rows.height:,} held-out test")
+print(f"Stage 6 Visualise:  3 charts saved")
 print(f"Stage 7 Verify:     {len(profile_clean.alerts)} alerts remaining")
 ```
 
-A single block that documents the entire pipeline's effect — raw row count, alert counts at entry and exit, clean row count, feature count, train/test split, alert reduction. This is the kind of summary you paste into a PR description or a report. Each number is concrete and auditable.
+A single block that documents the entire pipeline's effect — raw row count, alert counts at entry and exit, clean row count, feature count, train/test split. This is the kind of summary you paste into a pull request or a report. Each number is concrete and auditable.
 
 ## Try It Yourself
 
-**Drill 1.** Change the fare percentile cap from 99.9% to 99.5% and rerun. How many more rows does the tighter cap drop? Is the distribution visibly different?
+**Drill 1.** After Step 4, cap extreme fares: compute the 99.9th and the 99.5th percentile of `fare_sgd` and count how many rows lie above each. How many more rows does the tighter cap affect? Would you drop those rows, cap them, or keep them — and why?
 
-**Drill 2.** Add a `distance_to_raffles_place` feature: use Raffles Place as a reference point (approximate coordinates `(1.283, 103.851)`) and compute the haversine distance from each pickup to that point. Which time period has the shortest average distance to Raffles Place?
+**Drill 2.** Using the `km_from_cbd` feature from Step 4, compute the average distance from the CBD for each `time_period`. Do morning-peak trips start closer to the CBD than late-night trips? What does the answer tell you about this dataset?
 
-**Drill 3.** After PreprocessingPipeline, write a filter that keeps only the train_data rows where `hour_of_day` (in encoded form) matches a specific hour. Does it work after one-hot encoding? What does this tell you about the trade-off of encoding?
+**Drill 3.** List the columns of `result.train_data` that came from `time_period`, `is_weekend` and `payment_type`. What happened to `hour_of_day` — was it one-hot encoded? What does that imply about how a model will "see" the hour?
 
-**Drill 4.** Modify the pipeline to use `mean` imputation instead of `median`. Compare the alert counts on the cleaned data. Did either strategy produce new alerts (indicating the imputation distorted a column)?
+**Drill 4.** Rerun Step 5 with `imputation_strategy="mean"` instead of `"median"`. Compare `result.train_data` between the two runs. Explain the result.
 
-**Drill 5.** Write a function `run_pipeline(dataset_name: str)` that encapsulates the full pipeline from Step 1 to Step 8, so you can run it on any Module 1 dataset with one call. Test it on the HDB and economic datasets too.
+**Drill 5.** Split the pipeline into modules as described in "Project structure": an `extract.py` with `load_taxi_data()`, a `transform.py` with `clean_taxi_data()` and `add_features()`, and a `main.py` that calls them and prints the Step 8 summary. Then add a `fetch_locations(search: str) -> pl.DataFrame` function to `extract.py` that calls the OneMap search API and falls back to an empty DataFrame (with the right columns) if the request fails.
 
 ## Cross-References
 
-- **Module 2** (Feature Engineering): will apply the feature-engineering patterns from this lesson at a larger scale using `FeatureEngineer` and store the results in a `FeatureStore`.
+- **Module 2** (Statistical Mastery for Machine Learning and AI Success): will apply the feature-engineering patterns from this lesson at a larger scale using `FeatureEngineer` and store the results in a `FeatureStore`.
 - **Module 3** (Supervised ML): will consume `PreprocessingPipeline.result.train_data` directly as input to `TrainingPipeline`. The pipeline boundary you built here is where training takes over.
 - **Module 4** (Drift and Monitoring): will schedule `DataExplorer.compare` in a streaming loop as a drift monitor.
 
@@ -4099,37 +4213,72 @@ You should now be able to:
 - Distinguish generic from domain-aware cleaning rules and explain why both are needed.
 - Engineer temporal features from a timestamp column using `.dt.hour()`, `.dt.weekday()`, `.dt.month()`.
 - Engineer spatial features including the haversine distance using pure Polars expressions.
-- Use `PreprocessingPipeline.setup()` to produce a model-ready train/test split from a prepared DataFrame.
+- Hold out test rows before fitting, use `PreprocessingPipeline.setup()` on the training rows, and apply `pipeline.transform()` to the held-out rows — and explain why `setup()` alone is not a leak-free split.
+- Extract JSON from a REST API with `httpx` (GET with query parameters, POST with a JSON body), check the status, and turn the result into a typed DataFrame.
+- Split a pipeline into modules with a `main.py` orchestrator.
 - Compare pre- and post-cleaning profiles to measure cleaning effectiveness.
-- Write a try/except wrapper around an async pipeline entry point.
+- Write a try/except wrapper around a network call or pipeline entry point that fails with a clear message.
 
 ### Drill answers
 
-1. Tightening from 99.9% to 99.5% typically drops ~0.4% more rows. The distribution's upper tail is visibly shorter; the max fare drops significantly.
+1. ```python
+   for q in (0.999, 0.995):
+       cap = taxi_clean["fare_sgd"].quantile(q)
+       above = taxi_clean.filter(pl.col("fare_sgd") > cap).height
+       print(f"P{q * 100:.1f} = S${cap:.2f}: {above} rows above")
+   ```
+   The 99.9th percentile is S$33.72 with 44 rows above it; the 99.5th is S$17.41 with 218 rows above — 174 more. Neither cap is obviously right. Fares above S$17 are plausible for long trips (`distance_km` goes up to about 100 km in this log), so dropping them would bias a fare model against long journeys. Check `distance_km` for the high-fare rows first: a high fare on a long trip is real, a high fare on a 1 km trip is an error. Capping (`pl.col("fare_sgd").clip(upper_bound=cap)`) keeps the row but limits its influence.
 2. ```python
-   RP_LAT, RP_LNG = 1.283, 103.851
-   taxi_clean = taxi_clean.with_columns(
-       (
-           2 * 6371 * (
-               (
-                   ((RP_LAT - pl.col("pickup_lat")) * _RAD / 2).sin().pow(2)
-                   + (pl.col("pickup_lat") * _RAD).cos() * pl.lit(math.cos(RP_LAT * math.pi / 180))
-                   * ((RP_LNG - pl.col("pickup_lng")) * _RAD / 2).sin().pow(2)
-               ).sqrt().arcsin()
+   print(taxi_clean.group_by("time_period").agg(pl.col("km_from_cbd").mean().round(2)).sort("km_from_cbd"))
+   ```
+   Every period averages about 14.8 km (morning peak 14.75, late night 14.77, off-peak and evening peak 14.85). There is no commuter pattern: in this synthetic log, pickup location is independent of time of day. In a real taxi log you would expect morning-peak pickups in the suburbs and evening-peak pickups near the CBD — a feature that carries no signal here might carry a lot on real data.
+3. ```python
+   print([c for c in result.train_data.columns if c.startswith(("time_period", "is_weekend", "payment_type"))])
+   ```
+   You get `is_weekend_false`, `is_weekend_true`, four `time_period_*` columns (`evening_peak`, `late_night`, `morning_peak`, `off_peak`) and four `payment_type_*` columns (`Card`, `Cash`, `Grab`, `NETS`). `hour_of_day` was *not* one-hot encoded: it is an integer, so PreprocessingPipeline treated it as numeric and standardised it (mean 0, std 1). A linear model will therefore see the hour as a straight line — "later is more" — and cannot learn that both 8 AM and 6 PM are busy. If the hour matters as a category, cast it to a string before `setup()`, or rely on the `time_period` categories.
+4. Run `r_mean = PreprocessingPipeline().setup(data=train_rows, target="fare_sgd", normalize=True, categorical_encoding="onehot", imputation_strategy="mean")`. The two `train_data` frames are identical (`r_mean.train_data.equals(result.train_data)` is `True`). By Step 5 the cleaning has already removed or filled every null in the feature columns, so there is nothing left to impute and the strategy makes no difference. Imputation choices only matter for nulls that reach the pipeline — check `model_df.null_count()` before you spend time tuning them.
+5. One possible `extract.py`:
+   ```python
+   # extract.py
+   import httpx
+   import polars as pl
+
+   from shared import MLFPDataLoader
+
+   LOCATION_COLUMNS = {"place": pl.String, "lat": pl.Float64, "lng": pl.Float64}
+
+
+   def load_taxi_data() -> pl.DataFrame:
+       """Load the raw taxi log and parse its timestamp strings."""
+       raw = MLFPDataLoader().load("mlfp01", "sg_taxi_trips.parquet")
+       return raw.with_columns(
+           pl.col("pickup_datetime").str.to_datetime("%Y-%m-%d %H:%M:%S"),
+           pl.col("dropoff_datetime").str.to_datetime("%Y-%m-%d %H:%M:%S"),
+       )
+
+
+   def fetch_locations(search: str) -> pl.DataFrame:
+       """Search OneMap; return an empty, correctly-typed frame if the call fails."""
+       try:
+           response = httpx.get(
+               "https://www.onemap.gov.sg/api/common/elastic/search",
+               params={"searchVal": search, "returnGeom": "Y", "getAddrDetails": "N", "pageNum": 1},
+               timeout=10,
            )
-       ).alias("dist_to_raffles")
-   )
+           response.raise_for_status()
+       except httpx.HTTPError as exc:
+           print(f"OneMap request failed ({exc}); continuing without locations")
+           return pl.DataFrame(schema=LOCATION_COLUMNS)
+       results = response.json()["results"]
+       if not results:
+           return pl.DataFrame(schema=LOCATION_COLUMNS)
+       return pl.DataFrame(results).select(
+           pl.col("SEARCHVAL").alias("place"),
+           pl.col("LATITUDE").cast(pl.Float64).alias("lat"),
+           pl.col("LONGITUDE").cast(pl.Float64).alias("lng"),
+       )
    ```
-   Morning peak usually has the shortest mean distance — commute trips are CBD-bound.
-3. After one-hot encoding, `hour_of_day` is split into many binary columns (`hour_of_day_7`, `hour_of_day_8`, etc.). Filtering by a single hour requires filtering the binary column. The trade-off: one-hot makes the model's life easier but the raw data harder to query.
-4. Mean imputation may introduce `high_skewness` alerts on columns whose distribution was far from normal — the mean pulls values toward a tail.
-5. ```python
-   async def run_pipeline(dataset_name: str, target: str):
-       raw = loader.load("mlfp01", dataset_name)
-       explorer = DataExplorer(alert_config=AlertConfig())
-       profile_raw = await explorer.profile(raw)
-       # (clean, engineer, preprocess, visualise, re-profile as in the lesson)
-   ```
+   `transform.py` holds the Step 3 and Step 4 code as two functions that take and return a DataFrame, and `main.py` follows the pattern in "Project structure". The test of a good split: you can call `clean_taxi_data(load_taxi_data())` from a notebook without running anything else, and a network failure in `fetch_locations` prints a clear message instead of crashing the pipeline.
 
 ---
 

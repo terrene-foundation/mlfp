@@ -43,7 +43,8 @@ torch.manual_seed(42)
 # ════════════════════════════════════════════════════════════════════════
 # Transformer weights are bell-shaped — most values cluster near 0.
 # FP16 spends 16 bits everywhere regardless. Quantisation maps the
-# continuous range onto an integer grid: INT8 (256 levels), INT4 (16),
+# continuous range onto an integer grid: INT8 (256 levels, ~2x smaller
+# than FP16), INT4 (16),
 # or NF4 (16 levels laid out to match the normal distribution).
 # GPTQ uses the Hessian; AWQ protects salient weights; GGUF is CPU-
 # optimised; QLoRA quantises the frozen base and trains LoRA on top.
@@ -150,10 +151,12 @@ bytes_per_param = [4, 2, 1, 0.5, 0.25]
 # TODO: memory_gb = [7 * b for b in bytes_per_param]
 memory_gb = ____
 
-# TODO: Vertical bar plot with annotations of each bar's GB value.
-# Save to OUTPUT_DIR / "ex2_quantisation_memory.png"
-____
 fname = OUTPUT_DIR / "ex2_quantisation_memory.png"
+fname.unlink(missing_ok=True)  # the checkpoint must see THIS run's plot
+
+# TODO: Vertical bar plot with annotations of each bar's GB value.
+# Save to fname and close the figure.
+____
 print(f"  Saved: {fname}")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
@@ -164,7 +167,7 @@ print("✓ Checkpoint 4 passed — memory footprint visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore SME on-device assistant (GGUF on CPU)
 # ════════════════════════════════════════════════════════════════════════
-# A Singapore F&B chain runs 42 outlets with 8 GB ARM tablets (no GPU).
+# (Illustrative) A Singapore F&B chain runs 42 outlets with 8 GB ARM tablets (no GPU).
 # PDPA requires data stays on-device. FP16 7B (14 GB) impossible; INT8
 # 7B (7 GB) leaves no headroom; GGUF Q4_K_M (~4.5 GB) fits with room
 # for the POS app. Multilingual (EN/MS/ID) response <1.5s SLA.
@@ -209,65 +212,10 @@ print(
 
   KEY INSIGHT: quantisation is the single biggest deployment lever.
   FP16 -> INT4 cuts memory 4x at ~2-5% quality drop on most tasks.
+  Pair quantisation with LoRA (QLoRA) for fine-tuning, and with
+  llama.cpp GGUF for CPU-only edge deployment.
 
   Next: 06_sft_alignment_pipeline.py runs the real kailash-align
   SFT pipeline + AdapterRegistry on the IMDB SFT dataset.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Alignment (KL divergence from base, reward margin).
-# Secondary: Output (judge quality on paired completions), Attention
-# (layer-wise shift in target modules for LoRA).
-if False:  # scaffold — requires trained base + adapter checkpoint
-    obs = LLMObservatory(run_id="ex_2_finetune_run")
-    # Typical alignment read:
-    # for step, metrics in enumerate(training_log):
-    #     obs.alignment.log_training_step(step=step, **metrics)
-    # obs.alignment.evaluate_pair(base_responses, adapter_responses)
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Alignment  (WARNING): KL divergence from base = 0.42 nats
-#       Fix: healthy range 0.2-1.0; this is low-end — adapter barely
-#            moved. Increase LoRA rank or learning rate.
-#   [✓] Output     (HEALTHY): judge win-rate 0.58 vs base (>0.50 = good)
-#   [✓] Attention  (HEALTHY): shift concentrated in q_proj/v_proj as
-#       expected for LoRA; no drift in frozen layers.
-#   [?] Retrieval / Agent / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [ALIGNMENT LENS] KL 0.42 nats is the SIGNATURE of a cautiously-trained
-#     LoRA adapter — it diverged from the base distribution but not
-#     enough to break it. Above 2.0 nats signals over-fit; below 0.2
-#     signals the adapter barely learned. Our value is slightly under the
-#     0.5 floor we want for visible task lift.
-#     >> Prescription: raise lora_r from 8 -> 16 or train another epoch.
-#  [OUTPUT LENS] Win-rate 0.58 > 0.50 confirms the adapter is better
-#     than base on held-out prompts — tiny lift but statistically real.
-#  [ATTENTION LENS] Shift localised in the target modules = LoRA is
-#     doing what it's supposed to do (low-rank delta on attention
-#     projections, frozen MLP). If attention shifted everywhere you'd
-#     know you accidentally unfroze a module.
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

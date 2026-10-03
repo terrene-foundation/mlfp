@@ -38,7 +38,6 @@ from shared.mlfp06.ex_4 import (
     embed_many,
     generate_embedding,
     load_rag_corpus,
-    make_delegate,
     plot_strategy_comparison,
     run_async,
     split_corpus,
@@ -114,7 +113,7 @@ for text in doc_texts:
 chunk_subset = all_chunks[:30]  # small enough to embed in a run
 print(f"Indexing {len(chunk_subset)} chunks (both dense + BM25)...")
 
-embeddings = run_async(embed_many(chunk_subset, budget_usd=3.0))
+embeddings = run_async(embed_many(chunk_subset))
 dense_store = DenseVectorStore()
 for i, (text, emb) in enumerate(zip(chunk_subset, embeddings)):
     dense_store.add(text, emb, {"chunk_idx": i})
@@ -176,8 +175,7 @@ def reciprocal_rank_fusion(ranked_lists: list[list[dict]], k: int = 60) -> list[
 
 
 async def hybrid_search(query: str, top_k: int = 5) -> dict:
-    delegate = make_delegate(budget_usd=0.5)
-    q_emb = await generate_embedding(query, delegate)
+    q_emb = await generate_embedding(query)
     dense_results = dense_store.search(q_emb, top_k=top_k * 2)
     sparse_results = bm25.search(query, top_k=top_k * 2)
     fused = reciprocal_rank_fusion([dense_results, sparse_results])
@@ -302,7 +300,7 @@ print(f"  Saved: {fname}")
 # ════════════════════════════════════════════════════════════════════════
 # APPLY — Singapore fintech compliance search
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore fintech (licensed by MAS under the Payment
+# SCENARIO (illustrative): a Singapore fintech (licensed by MAS under the Payment
 # Services Act) runs a compliance search tool over ~5,000 regulatory
 # documents: MAS notices, FATF guidance, travel rules, AML/CFT
 # advisories. The compliance officer asks questions like "What is the
@@ -318,75 +316,19 @@ print(f"  Saved: {fname}")
 #   - The officer needs BOTH: the exact clause citing the threshold
 #     (BM25) AND the adjacent guidance on who qualifies as PEP (dense).
 #
-# DEPLOYMENT: Index dense embeddings in Weaviate (or similar), BM25 in
+# DEPLOYMENT: Index dense embeddings in a vector database, BM25 in
 # SQLite FTS5, run both in parallel, fuse with RRF k=60, top-10 to the
 # reranker (next exercise).
 #
-# BUSINESS IMPACT: A Singapore fintech with 50 compliance staff spends
-# ~S$8M/year on compliance labour. Regulatory lookups are 30% of that
-# work (S$2.4M). A hybrid retriever that raises top-5 recall from 60%
-# (BM25-only) to 92% (hybrid) means compliance officers find the right
-# clause on the first query instead of the third — cutting lookup time
-# by ~40% and saving ~S$960K/year. The same system drives AML alert
-# triage, which has regulatory fines (up to S$1M per breach) as the
-# downside of a miss — so hybrid retrieval is not an optimisation, it
-# is risk management.
-
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Retrieval (recall@k, context utilisation, faithfulness).
-# Secondary: Output (judge on final answers). Classic RAG failures —
-# over-narrow chunks, stale index, judge flags fabrication.
-if False:  # scaffold — requires an evaluated RAG pipeline
-    obs = LLMObservatory(run_id="ex_4_rag_run")
-    # obs.retrieval.evaluate(
-    #     queries=eval_queries,
-    #     retrieved_contexts=per_query_chunks,
-    #     answers=generator_answers,
-    #     ground_truth_ids=per_query_relevant_ids,
-    #     k=5,
-    # )
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Retrieval  (WARNING): recall@5 = 0.62 — chunks too narrow
-#       Fix: increase chunk_size from 256 to 512 tokens, OR add
-#            HyDE query rewriting before dense retrieval.
-#   [✓] Output     (HEALTHY): faithfulness 0.87 (answers grounded in
-#       retrieved chunks even when recall is imperfect).
-#   [?] Attention / Agent / Alignment / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [RETRIEVAL LENS] recall@5 = 0.62 is the SIGNATURE of over-narrow
-#     chunks — the index contains the right passage but the retriever
-#     returns a neighbour that misses the key entity. This is the
-#     failure the chunking exercise (ex_4.1) prepared you to diagnose.
-#     >> Prescription: (a) increase chunk_size, (b) add overlap, (c)
-#        switch to hybrid BM25+dense (ex_4.4), or (d) rerank (ex_4.5).
-#  [OUTPUT LENS] Faithfulness 0.87 on a recall of 0.62 means the
-#     generator is honest — when it doesn't have the right chunk it
-#     says so instead of fabricating. That's the GOOD failure mode.
-#     The bad failure mode would be high recall + low faithfulness
-#     (retrieval works but the LLM still hallucinates).
-# ════════════════════════════════════════════════════════════════════
+# BUSINESS IMPACT (illustrative planning figures — measure your own
+# recall with a hit@k eval set, as in 05_rerank_rag_pipeline.py): a
+# fintech with 50 compliance staff spends ~S$8M/year on compliance
+# labour, ~30% of it (S$2.4M) on regulatory lookups. If hybrid retrieval
+# lets officers find the right clause on the first query instead of the
+# third, cutting lookup time by ~40%, the saving is ~S$960K/year. The
+# same system drives AML alert triage, where a missed clause is a
+# compliance breach — so hybrid retrieval is risk management, not only
+# an optimisation.
 
 
 # ════════════════════════════════════════════════════════════════════════

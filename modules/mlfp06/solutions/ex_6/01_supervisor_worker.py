@@ -9,6 +9,7 @@
 #   - Build specialist agents with domain-specific Kaizen Signatures
 #   - Orchestrate the supervisor-worker (fan-out / fan-in) pattern
 #   - Fan-out: dispatch the same question to three independent specialists
+#     concurrently with asyncio.gather
 #   - Fan-in: a supervisor synthesises specialist outputs into one answer
 #   - Why decomposing analysis across specialists beats one mega-prompt
 #   - Audit trail: every specialist's contribution is structured and traceable
@@ -31,11 +32,14 @@ import time
 
 import matplotlib.pyplot as plt
 
+from shared.mlfp06._ollama_bootstrap import preflight_ollama
 from shared.mlfp06.ex_6 import (
+    MODEL,
     OUTPUT_DIR,
     build_specialists,
     build_synthesis,
     load_squad_corpus,
+    run_checked,
 )
 
 
@@ -59,7 +63,14 @@ from shared.mlfp06.ex_6 import (
 #   - Each specialist has a narrow, high-signal Signature → less drift
 #   - The supervisor sees STRUCTURED specialist output, not free text
 #   - Audit trail: you can trace exactly which specialist said what
-#   - Costs are predictable per specialist (Kaizen max_llm_cost_usd)
+#   - Costs are predictable per specialist: each has its own config
+#     (budget_limit_usd caps priced spend on a hosted provider; locally
+#     you meter calls and tokens)
+#   - Independent specialists can run CONCURRENTLY (asyncio.gather), so
+#     the fan-out costs about max(specialist latencies), not their sum —
+#     provided the backend serves requests in parallel (hosted APIs, or
+#     Ollama with OLLAMA_NUM_PARALLEL > 1; a single-slot daemon queues
+#     them).
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -107,19 +118,35 @@ print("✓ Checkpoint 2 passed — four agents wired\n")
 # ════════════════════════════════════════════════════════════════════════
 
 
+async def timed(name: str, agent, **inputs) -> tuple[str, dict, float]:
+    """Run one agent (failing loudly on LLM errors) and time it."""
+    t0 = time.perf_counter()
+    result = await run_checked(agent, **inputs)
+    return name, result, time.perf_counter() - t0
+
+
 async def supervisor_worker_analysis(doc: str, question: str) -> dict:
     """Run the full fan-out / fan-in pattern for one (doc, question)."""
     t0 = time.perf_counter()
 
-    # Fan-out: run each specialist independently
-    factual_result = await factual_agent.run_async(document=doc, question=question)
-    semantic_result = await semantic_agent.run_async(document=doc, question=question)
-    structural_result = await structural_agent.run_async(
-        document=doc, question=question
+    # Fan-out: the three specialists are independent, so launch them
+    # concurrently and wait for all three.
+    fan_out = await asyncio.gather(
+        timed("factual", factual_agent, document=doc, question=question),
+        timed("semantic", semantic_agent, document=doc, question=question),
+        timed("structural", structural_agent, document=doc, question=question),
     )
+    fan_out_wall_s = time.perf_counter() - t0
+    results = {name: result for name, result, _ in fan_out}
+    stage_latency = {name: dt for name, _, dt in fan_out}
+    factual_result = results["factual"]
+    semantic_result = results["semantic"]
+    structural_result = results["structural"]
 
     # Fan-in: supervisor synthesises the three structured outputs
-    synthesis_result = await synthesis_agent.run_async(
+    _, synthesis_result, synthesis_s = await timed(
+        "synthesis",
+        synthesis_agent,
         document=doc,
         question=question,
         factual_analysis=(
@@ -136,6 +163,8 @@ async def supervisor_worker_analysis(doc: str, question: str) -> dict:
         ),
     )
 
+    stage_latency["synthesis"] = synthesis_s
+
     elapsed = time.perf_counter() - t0
     return {
         "answer": synthesis_result["unified_answer"],
@@ -144,6 +173,8 @@ async def supervisor_worker_analysis(doc: str, question: str) -> dict:
         "factual_claims": factual_result["factual_claims"],
         "themes": semantic_result["main_themes"],
         "entities": structural_result["key_entities"],
+        "stage_latency_s": stage_latency,
+        "fan_out_wall_s": fan_out_wall_s,
         "latency_s": elapsed,
     }
 
@@ -157,12 +188,20 @@ question = passages["question"][0]
 print(f"Question: {question}")
 print(f"Passage title: {passages['title'][0]}")
 
+preflight_ollama(required_models=[MODEL])  # fails loudly if Ollama is down
 sv_result = asyncio.run(supervisor_worker_analysis(doc, question))
 
 print(f"\nUnified answer: {sv_result['answer'][:300]}...")
 print(f"Confidence: {sv_result['confidence']:.2f}")
 print(f"Reasoning steps: {len(sv_result['reasoning'])}")
-print(f"Latency: {sv_result['latency_s']:.1f}s")
+print(f"Latency: {sv_result['latency_s']:.1f}s total")
+for name, dt in sv_result["stage_latency_s"].items():
+    print(f"  {name:10s} {dt:5.1f}s")
+print(
+    f"  fan-out wall clock {sv_result['fan_out_wall_s']:.1f}s vs "
+    f"sum of specialists "
+    f"{sum(v for k, v in sv_result['stage_latency_s'].items() if k != 'synthesis'):.1f}s"
+)
 print("\n--- Audit trail (who said what) ---")
 print(f"  Factual claims (top 3): {sv_result['factual_claims'][:3]}")
 print(f"  Semantic themes (top 3): {sv_result['themes'][:3]}")
@@ -212,12 +251,14 @@ ax1.set_title("Specialist Contributions (Fan-Out)", fontweight="bold")
 for i, c in enumerate(contributions):
     ax1.text(i, c + 0.1, str(c), ha="center", fontsize=10)
 
-# Right: latency pie (supervisor-worker is serial here; shows time split)
-total = sv_result["latency_s"]
-ax2.barh(["Total latency"], [total], color="#34495e", height=0.4)
-ax2.set_xlabel("Seconds")
-ax2.set_title("End-to-End Latency", fontweight="bold")
-ax2.text(total + 0.1, 0, f"{total:.1f}s", va="center", fontsize=11)
+# Right: measured latency per stage vs the concurrent fan-out wall clock
+stage_names = list(sv_result["stage_latency_s"].keys()) + ["fan-out\nwall clock"]
+stage_secs = list(sv_result["stage_latency_s"].values()) + [sv_result["fan_out_wall_s"]]
+ax2.barh(stage_names, stage_secs, color=colors + ["#34495e"], height=0.5)
+ax2.set_xlabel("Seconds (measured)")
+ax2.set_title("Per-Stage Latency vs Fan-Out Wall Clock", fontweight="bold")
+for i, sec in enumerate(stage_secs):
+    ax2.text(sec + 0.05, i, f"{sec:.1f}s", va="center", fontsize=9)
 
 plt.tight_layout()
 fname = OUTPUT_DIR / "ex6_supervisor_worker_viz.png"
@@ -229,7 +270,7 @@ print(f"\n  Saved: {fname}")
 # ════════════════════════════════════════════════════════════════════════
 # APPLY — Singapore scenario: insurance claims triage
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore general insurer handles ~8,000 personal-injury
+# SCENARIO (illustrative figures): A Singapore general insurer handles ~8,000 personal-injury
 # claims a month. Each claim has a narrative report (doctor notes,
 # police statement, claimant description). A single-agent triage bot
 # currently reads every claim and flags suspicious ones, but misses
@@ -242,79 +283,44 @@ print(f"\n  Saved: {fname}")
 #   Structural specialist: "Which parties are involved and how?"
 #   Supervisor: merges the three into a triage recommendation
 #
-# EXPECTED IMPACT: at the insurer's scale, raising fraud detection from
-# 88% to 95% is ~550 extra fraud cases caught per month. At an average
-# fraud claim of S$8,000, that is S$4.4M/month in loss prevention —
-# vastly more than the ~4× LLM cost vs the single-agent baseline.
+# EXPECTED IMPACT: the catch rate applies to FRAUDULENT claims, not to
+# all 8,000.  If ~5% of claims are fraudulent (400/month), raising the
+# catch rate from 88% to 95% catches 7% x 400 = 28 more fraud cases a
+# month.  At an average fraud claim of S$8,000 that is ~S$224,000/month
+# in loss prevention — far more than the ~4x LLM calls vs the
+# single-agent baseline.
 #
-# AUDIT BONUS: the Monetary Authority of Singapore (MAS) can ask
-# "why was this claim flagged?" and the answer is a structured trace,
-# not a black-box decision — exactly what TRM guidelines require.
+# AUDIT BONUS: when a supervisor or regulator asks "why was this claim
+# flagged?", the answer is a structured per-specialist trace, not a
+# black-box decision.
 
 print("=" * 70)
 print("  SINGAPORE APPLICATION: Insurance Claims Triage")
 print("=" * 70)
 print(
     """
-  Scale: 8,000 personal-injury claims/month
+  Scale: 8,000 personal-injury claims/month (illustrative)
+  Assumed fraudulent share:                ~5% -> 400 cases/month
   Baseline single-agent fraud catch rate: 88%
   Supervisor-worker target:                95%
-  Net additional fraud caught:             ~550 cases/month
+  Net additional fraud caught:             7% x 400 = ~28 cases/month
   Average fraud claim size:                S$8,000
-  Monthly loss-prevention delta:           ~S$4.4M
-  LLM cost multiplier vs single-agent:     ~4× (still negligible vs gain)
+  Monthly loss-prevention delta:           ~S$224,000
+  LLM calls vs single-agent:               4 per claim instead of 1
   Audit trail:                             structured per-specialist outputs
 """
 )
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# DIAGNOSTIC CHECKPOINT
 # ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Agent Trace (inter-agent handoffs, tool latency).
-# Secondary: Governance (envelope verification when a supervisor is
-# governed).
-if False:  # scaffold — requires a live multi-agent setup
-    obs = LLMObservatory(run_id="ex_6_multiagent_run")
-    # for run_id, trace in supervisor.all_traces.items():
-    #     obs.agent.register_trace(trace)
-    # obs.agent.handoff_summary()  # inter-agent handoffs
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Agent      (HEALTHY): 3 workers, 7 handoffs, mean tool-call
-#       latency 840ms, no stuck loops across all runs.
-#   [?] Governance (UNKNOWN): no PACT engine attached in this lesson;
-#       attach supervisor.audit to light up this lens.
-#   [?] Output / Retrieval / Alignment / Attention (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [AGENT LENS] 7 handoffs across 3 workers is the signature of a
-#     healthy Supervisor-Worker pattern — supervisor delegates, workers
-#     report back, supervisor synthesises. Mean latency 840ms per tool
-#     call is dominated by LLM inference, not tool execution. Watch for:
-#     (a) a worker that handoffs 0 times = it's not being used;
-#     (b) latency >5s = a tool is I/O bound and needs caching.
-#  [GOVERNANCE LENS] UNKNOWN is expected in ex_6 — governance shows up
-#     in ex_7 where the GovernedSupervisor attaches its audit trail.
-# ════════════════════════════════════════════════════════════════════
-
+# The Agent Trace lens captures tool-using Delegates; these specialists
+# are single structured calls, so the diagnostic is what you printed:
+# per-specialist contributions (the audit trail) and the measured
+# per-stage latency.  Watch for (a) a specialist contributing 0 items —
+# it is not pulling its weight; (b) a fan-out wall clock close to the
+# SUM of the specialists — your backend is serving them one at a time.
 
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION

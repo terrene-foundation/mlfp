@@ -9,6 +9,7 @@
 #   - Implement an LLM-based cross-encoder reranker
 #   - Evaluate RAG quality with RAGAS (4 metrics as LLM-as-judge)
 #   - Implement HyDE (Hypothetical Document Embeddings) query expansion
+#   - Measure BM25, dense, hybrid and HyDE retrieval with hit@k on an eval set
 #   - Wire a full retrieve -> rerank -> generate RAG pipeline
 #   - Apply end-to-end RAG to a Singapore insurance claims assistant
 #
@@ -16,14 +17,16 @@
 # ESTIMATED TIME: ~60 min
 #
 # TASKS:
-#   1. Build the retrieval substrate (dense + BM25 + hybrid)
+#   1. Build the retrieval substrate (dense + BM25 + hybrid), with every
+#      chunk tagged by the document it came from
 #   2. Implement cross_encoder_rerank
 #   3. Implement compute_ragas_metrics (faithfulness, answer relevance,
 #      context relevance, context recall)
 #   4. Implement hyde_retrieve
 #   5. Assemble the full RAG pipeline
-#   6. Visualise RAGAS scores
-#   7. Apply: Singapore insurance claims assistant
+#   6. Retrieval leaderboard: hit@k for BM25 / dense / hybrid / HyDE
+#   7. Visualise RAGAS scores and the hit@k leaderboard
+#   8. Apply: Singapore insurance claims assistant
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -35,7 +38,9 @@ from collections import Counter
 
 import matplotlib.pyplot as plt
 import numpy as np
+import polars as pl
 
+from shared.mlfp06.diagnostics import LLMObservatory
 from shared.mlfp06.ex_4 import (
     DenseVectorStore,
     EMBED_DIM,
@@ -98,50 +103,92 @@ class BM25:
         scores = [(i, self.score(query, i)) for i in range(self.N)]
         scores.sort(key=lambda x: x[1], reverse=True)
         return [
-            {"text": self.documents[idx], "score": s, "doc_idx": idx}
+            {"text": self.documents[idx], "score": s, "chunk_idx": idx}
             for idx, s in scores[:top_k]
         ]
 
 
 def reciprocal_rank_fusion(ranked_lists: list[list[dict]], k: int = 60) -> list[dict]:
-    doc_scores: dict[int, float] = {}
-    doc_texts: dict[int, str] = {}
+    """Fuse ranked chunk lists by chunk_idx: score = sum 1 / (k + rank)."""
+    rrf_scores: dict[int, float] = {}
+    texts: dict[int, str] = {}
     for ranked_list in ranked_lists:
         for rank, item in enumerate(ranked_list, start=1):
-            doc_id = hash(item["text"])
-            doc_texts[doc_id] = item["text"]
-            doc_scores[doc_id] = doc_scores.get(doc_id, 0.0) + 1.0 / (k + rank)
-    fused = sorted(doc_scores.items(), key=lambda x: x[1], reverse=True)
-    return [{"text": doc_texts[d], "rrf_score": s} for d, s in fused]
+            idx = item["chunk_idx"]
+            texts[idx] = item["text"]
+            rrf_scores[idx] = rrf_scores.get(idx, 0.0) + 1.0 / (k + rank)
+    fused = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+    return [{"text": texts[i], "score": s, "chunk_idx": i} for i, s in fused]
+
+
+class JudgeParseError(ValueError):
+    """The LLM replied, but not with the number the prompt asked for."""
+
+
+def parse_score(response: str, low: float, high: float) -> float:
+    """Pull the first number out of a judge reply; raise if there is none.
+
+    A reply with no number is a FAILED judgement — it is never replaced by
+    a neutral default, because a default would silently pass as a result.
+    """
+    match = re.search(r"\d+(?:\.\d+)?", response)
+    if match is None:
+        raise JudgeParseError(f"no score in judge reply: {response[:120]!r}")
+    return min(max(float(match.group()), low), high)
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 1 — Build the retrieval substrate
 # ════════════════════════════════════════════════════════════════════════
+# Each corpus row is one source document with ONE question about it, so
+# question i's relevant document is document i. We index the chunks of
+# N_INDEX_DOCS documents (the N_EVAL documents behind the eval questions
+# plus distractors) and tag every chunk with its source document id —
+# that tag is what lets us MEASURE retrieval in Task 6.
+
+N_EVAL = 10
+N_INDEX_DOCS = 40
 
 corpus = load_rag_corpus(sample_size=1000)
-doc_texts, eval_questions, eval_answers = split_corpus(corpus, n_eval=20)
+doc_texts, eval_questions, eval_answers = split_corpus(corpus, n_eval=N_EVAL)
+doc_ids = corpus["section"].to_list()
+eval_relevant = doc_ids[:N_EVAL]
 
-all_chunks = []
-for text in doc_texts:
-    all_chunks.extend(chunk_sentence(text, 500))
-chunk_subset = all_chunks[:30]
-print(f"Indexing {len(chunk_subset)} chunks...")
+chunk_texts: list[str] = []
+chunk_doc_ids: list[str] = []
+for doc_id, text in zip(doc_ids[:N_INDEX_DOCS], doc_texts[:N_INDEX_DOCS]):
+    for chunk in chunk_sentence(text, 500):
+        chunk_texts.append(chunk)
+        chunk_doc_ids.append(doc_id)
+print(f"Indexing {len(chunk_texts)} chunks from {N_INDEX_DOCS} documents...")
 
-embeddings = run_async(embed_many(chunk_subset, budget_usd=3.0))
+embeddings = run_async(embed_many(chunk_texts))
 dense_store = DenseVectorStore()
-for i, (text, emb) in enumerate(zip(chunk_subset, embeddings)):
-    dense_store.add(text, emb, {"chunk_idx": i})
-bm25 = BM25(chunk_subset)
+for i, (text, emb) in enumerate(zip(chunk_texts, embeddings)):
+    dense_store.add(text, emb, {"chunk_idx": i, "doc_id": chunk_doc_ids[i]})
+bm25 = BM25(chunk_texts)
+
+# Embed every eval question once; all retrievers below reuse these vectors.
+query_embeddings = run_async(embed_many(eval_questions))
 
 
-async def hybrid_search(query: str, top_k: int = 5) -> list[dict]:
-    delegate = make_delegate(budget_usd=0.5)
-    q_emb = await generate_embedding(query, delegate)
-    dense_results = dense_store.search(q_emb, top_k=top_k * 2)
+def dense_search(q_emb: list[float], top_k: int = 5) -> list[dict]:
+    return [
+        {"text": r["text"], "score": r["score"], "chunk_idx": r["metadata"]["chunk_idx"]}
+        for r in dense_store.search(q_emb, top_k=top_k)
+    ]
+
+
+def hybrid_search(query: str, q_emb: list[float], top_k: int = 5) -> list[dict]:
+    dense_results = dense_search(q_emb, top_k=top_k * 2)
     sparse_results = bm25.search(query, top_k=top_k * 2)
-    fused = reciprocal_rank_fusion([dense_results, sparse_results])
-    return fused[:top_k]
+    return reciprocal_rank_fusion([dense_results, sparse_results])[:top_k]
+
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────────
+assert len(embeddings) == len(chunk_texts) and len(embeddings[0]) == EMBED_DIM
+assert set(eval_relevant) <= set(chunk_doc_ids), "every eval doc must be indexed"
+print("✓ Checkpoint 1 passed — retrieval substrate indexed\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -170,8 +217,8 @@ async def hybrid_search(query: str, top_k: int = 5) -> list[dict]:
 # interrogative; a paragraph about inflation causes is long and
 # declarative. HyDE generates a hypothetical answer first, embeds the
 # hypothetical (which is close to real answers in embedding space), and
-# retrieves against that. One extra LLM call per query; bigger recall
-# gain on abstract questions.
+# retrieves against that. One extra LLM call per query. Whether it helps
+# on YOUR corpus is an empirical question — Task 6 measures it.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -187,7 +234,7 @@ async def cross_encoder_rerank(
     Production would use a dedicated cross-encoder model
     (ms-marco-MiniLM-L-6-v2) — here we use Delegate as a pedagogical stand-in.
     """
-    delegate = make_delegate(budget_usd=1.0)
+    delegate = make_delegate()
     scored = []
     for candidate in candidates[:10]:
         prompt = (
@@ -197,11 +244,7 @@ async def cross_encoder_rerank(
             "Output ONLY a single number (0-10):"
         )
         response = await delegate_text(delegate, prompt)
-        try:
-            score = float(re.search(r"[\d.]+", response).group())
-            score = min(max(score, 0), 10)
-        except (AttributeError, ValueError):
-            score = 5.0
+        score = parse_score(response, 0.0, 10.0)
         scored.append({**candidate, "rerank_score": score})
     scored.sort(key=lambda x: x["rerank_score"], reverse=True)
     return scored[:top_k]
@@ -214,17 +257,14 @@ async def cross_encoder_rerank(
 
 async def _judge_score(delegate, prompt: str) -> float:
     response = await delegate_text(delegate, prompt)
-    try:
-        return min(max(float(re.search(r"[\d.]+", response).group()), 0), 1)
-    except (AttributeError, ValueError):
-        return 0.5
+    return parse_score(response, 0.0, 1.0)
 
 
 async def compute_ragas_metrics(
     question: str, answer: str, context: str, ground_truth: str
 ) -> dict:
     """RAGAS-style decomposition via LLM-as-judge."""
-    delegate = make_delegate(budget_usd=1.0)
+    delegate = make_delegate()
     faithfulness = await _judge_score(
         delegate,
         f"Given the context and answer, rate how well the answer is "
@@ -268,7 +308,7 @@ async def compute_ragas_metrics(
 
 async def hyde_retrieve(query: str, top_k: int = 5) -> list[dict]:
     """HyDE: generate a hypothetical answer, embed it, retrieve similar docs."""
-    delegate = make_delegate(budget_usd=1.0)
+    delegate = make_delegate()
     hyde_prompt = (
         "Write a short paragraph (3-5 sentences) that would be the ideal "
         "answer to this question. It does not need to be factually correct "
@@ -277,9 +317,8 @@ async def hyde_retrieve(query: str, top_k: int = 5) -> list[dict]:
         f"Question: {query}\n\nHypothetical answer:"
     )
     hypo_doc = await delegate_text(delegate, hyde_prompt)
-    print(f"  HyDE hypothetical: {hypo_doc[:150]}...")
-    hypo_emb = await generate_embedding(hypo_doc, delegate)
-    return dense_store.search(hypo_emb, top_k=top_k)
+    hypo_emb = await generate_embedding(hypo_doc)
+    return dense_search(hypo_emb, top_k=top_k)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -287,12 +326,12 @@ async def hyde_retrieve(query: str, top_k: int = 5) -> list[dict]:
 # ════════════════════════════════════════════════════════════════════════
 
 
-async def full_rag_pipeline(query: str) -> dict:
+async def full_rag_pipeline(query: str, q_emb: list[float]) -> dict:
     """Retrieve (hybrid) -> rerank (cross-encoder) -> generate."""
-    candidates = await hybrid_search(query, top_k=10)
+    candidates = hybrid_search(query, q_emb, top_k=10)
     reranked = await cross_encoder_rerank(query, candidates, top_k=3)
     context = "\n\n---\n\n".join(r["text"] for r in reranked)
-    answer = await rag_answer(query, context, budget_usd=0.5)
+    answer = await rag_answer(query, context)
     return {
         "query": query,
         "answer": answer,
@@ -314,7 +353,7 @@ async def run_pipeline_and_eval() -> tuple[list[dict], dict]:
         q = eval_questions[i]
         gt = eval_answers[i]
         print(f"\n  Q{i+1}: {q[:80]}...")
-        result = await full_rag_pipeline(q)
+        result = await full_rag_pipeline(q, query_embeddings[i])
         print(f"  A: {result['answer'][:180]}...")
         pipeline_results.append(result)
 
@@ -344,29 +383,102 @@ print("\n--- Checkpoint passed --- full RAG pipeline with RAGAS evaluation\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 6 — HyDE comparison
+# TASK 6 — Retrieval leaderboard: hit@k for BM25 / dense / hybrid / HyDE
 # ════════════════════════════════════════════════════════════════════════
+# A retriever is good if the document that actually answers the question
+# shows up near the top. With one relevant document per question,
+# recall@k IS hit@k: the fraction of questions whose source document is
+# in the top-k. Chunks are collapsed to their source document (first
+# occurrence wins) so a document is never counted twice.
+
+print("=" * 70)
+print("TASK 6: Retrieval leaderboard on the eval set")
+print("=" * 70)
 
 
-async def compare_hyde():
-    delegate = make_delegate(budget_usd=0.5)
-    q = eval_questions[0]
-    print(f"\nComparing direct vs HyDE retrieval for: {q[:80]}...")
-    q_emb = await generate_embedding(q, delegate)
-    direct = dense_store.search(q_emb, top_k=3)
-    hyde = await hyde_retrieve(q, top_k=3)
-    print(f"  Direct top-1 score: {direct[0]['score']:.3f}")
-    print(f"  HyDE   top-1 score: {hyde[0]['score']:.3f}")
-    return direct, hyde
+def to_doc_ranking(chunk_results: list[dict]) -> list[tuple[str, str, float]]:
+    """Collapse ranked chunks into ranked (doc_id, text, score), deduplicated."""
+    seen: set[str] = set()
+    ranking = []
+    for r in chunk_results:
+        doc_id = chunk_doc_ids[r["chunk_idx"]]
+        if doc_id not in seen:
+            seen.add(doc_id)
+            ranking.append((doc_id, r["text"], float(r["score"])))
+    return ranking
 
 
-direct_results, hyde_results = run_async(compare_hyde())
+async def collect_rankings(depth: int = 20) -> dict[str, dict[str, list]]:
+    rankings: dict[str, dict[str, list]] = {
+        "bm25": {},
+        "dense": {},
+        "hybrid": {},
+        "hyde": {},
+    }
+    for q, q_emb in zip(eval_questions, query_embeddings):
+        rankings["bm25"][q] = to_doc_ranking(bm25.search(q, top_k=depth))
+        rankings["dense"][q] = to_doc_ranking(dense_search(q_emb, top_k=depth))
+        rankings["hybrid"][q] = to_doc_ranking(hybrid_search(q, q_emb, top_k=depth))
+        rankings["hyde"][q] = to_doc_ranking(await hyde_retrieve(q, top_k=depth))
+    return rankings
+
+
+rankings = run_async(collect_rankings())
+hyde_results = rankings["hyde"][eval_questions[0]]
+
+# The Observatory's Retrieval lens scores every retriever on the same
+# eval set. Each retriever is a (query, k) -> [(doc_id, text, score)]
+# lookup into the rankings computed above — no extra LLM calls.
+obs = LLMObservatory(run_id="ex_4_5_retrieval")
+eval_set = [
+    {"query": q, "relevant_ids": [rel]} for q, rel in zip(eval_questions, eval_relevant)
+]
+retrievers = {
+    name: (lambda q, k, _r=per_query: _r[q][:k]) for name, per_query in rankings.items()
+}
+leaderboards = {
+    k: obs.retrieval.compare_retrievers(retrievers, eval_set, k=k) for k in (1, 3, 5)
+}
+hit_at_k = (
+    pl.concat(
+        [
+            lb.select("retriever", pl.col("recall_at_k").alias(f"hit@{k}"))
+            for k, lb in leaderboards.items()
+        ],
+        how="align",
+    )
+    .join(leaderboards[5].select("retriever", "mrr"), on="retriever")
+    .sort("hit@5", descending=True)
+)
+print(hit_at_k)
+
+best = hit_at_k.row(0, named=True)
+hyde_vs_dense = (
+    hit_at_k.filter(pl.col("retriever") == "hyde")["hit@5"][0]
+    - hit_at_k.filter(pl.col("retriever") == "dense")["hit@5"][0]
+)
+print(
+    f"\n  Best retriever on this eval set: {best['retriever']} "
+    f"(hit@5={best['hit@5']:.0%}, MRR={best['mrr']:.2f}) over {N_EVAL} questions"
+)
+print(f"  HyDE vs plain dense, hit@5: {hyde_vs_dense:+.0%}")
+print(
+    f"  With only {N_EVAL} questions, one question moves hit@k by "
+    f"{1 / N_EVAL:.0%} — treat small gaps as noise."
+)
+
+# ── Checkpoint 6 ─────────────────────────────────────────────────────────
 assert len(hyde_results) > 0, "HyDE should return results"
-print("\n--- HyDE comparison complete ---\n")
+assert hit_at_k.height == 4, "Leaderboard should rank all 4 retrievers"
+assert all(
+    0.0 <= v <= 1.0 for c in ("hit@1", "hit@3", "hit@5") for v in hit_at_k[c].to_list()
+)
+assert (hit_at_k["hit@1"] <= hit_at_k["hit@5"]).all(), "hit@k must grow with k"
+print("✓ Checkpoint 6 passed — retrieval leaderboard measured\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 7 — Visualise RAGAS scores
+# TASK 7 — Visualise RAGAS scores and the retrieval leaderboard
 # ════════════════════════════════════════════════════════════════════════
 
 print("\nAverage RAGAS metrics across 3 questions:")
@@ -420,70 +532,47 @@ plt.savefig(fname, dpi=150, bbox_inches="tight")
 plt.show()
 print(f"  Saved: {fname}")
 
-# R9A: retrieval precision at k — how many of the top-k reranked chunks
-# were actually relevant (judged by context_relevance > 0.5)?
-# This approximates precision@k for the full pipeline.
-fig, ax = plt.subplots(figsize=(7, 4))
-k_values = list(range(1, len(pipeline_results[0].get("context", "").split("---")) + 1))
-# Use reranked chunk count per query as a proxy
-precisions = []
-for result in pipeline_results:
-    chunks = [c.strip() for c in result["context"].split("---") if c.strip()]
-    cumulative = []
-    for k in range(1, len(chunks) + 1):
-        # Heuristic: chunks that appear in the answer are "relevant"
-        relevant = sum(
-            1
-            for c in chunks[:k]
-            if any(word in result["answer"].lower() for word in c.lower().split()[:3])
-        )
-        cumulative.append(relevant / k)
-    precisions.append(cumulative)
-
-if precisions:
-    max_k = max(len(p) for p in precisions)
-    avg_precision = []
-    for k in range(max_k):
-        vals = [p[k] for p in precisions if k < len(p)]
-        avg_precision.append(sum(vals) / len(vals) if vals else 0)
-    ax.plot(
-        range(1, max_k + 1),
-        avg_precision,
-        "o-",
-        color="steelblue",
-        linewidth=2,
-        markersize=6,
-    )
-    ax.set_xlabel("k (number of retrieved chunks)")
-    ax.set_ylabel("Precision@k (approx)")
-    ax.set_title(
-        "Retrieval Precision@k — Reranked Pipeline", fontsize=13, fontweight="bold"
-    )
-    ax.set_ylim(0, 1.05)
-    ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    fname = OUTPUT_DIR / "ex4_05_precision_at_k.png"
-    plt.savefig(fname, dpi=150, bbox_inches="tight")
-    plt.show()
-    print(f"  Saved: {fname}")
+# R9A: measured hit@k per retriever — grouped bars at k = 1, 3, 5.
+fig, ax = plt.subplots(figsize=(8, 4.5))
+names = hit_at_k["retriever"].to_list()
+x = np.arange(len(names))
+for offset, k in zip((-0.27, 0.0, 0.27), (1, 3, 5)):
+    ax.bar(x + offset, hit_at_k[f"hit@{k}"].to_list(), width=0.25, label=f"hit@{k}")
+ax.set_xticks(x)
+ax.set_xticklabels(names)
+ax.set_ylim(0, 1.05)
+ax.set_ylabel("Fraction of questions whose source doc is in the top-k")
+ax.set_title(
+    f"Retrieval leaderboard — {N_EVAL} eval questions, {N_INDEX_DOCS} indexed docs",
+    fontsize=12,
+    fontweight="bold",
+)
+ax.legend()
+ax.grid(True, axis="y", alpha=0.3)
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex4_05_hit_at_k.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.show()
+print(f"  Saved: {fname}")
 
 # INTERPRETATION: The radar chart reveals your pipeline's "personality":
 # - Balanced diamond = solid RAG system
 # - Low faithfulness + high relevance = hallucination (the model answers
 #   the right question but invents facts)
 # - Low context_recall = your corpus doesn't contain the answer
-# The precision@k curve shows reranking value: if precision drops sharply
-# after k=1, the reranker is concentrating relevance at the top.
+# The hit@k bars show retrieval quality BEFORE the reranker and the LLM
+# touch anything: if the source document is not in the top-k, no amount
+# of reranking or prompting can recover it.
 
 
 # ════════════════════════════════════════════════════════════════════════
 # APPLY — Singapore insurance claims assistant
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: AIA Singapore runs a claims-processing assistant for its
-# agents. When a customer files an accident claim, the agent needs to
-# answer questions like "Is physiotherapy covered under the Essential
-# Classic plan after a motor vehicle accident if the policy was issued
-# in 2021 and the accident happened in Malaysia?".
+# SCENARIO (illustrative): a Singapore insurer runs a claims-processing
+# assistant for its agents. When a customer files an accident claim, the
+# agent needs to answer questions like "Is physiotherapy covered under
+# the customer's plan after a motor vehicle accident if the policy was
+# issued in 2021 and the accident happened in Malaysia?".
 #
 # Answering this requires pulling from:
 #   - The customer's policy document (coverage, exclusions, effective dates)
@@ -491,9 +580,11 @@ if precisions:
 #   - The medical schedule (what counts as physiotherapy, max visits)
 #
 # WHY THE FULL PIPELINE MATTERS:
-#   - Hybrid retrieval finds both the policy clause ("Essential Classic")
-#     via BM25 AND the medical schedule ("physiotherapy covered up to 30
-#     sessions post-accident") via dense embeddings.
+#   - Hybrid retrieval finds both the exact plan name via BM25 AND the
+#     medical-schedule clause ("physiotherapy covered up to 30 sessions
+#     post-accident") via dense embeddings.
+#   - A hit@k leaderboard like Task 6, built on the insurer's own
+#     question set, decides which retriever goes to production.
 #   - Cross-encoder reranking pushes the MOST relevant 3 clauses to the
 #     top — critical because the wrong clause means a wrong payout
 #     decision.
@@ -502,72 +593,35 @@ if precisions:
 #     BEFORE it goes to the customer.
 #   - HyDE helps when the agent types a conversational query instead of
 #     insurance jargon ("can we pay for his back treatment after the
-#     car crash?").
-#
-# BUSINESS IMPACT: AIA Singapore processes ~200,000 claims per year.
-# Agents currently spend ~15 minutes per claim looking up policy
-# clauses; the assistant cuts this to ~3 minutes. At a loaded agent
-# cost of ~S$40/hour, the saving is 12 min × 200K / 60 × S$40 = S$1.6M/year
-# in agent time. The RAGAS faithfulness gate is what prevents the bigger
-# cost: a regulatory fine from MAS for inconsistent claims handling
-# (historically up to S$1M per finding). That's why reranking +
-# evaluation isn't polish — it's the compliance control.
+#     car crash?") — keep it only if it wins on the leaderboard.
 
+print("=" * 70)
+print("APPLICATION — Insurance claims assistant (illustrative figures)")
+print("=" * 70)
 
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
+CLAIMS_PER_YEAR = 200_000
+LOOKUP_MINUTES_BEFORE = 15
+LOOKUP_MINUTES_AFTER = 3
+AGENT_COST_SGD_PER_HOUR = 40
 
-# Primary lens: Retrieval (recall@k, context utilisation, faithfulness).
-# Secondary: Output (judge on final answers). Classic RAG failures —
-# over-narrow chunks, stale index, judge flags fabrication.
-if False:  # scaffold — requires an evaluated RAG pipeline
-    obs = LLMObservatory(run_id="ex_4_rag_run")
-    # obs.retrieval.evaluate(
-    #     queries=eval_queries,
-    #     retrieved_contexts=per_query_chunks,
-    #     answers=generator_answers,
-    #     ground_truth_ids=per_query_relevant_ids,
-    #     k=5,
-    # )
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
+annual_saving_sgd = (
+    (LOOKUP_MINUTES_BEFORE - LOOKUP_MINUTES_AFTER)
+    * CLAIMS_PER_YEAR
+    / 60
+    * AGENT_COST_SGD_PER_HOUR
+)
+print(f"  Claims per year:            {CLAIMS_PER_YEAR:,}")
+print(f"  Lookup time per claim:      {LOOKUP_MINUTES_BEFORE} -> {LOOKUP_MINUTES_AFTER} min")
+print(f"  Agent time saved per year:  S${annual_saving_sgd:,.0f}")
+print(
+    "  The RAGAS faithfulness gate is the compliance control: inconsistent\n"
+    "  claims handling is a regulatory risk, so reranking + evaluation is\n"
+    "  not polish — it is what makes the time saving safe to bank."
+)
 
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Retrieval  (WARNING): recall@5 = 0.62 — chunks too narrow
-#       Fix: increase chunk_size from 256 to 512 tokens, OR add
-#            HyDE query rewriting before dense retrieval.
-#   [✓] Output     (HEALTHY): faithfulness 0.87 (answers grounded in
-#       retrieved chunks even when recall is imperfect).
-#   [?] Attention / Agent / Alignment / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [RETRIEVAL LENS] recall@5 = 0.62 is the SIGNATURE of over-narrow
-#     chunks — the index contains the right passage but the retriever
-#     returns a neighbour that misses the key entity. This is the
-#     failure the chunking exercise (ex_4.1) prepared you to diagnose.
-#     >> Prescription: (a) increase chunk_size, (b) add overlap, (c)
-#        switch to hybrid BM25+dense (ex_4.4), or (d) rerank (ex_4.5).
-#  [OUTPUT LENS] Faithfulness 0.87 on a recall of 0.62 means the
-#     generator is honest — when it doesn't have the right chunk it
-#     says so instead of fabricating. That's the GOOD failure mode.
-#     The bad failure mode would be high recall + low faithfulness
-#     (retrieval works but the LLM still hallucinates).
-# ════════════════════════════════════════════════════════════════════
+# ── Checkpoint Application ──────────────────────────────────────────────
+assert annual_saving_sgd > 0
+print("\n✓ Application checkpoint passed — claims assistant business case\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -580,8 +634,11 @@ print(
     """
   [x] Built an LLM-based cross-encoder reranker
   [x] Implemented RAGAS (faithfulness, answer relevance, context
-      relevance, context recall) as LLM-as-judge
+      relevance, context recall) as LLM-as-judge — a judge reply with
+      no score is an error, never a silent default
   [x] Implemented HyDE query expansion (generate hypothetical, embed it)
+  [x] Measured BM25 / dense / hybrid / HyDE with hit@k and MRR on an
+      eval set where the right document is known
   [x] Wired a full retrieve -> rerank -> generate pipeline
   [x] Visualised RAGAS metrics against a 0.70 target
   [x] Mapped the full pipeline to a Singapore insurance claims use case
@@ -594,7 +651,7 @@ print(
     5. Inject top-3 into the answer prompt
     6. Run RAGAS in shadow mode on every production query
     7. Alert on faithfulness < 0.8 (hallucination signal)
-    8. Add HyDE for abstract-query corners (long-tail improvements)
+    8. Add HyDE only where it measurably lifts hit@k
 
   RAG VS FINE-TUNING:
     Use RAG when documents change frequently, need citations, audit trail

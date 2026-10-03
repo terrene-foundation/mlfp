@@ -8,11 +8,18 @@
 # WHAT YOU'LL LEARN:
 #   - Define a typed Kaizen Signature with InputField and OutputField
 #   - Drive an LLM with a type-safe schema instead of free-form text
-#   - Access results via attribute access (result.sentiment), not dict keys
+#   - Access validated results by Signature field name (result["sentiment"])
 #   - Understand why Signatures are the production standard
 #
-# PREREQUISITES: 01-05 complete
+# PREREQUISITES: 01_zero_shot.py .. 05_self_consistency.py
 # ESTIMATED TIME: ~40 min
+#
+# TASKS:
+#   1. Theory — why types beat free-form JSON
+#   2. Build — the ReviewExtraction Signature
+#   3. Train — run the signature-backed agent across SST-2 eval docs
+#   4. Visualise — typed field access
+#   5. Apply — driver incident-report extraction at a ride-hailing platform
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -22,9 +29,10 @@ import asyncio
 from dotenv import load_dotenv
 
 from kaizen import InputField, OutputField, Signature
-from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
+from kaizen.core.base_agent import BaseAgent
 
-from shared.mlfp06.ex_1 import MODEL, get_eval_docs
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
+from shared.mlfp06.ex_1 import ensure_ollama, get_eval_docs, plot_extraction_accuracy
 
 load_dotenv()
 
@@ -34,8 +42,8 @@ load_dotenv()
 # ════════════════════════════════════════════════════════════════════════
 # Free-form JSON fails: format drift, schema drift, silent data loss.
 # Kaizen Signatures declare types; Kaizen renders them into a schema
-# prompt, validates responses, retries on failure. Attribute access,
-# not dict lookups. This is the production standard.
+# prompt and unpacks the reply into a dict keyed by the declared output
+# field names. This is the production standard.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -63,16 +71,38 @@ class ReviewExtraction(Signature):
 # ════════════════════════════════════════════════════════════════════════
 
 
-async def run_signature_extraction() -> list:
-    # TODO: Construct SimpleQAAgent(signature=ReviewExtraction, model=MODEL,
-    # max_llm_cost_usd=1.0)
+# BaseAgent wiring for a local Ollama model (kaizen 2.28):
+#   - llm_provider/model/base_url route the call to the Ollama daemon; the
+#     model comes from OLLAMA_CHAT_MODEL via the course bootstrap
+#   - use_async_llm=True is required for `await agent.run_async(...)`
+#   - response_format + structured_output_mode="explicit" make the agent
+#     request JSON that it can unpack into the Signature's output fields
+# No dollar budget: a local model is free, so a USD cap would be meaningless.
+OLLAMA_AGENT_CONFIG = {
+    "llm_provider": "ollama",
+    "model": DEFAULT_CHAT_MODEL,
+    "base_url": OLLAMA_BASE_URL,
+    "use_async_llm": True,
+    "response_format": {"type": "json_object"},
+    "structured_output_mode": "explicit",
+}
+OUTPUT_FIELDS = ["sentiment", "confidence", "key_phrases", "targets", "tone"]
+
+
+async def run_signature_extraction() -> list[dict]:
+    ensure_ollama()  # fails loudly with "ollama serve" if the daemon is down
+    # TODO: Construct a BaseAgent with config=OLLAMA_AGENT_CONFIG and an
+    # INSTANCE of your ReviewExtraction Signature.
     agent = ____
 
     docs = get_eval_docs().head(10)
-    results = []
-    # TODO: For each text, call `await agent.run(review_text=text[:800])` and
-    # append to results. Print the first 3 with typed attribute access
-    # (result.sentiment, result.confidence, result.key_phrases, result.tone).
+    results: list[dict] = []
+    # TODO: For each text, `await agent.run_async(review_text=text[:800])`.
+    # The result is a dict keyed by OutputField names. If any name in
+    # OUTPUT_FIELDS is missing, raise RuntimeError (no placeholder values).
+    # Append each result; print the first 3 using result["sentiment"],
+    # result["confidence"], result["key_phrases"], result["targets"],
+    # result["tone"].
     ____
     return results
 
@@ -86,38 +116,84 @@ signature_results = asyncio.run(run_signature_extraction())
 # ── Checkpoint ──────────────────────────────────────────────────────────
 assert len(signature_results) > 0, "Task 3: Signature extraction should produce results"
 sample = signature_results[0]
-assert hasattr(sample, "sentiment"), "Result should have typed 'sentiment' field"
-assert hasattr(sample, "confidence"), "Result should have typed 'confidence' field"
-assert 0.0 <= sample.confidence <= 1.0, "Confidence should be in [0, 1]"
-assert hasattr(sample, "key_phrases"), "Result should have typed 'key_phrases' field"
-assert isinstance(sample.key_phrases, list), "key_phrases should be a list"
-assert hasattr(sample, "tone"), "Result should have typed 'tone' field"
+assert "sentiment" in sample, "Result should have 'sentiment' field"
+assert "confidence" in sample, "Result should have 'confidence' field"
+assert 0.0 <= float(sample["confidence"]) <= 1.0, "Confidence should be in [0, 1]"
+assert "key_phrases" in sample, "Result should have 'key_phrases' field"
+assert isinstance(sample["key_phrases"], list), "key_phrases should be a list"
+assert "tone" in sample, "Result should have 'tone' field"
 print(
     f"\n[ok] Checkpoint passed — Signature extraction: "
-    f"sentiment='{sample.sentiment}', confidence={sample.confidence:.2f}\n"
+    f"sentiment='{sample['sentiment']}', confidence={float(sample.get('confidence', 0)):.2f}\n"
 )
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE — typed field access
+# TASK 4 — VISUALISE — dict field access + extraction accuracy chart
 # ════════════════════════════════════════════════════════════════════════
-avg_conf = sum(r.confidence for r in signature_results) / len(signature_results)
-tones = [r.tone for r in signature_results]
+# run_async returns a dict keyed by the Signature's OutputField names —
+# no string matching, no hand-written JSON parsing, no normalise_label().
+avg_conf = sum(float(r["confidence"]) for r in signature_results) / len(
+    signature_results
+)
+tones = [r["tone"] for r in signature_results]
 print(f"\n  Avg confidence across {len(signature_results)} reviews: {avg_conf:.2f}")
 print(f"  Tone distribution: {tones}")
 
+# R9A: visual proof — extraction accuracy per output field type
+plot_extraction_accuracy(
+    signature_results,
+    field_names=["sentiment", "confidence", "key_phrases", "targets", "tone"],
+    title="Structured Output — Extraction Rate per Field",
+    filename="ex1_06_extraction_accuracy.png",
+)
+
+# INTERPRETATION: The Signature output is directly usable by downstream
+# code. No parsing layer, no format drift. When the LLM's reply cannot be
+# unpacked into the schema, this script raises instead of inventing a
+# value — the failure is LOUD and FIXABLE, not silent and corrupting.
+# The bar chart counts non-empty values per field. Every field is present
+# (we raise otherwise), so a bar below 100% means the model returned an
+# EMPTY value — typically for list fields like key_phrases/targets.
+# Fields below ~90% need tighter OutputField descriptions.
+
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Grab Driver Incident Report Extraction
+# TASK 5 — APPLY: Driver Incident-Report Extraction at a Ride-Hailing Platform
 # ════════════════════════════════════════════════════════════════════════
-# Grab receives ~1.2K driver incident reports/day. Each must be decomposed
-# into a strongly-typed record for DataFlow + insurance-partner APIs.
-# Signatures are mandatory: downstream tables have strict schemas, and
-# insurance partners require compliant JSON. Free-form parsing drops
-# fields silently; Signatures retry or raise a typed error.
+# SCENARIO (illustrative): a Southeast Asian ride-hailing platform
+# receives over a thousand driver-submitted incident reports per day.
+# Each free-text report must be decomposed into a structured record for
+# the risk + insurance pipeline:
+#   - incident_type (collision, theft, passenger_dispute, mechanical)
+#   - severity (minor, moderate, severe)
+#   - parties_involved (list of strings: "driver", "passenger", "other_vehicle")
+#   - location_landmark (free text)
+#   - claim_required (bool)
+#   - urgency (immediate, 24h, 72h)
 #
-# BUSINESS IMPACT: 8% -> <0.5% parse error rate at S$180/error avoids
-# S$5.8M/year in rework, vs S$45K/year in LLM cost. 129x ROI.
+# Why Kaizen Signatures fit here:
+#   - The downstream pipeline is STRONGLY TYPED — DataFlow models expect
+#     specific fields and types. A missing field means a row insert fails.
+#   - An insurance partner's API requires strict JSON schema compliance.
+#   - Silent misclassification is unrecoverable downstream — once a
+#     "severe" report is tagged "minor", the claim is routed to the wrong
+#     queue and may miss a notification deadline.
+#
+# Free-form JSON prompting fails this use case: when the LLM returns
+# "sevrity" instead of "severity", a hand-written parser silently drops
+# the field. With a Signature the missing field is detected and the
+# record is rejected loudly, exactly as Task 3 does above.
+#
+# BUSINESS IMPACT (illustrative figures): suppose each pipeline error
+# costs ~S$180 in rework, customer contact and claim re-routing. At
+# 1,200 reports/day, cutting the parse-error rate from 8% to 0.5% avoids
+# ~90 errors/day ≈ S$16K/day. Your extraction-rate chart above is the
+# measured starting point for that estimate on your own model.
+#
+# DEPLOYMENT NOTE: Keep the Signature next to the DataFlow model
+# definition, so a schema change updates both the LLM output and the
+# database column in one place.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -129,75 +205,21 @@ print("=" * 70)
 print(
     """
   [x] Defined a Kaizen Signature with typed InputField + OutputField
-  [x] Drove an LLM via SimpleQAAgent with the Signature schema
-  [x] Accessed results via typed attributes, not dict lookups
+  [x] Built a BaseAgent subclass backed by the Signature schema
+  [x] Accessed results via dict keys validated by the Signature
   [x] Understood why Signatures solve free-form JSON's failure modes
+  [x] Sized the approach against a ride-hailing incident pipeline
+
+  KEY INSIGHT: Every other technique in this exercise treats LLM output
+  as strings to parse. Signatures treat it as typed data to validate.
+  In production, the difference is the gap between "silent corruption"
+  and "loud, fixable error".
 
   Where this goes next:
-    - Exercise 2: fine-tune with LoRA adapters
-    - Exercise 3: DPO — skip the reward model
-    - Exercise 6: wire into PACT governance + Nexus deployment
+    - Exercise 2: fine-tune the base model with LoRA adapters
+    - Exercise 3: DPO (Direct Preference Optimisation) — skip the
+      reward model from RLHF entirely
+    - Exercises 7-8: wire all of this into PACT governance and Nexus
+      multi-channel deployment
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Output (LLM-as-judge over the classifier's predictions).
-# We'd pass the predicted label + true label as (prompt, response) pairs
-# and ask a judge to score coherence/faithfulness. Attention is optional
-# here — only meaningful for open-weight models.
-if False:  # scaffold — requires OPENAI_API_KEY + judge budget
-    obs = LLMObservatory(run_id="ex_1_prompting_run")
-    # Build (prompt, response) pairs from the exercise results:
-    # prompts = [r["text"] for r in zero_shot_results]
-    # responses = [r["pred"] for r in zero_shot_results]
-    # obs.output.evaluate(prompts, responses, criteria="coherence,label_fidelity")
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-    # Optional: obs.plot_dashboard().show()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Output     (HEALTHY): judge coherence 0.91, label_fidelity 0.84
-#   [?] Attention  (n/a): API-only model — lens short-circuits to UNKNOWN
-#   [?] Retrieval  (n/a): no retrieval in this exercise
-#   [?] Agent      (n/a): no tool-using agent in this exercise
-#   [?] Alignment  (n/a): no fine-tuning signal to compare
-#   [?] Governance (n/a): no PACT engine attached
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [OUTPUT LENS] judge coherence 0.91 is HEALTHY (>0.80). label_fidelity
-#     0.84 means the judge thought 84% of predictions were coherent
-#     labels in the allowed category set. The remaining 16% are where
-#     the LLM drifted off-template ("Positive sentiment, I think" instead
-#     of "positive") — a signature of under-constrained zero-shot.
-#     >> Prescription: tighten the prompt (structured output in ex_1.6)
-#        or add few-shot exemplars (ex_1.2).
-#
-#  [ATTENTION LENS] GPT-class models are API-only — the Attention lens
-#     short-circuits to UNKNOWN. To actually inspect attention, switch to
-#     an open-weight model (e.g. Qwen2-0.5B via transformers) and call
-#     obs.attention.logit_lens(prompt=..., answer_token=...).
-#
-#  [OTHER LENSES] All n/a — prompting has no retrieval, no agent loop, no
-#     fine-tuning pair, no governance envelope. This is exactly the
-#     signature the design doc predicts for Lesson 6.1.
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

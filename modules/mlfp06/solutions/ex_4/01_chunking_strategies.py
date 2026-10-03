@@ -265,69 +265,13 @@ print(f"  Saved: {fname}")
 # is a legally-citable clause. For case law (longer, narrative judgments),
 # use sentence chunking with 800-char chunks.
 #
-# BUSINESS IMPACT: A lawyer charges S$500/hr. The firm has 20 lawyers
+# BUSINESS IMPACT (illustrative planning figures): a lawyer charges S$500/hr. The firm has 20 lawyers
 # doing 4 statute lookups per day each. Moving from Ctrl-F on PDFs (avg
 # 8 min/lookup) to RAG (avg 45 sec/lookup) saves each lawyer ~30 minutes
 # per day, or S$250 per lawyer per day. Across the firm: S$5,000/day =
 # S$1.3M/year in billable hours reclaimed.  The chunking decision is the
 # difference between a lawyer citing the right clause and citing the
 # wrong half of a clause — and in law, the wrong citation is malpractice.
-
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Retrieval (recall@k, context utilisation, faithfulness).
-# Secondary: Output (judge on final answers). Classic RAG failures —
-# over-narrow chunks, stale index, judge flags fabrication.
-if False:  # scaffold — requires an evaluated RAG pipeline
-    obs = LLMObservatory(run_id="ex_4_rag_run")
-    # obs.retrieval.evaluate(
-    #     queries=eval_queries,
-    #     retrieved_contexts=per_query_chunks,
-    #     answers=generator_answers,
-    #     ground_truth_ids=per_query_relevant_ids,
-    #     k=5,
-    # )
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Retrieval  (WARNING): recall@5 = 0.62 — chunks too narrow
-#       Fix: increase chunk_size from 256 to 512 tokens, OR add
-#            HyDE query rewriting before dense retrieval.
-#   [✓] Output     (HEALTHY): faithfulness 0.87 (answers grounded in
-#       retrieved chunks even when recall is imperfect).
-#   [?] Attention / Agent / Alignment / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [RETRIEVAL LENS] recall@5 = 0.62 is the SIGNATURE of over-narrow
-#     chunks — the index contains the right passage but the retriever
-#     returns a neighbour that misses the key entity. This is the
-#     failure the chunking exercise (ex_4.1) prepared you to diagnose.
-#     >> Prescription: (a) increase chunk_size, (b) add overlap, (c)
-#        switch to hybrid BM25+dense (ex_4.4), or (d) rerank (ex_4.5).
-#  [OUTPUT LENS] Faithfulness 0.87 on a recall of 0.62 means the
-#     generator is honest — when it doesn't have the right chunk it
-#     says so instead of fabricating. That's the GOOD failure mode.
-#     The bad failure mode would be high recall + low faithfulness
-#     (retrieval works but the LLM still hallucinates).
-# ════════════════════════════════════════════════════════════════════
 
 
 # ════════════════════════════════════════════════════════════════════════

@@ -8,7 +8,7 @@
 # WHAT YOU'LL LEARN:
 #   - Derive DPO from the RLHF objective (bypass the reward model)
 #   - Implement the DPO loss in PyTorch and verify against known cases
-#   - Understand the role of beta as the alignment temperature
+#   - Understand beta as the KL-penalty coefficient (the anchor to pi_ref)
 #   - Visualise how the DPO loss responds to policy preference margin
 #   - Run a beta sensitivity sweep and interpret the curve
 #   - Apply to MAS-compliant model alignment in Singapore finance
@@ -105,9 +105,9 @@ loss_reversed = ____
 print(f"DPO loss (reversed preferences): {loss_reversed.item():.4f}")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
-assert loss_val.item() > 0
-assert loss_perfect.item() < loss_val.item()
-assert loss_reversed.item() > loss_val.item()
+assert loss_val.item() > 0, "DPO loss should be positive"
+assert loss_perfect.item() < loss_val.item(), "Perfect alignment -> lower loss"
+assert loss_reversed.item() > loss_val.item(), "Reversed prefs -> higher loss"
 print("✓ Checkpoint 2 passed — DPO loss behaviour verified\n")
 
 
@@ -117,8 +117,9 @@ print("✓ Checkpoint 2 passed — DPO loss behaviour verified\n")
 
 # TODO: Call show_dpo_loss_curve_by_margin(beta=0.1) from the shared module.
 ____
+# ── Checkpoint Visual ───────────────────────────────────────────────────
 assert (OUTPUT_DIR / "ex3_dpo_loss_curve.png").exists()
-print("✓ Visual checkpoint passed — loss curve saved\n")
+print("✓ Visual checkpoint passed — loss-vs-margin curve saved\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -143,6 +144,28 @@ print(beta_df)
 # TODO: Call show_beta_sensitivity(betas, beta_losses)
 ____
 
+print(
+    f"""
+  Reading the sweep: the batch's log-ratio margin is fixed, and DPO scores
+  it as beta * margin. At beta={betas[-1]} the loss is {beta_losses[-1]:.3f};
+  at beta={betas[0]} it is {beta_losses[0]:.3f} (log 2 = 0.693 is "no preference").
+  A HIGH beta rewards even a small departure from pi_ref, so the optimiser
+  has little reason to move far. A LOW beta leaves the loss near log 2
+  until the policy moves its log-ratios a long way from pi_ref.
+
+  Interpretation of beta (the KL-penalty coefficient, pi* ~ pi_ref * exp(r/beta)):
+    0.01 - 0.05 : Weak KL anchor. The policy can drift far from the SFT
+                  reference to fit the preference data. Risk: over-fitting
+                  the preferences (verbosity, over-refusal, lost skills).
+    0.1         : Standard default. Balanced for most tasks.
+    0.2 - 0.5   : Strong KL anchor. Stays close to the SFT reference;
+                  preferences nudge rather than rewrite behaviour.
+    >= 1.0      : Very strong anchor. The policy barely moves — the
+                  preference signal may not change behaviour at all.
+"""
+)
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────────
 assert len(beta_losses) == len(betas)
 assert (OUTPUT_DIR / "ex3_beta_sensitivity.png").exists()
 print("✓ Checkpoint 4 passed — beta sensitivity sweep complete\n")
@@ -151,32 +174,51 @@ print("✓ Checkpoint 4 passed — beta sensitivity sweep complete\n")
 # ════════════════════════════════════════════════════════════════════════
 # APPLY — Pick beta for a MAS-regulated Singapore robo-advisor
 # ════════════════════════════════════════════════════════════════════════
-# DECISION: what beta for a MAS Notice FAA-N16 compliant robo-advisor?
-#   - Too low (0.01):  inconsistent risk disclosures -> MAS enforcement
-#   - Too high (1.0):  refuses benign questions -> churn
-# Rule of thumb: start at beta=0.2, measure over-refusal, then tune.
+# DECISION: what beta should you pick for DPO? (beta is the KL anchor)
+#   - Too low (0.02): weak anchor, the policy drifts far from the SFT
+#     base to fit the refusal-heavy preference data -> it refuses benign
+#     questions like "what is a stock?" -> user frustration, churn
+#   - Too high (1.0): strong anchor, the policy barely moves from the
+#     SFT base -> it still hedges on risk warnings inconsistently ->
+#     compliance risk and possible regulatory action
+#
+# RULE OF THUMB for regulated finance: start near the default
+# (beta=0.1-0.2), measure risk-disclosure compliance AND over-refusal on
+# held-out eval sets, then tune: raise beta if benign questions start
+# getting refused, lower it if disclosures are still inconsistent.
+# All figures below are ILLUSTRATIVE planning numbers, not measurements.
 
 print("=" * 70)
 print("APPLICATION — Robo-advisor DPO beta selection")
 print("=" * 70)
 
-EXPECTED_MAS_FINE_LOW_BETA = 1_200_000
-AVG_ANNUAL_REVENUE_PER_USER = 180
-USERS_LOST_HIGH_BETA = 3500
+# Illustrative planning figures (not measurements)
+AUM_SGD = 450_000_000  # Assets under management
+EXPECTED_ENFORCEMENT_COST = 1_200_000  # Expected value of a single enforcement
+AVG_ANNUAL_REVENUE_PER_USER = 180  # SGD per user per year
+USERS_LOST_OVER_REFUSAL = 3500  # Churn from over-refusing benign queries
 
-cost_low_beta = EXPECTED_MAS_FINE_LOW_BETA
-cost_high_beta = USERS_LOST_HIGH_BETA * AVG_ANNUAL_REVENUE_PER_USER
+cost_low_beta = USERS_LOST_OVER_REFUSAL * AVG_ANNUAL_REVENUE_PER_USER
+cost_high_beta = EXPECTED_ENFORCEMENT_COST
+cost_balanced = 0.2 * cost_low_beta + 0.25 * cost_high_beta
 
 # TODO: Build a 3-row polars DataFrame comparing beta=0.02, 0.20, 1.00
 #       with columns: beta, approx_annual_cost_sgd, risk.
-#       Recommend beta=0.20 as the balanced choice and print it.
+#       Low beta (weak KL anchor) carries the over-refusal churn cost;
+#       high beta (policy barely moves) carries the enforcement cost.
 cost_df = ____
-
 print(cost_df)
-print("\nRecommended: beta = 0.20 (balanced MAS exposure vs churn)")
 
+print(
+    f"\nRecommended: beta = 0.20  "
+    f"(estimated annual cost ~ S${cost_balanced:,.0f} vs worst-case "
+    f"S${max(cost_low_beta, cost_high_beta):,.0f})"
+)
+
+# ── Checkpoint Application ──────────────────────────────────────────────
 assert cost_df.height == 3
-print("✓ Application checkpoint passed\n")
+assert cost_balanced < max(cost_low_beta, cost_high_beta)
+print("✓ Application checkpoint passed — beta selection justified\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -187,66 +229,21 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Derived DPO from RLHF + Bradley-Terry
-  [x] Implemented and verified the DPO loss
-  [x] Visualised loss vs preference margin
-  [x] Swept beta from 0.01 -> 1.0
-  [x] Applied beta selection to a MAS-regulated robo-advisor
+  [x] Derived DPO from RLHF + Bradley-Terry in one page
+  [x] Implemented and verified the DPO loss with three sanity cases
+      (typical, perfect alignment, reversed preferences)
+  [x] Visualised the loss as a smooth function of preference margin
+  [x] Swept beta from 0.01 -> 1.0 and interpreted the curve
+  [x] Applied beta selection to a MAS-regulated robo-advisor — framed
+      the trade-off as expected-cost in S$
 
-  Next: 03_dpo_training.py runs the full AlignmentPipeline on UltraFeedback.
+  KEY INSIGHT: Beta is the KL-penalty coefficient. HIGH beta keeps the
+  policy close to the SFT reference; LOW beta lets it drift far to fit
+  the preferences (and over-fit them). For regulated deployments, start
+  near 0.1-0.2, measure disclosure compliance and over-refusal, and
+  raise beta if the policy drifts into refusing benign questions.
+
+  Next: 03_dpo_training.py runs the full AlignmentPipeline on UltraFeedback
+  and registers the resulting adapter.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Alignment (reward margin curve, win-rate, hacking scan).
-# For DPO, we expect reward margin to climb then plateau. For GRPO, we
-# expect the group-mean reward to rise while group-std collapses.
-if False:  # scaffold — requires a completed DPO/GRPO training log
-    obs = LLMObservatory(run_id="ex_3_dpo_run")
-    # for step, row in enumerate(training_log):
-    #     obs.alignment.log_training_step(step=step, reward_margin=row["margin"],
-    #                                     win_rate=row["win"], kl=row["kl"])
-    # obs.alignment.reward_hacking_scan(chosen_texts, rejected_texts)
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Alignment  (HEALTHY): reward margin climbs 0.02 -> 0.71 over
-#       1000 steps; win-rate vs reference = 0.63; no hacking flagged.
-#   [✓] Output     (HEALTHY): judge score on preference pairs = 0.82
-#   [?] Attention / Retrieval / Agent / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [ALIGNMENT LENS] Margin 0.02 -> 0.71 is the classic DPO convergence
-#     curve — monotonic climb through the first ~700 steps, then plateau
-#     as the reference distribution stops providing new signal. A
-#     HEALTHY win-rate sits in the 55-70% band; higher than 80% is a
-#     reward-hacking red flag (the model found a degenerate shortcut
-#     the preference dataset rewards).
-#     >> Prescription: plateau means you can stop training; if margin
-#        never climbed, check that `beta` isn't too large (KL cap too
-#        tight lets the model sit on the base distribution).
-#  [OUTPUT LENS] Judge score 0.82 on paired completions confirms the
-#     preference signal generalises beyond the training set. If the
-#     judge disagrees with the preference labels you'd see <0.5 here.
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

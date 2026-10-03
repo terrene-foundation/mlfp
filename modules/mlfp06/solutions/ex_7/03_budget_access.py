@@ -21,7 +21,7 @@
 #   2. Attempt an overspend and verify it is denied
 #   3. Visualise spend vs. allocation
 #   4. Exercise engine.verify_action() across 10 allow+deny cases
-#   5. Apply — MAS TRM budget and cost controls
+#   5. Apply — a digital bank's per-decision cost controls
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -56,19 +56,21 @@ print("\n--- GovernanceEngine compiled ---\n")
 # ════════════════════════════════════════════════════════════════════════
 # An LLM call has a dollar cost. An autonomous agent can make many
 # LLM calls per task. Without a hard budget per envelope, a bug — or
-# a prompt injection — can drain your API credits in minutes. The
-# first publicly reported "agent spent $10K in an afternoon" incident
-# was a missing budget envelope on a customer-support agent.
+# a prompt injection — can drain your API credits in minutes.
+# Hypothetical: a support agent stuck in a retry loop calls a paid model
+# every two seconds overnight; with no financial envelope, nothing stops
+# it until someone reads the invoice.
 #
 # Budget cascading enforces the same hierarchy as clearance:
 #
-#   ml_director total budget:  $500
+#   chief_ml_officer total budget:  $500
 #     ├─ data_analyst:   $20/task
 #     ├─ model_trainer:  $100/task
 #     └─ model_deployer: $50/task
 #
-# After 3 training runs of $30 each: model_trainer spent $90. Next
-# $50 request: DENIED (would exceed $100 allocation).
+# After three training runs ($30 + $30 + $25) model_trainer has spent
+# $85 of $100. The next $50 request is DENIED (it would exceed the $100
+# allocation).
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -161,7 +163,7 @@ print("=" * 70)
 
 # Address map (Shard 3 convention — dash-delimited D/T/R positions).
 # Department heads: "D<n>-R<n>" (2 segments).
-# Agents (Responsibles): "D<n>-R<n>-T<n>-R<n>" (4 segments).
+# Agent roles (team heads): "D<n>-R<n>-T<n>-R<n>" (4 segments).
 AGENT_ADDRESSES: dict[str, str] = {
     "data_analyst": "D1-R1-T1-R1",
     "model_trainer": "D1-R1-T2-R1",
@@ -226,19 +228,19 @@ envelopes_by_role: dict[str, ConstraintEnvelopeConfig] = {
     ),
     "model_trainer": _envelope(
         "model_trainer_envelope",
-        ConfidentialityLevel.RESTRICTED,
+        ConfidentialityLevel.CONFIDENTIAL,
         100.0,
         ["read", "read_data", "train_model", "evaluate_model"],
     ),
     "model_deployer": _envelope(
         "model_deployer_envelope",
-        ConfidentialityLevel.RESTRICTED,
+        ConfidentialityLevel.CONFIDENTIAL,
         50.0,
         ["deploy_model", "monitor_model", "rollback_model"],
     ),
     "risk_assessor": _envelope(
         "risk_assessor_envelope",
-        ConfidentialityLevel.RESTRICTED,
+        ConfidentialityLevel.SECRET,
         200.0,
         [
             "read",
@@ -250,7 +252,7 @@ envelopes_by_role: dict[str, ConstraintEnvelopeConfig] = {
     ),
     "bias_checker": _envelope(
         "bias_checker_envelope",
-        ConfidentialityLevel.RESTRICTED,
+        ConfidentialityLevel.CONFIDENTIAL,
         75.0,
         ["read_data", "audit_model", "run_fairness_check"],
     ),
@@ -263,6 +265,8 @@ envelopes_by_role: dict[str, ConstraintEnvelopeConfig] = {
 }
 
 # Attach each envelope to its role so verify_action() enforces it.
+# (This replaces the YAML envelope compile_governance() applied; a role
+# with NO envelope would be auto-approved by the installed engine.)
 for role_id, env in envelopes_by_role.items():
     role_env = RoleEnvelope(
         id=f"{role_id}_role_envelope",
@@ -360,6 +364,7 @@ def test_access_control() -> list[dict]:
             {
                 "agent": role_id,
                 "action": action,
+                "context": context,
                 "expected": expected,
                 "actual": actual,
                 "match": match,
@@ -397,8 +402,8 @@ print(
 # VISUALISE — Budget cascade bar chart + access decision heatmap
 # ════════════════════════════════════════════════════════════════════════
 # Two panels: (1) stacked bars showing allocated vs consumed budget per
-# agent — the remaining gap is visual headroom; (2) heatmap of access
-# decisions showing allow (green) and deny (red) across agents/actions.
+# agent — the remaining gap is visual headroom; (2) heatmap of the
+# engine's ACTUAL decisions: allow (green), deny (red), not tested (grey).
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
 
@@ -438,7 +443,7 @@ for agent in unique_agents:
             r for r in access_results if r["agent"] == agent and r["action"] == action
         ]
         if match:
-            row.append(1 if match[0]["match"] else 0)
+            row.append(1 if match[0]["actual"] else 0)
         else:
             row.append(0.5)  # not tested
     matrix.append(row)
@@ -453,7 +458,7 @@ ax2.set_xticklabels(
 )
 ax2.set_yticks(range(len(unique_agents)))
 ax2.set_yticklabels([a.replace("_", "\n") for a in unique_agents], fontsize=8)
-ax2.set_title("Access Decision Matrix", fontweight="bold")
+ax2.set_title("Access Decisions (green=allow, red=deny)", fontweight="bold")
 
 plt.tight_layout()
 fname = OUTPUT_DIR / "ex7_budget_access_viz.png"
@@ -463,14 +468,14 @@ print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Apply: MAS TRM Cost Control
+# TASK 5 — Apply: Per-Decision Cost Control at a Digital Bank
 # ════════════════════════════════════════════════════════════════════════
 #
 # SCENARIO: A Singapore digital bank's AI-powered loan triage agent
-# runs 24/7 against customer applications. MAS TRM Section 5.8 (Cost
-# Controls) requires evidence that automated systems have a hard cap
-# on per-decision compute spend AND that the cap cannot be silently
-# raised by an engineer.
+# runs 24/7 against customer applications. The bank's technology-risk
+# policy requires evidence that automated systems have a hard cap on
+# per-decision compute spend AND that the cap cannot be silently raised
+# by an engineer.
 #
 # Without cascading budgets, the cap lives in a config file that a
 # developer can edit. With PACT-compiled envelopes + verify_action,
@@ -479,11 +484,10 @@ print(f"\n  Saved: {fname}")
 # is visible in version control, reviewable, and blocked by CI if
 # monotonic tightening is violated.
 #
-# BUSINESS IMPACT: A single runaway agent incident — say, 24 hours
-# of compounding LLM calls against a loan queue — can produce a
-# S$50K–S$200K API bill plus remediation overhead. Hard envelopes
-# close the blast radius to the per-task budget, typically S$0.10–
-# S$5 per decision.
+# BUSINESS IMPACT (illustrative figures): a runaway agent making one
+# S$0.50 call every 2 seconds for 24 hours spends 43,200 x S$0.50 =
+# S$21,600 before anyone notices. A S$5 per-task financial envelope
+# caps that same incident at S$5 per task.
 
 print("=" * 70)
 print("  KEY TAKEAWAY: Budget + Access Control Together")
@@ -494,56 +498,30 @@ print("  budget agent doing the wrong thing is still a breach.")
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# DIAGNOSTIC CHECKPOINT — Governance lens
 # ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
+# Re-run every DENY case from Task 4 as a negative drill through the
+# Observatory's governance lens (engine.verify_action, no LLM call).
 from shared.mlfp06.diagnostics import LLMObservatory
 
-# Primary lens: Governance (audit chain, envelope breach scan, verdict
-# distribution, budget consumption). Secondary: Agent Trace.
-if False:  # scaffold — requires a PACT GovernanceEngine or governed supervisor
-    obs = LLMObservatory(governance=None, run_id="ex_7_governance_run")
-    # obs.governance.verify_chain(audit_df)
-    # obs.governance.budget_consumption()
-    # obs.governance.negative_drills([...])  # envelope breach attempts
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Governance (HEALTHY): audit chain intact (0 breaks), 128
-#       actions recorded, 2 blocks + 1 escalate, budget at 34% of cap.
-#   [!] Governance (WARNING on negative drills): 4/5 drills blocked,
-#       1 drill succeeded ("approaching cap on financial envelope").
-#       Fix: tighten budget envelope from $50 -> $20 per run.
-#   [✓] Agent      (HEALTHY): 12 TAOD steps, no stuck loops.
-#   [?] Output / Retrieval / Alignment / Attention (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [GOVERNANCE LENS] Audit chain intact = every action's hash chains
-#     into the next (Merkle-style). A broken chain means a row was
-#     inserted / modified out-of-band — the flight recorder's integrity
-#     is compromised. 2 blocks + 1 escalate on 128 actions is healthy
-#     enforcement pressure. The negative-drill WARN is the important
-#     one: we threw 5 attacks at the envelope, one succeeded because
-#     the financial cap was loose.
-#     >> Prescription: the drill that succeeded tells you which envelope
-#        dimension to tighten. Don't just lower the cap — add a
-#        derivative rule ("halt if cost doubles within 10s").
-#  [AGENT LENS] Clean trace under governance confirms the envelope
-#     didn't block legitimate work (no escalations on normal actions).
-# ════════════════════════════════════════════════════════════════════
+obs = LLMObservatory(governance=engine, run_id="ex_7_3_budget_access")
+drills = obs.governance.negative_drills(
+    [
+        {
+            "label": f"{r['agent']} -> {r['action']}",
+            "role_address": AGENT_ADDRESSES[r["agent"]],
+            "action": r["action"],
+            "context": r["context"],
+        }
+        for r in access_results
+        if not r["expected"]
+    ]
+)
+print("\n── LLM Observatory: deny-path drills ──")
+print(drills.select("scenario", "verdict"))
+print(obs.governance.report())
+# INTERPRETATION: every expected-deny case should read "blocked". A drill
+# that reads auto_approved means the role lost its envelope.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -558,7 +536,7 @@ print(
   [x] Demonstrated a rejected overspend attempt
   [x] Ran 10 engine.verify_action() tests covering allow AND deny paths
   [x] Visualised the spend bars to see remaining headroom
-  [x] Mapped budget envelopes to MAS TRM cost controls
+  [x] Mapped budget envelopes to a bank's per-decision cost controls
 
   KEY INSIGHT: You have not tested a governance system until you
   have tested the denials. "Happy path works" is not evidence.

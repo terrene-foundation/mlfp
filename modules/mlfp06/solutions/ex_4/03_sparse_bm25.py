@@ -74,9 +74,11 @@ print(f"BM25 index: {len(chunk_subset)} chunks")
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — BM25 as IDF-weighted term frequency
 # ════════════════════════════════════════════════════════════════════════
-# BM25 is the production search ranker that powered Google in the 2000s,
-# and still powers Elasticsearch, Lucene, and SQLite FTS5 today. It
-# scores a document by summing over the query terms:
+# BM25 ("Best Match 25") comes from Robertson and colleagues' Okapi
+# retrieval system in the 1990s. It is the default ranking function in
+# Apache Lucene (and therefore in the search engines built on it) and is
+# built into SQLite FTS5. It scores a document by summing over the
+# query terms:
 #
 #     score(q, d) = sum_t  IDF(t) * (tf(t,d) * (k1 + 1))
 #                         / (tf(t,d) + k1 * (1 - b + b * |d| / avgdl))
@@ -254,16 +256,17 @@ print(f"  Saved: {fname}")
 # ════════════════════════════════════════════════════════════════════════
 # APPLY — Singapore HDB regulation lookup
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: The Housing & Development Board (HDB) publishes hundreds of
-# regulation documents covering BTO eligibility, resale procedures,
-# renovation permits, and fine schedules. HDB's customer-service officers
-# need to look up exact clauses when residents call.
+# SCENARIO (illustrative): Singapore public-housing rules (BTO
+# eligibility, resale procedures, renovation permits, fine schedules) run
+# to hundreds of documents. A housing service centre's officers need to
+# look up exact clauses when residents call.
 #
 # WHY BM25 SHINES HERE:
 #   - "BTO", "DBSS", "HDB", "MOP", "EIP", "SPR" are domain-specific
 #     acronyms that generic embedding models rarely saw during training.
-#     Dense retrieval maps "MOP" to "floor" rather than "Minimum
-#     Occupation Period" because the acronym is out-of-distribution.
+#     A dense retriever may place "MOP" near the cleaning tool rather than
+#     "Minimum Occupation Period" because the acronym is rare in its
+#     training data.
 #   - BM25 matches "MOP" exactly — if a regulation document contains
 #     "MOP", BM25 ranks it first regardless of what an embedding model
 #     thinks the word means.
@@ -275,68 +278,12 @@ print(f"  Saved: {fname}")
 # than one that mentions it once) and lower b to 0.5 (don't penalise
 # long regulation sections that may legitimately be long).
 #
-# BUSINESS IMPACT: HDB handles ~1M customer-service interactions per
-# year. If officers spend an average of 90 seconds per lookup and BM25
+# BUSINESS IMPACT (illustrative planning figures): suppose the service
+# centre handles ~1M customer-service interactions per year. If officers spend an average of 90 seconds per lookup and BM25
 # cuts that to 15 seconds, the saving is 75 seconds * 1M = 20,833 hours
 # per year. At a loaded cost of S$35/hr per officer, that's S$729K/year
 # in freed-up officer time — and shorter wait times mean higher
 # resident satisfaction scores (the real currency of a public agency).
-
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Retrieval (recall@k, context utilisation, faithfulness).
-# Secondary: Output (judge on final answers). Classic RAG failures —
-# over-narrow chunks, stale index, judge flags fabrication.
-if False:  # scaffold — requires an evaluated RAG pipeline
-    obs = LLMObservatory(run_id="ex_4_rag_run")
-    # obs.retrieval.evaluate(
-    #     queries=eval_queries,
-    #     retrieved_contexts=per_query_chunks,
-    #     answers=generator_answers,
-    #     ground_truth_ids=per_query_relevant_ids,
-    #     k=5,
-    # )
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Retrieval  (WARNING): recall@5 = 0.62 — chunks too narrow
-#       Fix: increase chunk_size from 256 to 512 tokens, OR add
-#            HyDE query rewriting before dense retrieval.
-#   [✓] Output     (HEALTHY): faithfulness 0.87 (answers grounded in
-#       retrieved chunks even when recall is imperfect).
-#   [?] Attention / Agent / Alignment / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [RETRIEVAL LENS] recall@5 = 0.62 is the SIGNATURE of over-narrow
-#     chunks — the index contains the right passage but the retriever
-#     returns a neighbour that misses the key entity. This is the
-#     failure the chunking exercise (ex_4.1) prepared you to diagnose.
-#     >> Prescription: (a) increase chunk_size, (b) add overlap, (c)
-#        switch to hybrid BM25+dense (ex_4.4), or (d) rerank (ex_4.5).
-#  [OUTPUT LENS] Faithfulness 0.87 on a recall of 0.62 means the
-#     generator is honest — when it doesn't have the right chunk it
-#     says so instead of fabricating. That's the GOOD failure mode.
-#     The bad failure mode would be high recall + low faithfulness
-#     (retrieval works but the LLM still hallucinates).
-# ════════════════════════════════════════════════════════════════════
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -351,7 +298,7 @@ print(
   [x] Understood k1 (tf saturation) and b (length normalisation)
   [x] Ran BM25 on real eval queries and inspected top-k
   [x] Visualised the BM25 score distribution — a long sparse tail
-  [x] Mapped BM25 to an HDB regulation lookup use case (exact acronym match)
+  [x] Mapped BM25 to a public-housing regulation lookup (exact acronym match)
 
   KEY INSIGHT: Dense retrieval answers "what is this about?"; BM25
   answers "does this contain these exact words?". Production systems

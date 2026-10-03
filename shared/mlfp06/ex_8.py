@@ -3,14 +3,14 @@
 """
 Shared infrastructure for MLFP06 Exercise 8 — Capstone: Full Production Platform.
 
-Contains: LLM model resolution, MMLU evaluation data loader, modern PACT
-governance YAML (D/T/R grammar) for the MLFP Capstone org, canonical
-Signature/Agent classes (dataclass config + instance signature — fixes the
-silent ``DefaultSignature`` fallback), the ``handle_qa`` router used by every
-technique file, ``build_capstone_stack(engine)`` (dedupes the 4-file 3-tier
-boilerplate per ``workspaces/mlfp06-migration/decisions.md`` § 2), and small
-middleware stubs (``SimpleJWTAuth``, ``RateLimiter``) used by the serving
-technique file.
+Contains: LLM model resolution (Ollama via the course bootstrap), MMLU
+evaluation data loader, the PACT governance YAML (D/T/R = Department / Team /
+Role) for the MLFP Capstone org and ``compile_capstone_governance()`` which
+applies its clearances + envelopes, canonical Signature/Agent classes
+(dataclass config + instance signature), ``build_capstone_stack(engine)``,
+and the ``handle_qa`` router used by every technique file. ``handle_qa``
+makes a REAL call to the local Ollama model — there is no offline stub; a
+missing daemon raises with "start Ollama: ollama serve".
 
 Technique-specific code (adapter loading, nexus registration, drift analysis,
 compliance reporting) does NOT belong here — it lives in the per-technique
@@ -20,18 +20,18 @@ Import from any cwd after ``uv sync``:
 
     from shared.mlfp06.ex_8 import (
         MODEL, OUTPUT_DIR, load_mmlu_eval, write_org_yaml,
-        CapstoneQASignature, CapstoneQAConfig, CapstoneQAAgent,
-        build_capstone_stack, handle_qa,
-        SimpleJWTAuth, RateLimiter, run_async,
+        compile_capstone_governance, CapstoneQASignature, CapstoneQAConfig,
+        CapstoneQAAgent, build_capstone_stack, handle_qa, run_async,
     )
 """
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import os
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -56,12 +56,10 @@ load_dotenv()
 
 from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
 
-MODEL = DEFAULT_CHAT_MODEL
-LLM_PROVIDER_DEFAULT = os.environ.get("LLM_PROVIDER", "ollama")
-LLM_BASE_URL_DEFAULT = os.environ.get("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
+MODEL = DEFAULT_CHAT_MODEL  # resolved from OLLAMA_CHAT_MODEL by the bootstrap
 
 if not MODEL:  # pragma: no cover — bootstrap default never returns empty
-    raise EnvironmentError("OLLAMA_CHAT_MODEL or DEFAULT_LLM_MODEL must be set")
+    raise EnvironmentError("OLLAMA_CHAT_MODEL must be set")
 
 # Output + cache directories
 OUTPUT_DIR = Path("outputs") / "ex8_capstone"
@@ -119,11 +117,81 @@ def load_mmlu_eval(n_rows: int = 100) -> pl.DataFrame:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# SHARED SIGNATURE & BASE AGENT (canonical kaizen 2.7.3 pattern)
+# TRAINED-ADAPTER DISCOVERY — what Ex 2.6 (SFT) and Ex 3.3 (DPO) wrote
+# ════════════════════════════════════════════════════════════════════════
+#
+# kailash-align's AlignmentPipeline saves every trained adapter to
+# ``<experiment_dir>/<adapter_name>/<method>/adapter/`` (PEFT format:
+# adapter_config.json + adapter_model.safetensors). An ``AdapterRegistry()``
+# built without a backing model registry lives in memory only, so a new
+# process cannot see adapters registered by an earlier exercise. The
+# capstone therefore re-discovers the adapters on disk and registers them.
+
+ADAPTER_SEARCH_ROOTS: tuple[Path, ...] = (
+    Path("outputs") / "ex2_finetuning",  # Ex 2.6 SFT experiment_dir
+    Path("dpo_output"),  # Ex 3.3 DPO experiment_dir
+)
+
+
+def discover_trained_adapters(
+    roots: tuple[Path, ...] = ADAPTER_SEARCH_ROOTS,
+) -> list[dict[str, Any]]:
+    """Return one dict per PEFT adapter found under ``roots``.
+
+    Keys: adapter_name, method, adapter_path, base_model_id, rank, alpha,
+    target_modules, trainable_params (counted from the safetensors file).
+    """
+    import json
+
+    found: list[dict[str, Any]] = []
+    for root in roots:
+        for cfg_path in sorted(root.glob("**/adapter/adapter_config.json")):
+            adapter_dir = cfg_path.parent
+            meta = json.loads(cfg_path.read_text())
+            weights = adapter_dir / "adapter_model.safetensors"
+            found.append(
+                {
+                    "adapter_name": adapter_dir.parent.parent.name,
+                    "method": adapter_dir.parent.name,
+                    "adapter_path": str(adapter_dir),
+                    "base_model_id": meta.get("base_model_name_or_path") or "",
+                    "rank": int(meta.get("r") or 0),
+                    "alpha": int(meta.get("lora_alpha") or 0),
+                    "target_modules": tuple(sorted(meta.get("target_modules") or ())),
+                    "trainable_params": (
+                        count_safetensors_params(weights) if weights.exists() else 0
+                    ),
+                }
+            )
+    return found
+
+
+def count_safetensors_params(path: str | Path) -> int:
+    """Count parameters in one ``.safetensors`` file, or every shard in a dir.
+
+    Reads tensor shapes from the file header only — no weights are loaded.
+    """
+    from math import prod
+
+    from safetensors import safe_open
+
+    path = Path(path)
+    files = sorted(path.glob("*.safetensors")) if path.is_dir() else [path]
+    total = 0
+    for f in files:
+        with safe_open(str(f), framework="pt") as handle:
+            for key in handle.keys():
+                total += prod(handle.get_slice(key).get_shape())
+    return total
+
+
+# ════════════════════════════════════════════════════════════════════════
+# SHARED SIGNATURE & BASE AGENT
 # ════════════════════════════════════════════════════════════════════════
 #
 # Canonical pattern:
-#   1. `@dataclass` config carries model + budget_limit_usd
+#   1. `@dataclass` config carries the Ollama provider, model, base_url and
+#      `use_async_llm=True` (run_async raises without it)
 #   2. Signature is PASSED as an instance to `super().__init__(signature=...)`
 #      — omitting the `signature=` keyword silently falls back to
 #      `DefaultSignature()` and the declared output schema is ignored.
@@ -139,19 +207,26 @@ class CapstoneQASignature(Signature):
     reasoning_steps: list[str] = OutputField(description="Step-by-step reasoning")
 
 
+def _json_object_format() -> dict[str, str]:
+    return {"type": "json_object"}
+
+
 @dataclass
 class CapstoneQAConfig:
     """Domain config — BaseAgent auto-converts to BaseAgentConfig.
 
-    The ``model`` and ``budget_limit_usd`` fields are the canonical knobs in
-    kaizen 2.7.3. The legacy class-level ``max_llm_cost_usd`` has moved here.
+    ``budget_limit_usd`` is the agent-level cost cap. On free local Ollama it
+    never trips (there is no dollar cost); it matters with a paid provider.
     """
 
-    llm_provider: str = LLM_PROVIDER_DEFAULT
+    llm_provider: str = "ollama"
     model: str = MODEL
-    base_url: str = LLM_BASE_URL_DEFAULT
+    base_url: str = OLLAMA_BASE_URL
     temperature: float = 0.2
     budget_limit_usd: float = 5.0
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=_json_object_format)
+    structured_output_mode: str = "explicit"
 
 
 class CapstoneQAAgent(BaseAgent):
@@ -165,33 +240,30 @@ class CapstoneQAAgent(BaseAgent):
 
 
 # ════════════════════════════════════════════════════════════════════════
-# PACT GOVERNANCE — shared org yaml (modern D/T/R grammar)
+# PACT GOVERNANCE — shared org yaml (D/T/R = Department / Team / Role)
 # ════════════════════════════════════════════════════════════════════════
 #
-# The MLFP Capstone org has a single department (AI Services) headed by
-# an ML Director, and three delegated tasks with three Responsible
-# agents:
-#   qa    (Responder, internal clearance)      — customer-facing answers
-#   admin (Operator,  confidential clearance)  — model lifecycle / metrics
-#   audit (Auditor,   restricted clearance)    — full compliance access
-#
-# Each delegation carries a constraint envelope (financial + operational
-# + data_access) matching the 3-tier stack Shard 7's technique files
-# wire via `build_capstone_stack(engine)`.
+# The MLFP Capstone org has one department (AI Services, D1) headed by the
+# ML Director role (D1-R1), and three teams, each headed by an agent role:
+#   qa_agent    D1-R1-T1-R1  public clearance        — customer-facing answers
+#   admin_agent D1-R1-T2-R1  confidential clearance  — model lifecycle / metrics
+#   audit_agent D1-R1-T3-R1  secret clearance        — compliance access
+# pact's ladder: public < restricted < confidential < secret < top_secret.
+# Each agent role gets an envelope defined by the ML Director.
 
 ORG_YAML: str = """
 # MLFP Capstone ML Platform — PACT Governance Definition
-# D/T/R: every agent action traces to a human Delegator
+# D/T/R = Department / Team / Role; every agent role reports to a human head
 
 org_id: "mlfp_capstone"
 name: "MLFP Capstone ML Platform"
 
-# One department, headed by the ML Director (Delegator).
+# One department, headed by the ML Director (a human role).
 departments:
   - id: "ai_services"
     name: "AI Services"
 
-# Three teams — one per delegated task.
+# Three teams — one per agent workstream.
 teams:
   - id: "qa_team"
     name: "Question Answering"
@@ -200,14 +272,13 @@ teams:
   - id: "audit_team"
     name: "Compliance Audit"
 
-# Roles: ml_director (Delegator) + three Responsibles (agents).
 roles:
-  # ── Delegator (human) ──
+  # ── Department head (human) ──
   - id: "ml_director"
     name: "ML Director"
     heads: "ai_services"
 
-  # ── Responsibles (agents) ──
+  # ── Team heads (agents) ──
   - id: "qa_agent"
     name: "QA Agent"
     reports_to: "ml_director"
@@ -221,26 +292,19 @@ roles:
     reports_to: "ml_director"
     heads: "audit_team"
 
-# Clearance lattice — canonical pact strings (public | restricted |
-# confidential | secret | top_secret). The course's 4-level mental model
-# (public < internal < confidential < restricted) maps to canonical as:
-# "internal" -> RESTRICTED (historical alias), so the qa tier's
-# teaching-level "internal" is expressed here as "restricted". The
-# course's distinct "internal" vs "restricted" rungs are preserved at
-# the kaizen_agents data_clearance string interface in
-# build_capstone_stack below. See ex_7/02_envelopes.py sidebar for the
-# 5-level canonical hierarchy.
+# Clearances — pact levels; every agent at or below its head.
 clearances:
   - role: "ml_director"
-    level: "confidential"
+    level: "secret"
   - role: "qa_agent"
-    level: "restricted"
+    level: "public"
   - role: "admin_agent"
     level: "confidential"
   - role: "audit_agent"
-    level: "restricted"
+    level: "secret"
 
-# Envelopes = delegations. One envelope per Responsible.
+# Envelopes = delegations (defined_by -> target). Applied to the engine by
+# compile_capstone_governance().
 envelopes:
   - target: "qa_agent"
     defined_by: "ml_director"
@@ -286,34 +350,41 @@ def write_org_yaml(path: str | Path | None = None) -> str:
     return str(path)
 
 
+def compile_capstone_governance(
+    yaml_path: str | None = None,
+) -> tuple["GovernanceEngine", Any]:
+    """Load the capstone YAML, build the engine, APPLY clearances + envelopes.
+
+    ``GovernanceEngine(loaded.org_definition)`` alone compiles only the
+    structure; until ``apply_governance_specs`` runs, no envelope is attached
+    and ``verify_action`` auto-approves every role (the installed default).
+
+    Returns ``(engine, loaded)`` where ``loaded`` is the ``LoadedOrg``.
+    """
+    from kailash.trust.pact.yaml_resolvers import apply_governance_specs
+    from pact import GovernanceEngine, load_org_yaml
+
+    loaded = load_org_yaml(yaml_path or write_org_yaml())
+    engine = GovernanceEngine(loaded.org_definition)
+    apply_governance_specs(engine, loaded)
+    return engine, loaded
+
+
 # ════════════════════════════════════════════════════════════════════════
 # BUILD_CAPSTONE_STACK — shared 3-tier GovernedSupervisor builder
 # ════════════════════════════════════════════════════════════════════════
 #
-# Per `workspaces/mlfp06-migration/decisions.md` § 2, the 4 ex_8 technique
-# files each used to start with a near-identical 40-LOC 3-tier construction
-# block. This helper deduplicates that block. Each technique file imports
-# the helper and calls it at the top, then runs its per-file narrative
-# unchanged.
+# Role -> tier mapping (clearance on pact's ladder):
+#   qa    -> public        (low budget, narrow tools)
+#   admin -> confidential  (mid budget, ops tools)
+#   audit -> secret        (high budget, audit tools)
+# The three tiers are SIBLING envelopes, each defined by (and no wider than)
+# the ML Director — they are not a superset chain of one another.
 #
-# Role → tier mapping (teaching-coherent for the capstone narrative):
-#   qa    → public   (low budget, narrow tools, internal clearance)
-#   admin → internal (mid budget,  ops tools,     confidential)
-#   audit → restricted (high budget, audit tools, restricted)
-#
-# The helper also attaches a `ConstraintEnvelopeConfig` to each Responsible
-# role address via `engine.set_role_envelope(...)` so
-# `engine.verify_action()` has a real envelope to enforce against — per
-# Shard 5's finding that `verify_action` on a role with no envelope
-# auto-approves. Parent-head envelopes are CONFIDENTIAL so
-# `RoleEnvelope.validate_tightening()` accepts the RESTRICTED/PUBLIC
-# children (Shard 4 finding: canonical clearance order is
-# CONFIDENTIAL > RESTRICTED > PUBLIC, so parents need to be at or above
-# the tightest child level the tree will hold).
+# The helper also attaches a full 5-dimension `ConstraintEnvelopeConfig` to
+# each agent role address via `engine.set_role_envelope(...)` (replacing the
+# thinner YAML envelope), so `engine.verify_action()` enforces the tier.
 
-
-# The three Responsible role addresses under ml_director (D1-R1). Each
-# Responsible sits under a team (T<n>) under the single department (D1).
 _QA_ADDR = "D1-R1-T1-R1"
 _ADMIN_ADDR = "D1-R1-T2-R1"
 _AUDIT_ADDR = "D1-R1-T3-R1"
@@ -328,7 +399,7 @@ class CapstoneTier:
     address: str
     budget_usd: float
     tools: list[str]
-    clearance: str  # kaizen_agents data_clearance string
+    clearance: str  # pact clearance string (public | confidential | secret ...)
     description: str
 
 
@@ -352,7 +423,7 @@ CAPSTONE_TIERS: list[CapstoneTier] = [
             "view_metrics",
             "monitor_drift",
         ],
-        clearance="internal",
+        clearance="confidential",
         description="Model ops — update + metrics + drift",
     ),
     CapstoneTier(
@@ -366,19 +437,19 @@ CAPSTONE_TIERS: list[CapstoneTier] = [
             "access_audit_log",
             "generate_report",
         ],
-        clearance="restricted",
+        clearance="secret",
         description="Compliance audit — full audit log + reports",
     ),
 ]
+_TIER_BY_ROLE: dict[str, CapstoneTier] = {t.role: t for t in CAPSTONE_TIERS}
 
 
 def _attach_envelopes(engine: "GovernanceEngine") -> None:
-    """Attach ConstraintEnvelopeConfig to every Responsible role address.
+    """Attach a full ConstraintEnvelopeConfig to every agent role address.
 
-    Without this, `engine.verify_action()` on any of the Responsible
-    addresses auto-approves (no envelope constraints). The envelope is
-    the source of restriction — attach it so runtime enforcement has
-    something to enforce against.
+    Without an envelope, `engine.verify_action()` on a role auto-approves
+    ("No envelope constraints -- action permitted"). The envelope is the
+    source of restriction.
     """
     from pact import (
         CommunicationConstraintConfig,
@@ -391,23 +462,11 @@ def _attach_envelopes(engine: "GovernanceEngine") -> None:
         TemporalConstraintConfig,
     )
 
-    # Map the course's 4-level teaching strings to canonical
-    # ConfidentialityLevel. "internal" collides with "restricted" at
-    # RESTRICTED per the historical alias in kaizen_agents; we keep
-    # them distinct as teaching rungs but they resolve to the same
-    # canonical level.
-    clearance_map = {
-        "public": ConfidentialityLevel.PUBLIC,
-        "internal": ConfidentialityLevel.RESTRICTED,
-        "confidential": ConfidentialityLevel.CONFIDENTIAL,
-        "restricted": ConfidentialityLevel.RESTRICTED,
-    }
-
     for tier in CAPSTONE_TIERS:
         envelope = ConstraintEnvelopeConfig(
             id=f"{tier.role}_envelope",
             description=tier.description,
-            confidentiality_clearance=clearance_map[tier.clearance],
+            confidentiality_clearance=ConfidentialityLevel(tier.clearance),
             financial=FinancialConstraintConfig(max_spend_usd=tier.budget_usd),
             operational=OperationalConstraintConfig(
                 allowed_actions=list(tier.tools),
@@ -438,19 +497,12 @@ def build_capstone_stack(
     """Build the shared 3-tier GovernedSupervisor stack.
 
     Returns:
-        A 2-tuple ``(agents_by_role, tiers)`` where:
-          - ``agents_by_role`` maps ``"qa" | "admin" | "audit"`` to the
-            corresponding ``GovernedSupervisor`` — this is the shape
-            ``handle_qa(question, role, agents_by_role)`` expects.
-          - ``tiers`` is the list of ``CapstoneTier`` metadata entries
-            (order: qa, admin, audit) so technique files can read
-            budget / tools / clearance without re-deriving them.
+        ``(agents_by_role, tiers)`` — ``agents_by_role`` maps
+        ``"qa" | "admin" | "audit"`` to its ``GovernedSupervisor`` (the shape
+        ``handle_qa`` expects); ``tiers`` is the ``CapstoneTier`` metadata.
 
-    Side effects:
-        Attaches a ``ConstraintEnvelopeConfig`` to every Responsible
-        role address on ``engine`` via ``engine.set_role_envelope(...)``.
-        After this call, ``engine.verify_action(tier.address, ...)``
-        enforces the tier's envelope.
+    Side effect: attaches a ``ConstraintEnvelopeConfig`` to every agent role
+    address on ``engine``.
     """
     _attach_envelopes(engine)
 
@@ -469,22 +521,15 @@ def build_capstone_stack(
 # SHARED QA HANDLER — used by Nexus deployment AND monitoring/test files
 # ════════════════════════════════════════════════════════════════════════
 #
-# `handle_qa()` preserves the original return dict shape so the four
-# Shard 7 technique files (02_governance_pipeline, 03_multichannel_serving,
-# 04_drift_monitoring, 05_compliance_audit) continue to read
-# `result["answer"]`, `result["confidence"]`, etc. unchanged.
-#
-# Internally the call routes through the selected tier's
-# `GovernedSupervisor.run(objective=question, execute_node=...)`, where
-# the executor wraps a shared `CapstoneQAAgent` instance. The executor
-# returns the four keys GovernedSupervisor expects (`result`, `cost`,
-# `prompt_tokens`, `completion_tokens`) per the contract established
-# by `shared.mlfp06.ex_7.make_fake_executor`.
+# `handle_qa()`:
+#   1. Refuses an unknown role (never falls back to another tier).
+#   2. If an engine is passed, asks `engine.verify_action(tier address,
+#      action)` first — a blocked verdict is returned as blocked.
+#   3. Runs the tier's `GovernedSupervisor.run(objective, execute_node=...)`
+#      whose executor calls the shared `CapstoneQAAgent` on local Ollama.
+#   4. A node HELD by the budget envelope is returned as blocked; a FAILED
+#      node (LLM error) RAISES — there is no offline stub.
 
-
-# One module-level agent instance is shared by every handle_qa call.
-# Constructing a CapstoneQAAgent per call would waste the compiled
-# signature and the LLM client setup on the hot path.
 _shared_qa_agent: CapstoneQAAgent | None = None
 
 
@@ -496,174 +541,129 @@ def _get_shared_agent() -> CapstoneQAAgent:
 
 
 async def _capstone_execute_node(_spec: Any, inputs: dict[str, Any]) -> dict[str, Any]:
-    """Executor callback for GovernedSupervisor.run().
+    """Executor callback for GovernedSupervisor.run() — a real LLM call.
 
-    Runs the shared `CapstoneQAAgent` on the question carried in
-    ``inputs``. The ``_spec`` positional is required by the
-    ``GovernedSupervisor.run(execute_node=...)`` interface but is not
-    consumed here — the supervisor passes the question in ``inputs``.
-    Returns the four-key dict GovernedSupervisor expects.
-
-    Live mode uses ``agent.run_async(question=...)``; on any exception
-    (missing key, rate limit, network error) we fall back to a
-    deterministic offline stub so the teaching narrative runs end-to-end.
+    Returns ``{"result": <agent output dict>, "cost": 0.0}``. Cost is zero
+    because local Ollama is free. Raises if the agent reports an error, so
+    the supervisor marks the node FAILED and ``handle_qa`` surfaces it.
     """
     del _spec  # interface-required positional, not consumed
-    agent = _get_shared_agent()
     objective = (
         inputs.get("objective")
         or inputs.get("question")
         or inputs.get("prompt")
         or str(inputs)
     )
+    out = await _get_shared_agent().run_async(question=str(objective))
+    if not isinstance(out, dict) or out.get("error"):
+        detail = out.get("error") if isinstance(out, dict) else repr(out)
+        raise RuntimeError(f"CapstoneQAAgent failed: {detail}")
+    if not str(out.get("answer", "")).strip():
+        raise RuntimeError(f"CapstoneQAAgent returned no answer: {out!r}")
+    return {"result": out, "cost": 0.0}
 
+
+def _as_float(value: Any) -> float | None:
     try:
-        out = await agent.run_async(question=str(objective))
-        answer = out.get("answer") if isinstance(out, dict) else str(out)
-        return {
-            "result": str(answer),
-            "cost": 0.01,
-            "prompt_tokens": 120,
-            "completion_tokens": 80,
-        }
-    except Exception as exc:  # offline fallback — log + deterministic stub
-        snippet = str(objective)[:60].replace("\n", " ")
-        return {
-            "result": f"[offline-fallback ({type(exc).__name__})] {snippet}",
-            "cost": 0.005,
-            "prompt_tokens": 80,
-            "completion_tokens": 40,
-        }
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 async def handle_qa(
     question: str,
     role: str,
     agents_by_role: dict[str, GovernedSupervisor],
+    *,
+    engine: "GovernanceEngine | None" = None,
+    action: str = "generate_answer",
 ) -> dict[str, Any]:
-    """Route a question to the governed supervisor matching ``role``.
+    """Route a question to the governed supervisor for ``role``.
 
-    Args:
-        question: The user's question.
-        role: Access role — keys of ``agents_by_role`` (``qa`` | ``admin``
-            | ``audit``).
-        agents_by_role: Mapping of role name to a ``GovernedSupervisor``
-            instance, as returned by ``build_capstone_stack(engine)[0]``.
+    Returns on success::
 
-    Returns:
-        A response dict with the shape the 4 ex_8 technique files read:
+        {"answer": str, "confidence": float | None, "sources": list[str],
+         "reasoning_steps": list[str], "latency_ms": float,
+         "budget_consumed": float, "governed": True, "blocked": False,
+         "verdict": "served", "role": str}
 
-            {
-                "answer":          str,
-                "confidence":      float,
-                "sources":         list[str],
-                "reasoning_steps": list[str],
-                "latency_ms":      float,
-                "governed":        True,
-                "role":            str,
+    ``confidence`` is the agent's own self-reported value (None if it did
+    not return a number). On a governance refusal (unknown role, blocked
+    verdict, budget HELD) returns ``{"error", "blocked": True, "verdict",
+    "governed": True, "role"}``. An LLM failure raises ``RuntimeError``.
+    """
+    if role not in agents_by_role or role not in _TIER_BY_ROLE:
+        return {
+            "error": f"unknown role {role!r} — refused",
+            "blocked": True,
+            "verdict": "unknown_role",
+            "governed": True,
+            "role": role,
+        }
+    tier = _TIER_BY_ROLE[role]
+    if engine is not None:
+        verdict = engine.verify_action(tier.address, action, {"cost": 0.0})
+        if not verdict.allowed:
+            return {
+                "error": verdict.reason,
+                "blocked": True,
+                "verdict": verdict.level,
+                "governed": True,
+                "role": role,
             }
 
-        On governance / budget / clearance denial, returns a dict with
-        ``"error"``, ``"blocked": True``, ``"governed": True``, and
-        ``"role"`` instead of the answer shape.
-    """
-    gs = agents_by_role.get(role) or next(iter(agents_by_role.values()))
-    start = time.time()
+    gs = agents_by_role[role]
+    start = time.perf_counter()
+    result = await gs.run(objective=question, execute_node=_capstone_execute_node)
+    latency_ms = (time.perf_counter() - start) * 1000
 
-    try:
-        result = await gs.run(
-            objective=question,
-            execute_node=_capstone_execute_node,
+    if not result.success:
+        nodes = list(result.plan.nodes.values()) if result.plan else []
+        if any(n.state.name == "HELD" for n in nodes):
+            return {
+                "error": "budget envelope exhausted — request held",
+                "blocked": True,
+                "verdict": "held",
+                "governed": True,
+                "role": role,
+            }
+        errors = [n.error for n in nodes if n.error]
+        raise RuntimeError(
+            f"capstone '{role}' tier: LLM call failed: {errors}. "
+            "Start Ollama: ollama serve"
         )
-        latency = (time.time() - start) * 1000
 
-        # Pull the answer out of the supervisor's plan output. In offline
-        # mode the executor stub returns a short string; in live mode
-        # it returns the real LLM output. Either way, extract a string.
-        answer_text = ""
-        if result.audit_trail:
-            last = result.audit_trail[-1]
-            if isinstance(last, dict):
-                answer_text = str(last.get("result") or last.get("output") or "")
-        if not answer_text:
-            answer_text = f"[capstone:{role}] {question}"
-
-        return {
-            "answer": answer_text,
-            "confidence": 0.85 if result.success else 0.0,
-            "sources": ["capstone_model", "pact_governance"],
-            "reasoning_steps": [
-                f"tier={role}",
-                f"budget_consumed=${result.budget_consumed:.4f}",
-                f"success={result.success}",
-            ],
-            "latency_ms": latency,
-            "governed": True,
-            "role": role,
-        }
-    except Exception as e:  # governance / budget / clearance denial
-        return {
-            "error": str(e),
-            "governed": True,
-            "blocked": True,
-            "role": role,
-        }
-
-
-# ════════════════════════════════════════════════════════════════════════
-# SHARED MIDDLEWARE UTILITIES
-# ════════════════════════════════════════════════════════════════════════
-
-
-class SimpleJWTAuth:
-    """Stub JWT validator — production uses RS256 signed tokens.
-
-    This exists so the capstone can demonstrate the auth surface without
-    requiring a real JWKS endpoint. Every token maps to a role claim.
-    """
-
-    VALID_TOKENS: dict[str, dict[str, str]] = {
-        "token_viewer_001": {"sub": "alice", "role": "qa"},
-        "token_operator_001": {"sub": "bob", "role": "admin"},
-        "token_auditor_001": {"sub": "carol", "role": "audit"},
+    out = next(iter(result.results.values()))
+    return {
+        "answer": str(out.get("answer", "")),
+        "confidence": _as_float(out.get("confidence")),
+        "sources": list(out.get("sources") or []),
+        "reasoning_steps": list(out.get("reasoning_steps") or []),
+        "latency_ms": latency_ms,
+        "budget_consumed": result.budget_consumed,
+        "governed": True,
+        "blocked": False,
+        "verdict": "served",
+        "role": role,
     }
 
-    @classmethod
-    def validate(cls, token: str) -> dict[str, str] | None:
-        """Return token claims, or None if the token is invalid."""
-        return cls.VALID_TOKENS.get(token)
-
-
-class RateLimiter:
-    """Sliding-window rate limiter: ``max_requests`` per ``window_seconds``."""
-
-    def __init__(self, max_requests: int, window_seconds: int) -> None:
-        self.max_requests = max_requests
-        self.window = window_seconds
-        self.requests: dict[str, list[float]] = {}
-
-    def allow(self, client_id: str) -> bool:
-        now = time.time()
-        bucket = self.requests.setdefault(client_id, [])
-        bucket[:] = [t for t in bucket if now - t < self.window]
-        if len(bucket) >= self.max_requests:
-            return False
-        bucket.append(now)
-        return True
-
 
 # ════════════════════════════════════════════════════════════════════════
-# RUN HELPER — for technique files that use asyncio.run() at module scope
+# RUN HELPER — for technique files that use asyncio at module scope
 # ════════════════════════════════════════════════════════════════════════
 
 
 def run_async(coro):  # noqa: ANN001 — coroutine
-    """Run an async coroutine, tolerating already-running event loops."""
+    """Run a coroutine to completion from synchronous code.
+
+    In a plain script there is no running loop, so ``asyncio.run`` is used.
+    Inside Jupyter/Colab a loop is already running, so the coroutine runs on
+    a fresh loop in a worker thread. Exceptions from the coroutine propagate
+    unchanged.
+    """
     try:
-        return asyncio.run(coro)
+        asyncio.get_running_loop()
     except RuntimeError:
-        loop = asyncio.new_event_loop()
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()

@@ -15,9 +15,9 @@ Per ``rules/framework-first.md`` MANDATORY: raw ``openai.chat.completions.create
 is BLOCKED — every LLM call goes through ``Delegate.run_sync`` which honours
 the configured cost envelope.
 
-Per ``rules/env-models.md``: ``judge_model`` defaults to
-``OPENAI_JUDGE_MODEL`` → ``DEFAULT_LLM_MODEL`` → ``OPENAI_PROD_MODEL``. No
-hardcoded model names.
+Per ``rules/env-models.md``: ``judge_model`` resolves ``OLLAMA_JUDGE_MODEL``
+→ ``OLLAMA_CHAT_MODEL`` → the bootstrap default (legacy OpenAI-named
+variables are honoured only if set). No hardcoded model names.
 """
 from __future__ import annotations
 

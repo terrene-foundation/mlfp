@@ -31,12 +31,15 @@ import time
 
 import matplotlib.pyplot as plt
 
+from shared.mlfp06._ollama_bootstrap import preflight_ollama
 from shared.mlfp06.ex_6 import (
+    MODEL,
     InterpretationAgent,
     OUTPUT_DIR,
     build_specialists,
     build_synthesis,
     load_squad_corpus,
+    run_checked,
 )
 
 
@@ -60,8 +63,11 @@ from shared.mlfp06.ex_6 import (
 # parallelise the line without losing the dependency guarantees.
 #
 # LATENCY TRADE-OFF:
-#   Supervisor-worker (fan-out): latency ≈ max(stages)
-#   Sequential pipeline:         latency ≈ sum(stages)
+#   Supervisor-worker (concurrent fan-out, 01):
+#       latency ≈ max(specialists) + synthesis
+#       — when the backend serves requests in parallel; a single-slot
+#         Ollama daemon queues them and you get close to the sum
+#   Sequential pipeline:  latency ≈ sum(stages), on any backend
 #
 # You pay latency in exchange for the ability to CHAIN reasoning.
 
@@ -114,12 +120,13 @@ async def sequential_pipeline(doc: str, question: str) -> dict:
 
     # Stage 1: Factual extraction
     s1_t = time.perf_counter()
-    factual = await factual_agent.run_async(document=doc, question=question)
+    factual = await run_checked(factual_agent, document=doc, question=question)
     per_stage.append(("factual extraction", time.perf_counter() - s1_t))
 
     # Stage 2: Interpretation (consumes stage-1 output)
     s2_t = time.perf_counter()
-    interpreted = await interpreter.run_async(
+    interpreted = await run_checked(
+        interpreter,
         factual_claims=str(factual["factual_claims"]),
         document=doc,
         question=question,
@@ -128,7 +135,8 @@ async def sequential_pipeline(doc: str, question: str) -> dict:
 
     # Stage 3: Synthesis (consumes stage-2 output)
     s3_t = time.perf_counter()
-    final = await synthesis_agent.run_async(
+    final = await run_checked(
+        synthesis_agent,
         document=doc,
         question=question,
         factual_analysis=str(interpreted["interpreted_facts"]),
@@ -154,6 +162,7 @@ doc = passages["text"][0]
 question = passages["question"][0]
 print(f"Question: {question}")
 
+preflight_ollama(required_models=[MODEL])  # fails loudly if Ollama is down
 result = asyncio.run(sequential_pipeline(doc, question))
 
 print(f"\nAnswer: {result['answer'][:250]}...")
@@ -226,7 +235,7 @@ print(f"\n  Saved: {fname}")
 # ════════════════════════════════════════════════════════════════════════
 # APPLY — Singapore scenario: regulatory filing analysis
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore-listed REIT files quarterly disclosures with
+# SCENARIO (illustrative figures): A Singapore-listed REIT files quarterly disclosures with
 # SGX. The compliance team reviews ~40 peer filings per quarter to
 # benchmark disclosure quality. Today they read end-to-end — ~90
 # minutes per filing, 60 hours per quarter.
@@ -265,52 +274,13 @@ print(
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# DIAGNOSTIC CHECKPOINT
 # ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Agent Trace (inter-agent handoffs, tool latency).
-# Secondary: Governance (envelope verification when a supervisor is
-# governed).
-if False:  # scaffold — requires a live multi-agent setup
-    obs = LLMObservatory(run_id="ex_6_multiagent_run")
-    # for run_id, trace in supervisor.all_traces.items():
-    #     obs.agent.register_trace(trace)
-    # obs.agent.handoff_summary()  # inter-agent handoffs
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Agent      (HEALTHY): 3 workers, 7 handoffs, mean tool-call
-#       latency 840ms, no stuck loops across all runs.
-#   [?] Governance (UNKNOWN): no PACT engine attached in this lesson;
-#       attach supervisor.audit to light up this lens.
-#   [?] Output / Retrieval / Alignment / Attention (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [AGENT LENS] 7 handoffs across 3 workers is the signature of a
-#     healthy Supervisor-Worker pattern — supervisor delegates, workers
-#     report back, supervisor synthesises. Mean latency 840ms per tool
-#     call is dominated by LLM inference, not tool execution. Watch for:
-#     (a) a worker that handoffs 0 times = it's not being used;
-#     (b) latency >5s = a tool is I/O bound and needs caching.
-#  [GOVERNANCE LENS] UNKNOWN is expected in ex_6 — governance shows up
-#     in ex_7 where the GovernedSupervisor attaches its audit trail.
-# ════════════════════════════════════════════════════════════════════
-
+# The diagnostic for a sequential pipeline is the stage waterfall you
+# just plotted: total latency is the sum of the stages, so the widest
+# bar is where optimisation pays.  A stage whose structured output is
+# empty (no claims, no ranking) silently starves every later stage —
+# check each stage's fields before blaming the synthesiser.
 
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION

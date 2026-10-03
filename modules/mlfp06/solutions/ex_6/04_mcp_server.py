@@ -8,28 +8,60 @@
 # WHAT YOU'LL LEARN:
 #   - Understand Model Context Protocol (MCP) as a standard way to
 #     expose tools to any MCP-compatible agent
-#   - Define MCP tools with JSON-schema parameters and typed handlers
-#   - Register tools on an MCPServer and inspect its capability surface
-#   - Understand the transport split: stdio (local) vs HTTP/SSE (remote)
+#   - Register typed tool handlers on a kailash-mcp MCPServer — the type
+#     hints and docstring BECOME the tool's published JSON schema
+#   - Run the server on the stdio transport and call it from a real MCP
+#     client: discover the tools, call them, watch bad input be rejected
+#   - Expose a specialist AGENT as an MCP tool, not just a lookup
 #
 # PREREQUISITES: 03_parallel_router.py
 # ESTIMATED TIME: ~30 min
 #
 # TASKS:
 #   1. Load the shared corpus (tools will search it)
-#   2. Define three MCP tool handlers (analyse_passage, search_corpus, stats)
-#   3. Register each handler on an MCPServer with the @server.tool decorator,
-#      attaching a JSON input schema + tool annotations
-#   4. Inspect the server's capability surface and verify 3 tools registered
+#   2. Create the server and register three typed tool handlers
+#      (analyse_passage runs a specialist agent; search_corpus; stats)
+#   3. Discover the tools through an MCP client over stdio and read the
+#      schemas the server publishes
+#   4. Call every tool through the protocol, including one call the
+#      schema must reject
+#
+# HOW TO RUN: as a script (python .../04_mcp_server.py).  Task 3 launches
+# THIS file as a stdio MCP server subprocess (with --serve-mcp), so the
+# file you write is the server the client talks to.
 #
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
-from kailash_mcp import MCPServer, StructuredTool, ToolAnnotation
+import sys
 
-from shared.mlfp06.ex_6 import OUTPUT_DIR, load_squad_corpus
+# stdio transport: while serving, stdout carries the MCP JSON-RPC frames
+# and nothing else.  Every print() in this file must go to stderr in
+# server mode, or the client receives garbage instead of protocol frames.
+SERVE_MODE = "--serve-mcp" in sys.argv
+if SERVE_MODE:
+    _PROTOCOL_STDOUT = sys.stdout
+    sys.stdout = sys.stderr
+
+import asyncio
+import json
+import time
+from pathlib import Path
+from typing import Literal
+
+import matplotlib.pyplot as plt
+import polars as pl
+from kailash_mcp import MCPClient, MCPServer
+
+from shared.mlfp06._ollama_bootstrap import preflight_ollama
+from shared.mlfp06.ex_6 import (
+    MODEL,
+    OUTPUT_DIR,
+    build_specialists,
+    load_squad_corpus,
+    run_checked,
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -38,9 +70,9 @@ from shared.mlfp06.ex_6 import OUTPUT_DIR, load_squad_corpus
 # MCP is a small protocol that lets an AI agent discover and call
 # tools exposed by a server. A "tool" is a function plus a JSON
 # schema describing its parameters plus a natural-language
-# description. Any MCP-compatible agent — Claude, GPT, a Kaizen
-# agent, an IDE plugin — can list the server's tools and invoke
-# them.
+# description. Any MCP-compatible client — an IDE assistant, a desktop
+# chat app, a Kaizen agent — can list the server's tools (the JSON-RPC
+# method `tools/list`) and invoke them (`tools/call`).
 #
 # Non-technical analogy: MCP is USB for AI agents. Your specialists
 # are devices; MCP is the plug. Any agent that speaks MCP can
@@ -49,23 +81,23 @@ from shared.mlfp06.ex_6 import OUTPUT_DIR, load_squad_corpus
 #
 # COMPONENTS:
 #   - Server:    registers tools with schemas, listens on a transport
-#   - Transport: stdio for local subprocesses, HTTP/SSE for remote
+#   - Transport: stdio for a local subprocess, HTTP/SSE for remote
 #   - Tool:      handler function + JSON schema + description
 #   - Resource:  read-only data the agent can access
 #
-# HOW YOU REGISTER A TOOL (kailash-mcp):
-#   MCPServer exposes a `@server.tool(...)` decorator. You decorate a
-#   plain Python function; kailash-mcp reads its name, docstring, and
-#   type hints to build the tool's capability card. To describe the
-#   parameters precisely, pair it with `@structured_tool(input_schema=...)`
-#   — a JSON Schema — and a `ToolAnnotation` that records hints such as
-#   "read-only" or "estimated duration" for the calling agent.
+# WHERE THE SCHEMA COMES FROM (kailash-mcp):
+#   You decorate a plain Python function with `@server.tool()`.  The
+#   server derives the tool's published JSON input schema from the
+#   function's TYPE HINTS (str -> "string", int -> "integer",
+#   Literal["a", "b"] -> an enum) and its description from the
+#   docstring.  Precise type hints = a precise schema, and the server
+#   validates every incoming call against it before your code runs.
 #
 # WHY THIS MATTERS FOR MULTI-AGENT:
 # MCP lets your agents share tools without hard-coding imports. A
-# Kaizen supervisor can call an MCP tool exposed by a Python
-# service; a Claude Desktop agent can call the same tool; an IDE
-# plugin can call it. One registration, many consumers.
+# Kaizen supervisor can call an MCP tool exposed by a Python service;
+# a desktop assistant can call the same tool; an IDE plugin can call
+# it. One registration, many consumers.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -88,12 +120,11 @@ print("✓ Checkpoint 1 passed\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Create the server, then define + register three tool handlers
+# TASK 2 — Create the server, then register three typed tool handlers
 # ════════════════════════════════════════════════════════════════════════
-# In kailash-mcp you do not build separate "tool" objects and hand them to
-# the server — you register a plain function ON the server with the
-# @server.tool() decorator. So the server comes first. We declare it on the
-# stdio transport (the default for local subprocess agents); HTTP/SSE is a
+# In kailash-mcp you register a plain function ON the server with the
+# @server.tool() decorator, so the server comes first.  We declare it
+# on the stdio transport (a local subprocess); HTTP/SSE is a
 # constructor flag away when you need remote agents.
 
 print("=" * 70)
@@ -102,48 +133,31 @@ print("=" * 70)
 
 mcp_server = MCPServer(name="mlfp06-analysis-server", transport="stdio")
 
-# A JSON Schema describes each tool's parameters so any MCP-compatible agent
-# knows how to call it. ToolAnnotation records behavioural hints (read-only,
-# rough latency) that help an agent decide whether/when to call the tool.
-ANALYSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "passage": {"type": "string", "description": "Text to analyse"},
-        "analysis_type": {
-            "type": "string",
-            "enum": ["factual", "semantic", "structural"],
-        },
-    },
-    "required": ["passage"],
-}
-SEARCH_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "query": {"type": "string", "description": "Search query"},
-        "top_k": {"type": "integer", "description": "Max results", "default": 3},
-    },
-    "required": ["query"],
-}
-STATS_SCHEMA = {"type": "object", "properties": {}}
-
-READ_ONLY = ToolAnnotation(is_read_only=True, estimated_duration=0.1)
+# analyse_passage delegates to the Exercise 6.1 specialist agents, so an
+# external MCP client gets real factual / semantic / structural analysis.
+SPECIALISTS = dict(zip(("factual", "semantic", "structural"), build_specialists()))
 
 
 @mcp_server.tool()
-def analyse_passage(passage: str, analysis_type: str = "factual") -> str:
-    """Analyse a text passage from a factual, semantic, or structural perspective.
+async def analyse_passage(
+    passage: str,
+    analysis_type: Literal["factual", "semantic", "structural"] = "factual",
+    question: str = "What are the key points of this passage?",
+) -> str:
+    """Analyse a passage with the factual, semantic, or structural specialist agent.
 
     Args:
         passage: The text to analyse.
-        analysis_type: One of 'factual', 'semantic', 'structural'.
+        analysis_type: Which specialist runs: factual, semantic, or structural.
+        question: The question the analysis should focus on.
 
     Returns:
-        Analysis results as formatted text.
+        The specialist's structured output as JSON text.
     """
-    return (
-        f"Analysis ({analysis_type}) of {len(passage)}-char passage: "
-        f"[would run {analysis_type}_agent against the passage]"
+    result = await run_checked(
+        SPECIALISTS[analysis_type], document=passage, question=question
     )
+    return json.dumps(result, default=str)
 
 
 @mcp_server.tool()
@@ -178,119 +192,182 @@ def get_corpus_stats() -> str:
     return (
         f"Corpus: {passages.height} passages, "
         f"{passages['title'].n_unique()} unique topics\n"
-        f"First 10 topics: {passages['title'].unique().to_list()[:10]}"
+        f"First 10 topics: {passages['title'].unique().sort().to_list()[:10]}"
     )
 
 
-# The @server.tool decorator returns the function unchanged, so each handler
-# is BOTH registered on the server AND directly callable here for testing.
+registered_names = sorted(mcp_server.get_tool_stats()["tools"])
+print(f"Registered on the server: {registered_names}")
+
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
+assert registered_names == ["analyse_passage", "get_corpus_stats", "search_corpus"]
 assert get_corpus_stats().startswith("Corpus:")
-assert "[" in search_corpus("what", top_k=2) or "No matches" in search_corpus(
-    "xyzxyz", top_k=2
-)
-print("✓ Checkpoint 2 passed — 3 handlers registered and callable\n")
+print("✓ Checkpoint 2 passed — 3 handlers registered\n")
+
+# ── Server mode ──────────────────────────────────────────────────────────
+# When the MCP client launches this file with --serve-mcp, hand stdout
+# back to the protocol and serve until the client disconnects.  Nothing
+# below this point runs in server mode.
+if SERVE_MODE:
+    sys.stdout = _PROTOCOL_STDOUT
+    mcp_server.run()
+    raise SystemExit(0)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — Attach JSON schemas as StructuredTool capability cards
+# TASK 3 — Discover the tools through a real MCP client (stdio)
 # ════════════════════════════════════════════════════════════════════════
-# A StructuredTool bundles the input schema + annotation into one object —
-# the "capability card" an agent reads before deciding to call the tool.
-# Here we build one card per registered tool so we can list the full surface.
+# The client starts this file as a subprocess server and speaks MCP to
+# it over stdin/stdout: `initialize`, then `tools/list`.  What comes
+# back is exactly what any external agent would see.
 
 print("=" * 70)
-print("TASK 3: Build StructuredTool capability cards (schemas + annotations)")
+print("TASK 3: Discover tools over the MCP protocol")
 print("=" * 70)
 
-tool_cards = {
-    "analyse_passage": StructuredTool(
-        input_schema=ANALYSE_SCHEMA, annotations=READ_ONLY
-    ),
-    "search_corpus": StructuredTool(input_schema=SEARCH_SCHEMA, annotations=READ_ONLY),
-    "get_corpus_stats": StructuredTool(
-        input_schema=STATS_SCHEMA, annotations=READ_ONLY
-    ),
+_this_file = globals().get("__file__")
+if _this_file is None:
+    raise RuntimeError(
+        "Task 3 launches this exercise file as a stdio MCP server, so it "
+        "must run as a script: python modules/mlfp06/.../04_mcp_server.py"
+    )
+SERVER_CONFIG = {
+    "transport": "stdio",
+    "command": sys.executable,
+    "args": [str(Path(_this_file).resolve()), "--serve-mcp"],
 }
+client = MCPClient()
 
-for name, card in tool_cards.items():
-    handler = mcp_server.get_tool_by_name(name)
-    desc = (handler["original_function"].__doc__ or "").strip().splitlines()[0]
-    print(f"  {name}: {desc}")
-    print(f"      params: {list(card.input_schema['properties'])}")
+discovered = asyncio.run(client.discover_tools(SERVER_CONFIG, timeout=120))
+schemas = {tool["name"]: tool["parameters"] for tool in discovered}
+for tool in discovered:
+    params = tool["parameters"].get("properties", {})
+    print(f"  {tool['name']}: {(tool['description'] or '').splitlines()[0]}")
+    for name, spec in params.items():
+        extra = f" enum={spec['enum']}" if "enum" in spec else ""
+        print(f"      {name}: {spec.get('type')}{extra}")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert len(tool_cards) == 3
-assert all(isinstance(c, StructuredTool) for c in tool_cards.values())
-print("\n✓ Checkpoint 3 passed — 3 capability cards defined\n")
+assert sorted(schemas) == registered_names, (
+    "Task 3: the client should discover all 3 tools — an empty list means "
+    "the server subprocess failed to start (check stderr)"
+)
+assert schemas["analyse_passage"]["properties"]["analysis_type"]["enum"] == [
+    "factual",
+    "semantic",
+    "structural",
+], "The Literal type hint should be published as an enum"
+assert schemas["search_corpus"]["required"] == ["query"]
+print("\n✓ Checkpoint 3 passed — schemas published from the type hints\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — Inspect the server's capability surface
+# TASK 4 — Call every tool through the protocol
 # ════════════════════════════════════════════════════════════════════════
-# The server already holds every tool we decorated. We never start a live
-# listener here — we introspect the registered surface, which is exactly
-# what an agent's `list_tools` call returns over the wire.
+# Each call is a `tools/call` round trip.  The last call sends an
+# analysis_type that is not in the enum: the SERVER must reject it
+# before the handler runs.
 
 print("=" * 70)
-print("TASK 4: MCP Server — inspect and verify capability surface")
+print("TASK 4: Call the tools over MCP")
 print("=" * 70)
 
-stats = mcp_server.get_server_stats()
-registered_names = sorted(mcp_server._tool_registry.keys())
+preflight_ollama(required_models=[MODEL])  # analyse_passage runs an agent
 
-print(f"Server: {mcp_server.name}")
-print(f"Registered tools ({stats['tools']['registered_tools']}): {registered_names}")
-print("\nTransport options:")
-print("  stdio:    for local subprocess agent connections")
-print("  HTTP/SSE: for remote/network agent connections")
+calls = [
+    ("get_corpus_stats", {}),
+    ("search_corpus", {"query": "university students", "top_k": 2}),
+    (
+        "analyse_passage",
+        {
+            "passage": passages["text"][0],
+            "analysis_type": "structural",
+            "question": passages["question"][0],
+        },
+    ),
+    ("analyse_passage", {"passage": "Some text.", "analysis_type": "sentiment"}),
+]
 
-print("\nTool test — get_corpus_stats():")
-print(get_corpus_stats())
+
+async def call_all() -> list[dict]:
+    log = []
+    for name, arguments in calls:
+        t0 = time.perf_counter()
+        response = await client.call_tool(SERVER_CONFIG, name, arguments, timeout=300)
+        mcp_result = response.get("result")
+        log.append(
+            {
+                "tool": name,
+                "transport_ok": bool(response.get("success")),
+                "is_error": bool(getattr(mcp_result, "isError", False)),
+                "seconds": time.perf_counter() - t0,
+                "content": response.get("content") or response.get("error", ""),
+            }
+        )
+    return log
+
+
+call_log = pl.DataFrame(asyncio.run(call_all()))
+for row in call_log.iter_rows(named=True):
+    status = "ERROR" if row["is_error"] else "ok"
+    print(f"\n  {row['tool']} [{status}, {row['seconds']:.1f}s]")
+    print(f"    {row['content'][:300]}")
 
 trace_path = OUTPUT_DIR / "ex6_mcp_server_trace.txt"
 trace_path.write_text(
-    f"Server: {mcp_server.name}\n"
-    f"Tools: {registered_names}\n"
-    f"\n{get_corpus_stats()}\n"
+    f"Server: {mcp_server.name}\nTools: {registered_names}\n\n"
+    + "\n".join(
+        f"{r['tool']}: error={r['is_error']} {r['seconds']:.2f}s"
+        for r in call_log.iter_rows(named=True)
+    )
+    + "\n"
 )
 print(f"\nTrace written to: {trace_path}")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
-assert mcp_server is not None
-assert stats["tools"]["registered_tools"] == 3
-assert registered_names == ["analyse_passage", "get_corpus_stats", "search_corpus"]
-print("\n✓ Checkpoint 4 passed — MCP server exposes 3 tools\n")
+assert call_log["transport_ok"].all(), "Every call should complete the round trip"
+assert not call_log["is_error"][:3].any(), (
+    "The three valid calls must succeed — an analyse_passage error usually "
+    "means Ollama is not running in the server process (ollama serve)"
+)
+assert call_log["is_error"][3], "The out-of-enum analysis_type must be rejected"
+analysis = json.loads(call_log["content"][2])
+assert analysis["key_entities"], "The structural specialist should return entities"
+print("\n✓ Checkpoint 4 passed — 3 valid calls served, 1 invalid call rejected\n")
+
+# INTERPRETATION: the rejected call never reached analyse_passage — the
+# server validated the arguments against the schema it published in
+# Task 3.  That is what a typed tool buys you: bad input from ANY client
+# is stopped at the boundary, not inside your business logic.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# VISUALISE — Tool call frequency bar chart
+# VISUALISE — Measured tool-call latency over MCP
 # ════════════════════════════════════════════════════════════════════════
-# In production, an MCP server logs every tool invocation. This chart
-# simulates what that dashboard looks like — showing which tools are
-# most frequently called. Skewed distributions reveal over-reliance
-# on a single tool (risk) or unused tools (dead code).
+# Every bar is a call you just made.  The stdio client starts a fresh
+# server process per call, so each bar includes process start-up; the
+# analyse_passage bar additionally includes a specialist LLM call.  A
+# long-running server (HTTP/SSE) pays start-up once.
 
-tool_names = registered_names
-# Simulated production call counts (realistic distribution: search >> stats).
-# Order matches registered_names: analyse_passage, get_corpus_stats, search_corpus.
-simulated_calls = [45, 15, 120]
-
-fig, ax = plt.subplots(figsize=(8, 4))
-colors = ["#3498db", "#2ecc71", "#e67e22"]
-bars = ax.bar(tool_names, simulated_calls, color=colors)
-ax.set_ylabel("Invocations (simulated 24h)")
-ax.set_title("MCP Tool Call Frequency — Production Dashboard", fontweight="bold")
-for bar, count in zip(bars, simulated_calls):
+labels = [
+    f"{r['tool']}\n({'rejected' if r['is_error'] else 'ok'})"
+    for r in call_log.iter_rows(named=True)
+]
+fig, ax = plt.subplots(figsize=(9, 4))
+colors = ["#e74c3c" if e else "#3498db" for e in call_log["is_error"].to_list()]
+bars = ax.bar(labels, call_log["seconds"].to_list(), color=colors)
+ax.set_ylabel("Round-trip seconds (measured)")
+ax.set_title("MCP tools/call Round Trips — This Run", fontweight="bold")
+for bar, sec in zip(bars, call_log["seconds"].to_list()):
     ax.text(
         bar.get_x() + bar.get_width() / 2,
-        count + 2,
-        str(count),
+        sec,
+        f"{sec:.1f}s",
         ha="center",
-        fontsize=11,
+        va="bottom",
+        fontsize=10,
         fontweight="bold",
     )
-ax.set_ylim(0, max(simulated_calls) * 1.15)
 ax.grid(axis="y", alpha=0.3)
 plt.tight_layout()
 fname = OUTPUT_DIR / "ex6_mcp_tool_frequency.png"
@@ -300,93 +377,54 @@ print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — Singapore scenario: shared analysis tools across MAS teams
+# APPLY — Singapore scenario: shared analysis tools across bank AI teams
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore financial institution runs three separate
-# AI teams — retail credit, corporate credit, and AML/transaction
-# monitoring. Each team has built its own ad-hoc "analyse document"
-# and "search knowledge base" helpers, each wired to a different
-# LLM framework. When the bank wants to reuse retail credit's
-# "analyse doc" tool from the AML team, engineering cost is ~3
-# person-weeks per integration because every pair of teams invents
-# its own glue code.
+# SCENARIO (illustrative figures): A Singapore financial institution
+# runs three separate AI teams — retail credit, corporate credit, and
+# AML/transaction monitoring. Each team has built its own ad-hoc
+# "analyse document" and "search knowledge base" helpers, each wired to
+# a different LLM framework. Reusing one team's tool from another team
+# costs ~3 person-weeks of glue code per integration.
 #
 # MCP replaces the glue: retail credit exposes its tools on an
-# MCPServer once. AML points its Kaizen supervisor at the server
-# and lists tools at runtime. Corporate credit points a Claude
-# Desktop workflow at the same server. One registration, three
-# consumers, zero custom glue.
+# MCPServer once. AML points its Kaizen supervisor at the server and
+# lists tools at runtime. Corporate credit points a desktop assistant
+# at the same server. One registration, three consumers, zero custom
+# glue.
 #
-# IMPACT:
-#   Integrations needed per new tool:    3 teams × 3 pairs = 9
-#   Legacy glue cost per integration:    ~3 person-weeks
-#   Legacy total per new tool:           ~27 person-weeks
-#   MCP cost per new tool:               ~1 person-week (one registration)
-#   Savings per tool:                    ~26 person-weeks × S$3,500/week
-#                                        ≈ S$91K per tool shared
-#   Regulatory bonus: MAS TRM audit sees ONE set of tool schemas,
-#   ONE audit log, ONE access-control surface — not nine.
+# IMPACT (per new tool every team wants):
+#   Point-to-point integrations: 3 teams, each needs the other two's
+#                                version = 6 directed integrations
+#   Legacy glue cost:            6 x ~3 person-weeks = ~18 person-weeks
+#   MCP cost:                    ~1 person-week (one registration)
+#   Savings per shared tool:     ~17 person-weeks x S$3,500/week
+#                                ≈ S$60K
+#   Audit bonus: ONE set of tool schemas, ONE call log, ONE access-control
+#   surface to review — not six.
 
 print("=" * 70)
 print("  SINGAPORE APPLICATION: Shared MCP Tools Across Bank AI Teams")
 print("=" * 70)
 print(
     """
-  Teams: retail credit, corporate credit, AML monitoring
-  Legacy integration cost per new tool:  ~27 person-weeks
+  Teams: retail credit, corporate credit, AML monitoring (illustrative)
+  Legacy integration cost per new tool:  ~18 person-weeks
   MCP integration cost per new tool:     ~1 person-week
-  Savings per shared tool:                ~S$91K
-  MAS TRM audit surface:                  1 (schemas, logs, ACLs) — not 9
+  Savings per shared tool:                ~S$60K
+  Audit surface:                          1 (schemas, logs, ACLs) — not 6
 """
 )
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# DIAGNOSTIC CHECKPOINT
 # ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Agent Trace (inter-agent handoffs, tool latency).
-# Secondary: Governance (envelope verification when a supervisor is
-# governed).
-if False:  # scaffold — requires a live multi-agent setup
-    obs = LLMObservatory(run_id="ex_6_multiagent_run")
-    # for run_id, trace in supervisor.all_traces.items():
-    #     obs.agent.register_trace(trace)
-    # obs.agent.handoff_summary()  # inter-agent handoffs
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Agent      (HEALTHY): 3 workers, 7 handoffs, mean tool-call
-#       latency 840ms, no stuck loops across all runs.
-#   [?] Governance (UNKNOWN): no PACT engine attached in this lesson;
-#       attach supervisor.audit to light up this lens.
-#   [?] Output / Retrieval / Alignment / Attention (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [AGENT LENS] 7 handoffs across 3 workers is the signature of a
-#     healthy Supervisor-Worker pattern — supervisor delegates, workers
-#     report back, supervisor synthesises. Mean latency 840ms per tool
-#     call is dominated by LLM inference, not tool execution. Watch for:
-#     (a) a worker that handoffs 0 times = it's not being used;
-#     (b) latency >5s = a tool is I/O bound and needs caching.
-#  [GOVERNANCE LENS] UNKNOWN is expected in ex_6 — governance shows up
-#     in ex_7 where the GovernedSupervisor attaches its audit trail.
-# ════════════════════════════════════════════════════════════════════
+# The diagnostic for an MCP server is its protocol behaviour, which you
+# measured: the published schemas (Task 3), the per-call outcomes, and
+# the rejected out-of-enum call (Task 4).  Watch for (a) an empty
+# discovery list — the server process crashed or printed to stdout;
+# (b) a valid call returning an error — the handler's dependencies
+# (here, Ollama) are not available inside the server process.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -398,11 +436,13 @@ print("=" * 70)
 print(
     """
   [x] MCP as the "USB for AI agents": one server, many consumers
-  [x] @server.tool registration: handler + JSON schema + annotation
-  [x] StructuredTool capability cards and server introspection
+  [x] @server.tool registration: type hints + docstring = published schema
+  [x] A real MCP client round trip over stdio: tools/list, tools/call,
+      and server-side rejection of invalid input
+  [x] A specialist agent exposed as an MCP tool
   [x] Transport trade-off: stdio (local) vs HTTP/SSE (remote)
-  [x] Singapore bank scenario: MCP collapses N×M glue to 1×N
-      registrations
+  [x] Singapore bank scenario: MCP collapses point-to-point glue into
+      one registration per tool
 
   KEY INSIGHT: The moment you expose a tool via MCP, its capability
   card becomes discoverable by EVERY MCP-compatible agent — that is

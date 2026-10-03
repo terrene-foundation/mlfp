@@ -241,6 +241,9 @@ print("=" * 70)
 names = techniques_df["name"].to_list()
 pcts = techniques_df["params_pct"].to_list()
 
+fname = OUTPUT_DIR / "ex2_finetuning_landscape.png"
+fname.unlink(missing_ok=True)  # the checkpoint must see THIS run's plot
+
 fig, ax = plt.subplots(1, 1, figsize=(10, 5.5))
 colors = [
     "steelblue" if p < 10 else ("darkorange" if p < 80 else "crimson") for p in pcts
@@ -260,7 +263,6 @@ for bar, p in zip(bars, pcts):
     )
 ax.grid(True, axis="x", alpha=0.3)
 plt.tight_layout()
-fname = OUTPUT_DIR / "ex2_finetuning_landscape.png"
 plt.savefig(fname, dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved: {fname}")
@@ -273,7 +275,7 @@ print("✓ Checkpoint 3 passed — landscape visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore hospital — differential-privacy SFT
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore hospital wants to fine-tune a 7B open-source
+# SCENARIO (illustrative): A Singapore hospital wants to fine-tune a 7B open-source
 # model on 250,000 de-identified discharge summaries.  The goal is a
 # triage assistant that highlights urgent follow-ups.  The hospital is
 # bound by the Personal Data Protection Act (PDPA) and the MOH health
@@ -289,15 +291,16 @@ print("✓ Checkpoint 3 passed — landscape visualised\n")
 # DECISION: the decision tree routes us to DP-SGD (Differential
 # Privacy SGD).  DP-SGD clips per-example gradients and adds Gaussian
 # noise at every step, producing a formal (epsilon, delta)-DP
-# guarantee.  Cost: ~20% slower training and ~1-3 points of quality
-# drop vs plain SFT.  Benefit: a provable bound on how much any single
+# guarantee.  Cost: noticeably slower training (per-example gradients
+# are computed and clipped one by one) and some quality drop vs plain SFT.  Benefit: a provable bound on how much any single
 # patient record can influence the final weights.
 #
-# BUSINESS IMPACT: without DP-SGD, the hospital cannot deploy the
+# BUSINESS IMPACT (illustrative figures): without DP-SGD, the hospital cannot deploy the
 # triage assistant at all (legal risk + reputational risk).  With
-# DP-SGD, the assistant reduces triage nurse workload on the night
-# shift by ~30%, saving ~S$480,000/year in overtime across two
-# hospitals while staying within PDPA's enforcement envelope.
+# DP-SGD, suppose the assistant saves each of 12 night-shift nurses
+# ~6 overtime hours/week at S$130/hour: ~S$487,000/year per site,
+# ~S$973,000/year across two hospitals, while meeting the PDPA's
+# protection obligation for the patient data used in training.
 #
 # You could combine DP-SGD with LoRA (DP-LoRA) to recover some of the
 # quality drop by constraining the update to a low-rank subspace.
@@ -321,61 +324,6 @@ assert annual_saving > 0, "Task 5: hospital should see positive savings"
 print("✓ Checkpoint 4 passed — hospital cost/benefit analysed\n")
 
 
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Alignment (KL divergence from base, reward margin).
-# Secondary: Output (judge quality on paired completions), Attention
-# (layer-wise shift in target modules for LoRA).
-if False:  # scaffold — requires trained base + adapter checkpoint
-    obs = LLMObservatory(run_id="ex_2_finetune_run")
-    # Typical alignment read:
-    # for step, metrics in enumerate(training_log):
-    #     obs.alignment.log_training_step(step=step, **metrics)
-    # obs.alignment.evaluate_pair(base_responses, adapter_responses)
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Alignment  (WARNING): KL divergence from base = 0.42 nats
-#       Fix: healthy range 0.2-1.0; this is low-end — adapter barely
-#            moved. Increase LoRA rank or learning rate.
-#   [✓] Output     (HEALTHY): judge win-rate 0.58 vs base (>0.50 = good)
-#   [✓] Attention  (HEALTHY): shift concentrated in q_proj/v_proj as
-#       expected for LoRA; no drift in frozen layers.
-#   [?] Retrieval / Agent / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [ALIGNMENT LENS] KL 0.42 nats is the SIGNATURE of a cautiously-trained
-#     LoRA adapter — it diverged from the base distribution but not
-#     enough to break it. Above 2.0 nats signals over-fit; below 0.2
-#     signals the adapter barely learned. Our value is slightly under the
-#     0.5 floor we want for visible task lift.
-#     >> Prescription: raise lora_r from 8 -> 16 or train another epoch.
-#  [OUTPUT LENS] Win-rate 0.58 > 0.50 confirms the adapter is better
-#     than base on held-out prompts — tiny lift but statistically real.
-#  [ATTENTION LENS] Shift localised in the target modules = LoRA is
-#     doing what it's supposed to do (low-rank delta on attention
-#     projections, frozen MLP). If attention shifted everywhere you'd
-#     know you accidentally unfroze a module.
-# ════════════════════════════════════════════════════════════════════
-
-
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
@@ -390,7 +338,7 @@ print(
   [x] Built a decision tree mapping constraints to techniques
   [x] Visualised the parameter-cost landscape on a log scale
   [x] Applied the tree to a Singapore hospital DP-SGD scenario
-      (~S$960k/year saving across two sites)
+      (illustrative ~S$973k/year saving across two sites)
 
   KEY INSIGHT: there is no "best" fine-tuning technique.  There is
   only the best technique FOR a specific dataset size, GPU budget,

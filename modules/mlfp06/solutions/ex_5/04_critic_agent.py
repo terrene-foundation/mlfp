@@ -27,7 +27,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
@@ -35,13 +34,14 @@ import matplotlib.pyplot as plt
 from kaizen import InputField, OutputField, Signature
 from kaizen.core.base_agent import BaseAgent
 
-from shared.mlfp06._ollama_bootstrap import OLLAMA_BASE_URL
+from shared.mlfp06._ollama_bootstrap import OLLAMA_BASE_URL, preflight_ollama
 from shared.mlfp06.ex_5 import (
     MODEL,
     OUTPUT_DIR,
     data_summary,
     load_hotpotqa,
     make_tools,
+    require_agent_result,
 )
 
 # ════════════════════════════════════════════════════════════════════════
@@ -70,7 +70,8 @@ print("✓ Checkpoint 1 passed — infra ready\n")
 #   Step 3: If should_revise, a refiner agent produces an improved
 #           analysis that incorporates the critic's suggestions
 #
-# This is NOT the same as self-consistency (MLFP06 Ex 1 Task 6).
+# This is NOT the same as self-consistency (MLFP06 Ex 1.5,
+# 05_self_consistency.py).
 # Self-consistency samples N INDEPENDENT answers and picks the majority.
 # The critic REVIEWS a specific answer and suggests targeted fixes.
 #
@@ -139,10 +140,9 @@ class RefinedAnalysisSignature(Signature):
 # the model reply (otherwise the result is prose, not typed fields).
 @dataclass
 class DataAnalysisConfig:
-    llm_provider: str = os.environ.get("LLM_PROVIDER", "ollama")
-
-    base_url: str = os.environ.get("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
-    model: str = MODEL  # resolved from .env
+    llm_provider: str = "ollama"
+    base_url: str = OLLAMA_BASE_URL
+    model: str = MODEL  # resolved from OLLAMA_CHAT_MODEL in .env
     temperature: float = 0.2
     budget_limit_usd: float = 1.0
     use_async_llm: bool = True
@@ -152,9 +152,8 @@ class DataAnalysisConfig:
 
 @dataclass
 class CriticConfig:
-    llm_provider: str = os.environ.get("LLM_PROVIDER", "ollama")
-
-    base_url: str = os.environ.get("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
+    llm_provider: str = "ollama"
+    base_url: str = OLLAMA_BASE_URL
     model: str = MODEL
     temperature: float = 0.2
     budget_limit_usd: float = 1.0
@@ -165,9 +164,8 @@ class CriticConfig:
 
 @dataclass
 class RefinedAnalysisConfig:
-    llm_provider: str = os.environ.get("LLM_PROVIDER", "ollama")
-
-    base_url: str = os.environ.get("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
+    llm_provider: str = "ollama"
+    base_url: str = OLLAMA_BASE_URL
     model: str = MODEL
     temperature: float = 0.2
     budget_limit_usd: float = 1.0
@@ -216,9 +214,12 @@ QUESTION = "What makes multi-hop QA harder than single-hop QA?"
 async def iterative_refinement():
     print("Step 1: initial analysis...")
     analyst = DataAnalysisAgent(DataAnalysisConfig())
-    initial = await analyst.run_async(
-        dataset_summary=summary_text,
-        analysis_question=QUESTION,
+    initial = require_agent_result(
+        await analyst.run_async(
+            dataset_summary=summary_text,
+            analysis_question=QUESTION,
+        ),
+        "analyst",
     )
     initial_text = (
         f"Findings: {initial['key_findings']}\n"
@@ -230,9 +231,12 @@ async def iterative_refinement():
 
     print("\nStep 2: critic reviews...")
     critic = CriticAgent(CriticConfig())
-    critique = await critic.run_async(
-        original_analysis=initial_text,
-        analysis_question=QUESTION,
+    critique = require_agent_result(
+        await critic.run_async(
+            original_analysis=initial_text,
+            analysis_question=QUESTION,
+        ),
+        "critic",
     )
     print(f"  Quality score: {critique['quality_score']:.2f}")
     print(f"  Should revise: {critique['should_revise']}")
@@ -241,10 +245,13 @@ async def iterative_refinement():
     if critique["should_revise"]:
         print("\nStep 3: refining based on critic feedback...")
         refiner = RefinedAnalysisAgent(RefinedAnalysisConfig())
-        refined = await refiner.run_async(
-            dataset_summary=summary_text,
-            analysis_question=QUESTION,
-            critic_feedback=str(critique["suggestions"]),
+        refined = require_agent_result(
+            await refiner.run_async(
+                dataset_summary=summary_text,
+                analysis_question=QUESTION,
+                critic_feedback=str(critique["suggestions"]),
+            ),
+            "refiner",
         )
         print(f"  Refined confidence: {refined['confidence']:.2f}")
         return initial, critique, refined
@@ -253,6 +260,7 @@ async def iterative_refinement():
     return initial, critique, None
 
 
+preflight_ollama(required_models=[MODEL])  # fails loudly if Ollama is down
 initial, critique, refined = asyncio.run(iterative_refinement())
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
@@ -308,7 +316,7 @@ print("\n✓ Checkpoint 4 passed — refinement delta visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Apply: Singapore regulatory compliance drafting
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore fintech drafts Monetary Authority of Singapore
+# SCENARIO (illustrative figures): A Singapore fintech drafts Monetary Authority of Singapore
 # (MAS) compliance memos every time a new product ships.  Memos are
 # long-form, high-stakes, and must reference specific MAS notices.
 # One bad memo = regulatory finding = S$50K+ fine.
@@ -349,9 +357,10 @@ print("  KEY TAKEAWAY: Critic loops trade LLM spend for human time")
 print("=" * 70)
 print(
     """
-  Each critic loop adds 2-3 LLM calls (~$0.10) but saves 1-3 hours of
-  senior human review (~S$100).  A 1000x ROI on every memo.  The
-  pattern is boring to read and devastating to deploy.
+  Each critic loop adds 2 LLM calls (a few cents on a hosted model,
+  compute only on local Ollama) but can save 1-3 hours of senior human
+  review (S$100+ at the rates above).  The pattern is boring to read
+  and devastating to deploy.
 """
 )
 
@@ -391,54 +400,13 @@ print(f"\nSaved: {OUTPUT_DIR / '04_critic_improvement.png'}")
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# DIAGNOSTIC CHECKPOINT
 # ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Agent Trace (TAOD capture, tool-call success, stuck-loop
-# detection). Secondary: Output (final answer quality).
-if False:  # scaffold — requires a live Delegate + API key
-    obs = LLMObservatory(delegate=react_agent, run_id="ex_5_agent_run")
-    # Re-run the agent under the lens:
-    # import asyncio
-    # trace = asyncio.run(obs.agent.capture_run(react_agent, task=prompt))
-    # obs.output.evaluate(prompts=[prompt], responses=[trace.final_answer])
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Agent      (HEALTHY): 5 TAOD steps, tool-call success 1.00,
-#       no stuck loops, total cost $0.017 (budget $2.00).
-#   [✓] Output     (HEALTHY): judge faithfulness 0.89 on final answer.
-#   [?] Retrieval / Alignment / Governance / Attention (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [AGENT LENS] 5 TAOD steps for a multi-hop question is the healthy
-#     signature — general (data_summary) -> specific (run_query) ->
-#     targeted (search_documents) -> grounded (lookup_answer) ->
-#     synthesis. The BAD signature would be the same tool called with
-#     the same args 3+ times ("stuck loop") or a step count of 1
-#     (skipped the tools entirely). The loop detector in AgentDiagnostics
-#     flags both.
-#     >> Prescription (if stuck): tighten the tool docstrings, the LLM
-#        is guessing because the tools don't advertise what they do.
-#  [OUTPUT LENS] Faithfulness 0.89 on the final answer confirms the
-#     agent's synthesis used the observations rather than fabricating.
-# ════════════════════════════════════════════════════════════════════
-
+# The Agent Trace lens needs a tool-using Delegate (01 and 02).  Here
+# the diagnostic is the loop itself: the critic's quality_score and
+# should_revise decision, and the confidence delta plotted above.  If
+# refined confidence is not meaningfully above the initial confidence
+# across several questions, the critic loop is not paying for itself.
 
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION

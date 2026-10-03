@@ -1164,16 +1164,16 @@ Transition: "Let us see the available aggregation functions."
       <table>
         <thead><tr><th>Function</th><th>Description</th></tr></thead>
         <tbody>
-          <tr><td><code>pl.mean()</code></td><td>Average</td></tr>
-          <tr><td><code>pl.median()</code></td><td>Middle value</td></tr>
-          <tr><td><code>pl.sum()</code></td><td>Total</td></tr>
-          <tr><td><code>pl.count()</code></td><td>Number of rows</td></tr>
-          <tr><td><code>pl.min()</code></td><td>Minimum</td></tr>
-          <tr><td><code>pl.max()</code></td><td>Maximum</td></tr>
-          <tr><td><code>pl.std()</code></td><td>Standard deviation</td></tr>
-          <tr><td><code>pl.first()</code></td><td>First value</td></tr>
-          <tr><td><code>pl.last()</code></td><td>Last value</td></tr>
-          <tr><td><code>pl.n_unique()</code></td><td>Distinct count</td></tr>
+          <tr><td><code>pl.col(c).mean()</code></td><td>Average</td></tr>
+          <tr><td><code>pl.col(c).median()</code></td><td>Middle value</td></tr>
+          <tr><td><code>pl.col(c).sum()</code></td><td>Total</td></tr>
+          <tr><td><code>pl.len()</code></td><td>Number of rows</td></tr>
+          <tr><td><code>pl.col(c).min()</code></td><td>Minimum</td></tr>
+          <tr><td><code>pl.col(c).max()</code></td><td>Maximum</td></tr>
+          <tr><td><code>pl.col(c).std()</code></td><td>Standard deviation</td></tr>
+          <tr><td><code>pl.col(c).first()</code></td><td>First value</td></tr>
+          <tr><td><code>pl.col(c).last()</code></td><td>Last value</td></tr>
+          <tr><td><code>pl.col(c).n_unique()</code></td><td>Distinct count</td></tr>
         </tbody>
       </table>
     </div>
@@ -1185,7 +1185,7 @@ Transition: "Let us see the available aggregation functions."
     .agg(
         pl.col("resale_price").mean()
           .alias("avg_price"),
-        pl.count().alias("n"),
+        pl.len().alias("n"),
     )
     .sort("town", "flat_type")
 )
@@ -1199,7 +1199,8 @@ print(df.select(
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- Each aggregation reduces a group of rows to a single number.
+- Each aggregation reduces a group of rows to a single number. Write them as expressions on a column: pl.col("resale_price").mean(). pl.mean() on its own needs a column name.
+- Use pl.len() to count rows; the old pl.count() is deprecated and prints a warning.
 - You can group by multiple columns to get finer-grained breakdowns.
 - n_unique() is useful for understanding cardinality: how many unique towns, flat types, etc.
 - If beginners confused: mean is the average, median is the middle value, count is how many.
@@ -1249,18 +1250,17 @@ Transition: "Here is the exercise for this lesson."
   <div class="columns">
     <div class="col">
       <h3>Building a Report</h3>
-      <pre><code class="language-python"># Get unique towns
-towns = df.select(
-    pl.col("town").unique()
-).to_series().to_list()
+      <pre><code class="language-python"># Get unique towns, alphabetically
+towns = df["town"].unique().sort().to_list()
 
 # Loop and build summaries
 results = []
-for town in towns[:5]:  # top 5
+for town in towns[:5]:  # first 5 alphabetically
     summary = district_summary(df, town)
-    avg = summary["avg_price"][0]
-    results.append({"town": town, "avg": avg})
-    print(f"{town}: ${avg:,.0f}")
+    top = summary.row(0, named=True)  # priciest flat type
+    results.append({"town": town, "top_type": top["flat_type"],
+                    "avg": top["avg_price"]})
+    print(f"{town}: {top['flat_type']} avg ${top['avg_price']:,.0f}")
 
 # Convert to DataFrame
 report = pl.DataFrame(results)
@@ -1285,6 +1285,8 @@ print(report.sort("avg", descending=True))</code></pre>
 Time: ~3 min
 Talking points:
 - This slide shows the loop + function pattern: iterate, call, collect.
+- district_summary groups by flat type and sorts by avg_price descending, so row 0 is the town's most expensive flat type, not the town average. The print labels it that way.
+- unique() returns towns in no particular order; .sort() makes the "first 5" reproducible.
 - The performance note is important: group_by is vectorised, loops are sequential.
 - If beginners confused: focus on the pattern. The code will become second nature.
 - If experts bored: mention list comprehensions as a more Pythonic alternative.
@@ -1336,9 +1338,9 @@ Transition: "In Lesson 1.4, we learn to combine multiple datasets using joins."
       <h3>Polars Aggregation</h3>
       <ul>
         <li><code>group_by("col").agg(...)</code></li>
-        <li><code>pl.mean()</code>, <code>pl.sum()</code>, <code>pl.count()</code></li>
-        <li><code>pl.min()</code>, <code>pl.max()</code>, <code>pl.std()</code></li>
-        <li><code>pl.n_unique()</code> for cardinality</li>
+        <li><code>pl.col(c).mean()</code>, <code>.sum()</code>, <code>pl.len()</code></li>
+        <li><code>pl.col(c).min()</code>, <code>.max()</code>, <code>.std()</code></li>
+        <li><code>pl.col(c).n_unique()</code> for cardinality</li>
         <li>Multiple grouping columns supported</li>
       </ul>
     </div>
@@ -1387,7 +1389,7 @@ Talking points:
 - Real-world analysis almost always involves multiple data sources.
 - This lesson adds conditionals (if/else) to your toolkit and teaches you to combine datasets.
 - If beginners confused: think of joining as merging two spreadsheets on a common column.
-- If experts bored: mention we will handle 15M row joins efficiently with Polars.
+- If experts bored: mention Polars joins are hash joins and run in parallel; a 50,000-row join takes milliseconds.
 Transition: "First, let us learn Python's if/else for making decisions in code."
   </aside>
 </section>

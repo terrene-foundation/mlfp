@@ -9,10 +9,10 @@
 #   - Read GMM soft assignments as intent vectors, not class labels
 #   - Measure assignment confidence with max-probability and entropy
 #   - Identify boundary customers that hard clustering would bury
-#   - Explain Mixture of Experts as input-dependent gating g_k(x)
+#   - Explain Mixture of Experts as input-dependent gating (g_k(x))
 #   - Connect classical MoE to Sparse MoE in modern LLMs (Mixtral)
 #
-# PREREQUISITES: 03_covariance_types.py
+# PREREQUISITES: 03_covariance_types.py (BIC-optimal K on customer data)
 #
 # ESTIMATED TIME: ~35 min
 #

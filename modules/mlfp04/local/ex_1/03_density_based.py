@@ -6,19 +6,20 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Apply DBSCAN with core/border/noise and select epsilon via a
-#     k-distance plot
-#   - Apply HDBSCAN to skip epsilon via the density hierarchy
+#   - Apply DBSCAN with core/border/noise classification and select
+#     epsilon via a k-distance plot
+#   - Apply HDBSCAN to skip epsilon altogether by building a hierarchy of
+#     DBSCAN clusterings and extracting the most stable partition
 #   - Decide when "noise" is a feature, not a bug
 #
-# PREREQUISITES: 01_kmeans.py.
+# PREREQUISITES: 01_kmeans.py (feature setup).
 #
 # ESTIMATED TIME: ~35 min
 #
 # TASKS:
-#   1. Theory — density-based clustering
-#   2. Build — k-distance plot + DBSCAN epsilon sweep
-#   3. Train — HDBSCAN with eom vs leaf
+#   1. Theory — density-based clustering and the epsilon/minPts contract
+#   2. Build — k-distance plot and DBSCAN sweep across epsilon
+#   3. Train — HDBSCAN with eom vs leaf cluster selection
 #   4. Visualise — k-distance elbow plot
 #   5. Apply — Singapore ride-hail hotspot discovery, $ impact
 # ════════════════════════════════════════════════════════════════════════

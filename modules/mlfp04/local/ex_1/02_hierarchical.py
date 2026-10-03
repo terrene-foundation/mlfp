@@ -11,7 +11,7 @@
 #   - Read a dendrogram and cut it at a chosen K
 #   - Choose linkage based on cluster shape expectations
 #
-# PREREQUISITES: 01_kmeans.py.
+# PREREQUISITES: 01_kmeans.py (for the best_k heuristic and feature setup).
 #
 # ESTIMATED TIME: ~35 min
 #

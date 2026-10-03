@@ -12,7 +12,7 @@
 #   - Explain WHY BIC is more conservative than AIC (different penalties)
 #   - Read a BIC/AIC curve and recognise the elbow
 #
-# PREREQUISITES: 01_em_from_scratch.py
+# PREREQUISITES: 01_em_from_scratch.py (so students trust the library)
 #
 # ESTIMATED TIME: ~30 min
 #

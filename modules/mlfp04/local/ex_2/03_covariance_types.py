@@ -12,7 +12,7 @@
 #   - Explain how K-means relates to a spherical GMM (and where it differs)
 #   - Recognise when a simpler cov type is a better business choice
 #
-# PREREQUISITES: 02_sklearn_gmm.py
+# PREREQUISITES: 02_sklearn_gmm.py (BIC-optimal K from the customer set)
 #
 # ESTIMATED TIME: ~30 min
 #
@@ -20,7 +20,7 @@
 #   1. Theory — four cluster shapes, four parameter counts
 #   2. Build — compare_cov_types helper
 #   3. Train — fit all four cov types at the BIC-optimal K
-#   4. Visualise — BIC per covariance type
+#   4. Visualise — stacked bar chart of BIC per covariance type
 #   5. Apply — Singapore ride/payments fraud-pattern segmentation
 # ════════════════════════════════════════════════════════════════════════
 """

@@ -453,7 +453,7 @@ decision_framework = pl.DataFrame(
             "Discrete (7 shifts)",
             "Discrete (5 allocations)",
             "Discrete (5 trade sizes)",
-            "Continuous (token probs)",
+            "Discrete (vocabulary tokens)",
         ],
         "Recommended": [
             "DQN",
@@ -473,7 +473,7 @@ decision_framework = pl.DataFrame(
             "Small discrete space, DQN works well",
             "Small discrete space, fast convergence needed",
             "Either works; PPO if extending to continuous trade sizes",
-            "PPO is standard for RLHF — directly optimises token policy",
+            "Classic RLHF optimiser over a vocabulary of tens of thousands of tokens; a separate KL penalty to the reference model keeps outputs fluent",
         ],
     }
 )
@@ -567,19 +567,26 @@ print(
         - Supervised learning can solve the problem (simpler, cheaper)
 
   BRIDGE TO M6 (RLHF — Reinforcement Learning from Human Feedback):
-  Everything you've learned here IS the foundation for RLHF:
-    - PPO (this exercise) = the optimisation algorithm
-    - Reward model (M6) = trained on human preference rankings
-    - Policy (M6) = the language model's next-token distribution
-    - DPO (M6) = a shortcut that skips the reward model entirely
+  The PPO you built here is the optimiser of classic RLHF:
+    - Policy = the language model's next-token distribution
+    - Action = the next token — a DISCRETE choice from the vocabulary
+    - Reward model = trained on human preference rankings, scores
+      each finished response
+    - DPO (M6) = reaches the preference goal without a reward model
+      or PPO at all
 
-  The core loop is identical:
-    1. Agent (LLM) takes action (generates text)
-    2. Environment (human/reward model) provides reward
+  The RLHF loop:
+    1. The LLM generates a response, one token (action) at a time
+    2. The reward model scores the response
     3. PPO updates the policy to maximise expected reward
-    4. Clipping prevents catastrophic forgetting of language ability
+    4. TWO separate brakes keep it stable:
+       - PPO clipping bounds each update relative to the PREVIOUS
+         policy (the same clip_eps you used on CartPole)
+       - a KL penalty to the frozen reference (SFT) model keeps the
+         LLM close to its starting point, so it does not drift into
+         reward-hacking gibberish — clipping alone does not do this
 
-  You now understand RL from first principles. M6 applies it to
-  language models — the only difference is the environment.
+  You now understand RL from first principles. M6 adds what RLHF
+  needs on top: a learned reward model and the KL-to-reference term.
 """
 )

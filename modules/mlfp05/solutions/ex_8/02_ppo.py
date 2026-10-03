@@ -374,7 +374,7 @@ assert ppo_returns[-1] > 50.0, "PPO should achieve avg return > 50 by final iter
 # given a state), unlike DQN which learns Q-values and derives a policy.
 # The clipped objective prevents the new policy from straying too far from
 # the old one — this is the "proximal" in Proximal Policy Optimization.
-# In M6, RLHF uses PPO to update an LLM's policy (word probabilities)
+# In M6, RLHF uses PPO to update an LLM's policy (next-token probabilities)
 # using human preference as the reward signal.
 print("--- Checkpoint 1 passed --- PPO trained on CartPole\n")
 
@@ -824,8 +824,11 @@ print(
 
   BRIDGE TO M6 (RLHF):
   In RLHF, the "environment" is text generation, the "state" is the
-  prompt + tokens so far, the "action" is the next token, and the
-  "reward" comes from a preference model trained on human rankings.
+  prompt + tokens so far, the "action" is the next token (a discrete
+  choice from the vocabulary), and the "reward" comes from a preference
+  model trained on human rankings. PPO's clip only limits each update
+  relative to the previous policy; a SEPARATE KL penalty to the frozen
+  reference model is what keeps the LLM close to its original language.
   DPO (Direct Preference Optimization) achieves the same goal without
   needing a separate reward model.
 

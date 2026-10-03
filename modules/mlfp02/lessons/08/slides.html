@@ -109,35 +109,48 @@
 <section>
   <h2>FeatureEngineer</h2>
   <pre><code class="language-python" data-trim>
-from kailash_ml import FeatureEngineer
+import polars as pl
+from kailash_ml import FeatureEngineer, FeatureField, FeatureSchema
+from shared.mlfp02.ex_8 import load_hdb_resale
 
-engineer = FeatureEngineer()
-df_feat = engineer.create_temporal_features(
-    df, date_col="date",
-    features=["lag_1", "rolling_mean_6", "month"]
-)
-df_feat = engineer.create_interactions(
-    df_feat, pairs=[("floor_area", "age")]
-)
+df = (load_hdb_resale().with_row_index("id")
+      .with_columns(pl.col("transaction_date").cast(pl.Datetime)))
+schema = FeatureSchema(name="hdb", entity_id_column="id", features=[
+    FeatureField("floor_area_sqm", "float64"),
+    FeatureField("lease_commence_date", "int64"),
+    FeatureField("transaction_date", "datetime")])
+
+fe = FeatureEngineer(max_features=10)
+gen = fe.generate(df, schema, strategies=["temporal", "interactions"])
+# + transaction_date_month/_dow/_hour, floor_area_sqm_x_lease_commence_date
+best = fe.select(gen.data, gen, target="resale_price", top_k=3)
+print(best.selected_columns)
   </code></pre>
   <div style="background: #F0FDFA; padding: 12px 18px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
     <strong>Pattern:</strong> domain knowledge decides <em>which</em> features. The engine handles <em>how</em>.
+    <code>select()</code> ranks by tree importance: sanity-check it (an <code>_hour</code> column is constant for monthly dates).
   </div>
 </section>
 
 <section>
   <h2>FeatureStore: point-in-time correctness</h2>
   <pre><code class="language-python" data-trim>
-from kailash_ml import FeatureStore
+import asyncio
+from datetime import datetime
+from shared.mlfp02.ex_8 import (build_schema_v1, compute_v1_features,
+    create_feature_store, load_hdb_resale, materialize_features,
+    validate_v1_features)
 
-store = FeatureStore()
-store.register(name="hdb_features", df=df_feat,
-               timestamp_col="date", entity_col="town")
+df, _ = validate_v1_features(compute_v1_features(load_hdb_resale()))
+schema = build_schema_v1()   # a kailash_ml.features.FeatureSchema
 
-# Features as of Jan 2024 — no future data leakage
-features = store.get_features(
-    name="hdb_features", as_of="2024-01-01"
-)
+async def store_then_read(when):
+    fs = create_feature_store()   # FeatureStore(DataFlow(...))
+    await materialize_features(fs, schema, df)
+    return await fs.get_features(schema, timestamp=when)
+
+# Features as of 1 Jan 2023: rows stamped later never come back
+snap = asyncio.run(store_then_read(datetime(2023, 1, 1)))
   </code></pre>
   <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; margin-top: 1em;">
     <strong style="color: #3B82F6;">🔵 Theory:</strong>
@@ -178,7 +191,7 @@ features = store.get_features(
       <text x="100" y="232" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">6 months</text>
       <text x="100" y="244" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">before</text>
       <circle cx="360" cy="150" r="5" fill="#0D9488"/>
-      <text x="360" y="236" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#0D9488">as_of</text>
+      <text x="360" y="236" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#0D9488">timestamp T</text>
       <circle cx="500" cy="150" r="4" fill="#3B82F6"/>
       <text x="500" y="236" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">label</text>
       <text x="500" y="248" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">horizon</text>
@@ -192,7 +205,7 @@ features = store.get_features(
       <text x="530" y="60" font-family="Inter" font-size="9" fill="#F43F5E">uses data after training date</text>
       <!-- FeatureStore callout -->
       <rect x="170" y="262" width="420" height="30" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
-      <text x="380" y="282" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">FeatureStore.get_features(as_of="2024-01-01") enforces this boundary</text>
+      <text x="380" y="282" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">get_features(schema, timestamp=T) returns only rows stamped at or before T</text>
     </svg>
   </figure>
 </section>
@@ -202,71 +215,86 @@ features = store.get_features(
   <table style="font-size: 0.7em;">
     <thead><tr><th>Option</th><th>Data</th><th>Key technique</th></tr></thead>
     <tbody>
-      <tr><td><strong>A — Wine quality</strong></td><td>Chemical properties</td><td>Linear regression + interactions</td></tr>
-      <tr><td><strong>B — Economic indicators</strong></td><td>Singapore CPI + employment</td><td>Time-series regression + temporal features</td></tr>
-      <tr><td><strong>C — Experiment design</strong></td><td>E-commerce A/B test</td><td>CUPED + SRM detection</td></tr>
+      <tr><td><strong>A — HDB resale valuation</strong></td><td><code>hdb_resale.parquet</code> (guided in Exercise 8)</td><td>Regression + point-in-time features</td></tr>
+      <tr><td><strong>B — Economic indicators</strong></td><td><code>economic_indicators.csv</code>: GDP growth, trade, unemployment, inflation</td><td>Time-series regression + temporal features</td></tr>
+      <tr><td><strong>C — Experiment design</strong></td><td><code>experiment_data.parquet</code> (four-arm A/B test)</td><td>SRM vs the designed split + CUPED + ship decision</td></tr>
     </tbody>
   </table>
-  <p style="font-size: 0.85em; margin-top: 1em;">All follow the same pipeline: load → describe → engineer → model → test → report.</p>
+  <p style="font-size: 0.85em; margin-top: 1em;">All follow the same pipeline: load → describe → engineer → model → test → report. The steps below walk Option A.</p>
 </section>
 
 <section>
   <h2>Step 1: Load and profile</h2>
   <pre><code class="language-python" data-trim>
-df = loader.load("mlfp02", "wine_quality.csv")
-profile = run_profile(explorer, df)
-print(f"Shape: {df.shape}")
+from shared import run_profile
+from shared.mlfp02.ex_8 import (compute_v1_features, load_hdb_resale,
+                                validate_v1_features)
+
+raw = load_hdb_resale()
+df, violations = validate_v1_features(compute_v1_features(raw))
+profile = run_profile(df)
+print(f"Shape: {df.shape}")                     # (46614, 16)
+print(f"Removed: {raw.height - df.height:,}")   # 3,536 impossible rows
 print(f"Alerts: {len(profile.alerts)}")
   </code></pre>
+  <p style="font-size: 0.85em; color: #64748B;">Validation drops sentinel prices (SGD 10, SGD 9M) and impossible leases before any statistic is computed.</p>
 </section>
 
 <section>
   <h2>Step 2: EDA</h2>
   <pre><code class="language-python" data-trim>
-# Correlation with target
-for col in df.columns:
-    if col != "quality":
-        r = df.select(
-            pl.corr(pl.col(col), pl.col("quality"))
-        ).item()
-        print(f"  {col}: r = {r:.3f}")
+import polars as pl
+
+cols = ["floor_area_sqm", "storey_midpoint", "remaining_lease_years"]
+for col in cols:
+    r = df.select(pl.corr(col, "resale_price")).item()
+    print(f"  {col}: r = {r:.3f}")
+# → floor_area_sqm 0.910; storey_midpoint 0.009; remaining_lease_years -0.008
   </code></pre>
-  <p style="font-size: 0.85em; color: #64748B;">Identify the top 3-5 predictors by correlation strength.</p>
+  <p style="font-size: 0.85em; color: #64748B;">Shortlist predictors with a domain rationale; correlation is a first look, not the test.</p>
 </section>
 
 <section>
   <h2>Step 3: Engineer + store features</h2>
   <pre><code class="language-python" data-trim>
-df_eng = engineer.create_interactions(
-    df, pairs=[("alcohol", "volatile_acidity")]
-)
-store.register(name="wine_features", df=df_eng)
-print(f"Features stored: {df_eng.shape[1]}")
+import asyncio
+from shared.mlfp02.ex_8 import (build_schema_v1, create_feature_store,
+                                materialize_features)
+
+# storey_midpoint and remaining_lease_years were engineered in Step 1
+async def store_v1(frame):
+    fs = create_feature_store()
+    return await materialize_features(fs, build_schema_v1(), frame)
+
+result = asyncio.run(store_v1(df))
+print(f"Stored {result['row_count']:,} rows, "
+      f"lineage {result['lineage_hash'][:16]}")
   </code></pre>
 </section>
 
 <section>
   <h2>Step 4: Model</h2>
   <pre><code class="language-python" data-trim>
-pipeline = TrainingPipeline(model="linear_regression")
-result = pipeline.fit(
-    df_eng.drop("quality"), df_eng["quality"]
-)
-print(f"R²: {result.r_squared:.4f}")
-print(f"Adj R²: {result.adj_r_squared:.4f}")
+from shared.mlfp02.ex_8 import fit_ols, prepare_design_matrix
+
+X, y, names = prepare_design_matrix(df, cols)   # [1, X], nulls dropped
+fit = fit_ols(X, y)                              # Lesson 2.5 normal equations
+print(f"R²: {fit['r2']:.3f}   adj R²: {fit['adj_r2']:.3f}")   # 0.828  0.828
+print(f"F: {fit['f_stat']:,.0f}")                             # 75,042
   </code></pre>
 </section>
 
 <section>
   <h2>Step 5: Hypothesis tests</h2>
   <pre><code class="language-python" data-trim>
-# Which predictors are significant at alpha = 0.05?
-for name, coef in result.coefficients.items():
-    if coef.p_value < 0.05:
-        print(f"  {name}: beta={coef.value:+.4f}, "
-              f"t={coef.t_stat:.2f}, p={coef.p_value:.4f}")
+from shared.mlfp02.ex_8 import format_p
+
+for name, b, t, p in zip(names, fit["beta"], fit["t"], fit["p"]):
+    print(f"  {name}: beta = {b:+,.0f}  t = {t:.1f}  p: {format_p(p)}")
+# floor_area_sqm: +9,096  t = 474.4  p: < 1e-300
+# storey_midpoint: -24 (p = 0.54); remaining_lease_years: +7 (p = 0.84)
   </code></pre>
-  <p style="font-size: 0.85em;">Report effect sizes alongside p-values. "Alcohol increases quality by 0.3 points per percent ($p < 0.001$)."</p>
+  <p style="font-size: 0.85em;">Report effect sizes alongside p-values: "Each extra square metre adds about SGD 9,100 to the price (95% CI SGD 9,060&ndash;9,130)." Storey and lease show no effect once area is in the model.</p>
 </section>
 
 <section>

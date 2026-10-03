@@ -161,11 +161,13 @@
 
 <section>
   <h2>Bessel's correction — the expansion</h2>
-  <p>Expand $(X_i - \bar X)^2 = ((X_i - \mu) - (\bar X - \mu))^2$ and take expectations:</p>
+  <p>Expand $(X_i - \bar X)^2 = ((X_i - \mu) - (\bar X - \mu))^2$ and sum. Since $\sum_i (X_i - \mu) = n(\bar X - \mu)$:</p>
+  \[ \sum_i (X_i - \bar X)^2 = \sum_i (X_i - \mu)^2 - 2n(\bar X - \mu)^2 + n(\bar X - \mu)^2 = \sum_i (X_i - \mu)^2 - n(\bar X - \mu)^2 \]
   \[ E\!\left[\sum_i (X_i - \bar X)^2\right] = n\sigma^2 - n\cdot\frac{\sigma^2}{n} = (n-1)\sigma^2 \]
   <p style="font-size: 0.85em;">
-    The cross-term vanishes because each $X_i - \mu$ is independent of $\bar X - \mu$
-    only in aggregate. The surviving terms collapse to $(n-1)\sigma^2$.
+    The cross-term does <em>not</em> vanish: it equals $-2n(\bar X - \mu)^2$,
+    leaving $-n(\bar X - \mu)^2$ overall. Its expectation is $-\sigma^2$:
+    one $\sigma^2$ is lost, hence $(n-1)\sigma^2$.
   </p>
 </section>
 
@@ -295,7 +297,7 @@ import polars as pl, numpy as np
 from scipy import stats
 from shared import MLFPDataLoader
 
-df = MLFPDataLoader().load("mlfp02", "economic_indicators.csv")
+df = MLFPDataLoader().load("mlfp01", "economic_indicators.csv")
 g  = df["gdp_growth_pct"].drop_nulls().to_numpy()
 n  = len(g)
 

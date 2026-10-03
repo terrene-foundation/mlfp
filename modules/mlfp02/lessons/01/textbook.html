@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -46,8 +46,8 @@
 
 <p>
   A property analyst believes the average 4-room flat in Tampines sells for
-  about S$550,000. Then two transactions land in the database: one at
-  S$620,000 and one at S$590,000. Should the analyst's estimate change? By how
+  about <span class="nomath">S$550,000</span>. Then two transactions land in the database: one at
+  <span class="nomath">S$620,000</span> and one at <span class="nomath">S$590,000</span>. Should the analyst's estimate change? By how
   much? If a hundred more transactions arrive, should they trust the new
   average and discard the old belief, or blend them? Probability is the
   machinery that answers these questions, and Bayes' theorem is its central
@@ -480,7 +480,7 @@ $$P(\mu \mid \text{data}) \;=\; \frac{P(\text{data} \mid \mu)\,P(\mu)}{\int P(\t
     <p>Load the data with the standard M1 ritual. The HDB file lives with the
        Module 1 datasets and records the sale month as a <code>"YYYY-MM"</code>
        string, so derive the year from it. The raw file also contains a few
-       sentinel prices (e.g. $10 and $9,000,000); drop them with the same
+       sentinel prices (e.g. <span class="nomath">$10</span> and <span class="nomath">$9,000,000</span>); drop them with the same
        plausibility bounds Exercise 8 uses before computing a mean.</p>
     <pre><code class="language-python">import polars as pl
 from shared import MLFPDataLoader
@@ -495,7 +495,7 @@ recent = df.filter(
 )
 print(recent.shape)
 print(recent.select("resale_price").describe())</code></pre>
-    <p>This keeps 119 sales from 2024 (one $9,000,000 sentinel row is removed).</p>
+    <p>This keeps 119 sales from 2024 (one <span class="nomath">$9,000,000</span> sentinel row is removed).</p>
   </div>
 
   <div class="step">
@@ -530,7 +530,7 @@ Posterior: mu   = 817,820, sigma = 8,497</code></pre>
     <p>Read the result. The posterior mean sits between the prior and the
        sample mean, but almost on top of the data: with $n = 119$ the data
        precision ($n/\sigma^2$) is about 21 times the prior precision. The
-       prior was badly out of date — the real 2024 prices are some $350K
+       prior was badly out of date — the real 2024 prices are some <span class="nomath">$350K</span>
        higher — and the data simply overrules it. The posterior standard
        deviation ($\approx \$8{,}500$) is smaller than either input: we are
        more certain than we were before.</p>

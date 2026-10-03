@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -219,6 +219,13 @@
   </div>
 </div>
 
+<p>
+  That is the one-tailed version, as drawn above. Most tests in this module
+  are two-tailed — a change in <em>either</em> direction counts as evidence —
+  so the p-value is $P(|T| \ge |T_{\text{obs}}| \mid H_0)$: the probability of
+  data at least as extreme as yours in either tail.
+</p>
+
 <div class="callout warning">
   <span class="label">⚠ What a p-value is NOT</span>
   <p>
@@ -367,7 +374,7 @@ $$\delta_{\text{MDE}} \;=\; (z_{1 - \alpha/2} + z_{1 - \beta}) \cdot \sigma\sqrt
   <li>Compute the observed test statistic $T_{\text{obs}}$ (e.g., mean difference).</li>
   <li>Pool both groups into a single dataset.</li>
   <li>Randomly re-split the pool into two groups of the original sizes and compute the test statistic $T^{*(b)}$. Repeat $B$ times.</li>
-  <li>The p-value is the fraction of $T^{*(b)}$ at least as extreme as $T_{\text{obs}}$.</li>
+  <li>The p-value is the fraction of $T^{*(b)}$ at least as extreme as $T_{\text{obs}}$. Count the observed split as one of the permutations — $p = (\#\{|T^{*(b)}| \ge |T_{\text{obs}}|\} + 1)/(B + 1)$ — so a permutation p-value is never reported as exactly 0.</li>
 </ol>
 
 <p>
@@ -382,12 +389,14 @@ $$\delta_{\text{MDE}} \;=\; (z_{1 - \alpha/2} + z_{1 - \beta}) \cdot \sigma\sqrt
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    <code>ExperimentTracker</code> stores every bootstrap replicate, every
-    p-value, and every multiple-testing correction you apply so you can
-    answer "which tests passed, after which correction, in which version of
-    the data" without rerunning everything. In today's exercise you generate
-    the bootstrap in numpy; the tracker captures the inputs, the random
-    seed, and the output CIs automatically.
+    <code>ExperimentTracker</code> does not run bootstraps, tests or
+    corrections, and it captures nothing automatically. You compute the
+    bootstrap, the p-values and the corrections with NumPy/SciPy; if you then
+    log the seed, the number of resamples, the CI and the adjusted p-values
+    to a tracker run (Lesson 2.4 shows the async API), a reviewer can later
+    answer "which tests passed, after which correction, with which seed"
+    without rerunning anything. Today's exercise draws its charts with
+    <code>ModelVisualizer</code> and plotly and logs nothing.
   </p>
 </div>
 
@@ -397,23 +406,47 @@ $$\delta_{\text{MDE}} \;=\; (z_{1 - \alpha/2} + z_{1 - \beta}) \cdot \sigma\sqrt
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    An e-commerce A/B test has a control arm and a treatment arm. You want
-    to test three metrics: conversion rate, average order value (AOV), and
-    revenue per visitor (RPV). Apply both Bonferroni and BH-FDR corrections
-    and compare.
+    The course's e-commerce experiment (<code>experiment_data.parquet</code>,
+    the same file Exercise 3 uses) compares a control arm with
+    <code>treatment_a</code>. You want to test three metrics: conversion rate
+    (a "qualifying order" of at least <span class="nomath">$50</span>, as in Exercise 3), average order
+    value among converters (AOV), and revenue per visitor (RPV). Apply both
+    Bonferroni and BH-FDR corrections and compare.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — Load.</span>
+    <span class="step-label">Step 1 — Load and check the split.</span>
+    <p>
+      The experiment was <em>designed</em> 40/35/15/10 across control,
+      treatment_a, treatment_b and variant_c, so within the control–treatment_a
+      pair control should hold $40/75 \approx 53.3\%$ of users. Check that
+      before trusting anything else (Lesson 2.4 calls this the SRM check).
+    </p>
     <pre><code class="language-python">import polars as pl
 import numpy as np
 from scipy import stats
 from shared import MLFPDataLoader
 
-df = MLFPDataLoader().load("mlfp02", "ab_test.parquet")
-ctrl = df.filter(pl.col("arm") == "control")
-treat = df.filter(pl.col("arm") == "treatment")
-print(ctrl.shape, treat.shape)</code></pre>
+df = (
+    MLFPDataLoader()
+    .load("mlfp02", "experiment_data.parquet")
+    .filter(pl.col("experiment_group").is_in(["control", "treatment_a"]))
+    .with_columns((pl.col("metric_value") &gt;= 50).cast(pl.Int8).alias("converted"))
+)
+ctrl = df.filter(pl.col("experiment_group") == "control")
+treat = df.filter(pl.col("experiment_group") == "treatment_a")
+print(ctrl.height, treat.height)
+
+expected_share = 0.40 / (0.40 + 0.35)          # designed control share
+n_total = ctrl.height + treat.height
+chi2, p_srm = stats.chisquare(
+    [ctrl.height, treat.height],
+    [n_total * expected_share, n_total * (1 - expected_share)],
+)
+print(f"SRM: chi2 = {chi2:.3f}, p = {p_srm:.3f}")</code></pre>
+    <pre><code class="language-text">188732 165413
+SRM: chi2 = 0.240, p = 0.624</code></pre>
+    <p>The split matches the design, so the comparison can proceed.</p>
   </div>
 
   <div class="step">
@@ -421,68 +454,127 @@ print(ctrl.shape, treat.shape)</code></pre>
     <pre><code class="language-python">def metrics(d):
     return {
         "conv": d["converted"].mean(),
-        "aov":  d.filter(pl.col("converted") == 1)["order_value"].mean(),
-        "rpv":  d["order_value"].mean(),
+        "aov":  d.filter(pl.col("converted") == 1)["metric_value"].mean(),
+        "rpv":  d["revenue"].mean(),
     }
 m_c, m_t = metrics(ctrl), metrics(treat)
 for k in m_c: print(f"{k}: ctrl={m_c[k]:.3f}  treat={m_t[k]:.3f}")</code></pre>
+    <pre><code class="language-text">conv: ctrl=0.191  treat=0.248
+aov: ctrl=89.442  treat=82.643
+rpv: ctrl=41.431  treat=44.590</code></pre>
+    <p>
+      Conversion and revenue per visitor rise, but AOV <em>falls</em>: the
+      treatment pushes more users just over the <span class="nomath">$50</span> line, so the average
+      qualifying basket is smaller. One metric moving the "wrong" way is
+      exactly why you test all three instead of the one that flatters the
+      change.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3 — Bootstrap CIs.</span>
-    <pre><code class="language-python">B = 5000
-rng = np.random.default_rng(42)
+    <p>
+      With about 350,000 users, each resample is large, so $B = 1{,}000$ is
+      enough for a stable 95% interval (this cell takes a few seconds).
+    </p>
+    <pre><code class="language-python">rng = np.random.default_rng(42)
 
-def boot_mean_diff(a, b, key, B=5000):
-    a_arr = a[key].to_numpy()
-    b_arr = b[key].to_numpy()
-    n_a, n_b = len(a_arr), len(b_arr)
+def boot_mean_diff(a, b, key, B=1000):
+    a_arr = a[key].to_numpy().astype(float)
+    b_arr = b[key].to_numpy().astype(float)
     reps = np.empty(B)
     for i in range(B):
-        ra = rng.choice(a_arr, n_a, replace=True)
-        rb = rng.choice(b_arr, n_b, replace=True)
+        ra = rng.choice(a_arr, len(a_arr), replace=True)
+        rb = rng.choice(b_arr, len(b_arr), replace=True)
         reps[i] = rb.mean() - ra.mean()
     return reps
 
 diff_conv = boot_mean_diff(ctrl, treat, "converted")
 lo, hi = np.percentile(diff_conv, [2.5, 97.5])
-print(f"Conv rate lift 95% CI = [{lo:.4f}, {hi:.4f}]")</code></pre>
+print(f"Conversion lift 95% CI = [{lo:.4f}, {hi:.4f}]")</code></pre>
+    <pre><code class="language-text">Conversion lift 95% CI = [0.0547, 0.0602]</code></pre>
+    <p>A lift of about 5.5 to 6.0 percentage points — nowhere near zero.</p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 4 — p-values via z-test for proportions.</span>
-    <pre><code class="language-python">from statsmodels.stats.proportion import proportions_ztest
+    <span class="step-label">Step 4 — p-values: a two-proportion $z$-test and two Welch $t$-tests.</span>
+    <pre><code class="language-python">n_c, k_c = ctrl.height, int(ctrl["converted"].sum())
+n_t, k_t = treat.height, int(treat["converted"].sum())
+p_pool = (k_c + k_t) / (n_c + n_t)
+se = np.sqrt(p_pool * (1 - p_pool) * (1 / n_c + 1 / n_t))
+z_conv = (k_t / n_t - k_c / n_c) / se
+p_conv = 2 * stats.norm.sf(abs(z_conv))           # two-tailed
 
-n_c, k_c = ctrl.height, ctrl["converted"].sum()
-n_t, k_t = treat.height, treat["converted"].sum()
-z_conv, p_conv = proportions_ztest([k_t, k_c], [n_t, n_c])
-t_aov,  p_aov  = stats.ttest_ind(
-    treat.filter(pl.col("converted") == 1)["order_value"].to_numpy(),
-    ctrl .filter(pl.col("converted") == 1)["order_value"].to_numpy(),
+_, p_aov = stats.ttest_ind(
+    treat.filter(pl.col("converted") == 1)["metric_value"].to_numpy(),
+    ctrl.filter(pl.col("converted") == 1)["metric_value"].to_numpy(),
     equal_var=False,
 )
-t_rpv,  p_rpv  = stats.ttest_ind(
-    treat["order_value"].to_numpy(),
-    ctrl ["order_value"].to_numpy(),
-    equal_var=False,
+_, p_rpv = stats.ttest_ind(
+    treat["revenue"].to_numpy(), ctrl["revenue"].to_numpy(), equal_var=False
 )
 pvals = np.array([p_conv, p_aov, p_rpv])
+print(f"z_conv = {z_conv:.1f}")
 print("Raw p-values:", pvals)</code></pre>
+    <pre><code class="language-text">z_conv = 41.5
+Raw p-values: [0.00000000e+00 4.72124851e-26 6.48132506e-83]</code></pre>
+    <p>
+      A p-value printed as <code>0.0</code> is not zero — it is smaller than
+      the smallest number a float can hold ($z = 41.5$ is far beyond any table).
+      Report it as "$p &lt; 10^{-300}$".
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 5 — Apply corrections.</span>
-    <pre><code class="language-python">from statsmodels.stats.multitest import multipletests
+    <pre><code class="language-python">from scipy.stats import false_discovery_control
 
-bonf_ok, bonf_p, _, _ = multipletests(pvals, alpha=0.05, method="bonferroni")
-bh_ok,   bh_p,   _, _ = multipletests(pvals, alpha=0.05, method="fdr_bh")
+m = len(pvals)
+bonf_p = np.minimum(pvals * m, 1.0)                 # Bonferroni-adjusted
+bh_p = false_discovery_control(pvals, method="bh")  # BH-adjusted
 
-print("Bonferroni rejects:", bonf_ok)
-print("BH-FDR rejects:    ", bh_ok)</code></pre>
+print("Bonferroni rejects:", bonf_p &lt;= 0.05)
+print("BH-FDR rejects:    ", bh_p &lt;= 0.05)</code></pre>
+    <pre><code class="language-text">Bonferroni rejects: [ True  True  True]
+BH-FDR rejects:     [ True  True  True]</code></pre>
     <p>
-      Typically BH-FDR rejects one or two metrics that Bonferroni misses —
-      the price of Bonferroni's guarantee on the family-wise error rate is
-      lower power.
+      With 350,000 users every effect is overwhelming, so both corrections
+      reject all three nulls. The corrections only disagree when evidence is
+      borderline — which is the normal situation in a smaller test.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6 — The same test on a pilot of 800 users per arm.</span>
+    <pre><code class="language-python">ctrl_s = ctrl.sample(n=800, seed=0)
+treat_s = treat.sample(n=800, seed=0)
+
+k_c, k_t = int(ctrl_s["converted"].sum()), int(treat_s["converted"].sum())
+p_pool = (k_c + k_t) / 1600
+se = np.sqrt(p_pool * (1 - p_pool) * (2 / 800))
+p_conv_s = 2 * stats.norm.sf(abs((k_t - k_c) / 800 / se))
+_, p_aov_s = stats.ttest_ind(
+    treat_s.filter(pl.col("converted") == 1)["metric_value"].to_numpy(),
+    ctrl_s.filter(pl.col("converted") == 1)["metric_value"].to_numpy(),
+    equal_var=False,
+)
+_, p_rpv_s = stats.ttest_ind(
+    treat_s["revenue"].to_numpy(), ctrl_s["revenue"].to_numpy(), equal_var=False
+)
+p_s = np.array([p_conv_s, p_aov_s, p_rpv_s])
+print("Raw p:     ", p_s.round(4))
+print("Bonferroni:", np.minimum(p_s * 3, 1.0) &lt;= 0.05)
+print("BH-FDR:    ", false_discovery_control(p_s, method="bh") &lt;= 0.05)</code></pre>
+    <pre><code class="language-text">Raw p:      [0.0043 0.0404 0.0008]
+Bonferroni: [ True False  True]
+BH-FDR:     [ True  True  True]</code></pre>
+    <p>
+      Now the AOV result ($p = 0.040$) survives BH-FDR (its adjusted value is
+      $0.040 \le 0.05$ because it is the largest of three) but not Bonferroni
+      ($3 \times 0.040 = 0.12$). That is the trade-off in one line: BH-FDR
+      buys power by tolerating a controlled share of false discoveries;
+      Bonferroni guarantees a 5% chance of <em>any</em> false positive and
+      pays for it with missed effects.
     </p>
   </div>
 </div>

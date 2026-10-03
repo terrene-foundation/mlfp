@@ -2785,32 +2785,34 @@ result["figure"].show()     # the curve below
     <h3>From Training to Deployment</h3>
     <div class="columns">
       <div class="col">
-        <pre style="font-size: 0.48em; line-height: 1.3"><code class="language-python">from kailash_ml import OnnxBridge
+        <pre style="font-size: 0.48em; line-height: 1.3"><code class="language-python">from pathlib import Path
+from kailash_ml import OnnxBridge
+from shared.mlfp05.ex_2 import FlatImageAdapter
 
 bridge = OnnxBridge()
+serving = FlatImageAdapter(resnet_se).eval()
+path = Path("resnet_se_cifar10.onnx")
+# 2-row sample: a batch of 1 can freeze the batch size
+x = torch.randn(2, 3 * 32 * 32)
 
-# Export trained model to ONNX
-bridge.export(
-    model=resnet,
-    input_shape=(1, 1, 28, 28),
-    output_path="resnet_fmnist.onnx"
-)
+res = bridge.export(serving, "torch",
+                    output_path=path, sample_input=x)
+assert res.success, res.error_message
 
-# Verify exported model
-result = bridge.validate(
-    "resnet_fmnist.onnx"
-)
-print(result.status)  # "valid"</code></pre>
+# Parity check: PyTorch vs ONNX Runtime
+v = bridge.validate(serving, path, x.numpy(),
+                    tolerance=1e-3)
+print(v.valid, v.max_diff)</code></pre>
       </div>
       <div class="col">
         <h3>Why ONNX?</h3>
         <ul>
           <li><strong>Framework-agnostic:</strong> train in PyTorch, deploy anywhere</li>
-          <li><strong>Optimised inference:</strong> ONNX Runtime is faster than native PyTorch</li>
+          <li><strong>Optimised inference:</strong> ONNX Runtime is often faster than native PyTorch (measure it &mdash; file 03 does)</li>
           <li><strong>Edge deployment:</strong> run on mobile, browser, embedded</li>
         </ul>
         <div class="callout callout-kailash" style="margin-top: 12px;">
-          <strong>Pattern:</strong> Train with PyTorch &rarr; Export with OnnxBridge &rarr; Serve with InferenceServer (Lesson 5.7).
+          <strong>Pattern:</strong> Train with PyTorch &rarr; <code>export</code> &rarr; <code>validate</code> &rarr; register in ModelRegistry &rarr; serve with InferenceServer (Exercise 5.2 file 03, Lesson 5.7).
         </div>
       </div>
     </div>
@@ -2819,7 +2821,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. OnnxBridge wraps the PyTorch ONNX exporter with validation and metadata. Students export their CNN at the end of the exercise. This is the first step toward production deployment, completed in Lesson 5.7.
+    Time: ~2 min. OnnxBridge wraps the PyTorch ONNX exporter. Three API facts students trip on: (1) the framework argument is &quot;torch&quot; (&quot;pytorch&quot; is not supported and returns success=False); (2) export does NOT validate and does not raise on failure &mdash; check res.success, then call validate() separately, which runs the model's predict() and ONNX Runtime on the same rows; (3) trace with at least 2 rows. FlatImageAdapter (from the exercise helpers) reshapes flat pixel rows back to (3, 32, 32) because InferenceServer feeds one flat row per request record. Students export their CIFAR-10 ResNet-SE in Exercise 5.2 file 03, register it, and serve it; Lesson 5.7 repeats the flow for the transfer model.
   </aside>
 </section>
 
@@ -2831,20 +2833,19 @@ print(result.status)  # "valid"</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Build a simple CNN for Fashion-MNIST classification</li>
-        <li>Add ResBlock with skip connections &mdash; compare accuracy</li>
-        <li>Add SE block &mdash; measure improvement</li>
-        <li>Apply Mixup augmentation and label smoothing</li>
-        <li>Export final model to ONNX with OnnxBridge</li>
+        <li>Simple CNN on full CIFAR-10 (Lightning) &mdash; visualise filters and feature maps</li>
+        <li>ResNet + SE blocks vs the simple CNN &mdash; Grad-CAM heatmaps</li>
+        <li>Export to ONNX with OnnxBridge, validate parity, register, serve with InferenceServer; benchmark latency</li>
+        <li>Hyperparameter study: learning-rate sweep + augmentation (none vs flip + crop)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>Architecture progressively improved (baseline &rarr; ResBlock &rarr; SE)</li>
-        <li>Training enhancements measurably improve performance</li>
+        <li>Architecture progressively improved (simple CNN &rarr; ResNet-SE)</li>
+        <li>LR and augmentation choices measured and tracked with ExperimentTracker</li>
         <li>Training curves visualised with ModelVisualizer</li>
-        <li>ONNX export successful and validated</li>
+        <li>ONNX export successful, validated, and served</li>
       </ul>
     </div>
   </div>
@@ -2852,7 +2853,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. Progressive architecture: each enhancement builds on the previous. Students should see clear accuracy jumps at each stage. The ONNX export connects to the deployment story in Lesson 5.7.
+    Time: ~1 min. Exercise 5.2 is four files on CIFAR-10 (50K colour 32&times;32 images): 01 simple CNN, 02 ResNet-SE with Grad-CAM, 03 the production pipeline (OnnxBridge export + validate, ModelRegistry, InferenceServer, latency benchmark), 04 a learning-rate and augmentation study. Students should see a clear accuracy jump from the simple CNN to ResNet-SE. Mixup, label smoothing and Kaiming init are taught on the enhancements slide but are not in the files &mdash; offer them as an extension. The ONNX export connects to the deployment story in Lesson 5.7.
   </aside>
 </section>
 
@@ -2934,18 +2935,18 @@ print(result.status)  # "valid"</code></pre>
         <p class="small">ResNet with SE blocks, fine-tuned on a Singapore public-health chest X-ray corpus, classifies scans into "normal / pneumonia / tuberculosis / other" and ranks the worst cases to the top of the radiologist's queue. The same architecture you wrote in Exercise 2, trained on medical images instead of CIFAR.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Retail &mdash; Shelf Monitoring at FairPrice, Cold Storage</strong>
+        <strong>Retail &mdash; Shelf Monitoring at a Supermarket Chain</strong>
         <p class="small">Cameras above each aisle feed a CNN that counts SKUs, detects out-of-stocks, and identifies misplaced items. The store manager gets a dashboard ranked by lost-sales-per-hour, not a 200-aisle walkthrough. Latency budget: under 200ms per frame &mdash; exactly the kind of workload ONNX export was built for.</p>
       </div>
     </div>
     <div class="col">
       <div class="callout callout-applications">
         <strong>Manufacturing &mdash; Automated Quality Control</strong>
-        <p class="small">A Singapore precision-engineering firm uses a ResNet variant to grade machined parts on a conveyor belt. Mixed-precision training halved GPU cost during weekly retraining; SE blocks improved recall on a rare defect class from 71% to 89%. The trained model is exported to ONNX and served on the factory-floor edge server.</p>
+        <p class="small">A Singapore precision-engineering firm uses a ResNet variant to grade machined parts on a conveyor belt. Mixed-precision training cuts GPU cost of weekly retraining; SE blocks can lift recall on a rare defect class (illustratively, from 71% to 89%). The trained model is exported to ONNX and served on the factory-floor edge server.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Public Safety &mdash; MRT Crowd Density from CCTV</strong>
-        <p class="small">SMRT platforms use CNN-based crowd counting from existing CCTV feeds to predict overcrowding before it happens, triggering train dispatch or gate throttling. The output of the last conv layer is a density map, not a single number &mdash; the same "later layers = higher-level features" hierarchy you learned.</p>
+        <strong>Public Safety &mdash; Rail Crowd Density from CCTV</strong>
+        <p class="small">A rail operator can run CNN-based crowd counting on existing platform CCTV feeds to predict overcrowding before it happens, triggering train dispatch or gate throttling. The output of the last conv layer is a density map, not a single number &mdash; the same "later layers = higher-level features" hierarchy you learned.</p>
       </div>
     </div>
   </div>
@@ -2956,7 +2957,7 @@ print(result.status)  # "valid"</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The retail example lands best with business audiences &mdash; "every FairPrice you have ever shopped in has cameras, but none of them are doing this yet, and that is the opportunity". For technical audiences, the manufacturing ROI story is stronger. Tie back to the exercise: "You just exported a CNN to ONNX. That is the exact production format every one of these applications uses."
+    Time: ~3 min. The retail example lands best with business audiences &mdash; "most supermarkets you shop in already have cameras; turning them into a shelf monitor is the opportunity". The organisations and figures on this slide are illustrative scenarios, not reported results from named companies. For technical audiences, the manufacturing ROI story is stronger. Tie back to the exercise: "You just exported a CNN to ONNX. That is the exact production format every one of these applications uses."
   </aside>
 </section>
 

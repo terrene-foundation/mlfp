@@ -3530,10 +3530,13 @@ two problems remain:
 This lesson gives you two tools:
 
 1. **CUPED (Controlled-experiment Using Pre-Experiment Data),** a
-   variance-reduction technique that can cut required sample
-   sizes by 50% or more. It is the single most impactful
-   modern A/B testing technique, used by Microsoft, Netflix,
-   Airbnb, and essentially every top tech company.
+   variance-reduction technique introduced by Deng, Xu, Kohavi and
+   Walker (2013). When the pre-experiment metric is strongly
+   correlated with the outcome it can cut the required sample size
+   by half or more; it is now a standard feature of large online
+   experimentation platforms. How much it helps depends entirely on
+   that correlation — on the course's experiment file it helps very
+   little, as you will see.
 2. **Difference-in-Differences (DiD),** a causal inference
    method that works on observational data when you have
    pre/post data for a treated and a control group. Classic
@@ -3620,8 +3623,9 @@ Var(Y_adj) = Var(Y) × (1 − ρ²)
 ```
 
 That's it. If the correlation between pre- and post-experiment
-metrics is `ρ = 0.7`, variance drops by `1 − 0.49 = 0.51`:
-a **51% reduction**. If `ρ = 0.9`, variance drops by 81%.
+metrics is `ρ = 0.7`, the adjusted variance is `1 − 0.49 = 0.51` of
+the original: a **49% reduction** (`ρ²`). If `ρ = 0.9`, variance drops
+by 81%.
 
 ### Sample size multiplier
 
@@ -3631,14 +3635,18 @@ Required sample size scales with variance. So:
 n_CUPED / n_raw = 1 − ρ²
 ```
 
-| ρ    | Variance reduction | Sample size multiplier |
-| ---- | ------------------ | ---------------------- |
-| 0.3  | 9%                 | 1.10                   |
-| 0.5  | 25%                | 1.33                   |
-| 0.7  | 49%                | 1.96                   |
-| 0.8  | 64%                | 2.78                   |
-| 0.9  | 81%                | 5.26                   |
-| 0.95 | 90%                | 10.0                   |
+| ρ    | Variance reduction (`ρ²`) | `n_CUPED / n_raw` | Speed-up (`n_raw / n_CUPED`) |
+| ---- | ------------------------- | ----------------- | ---------------------------- |
+| 0.21 | 4.4%                      | 0.956             | 1.05                         |
+| 0.3  | 9%                        | 0.91              | 1.10                         |
+| 0.5  | 25%                       | 0.75              | 1.33                         |
+| 0.7  | 49%                       | 0.51              | 1.96                         |
+| 0.8  | 64%                       | 0.36              | 2.78                         |
+| 0.9  | 81%                       | 0.19              | 5.26                         |
+| 0.95 | 90%                       | 0.0975            | 10.3                         |
+
+The first row is the course's own experiment (below): with `ρ = 0.21`
+CUPED saves only about 4% of the sample.
 
 With `ρ = 0.8`, your 50K-user experiment becomes an 18K-user
 experiment at the same power. Run it three times as fast.
@@ -3650,6 +3658,12 @@ experiment at the same power. Run it three times as fast.
   and subtracting it biases the estimate.
 - **θ should be estimated from both arms pooled** (not from
   one arm), to avoid bias.
+- **Use only pre-treatment covariates.** Adding a second covariate
+  "because it correlates with revenue" is tempting; if it was
+  measured during the experiment (e.g. in-experiment basket value),
+  part of the treatment effect is subtracted away with it.
+- **Check SRM first** (Lesson 2.4). CUPED is applied to an arm pair
+  whose allocation matches the design.
 - **CUPED reduces variance, not bias.** If your experiment is
   broken (SRM, leakage, bad randomisation), CUPED won't save
   you.
@@ -3759,88 +3773,155 @@ assumption. You can stress-test it:
    finds a significant "effect," parallel trends fails.
 2. **Fake treatment group.** Pretend a third group, similar to
    the control, was treated. Should find no effect.
-3. **Pre-trend regression.** Regress the outcome on time
-   within the pre-treatment period, separately for treated and
-   control. Slopes should be similar.
+3. **Pre-trend test.** Using only pre-treatment data, fit
+   `Y = b₀ + b₁ × time + b₂ × D + b₃ × (D × time) + ε`. The
+   coefficient `b₃` is the difference between the treated and control
+   slopes; test `H₀: b₃ = 0` with its t-statistic. A small p-value
+   means the trends were already diverging — DiD is not credible.
+   (A test whose null distribution is not centred at zero, or that
+   compares a statistic with itself, can never reject; always check
+   that your test _can_ fail on data built to violate the
+   assumption.)
 
-### Numerical example — Singapore ABSD cooling measures
+### Numerical example — a hypothetical cooling measure
 
-In December 2021, Singapore raised the Additional Buyer's Stamp
-Duty (ABSD) for investment properties. To estimate the policy's
-causal effect on HDB resale prices, we need a control group that
-was _not_ affected.
+Property cooling measures cannot be randomised, so DiD is the natural
+design. A clean example needs a treated group that the measure
+actually reaches and a comparable group it does not. (A tempting but
+wrong choice for HDB resale is "investment buyers vs first-time
+buyers": HDB flats must be owner-occupied, so there is no investment
+segment, and the course file has no buyer-type column anyway.)
 
-- **Treated:** non-owner-occupier (investment) purchases.
-- **Control:** first-time buyers (exempt from ABSD hike).
+Exercise 7 therefore uses a **simulated** panel of HDB-style resale
+prices around a _hypothetical_ measure that applies only to
+Central-region flats: 6 quarters before and 6 after, 200 sales per
+region per quarter, a common trend of SGD 2,000 per quarter, and a true
+policy effect of **−SGD 20,000** on Central flats. Cell means:
 
-Pre-period: Jan–Nov 2021. Post-period: Jan–Nov 2022.
-
-Hypothetical means (SGD, simplified):
-
-|                      | Pre     | Post    | Change  |
-| -------------------- | ------- | ------- | ------- |
-| Treated (investment) | 560_000 | 585_000 | +25_000 |
-| Control (first-time) | 520_000 | 560_000 | +40_000 |
+|                       | Pre     | Post    | Change  |
+| --------------------- | ------- | ------- | ------- |
+| Treated (Central)     | 556,229 | 548,862 | −7,367  |
+| Control (Non-Central) | 453,858 | 469,699 | +15,841 |
 
 ```
-DiD = (585_000 − 560_000) − (560_000 − 520_000)
-    = 25_000 − 40_000
-    = −15_000
+DiD = (548_862 − 556_229) − (469_699 − 453_858)
+    = −7_367 − 15_841
+    = −23_208        (SE ≈ 4_334, 95% CI [−31_702, −14_713])
 ```
 
-Investment-segment prices grew SGD 15K _less_ than they would
-have under the counterfactual (proxied by first-time buyers).
-That's the causal effect of the ABSD hike. Statistically
-significant if the standard error supports it.
+Central prices grew about SGD 23K _less_ than the Non-Central
+counterfactual implies. The true simulated effect (−20,000) sits
+inside the CI; the gap is sampling noise.
 
-**Parallel trends check.** Plot both groups' monthly mean prices
-from 2019 through mid-2021. Are the slopes similar? If yes,
-assumption holds. If the treated group was already decelerating
-before the policy, DiD over-estimates the effect.
+**Parallel trends check.** On the six pre-measure quarters, the
+pre-trend test above gives a slope difference of SGD 1,045 per quarter
+(SE 1,788, p = 0.56): no evidence of diverging trends. A placebo that
+pretends the measure started in quarter 3 (still pre-period) finds
++2,149 (SE 6,110, p = 0.73) — no fake effect. Rebuild the panel with an
+extra Central-only trend of SGD 3,000 per quarter and the same test
+rejects (slope difference 4,045, p = 0.024): the test can tell the two
+situations apart.
 
 ## The Kailash Engine — ExperimentTracker + Regression
 
+CUPED and DiD are both regressions you compute yourself; the tracker
+records the inputs and the estimates. The block runs CUPED on the
+course experiment (control vs treatment_a, the pair that passed its
+SRM check) and the DiD and pre-trend test on the simulated panel:
+
 ```python
-from kailash_ml import ExperimentTracker, TrainingPipeline
+import asyncio
+
 import numpy as np
 import polars as pl
+from scipy import stats
+from kailash_ml import ExperimentTracker
 
-# ── CUPED ──────────────────────────────────────────────────────
-# X_pre: pre-experiment metric, Y: outcome, T: treatment indicator
-theta = np.cov(Y, X_pre, ddof=1)[0, 1] / np.var(X_pre, ddof=1)
-Y_adj = Y - theta * (X_pre - X_pre.mean())
+from shared import MLFPDataLoader
+from shared.mlfp02.ex_7 import simulate_hdb_cooling_panel
 
-rho = float(np.corrcoef(Y, X_pre)[0, 1])
-var_reduction = 1 - rho ** 2
+# ── CUPED on the course experiment: control vs treatment_a ─────────────
+exp = MLFPDataLoader().load("mlfp02", "experiment_data.parquet").filter(
+    pl.col("experiment_group").is_in(["control", "treatment_a"])  # passed SRM (Lesson 2.4)
+)
+y = exp["revenue"].to_numpy()
+x_pre = exp["pre_metric_value"].to_numpy()  # measured BEFORE assignment
+treated = (exp["experiment_group"] == "treatment_a").to_numpy()
 
-with ExperimentTracker().start_run(name="homepage_test_cuped") as run:
-    run.log_param("covariate", "spend_pre_14d")
-    run.log_metric("rho", rho)
-    run.log_metric("variance_reduction", var_reduction)
-    run.log_metric("theta", theta)
+theta = np.cov(y, x_pre)[0, 1] / np.var(x_pre, ddof=1)  # pooled over both arms
+y_adj = y - theta * (x_pre - x_pre.mean())
+rho = np.corrcoef(y, x_pre)[0, 1]
 
-    # raw estimate
-    diff_raw = Y[T == 1].mean() - Y[T == 0].mean()
-    se_raw = (Y[T == 1].var(ddof=1)/sum(T==1)
-              + Y[T == 0].var(ddof=1)/sum(T==0)) ** 0.5
-    run.log_metric("diff_raw", diff_raw)
-    run.log_metric("se_raw", se_raw)
 
-    # cuped estimate
-    diff_cuped = Y_adj[T == 1].mean() - Y_adj[T == 0].mean()
-    se_cuped = (Y_adj[T == 1].var(ddof=1)/sum(T==1)
-                + Y_adj[T == 0].var(ddof=1)/sum(T==0)) ** 0.5
-    run.log_metric("diff_cuped", diff_cuped)
-    run.log_metric("se_cuped", se_cuped)
+def diff_and_se(v: np.ndarray) -> tuple[float, float]:
+    a, b = v[treated], v[~treated]
+    return a.mean() - b.mean(), np.sqrt(a.var(ddof=1) / len(a) + b.var(ddof=1) / len(b))
 
-# ── DiD ────────────────────────────────────────────────────────
-# df has columns: price, treated (0/1), post (0/1)
-pipeline = TrainingPipeline(task="regression", estimator="ols")
-pipeline.fit(df[["treated", "post", "treated_x_post"]].to_pandas(),
-             df["price"].to_numpy())
-print(pipeline.summary())
-# δ (coefficient on treated_x_post) is the DiD estimate.
+
+diff_raw, se_raw = diff_and_se(y)
+diff_cuped, se_cuped = diff_and_se(y_adj)
+reduction = 1 - np.var(y_adj, ddof=1) / np.var(y, ddof=1)  # = rho^2
+print(f"rho={rho:.3f}  variance reduction={reduction:.1%}")
+print(f"raw   lift {diff_raw:.3f} (SE {se_raw:.4f})")
+print(f"CUPED lift {diff_cuped:.3f} (SE {se_cuped:.4f})")
+
+# ── DiD on the simulated cooling-measure panel (true effect -20,000) ───
+panel = simulate_hdb_cooling_panel(n_per_period=200, n_pre=6, n_post=6,
+                                   policy_effect=-20_000, seed=99)
+
+
+def ols(X: np.ndarray, yv: np.ndarray) -> tuple[np.ndarray, np.ndarray, int]:
+    b = np.linalg.lstsq(X, yv, rcond=None)[0]
+    e = yv - X @ b
+    dof = len(yv) - X.shape[1]
+    return b, np.sqrt(e @ e / dof * np.diag(np.linalg.inv(X.T @ X))), dof
+
+
+d = panel["central"].to_numpy().astype(float)  # treated group
+post = panel["post"].to_numpy().astype(float)  # after the measure
+X = np.column_stack([np.ones_like(d), d, post, d * post])
+b, se, _ = ols(X, panel["price"].to_numpy())
+print(f"DiD delta = {b[3]:,.0f} (SE {se[3]:,.0f})")
+
+# Pre-trend test: pre-period only, does the treated group's slope differ?
+pre = panel.filter(pl.col("post") == 0)
+t = pre["period"].to_numpy().astype(float)
+g = pre["central"].to_numpy().astype(float)
+b_pre, se_pre, dof = ols(np.column_stack([np.ones_like(t), t, g, g * t]), pre["price"].to_numpy())
+p_trend = 2 * stats.t.sf(abs(b_pre[3] / se_pre[3]), df=dof)
+print(f"pre-trend slope difference = {b_pre[3]:,.0f}/quarter, p = {p_trend:.2f}")
+
+
+async def log_results() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_causal", run_name="cuped_and_did") as run:
+        await run.log_params({"cuped_covariate": "pre_metric_value",
+                              "did_panel": "simulated, true effect -20000"})
+        await run.log_metrics({"theta": float(theta), "variance_reduction": float(reduction),
+                               "lift_raw": float(diff_raw), "lift_cuped": float(diff_cuped),
+                               "did_delta": float(b[3]), "pretrend_p": float(p_trend)})
+    await tracker.close()
+
+
+asyncio.run(log_results())
 ```
+
+It prints:
+
+```text
+rho=0.210  variance reduction=4.4%
+raw   lift 3.160 (SE 0.1638)
+CUPED lift 3.175 (SE 0.1601)
+DiD delta = -23,208 (SE 4,334)
+pre-trend slope difference = 1,045/quarter, p = 0.56
+```
+
+Two honest readings. First, CUPED is only as good as `ρ`: here the
+pre-period metric correlates weakly with revenue (0.21), so the
+standard error shrinks by about 2% — the 49% figure needs `ρ = 0.7`.
+Second, the DiD coefficient `δ` from the interaction regression is
+exactly the four-means calculation above, with its standard error for
+free.
 
 ## Worked Example — CUPED on a Conversion Test
 
@@ -3921,9 +4002,10 @@ unaffected by the crisis) or wait for the post-crisis data.
 ## Reflection
 
 Pick a question your team answers with an A/B test. Is there a
-pre-experiment metric that correlates with the outcome? If
-yes, your next experiment can be 30–70% faster with CUPED.
-That alone is worth the cost of this lesson.
+pre-experiment metric that correlates with the outcome? Compute
+`ρ` on last quarter's data before you plan: at `ρ = 0.5` CUPED cuts
+the required sample by a quarter, at `ρ = 0.8` by almost two thirds,
+and at `ρ = 0.2` (the course's experiment file) by only 4%.
 
 ---
 
@@ -4148,8 +4230,8 @@ to _statistical thinking_.
   precise your estimator can be.
 - Bootstrap resamples with replacement to estimate sampling
   distributions when formulas don't exist.
-- CUPED reduces variance by `(1 − ρ²)` via regression on a
-  pre-experiment covariate.
+- CUPED multiplies variance by `(1 − ρ²)` — a reduction of `ρ²` —
+  via regression on a pre-experiment covariate.
 - DiD identifies causal effects under the parallel trends
   assumption.
 - ANOVA is regression with categorical predictors; the F-test

@@ -35,6 +35,17 @@ SEED: int = 42
 OUTPUT_DIR = Path("outputs") / "mlfp02_ex4_experiment_design"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# The experiment was DESIGNED with unequal allocation across four arms.
+# Exercise 4 analyses control vs treatment_a, so its SRM check must use
+# the designed control share within that pair (40 / (40 + 35)), never 50/50.
+DESIGNED_ALLOCATION: dict[str, float] = {
+    "control": 0.40,
+    "treatment_a": 0.35,
+    "treatment_b": 0.15,
+    "variant_c": 0.10,
+}
+TREATMENT_ARM: str = "treatment_a"
+
 
 # ════════════════════════════════════════════════════════════════════════
 # DATA CONTAINER
@@ -45,9 +56,9 @@ class TwoArmAB(NamedTuple):
     """Two-arm A/B subset pulled from the raw experiment frame."""
 
     experiment: pl.DataFrame  # full frame (all arms)
-    ab_data: pl.DataFrame  # control + treatment_a only
-    ctrl_values: np.ndarray  # float64 numpy array
-    treat_values: np.ndarray  # float64 numpy array
+    ab_data: pl.DataFrame  # control + treatment_a only, sorted by `ts`
+    ctrl_values: np.ndarray  # float64 numpy array, chronological order
+    treat_values: np.ndarray  # float64 numpy array, chronological order
     n_control: int
     n_treatment: int
     n_total: int
@@ -63,15 +74,22 @@ def load_experiment() -> TwoArmAB:
 
     Returns a TwoArmAB tuple with the raw frame, the filtered A/B frame,
     and numpy arrays for the control and treatment_a metric_value columns.
+    The A/B frame gains a parsed datetime column `ts` and is sorted by it,
+    so any "early vs late" comparison really is chronological (the raw
+    file is NOT stored in time order).
     """
     loader = MLFPDataLoader()
     experiment = loader.load("mlfp02", "experiment_data.parquet")
 
-    ab_data = experiment.filter(
-        pl.col("experiment_group").is_in(["control", "treatment_a"])
+    ab_data = (
+        experiment.filter(
+            pl.col("experiment_group").is_in(["control", TREATMENT_ARM])
+        )
+        .with_columns(pl.col("timestamp").str.to_datetime().alias("ts"))
+        .sort("ts")
     )
     control = ab_data.filter(pl.col("experiment_group") == "control")
-    treatment = ab_data.filter(pl.col("experiment_group") == "treatment_a")
+    treatment = ab_data.filter(pl.col("experiment_group") == TREATMENT_ARM)
 
     ctrl_values = control["metric_value"].to_numpy().astype(np.float64)
     treat_values = treatment["metric_value"].to_numpy().astype(np.float64)
@@ -141,6 +159,44 @@ def power_at_n(
 def cohens_d(delta: float, sigma: float) -> float:
     """Cohen's d effect size for two-sample means with pooled sigma."""
     return float(delta / sigma)
+
+
+def interpret_cohens_d(abs_d: float) -> str:
+    """Cohen's conventions: <0.2 negligible, <0.5 small, <0.8 medium, else large."""
+    if abs_d < 0.2:
+        return "negligible"
+    if abs_d < 0.5:
+        return "small"
+    if abs_d < 0.8:
+        return "medium"
+    return "large"
+
+
+# ════════════════════════════════════════════════════════════════════════
+# SAMPLE RATIO MISMATCH
+# ════════════════════════════════════════════════════════════════════════
+
+
+def designed_control_share(arm: str = TREATMENT_ARM) -> float:
+    """Designed share of control within the (control, arm) pair."""
+    c = DESIGNED_ALLOCATION["control"]
+    return c / (c + DESIGNED_ALLOCATION[arm])
+
+
+def srm_chisquare(
+    n_control: int, n_treatment: int, expected_control_share: float
+) -> tuple[float, float]:
+    """χ² SRM test of an observed two-arm split against its DESIGNED split.
+
+    Returns (chi2, p_value). Use p < 0.01 as the SRM alarm. There is no
+    50/50 default on purpose: the expected split comes from the design.
+    """
+    n_total = n_control + n_treatment
+    expected = np.array(
+        [n_total * expected_control_share, n_total * (1 - expected_control_share)]
+    )
+    chi2, p = stats.chisquare(np.array([n_control, n_treatment]), f_exp=expected)
+    return float(chi2), float(p)
 
 
 # ════════════════════════════════════════════════════════════════════════

@@ -19,7 +19,7 @@
 #   2. Build — explicit 4-step reasoning template
 #   3. Train — evaluate and preserve reasoning traces
 #   4. Visualise — compare accuracy vs zero-shot/few-shot
-#   5. Apply — SGH clinical triage notes
+#   5. Apply — clinical triage notes at a local hospital
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -32,11 +32,13 @@ from shared.mlfp06.ex_1 import (
     CATEGORIES,
     compute_metrics,
     get_eval_docs,
+    load_technique_metrics,
     normalise_label,
     plot_comparison_bars,
     plot_tokens_vs_accuracy,
     print_summary,
     run_delegate,
+    save_technique_metrics,
 )
 
 load_dotenv()
@@ -76,7 +78,7 @@ load_dotenv()
 async def cot_classify(text: str) -> tuple[str, str, float, float]:
     """Classify with an explicit 4-step reasoning template.
 
-    Returns (label, reasoning_trace, cost_usd, elapsed_s).
+    Returns (label, reasoning_trace, total_tokens, elapsed_s).
     """
     prompt = f"""Classify the sentiment of this movie review as positive or negative.
 
@@ -148,35 +150,23 @@ print("\n[ok] Checkpoint passed — CoT evaluation complete\n")
 # ════════════════════════════════════════════════════════════════════════
 print_summary(cot_results, "Chain-of-Thought")
 
-# R9A: visual proof — CoT vs zero-shot/few-shot accuracy + cost-vs-accuracy scatter
-# Expected baselines (R10: independently runnable, no cross-file imports)
-zero_shot_expected = {
-    "strategy": "Zero-Shot",
-    "accuracy": 0.80,
-    "total_tokens": 1500,
-    "avg_latency_s": 1.0,
-    "n": 20,
-}
-few_shot_expected = {
-    "strategy": "Few-Shot",
-    "accuracy": 0.85,
-    "total_tokens": 5400,
-    "avg_latency_s": 1.2,
-    "n": 20,
-}
+# R9A: visual proof — CoT vs zero-shot/few-shot accuracy + tokens-vs-accuracy
+# scatter. Earlier rungs come from YOUR saved runs of 01 and 02; any rung
+# you have not run yet is left out rather than replaced by a made-up number.
 cot_metrics = compute_metrics(cot_results, "CoT")
-all_methods = [zero_shot_expected, few_shot_expected, cot_metrics]
+save_technique_metrics(cot_metrics)
+all_methods = load_technique_metrics(["Zero-Shot", "Few-Shot"]) + [cot_metrics]
 
 plot_comparison_bars(
     all_methods,
-    title="CoT vs Prior Methods — Accuracy / Cost / Latency",
+    title="CoT vs Prior Methods — Accuracy / Tokens / Latency",
     filename="ex1_03_cot_comparison.png",
 )
 
 plot_tokens_vs_accuracy(
     all_methods,
-    title="Cost vs Accuracy — Prompting Ladder So Far",
-    filename="ex1_03_cost_vs_accuracy.png",
+    title="Tokens vs Accuracy — Prompting Ladder So Far",
+    filename="ex1_03_tokens_vs_accuracy.png",
 )
 
 # INTERPRETATION: CoT is the first technique that noticeably slows things
@@ -184,15 +174,16 @@ plot_tokens_vs_accuracy(
 # chose a label, which matters for regulated industries (healthcare,
 # finance, legal). For simple tasks, the cost is hard to justify; for
 # ambiguous/high-stakes tasks, the auditability alone is worth it.
-# The scatter plot shows the cost-accuracy Pareto frontier — each method
-# buys accuracy with more tokens. The slope of the line tells you the
-# marginal cost of each accuracy point.
+# The scatter plot shows the tokens-accuracy trade-off — each method
+# usually buys accuracy with more tokens. The slope between two points is
+# the marginal token cost of each accuracy point. On SST-2 (mostly clear-cut
+# sentiment) CoT may NOT beat zero-shot; read your own points, not the theory.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Singapore General Hospital Clinical Triage
+# TASK 5 — APPLY: Clinical Triage Notes at a Local Hospital
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Singapore General Hospital (SGH) runs a pilot where the
+# SCENARIO (illustrative): a local hospital pilots an assistant where the
 # triage nurse dictates a 2-3 sentence assessment at intake. An LLM
 # classifies the note as "ambulatory" (non-urgent) or "resuscitation"
 # (urgent). Misclassification in either direction is costly:
@@ -200,27 +191,27 @@ plot_tokens_vs_accuracy(
 #   - Over-triage (non-urgent -> urgent): wastes resus bay capacity
 #
 # Why CoT is mandatory here:
-#   - Every decision must be AUDITABLE. A year later, when a case is
-#     reviewed, the clinician must see the LLM's reasoning, not just
-#     its output. Zero-shot "label only" responses fail this bar.
+#   - Every decision must be AUDITABLE. When a case is reviewed months
+#     later, the clinician must see the LLM's reasoning, not just its
+#     output. Zero-shot "label only" responses fail this bar.
 #   - Notes contain COMPETING signals ("alert but diaphoretic", "stable
 #     vitals but known MI history"). CoT forces the model to weigh them.
 #   - The reasoning trace is used to TRAIN triage nurses — they review
 #     disagreements between the LLM and the nurse to refine their own
 #     decision-making.
 #
-# BUSINESS IMPACT: SGH's resus bay capacity is ~30 patients/day. Each
-# false-positive admission displaces ~1.4 true emergencies (measured
-# against NHGP baseline). Each false-negative is a near-miss with a
-# mean incident-reporting cost of S$8,500 (staff time + root cause
-# analysis + risk committee). Moving from zero-shot (~85% acc) to CoT
-# (~92% acc) on 200 intakes/day avoids ~14 false-negatives/day and
-# ~9 false-positive admissions/day. Annualised avoided cost: S$4.6M.
-# LLM inference cost at CoT rate: ~S$110K/year. 42x ROI.
+# BUSINESS IMPACT (illustrative figures): suppose zero-shot is 85%
+# accurate and CoT 92% on 200 intakes/day. That is 30 errors/day falling
+# to 16 — about 14 fewer misclassified intakes per day in total, split
+# between under- and over-triage. If each under-triage near-miss costs
+# ~S$8,500 in incident review (staff time + root-cause analysis) and
+# even a third of the avoided errors are under-triage, that is ~5 near-
+# misses/day avoided — far more than CoT's extra reasoning tokens cost.
+# Re-run the arithmetic with YOUR measured accuracies from the chart.
 #
-# AUDIT TRAIL: Every CoT response is persisted to the SGH clinical
-# governance store alongside the patient MRN. Access is RBAC-gated
-# via PACT (see Exercise 6) and reviewed quarterly.
+# AUDIT TRAIL: Every CoT response is persisted to the hospital's clinical
+# governance store alongside the case record. Access is controlled by
+# PACT governance (Exercise 7) and reviewed quarterly.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -234,7 +225,7 @@ print(
   [x] Built a chain-of-thought prompt with an explicit 4-step template
   [x] Preserved full reasoning traces for downstream audit
   [x] Parsed a discrete label out of a multi-line response
-  [x] Understood the cost/latency penalty of reasoning tokens
+  [x] Measured the token/latency penalty of reasoning tokens
   [x] Recognised CoT's role in regulated, auditability-critical settings
 
   KEY INSIGHT: CoT's biggest value in production isn't accuracy — it's

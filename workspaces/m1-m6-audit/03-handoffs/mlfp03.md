@@ -29,3 +29,14 @@
 - SHAP: LightGBM output is now a list.
 - DataFlow `close_async` leaves pool tasks pending at exit.
 - kailash-ml registry `_kml_drift_reports` table conflicts with DriftMonitor's.
+
+---
+# Additions from the lesson-slides shard (S2b, merged 79d75ae3)
+- Lesson 3.1 worked target = `long_stay` (ICU stay > median), not mortality; leak list updated.
+- Lesson 3.2 worked example = noisy sine (MSEs recomputed), not HDB.
+- Lesson 3.3 churn leaderboard = measured 5-fold CV on leak-free data + "always churn" baseline.
+- Lesson 3.5: FN S$10,000 / FP S$1,500 → t* = 0.130; weighted booster → calibrate on held-out 20% of train → t* on calibrated probs (recalibration removes the weight shift — not double counting). PR-AUC rule of thumb: imbalance under 20% (speaker-notes.md:640 says 5% — align to 20%).
+- Lesson 3.6: with unequal base rates any two fairness criteria conflict (except a perfect predictor); regulator claims softened to non-binding FEAT principles; SHAP waterfall in log-odds, illustrative.
+- Lesson 3.8: registry stages staging/shadow/production/archived; drift monitor own DB; KS 0.001; t* 0.130 on the model card; rollback via promote_model; 11 gates + human sign-off; Module 4 completes the Foundation Certificate.
+- Lesson notes + textbook pages still describe the old 3.1 target and old 3.3 leaderboard → S3/S4.
+- Snippet checker: raw `<=` inside HTML code is stripped as a tag → write `&lt;=` (HTML-correct anyway).

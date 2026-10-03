@@ -155,7 +155,7 @@ $$n \;=\; \frac{2\,(z_{1-\alpha/2} + z_{1-\beta})^2 \cdot p_0(1 - p_0)}{\Delta^2
   <path d="M 60,210 Q 150,150 250,100 T 680,55" fill="none" stroke="#0D9488" stroke-width="2.5"/>
   <text x="250" y="90" font-family="Inter" font-size="11" fill="#0D9488">big effect (δ=5%)</text>
 </svg>
-<figcaption>Power curves. Bigger effects need less data. To detect a 1% lift you need roughly 25× more users than to detect a 5% lift (power scales with $\delta^2$).</figcaption>
+<figcaption>Power curves. Bigger effects need less data. To detect a 1% lift you need roughly 25× more users than to detect a 5% lift (required $n$ scales with $1/\delta^2$).</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -163,8 +163,8 @@ $$n \;=\; \frac{2\,(z_{1-\alpha/2} + z_{1-\beta})^2 \cdot p_0(1 - p_0)}{\Delta^2
 
 <p>
   Before you look at the outcome metric, look at the allocation. If you
-  randomised 50/50 and the logs show 52/48, something is wrong with the
-  pipeline — the randomiser may be broken, bot filtering may be unequal, or
+  designed a 50/50 split and the logs show 52/48 on a large sample, something
+  is wrong with the pipeline — the randomiser may be broken, bot filtering may be unequal, or
   a redirect bug may be dropping some users. This is called a
   <strong>Sample Ratio Mismatch (SRM)</strong>, and its presence
   invalidates every subsequent analysis.
@@ -178,18 +178,19 @@ $$n \;=\; \frac{2\,(z_{1-\alpha/2} + z_{1-\beta})^2 \cdot p_0(1 - p_0)}{\Delta^2
   $$\chi^2 \;=\; \sum_{k} \frac{(O_k - E_k)^2}{E_k}$$
   <div class="annotations">
     <span>$O_k$ — observed count in arm $k$</span>
-    <span>$E_k$ — expected under the randomisation ratio</span>
+    <span>$E_k$ — expected under the <em>designed</em> randomisation ratio (not automatically 50/50)</span>
   </div>
 </div>
 
 <div class="callout warning">
   <span class="label">⚠ Strict SRM threshold</span>
   <p>
-    Use $p < 0.0001$ — not $0.05$ — as your SRM alarm. SRM is a
-    data-quality red flag; the only reason to run the test is to catch
-    catastrophic pipeline errors. If you use a loose threshold, you will
-    false-alarm on many healthy experiments and waste engineering time
-    debugging nothing.
+    This course flags SRM at $p &lt; 0.01$, not $0.05$ (platforms that run
+    thousands of experiments often go stricter still, e.g. $0.001$). SRM is
+    a data-quality alarm, not a hypothesis about the treatment: a strict
+    threshold avoids false alarms on healthy experiments, and when it does
+    fire on a large sample it nearly always means a real pipeline fault. If
+    it fires on the arms you are analysing, do not ship.
   </p>
 </div>
 
@@ -197,9 +198,9 @@ $$n \;=\; \frac{2\,(z_{1-\alpha/2} + z_{1-\beta})^2 \cdot p_0(1 - p_0)}{\Delta^2
 <h2>The Data Collection Framework</h2>
 
 <p>
-  Before you instrument an experiment you need to answer five questions.
-  This is the Why/What/Where/How/Frequency framework from the original MLFP
-  curriculum; it scales from one-off A/B tests to enterprise data pipelines.
+  Before you instrument an experiment you need to answer five questions —
+  Why, What, Where, How and Frequency. The same checklist scales from
+  one-off A/B tests to enterprise data pipelines.
 </p>
 
 <div class="compare-grid">
@@ -267,31 +268,60 @@ $$n \;=\; \frac{2\,(z_{1-\alpha/2} + z_{1-\beta})^2 \cdot p_0(1 - p_0)}{\Delta^2
   <span class="label">⚙ Kailash Engine</span>
   <p>
     <code>ExperimentTracker</code> is where the pre-registered hypothesis,
-    the power analysis output, the SRM test, the primary test, and the final
-    decision all live. When a reviewer asks "was the sample size set before
-    or after the results?", the tracker answers with timestamps. In the
-    exercise you will log a full experiment end-to-end to
-    <code>ExperimentTracker</code> so that a colleague could reproduce every
-    number.
+    the power-analysis result and, later, the SRM test, the primary test and
+    the final decision are <em>recorded</em>. It does not run any of those
+    analyses — you compute them with SciPy/NumPy and log the results. Each run
+    is stamped with its start time, so when a reviewer asks "was the sample
+    size set before or after the results?", the run history answers.
+    Exercise 4.4 logs a full experiment report this way.
+  </p>
+  <p>
+    The tracker's API is asynchronous: create it with
+    <code>await ExperimentTracker.create(store_url=...)</code>, open a run with
+    <code>async with tracker.track(experiment=..., run_name=...)</code>, and
+    <code>await</code> every <code>log_params</code> / <code>log_metrics</code>
+    call. Parameters are logged as strings; metrics as numbers.
   </p>
 </div>
 
-<pre><code class="language-python">from kailash_ml.experiment_tracking import ExperimentTracker
+<pre><code class="language-python">import asyncio
 
-tracker = ExperimentTracker("ab_bogo_campaign_2024q4")
+from kailash_ml import ExperimentTracker
 
-tracker.log_hypothesis(
-    primary_metric="conversion_rate",
-    direction="increase",
-    mde=0.01,                # 1 percentage point lift
-    alpha=0.05,
-    power=0.80,
-)
 
-tracker.log_sample_size(n_per_arm=7_850, computed_at="2024-10-01")</code></pre>
+async def preregister() -&gt; str:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    try:
+        async with tracker.track(
+            experiment="mlfp02_bogo_ab", run_name="preregistration"
+        ) as run:
+            await run.log_params(
+                {
+                    "primary_metric": "conversion_rate",
+                    "direction": "increase",
+                    "baseline_rate": "0.08",
+                    "mde_abs": "0.01",          # 1 percentage point lift
+                    "alpha": "0.05",
+                    "power_target": "0.80",
+                }
+            )
+            await run.log_metrics({"n_per_arm_required": 11_554.0})
+            return run.run_id
+    finally:
+        await tracker.close()
+
+
+run_id = asyncio.run(preregister())
+print(f"Pre-registration logged as run {run_id}")</code></pre>
+
+<p>
+  In a Jupyter or Colab notebook an event loop is already running, so call
+  <code>await preregister()</code> directly instead of
+  <code>asyncio.run(...)</code>.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: BOGO A/B Experiment</h2>
+<h2>Worked Example: Sizing a BOGO test, then analysing a recorded experiment</h2>
 
 <div class="worked-example">
   <h3>📝 The setup</h3>
@@ -299,7 +329,10 @@ tracker.log_sample_size(n_per_arm=7_850, computed_at="2024-10-01")</code></pre>
     A Singapore e-commerce platform wants to know whether a Buy-One-Get-One
     (BOGO) promotion increases conversion rate. Baseline conversion is
     $p_0 = 0.08$. The product manager cares about detecting a $\Delta = 0.01$
-    (one percentage point) lift with 80% power at $\alpha = 0.05$.
+    (one percentage point) lift with 80% power at $\alpha = 0.05$. Step 1
+    sizes that test. Steps 2–4 then walk through the analysis on the
+    course's recorded experiment (<code>experiment_data.parquet</code>, the
+    file Exercise 4 uses), which has a different baseline.
   </p>
 
   <div class="step">
@@ -316,44 +349,91 @@ n_per_arm = int(np.ceil(
     2 * (z_alpha + z_beta)**2 * p0 * (1 - p0) / delta**2
 ))
 print(f"n per arm = {n_per_arm:,}")</code></pre>
+    <pre><code class="language-text">n per arm = 11,554</code></pre>
     <p>
-      Expect around $n \approx 5{,}800$ per arm. Run for at least that many
-      per group before peeking.
+      The formula already gives the size of <em>each</em> arm: 11,554 per arm,
+      about 23,100 users in total. Do not halve it. At 1,000 eligible users a
+      day that is about 24 days — and you should round up to whole weeks
+      (here 4) so every weekday is represented equally.
     </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2 — Load the data and check allocation (SRM).</span>
+    <span class="step-label">Step 2 — Load the data and check allocation (SRM) against the design.</span>
+    <p>
+      The recorded experiment was designed with four arms split
+      40/35/15/10 (control, treatment_a, treatment_b, variant_c). SRM is
+      always tested against the <em>designed</em> split — testing an unequal
+      design against 50/50 would "detect" SRM every time.
+    </p>
     <pre><code class="language-python">import polars as pl
 from shared import MLFPDataLoader
 
-df = MLFPDataLoader().load("mlfp02", "ab_test.parquet")
+df = MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
+design = {"control": 0.40, "treatment_a": 0.35,
+          "treatment_b": 0.15, "variant_c": 0.10}
+counts = dict(df.group_by("experiment_group").len().iter_rows())
+obs = [counts[g] for g in design]
+exp = [w * sum(obs) for w in design.values()]
+chi2, p_all = stats.chisquare(obs, f_exp=exp)
+print(f"All four arms: chi2 = {chi2:,.1f}, p = {p_all:.2g}")
 
-counts = df.group_by("arm").agg(pl.len().alias("n"))
-print(counts)
-
-n_c = counts.filter(pl.col("arm") == "control")["n"][0]
-n_t = counts.filter(pl.col("arm") == "treatment")["n"][0]
-expected = [(n_c + n_t) / 2] * 2
-chi2, p_srm = stats.chisquare([n_c, n_t], f_exp=expected)
-print(f"SRM chi² = {chi2:.3f}, p = {p_srm:.4f}")
-assert p_srm > 1e-4, "SRM detected! Investigate pipeline."</code></pre>
+pair = [counts["control"], counts["treatment_a"]]
+w_c = 0.40 / 0.75                       # designed 40:35, not 50:50
+chi2_p, p_pair = stats.chisquare(
+    pair, f_exp=[w_c * sum(pair), (1 - w_c) * sum(pair)])
+print(f"control vs treatment_a: chi2 = {chi2_p:.3f}, p = {p_pair:.3f}")
+assert p_pair &gt;= 0.01, "SRM: do not analyse this pair"</code></pre>
+    <pre><code class="language-text">All four arms: chi2 = 13,889.1, p = 0
+control vs treatment_a: chi2 = 0.240, p = 0.624</code></pre>
+    <p>
+      The four-arm test fails decisively: <code>variant_c</code> received 15%
+      of users instead of its designed 10%, so the allocation pipeline broke
+      for that arm, and any result involving it must be discarded. The
+      control–treatment_a pair, tested against its own designed share
+      ($40/75 \approx 53.3\%$ control), shows no mismatch ($p = 0.62$), so
+      that comparison can go ahead.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3 — Run the primary test.</span>
-    <pre><code class="language-python">from statsmodels.stats.proportion import proportions_ztest, confint_proportions_2indep
+    <p>
+      Conversion here means a qualifying order — a basket of at least
+      <span class="nomath">$50</span> (<code>metric_value &gt;= 50</code>), as in Exercises 3 and 4.
+      (Almost every user has <code>metric_value &gt; 0</code>, so "&gt; 0"
+      would give a meaningless 99% conversion rate.)
+    </p>
+    <pre><code class="language-python">two = df.filter(pl.col("experiment_group").is_in(["control", "treatment_a"]))
+conv = dict(
+    two.group_by("experiment_group")
+    .agg((pl.col("metric_value") &gt;= 50).sum())
+    .iter_rows()
+)
+k_c, k_t = conv["control"], conv["treatment_a"]
+n_c, n_t = counts["control"], counts["treatment_a"]
 
-k_c = df.filter(pl.col("arm") == "control")["converted"].sum()
-k_t = df.filter(pl.col("arm") == "treatment")["converted"].sum()
+p_c, p_t = k_c / n_c, k_t / n_t
+p_pool = (k_c + k_t) / (n_c + n_t)
+z = (p_t - p_c) / np.sqrt(p_pool * (1 - p_pool) * (1 / n_c + 1 / n_t))
+p_value = 2 * stats.norm.sf(abs(z))
+se = np.sqrt(p_c * (1 - p_c) / n_c + p_t * (1 - p_t) / n_t)
+lift = p_t - p_c
+lo, hi = lift - 1.96 * se, lift + 1.96 * se
 
-z, p = proportions_ztest([k_t, k_c], [n_t, n_c])
-lift = k_t / n_t - k_c / n_c
-lo, hi = confint_proportions_2indep(k_t, n_t, k_c, n_c, method="wald")
-
-print(f"Lift     = {lift:.4f}")
-print(f"95% CI   = [{lo:.4f}, {hi:.4f}]")
-print(f"p-value  = {p:.4f}")</code></pre>
+print(f"Control   = {p_c:.4f}  Treatment = {p_t:.4f}")
+print(f"Lift      = {lift:.4f}  (95% CI {lo:.4f} to {hi:.4f})")
+print(f"z = {z:.1f}, p-value = {p_value:.3g}")</code></pre>
+    <pre><code class="language-text">Control   = 0.1906  Treatment = 0.2482
+Lift      = 0.0576  (95% CI 0.0549 to 0.0604)
+z = 41.5, p-value = 0</code></pre>
+    <p>
+      The test statistic uses the pooled proportion (the null says both arms
+      share one rate); the confidence interval uses each arm's own rate
+      (unpooled), because it describes the difference you actually observed.
+      A p-value printed as 0 means smaller than floating point can represent —
+      report it as $p &lt; 10^{-300}$.
+    </p>
   </div>
 
   <div class="step">
@@ -363,12 +443,20 @@ print(f"p-value  = {p:.4f}")</code></pre>
       avoids "we prove the treatment works":
     </p>
     <div class="callout foundations">
-      <strong>Recommendation:</strong> Ship BOGO. The treatment increased
-      conversion rate by 1.3 percentage points (95% CI: 0.6 to 2.0,
-      $p = 0.003$), exceeding the pre-registered MDE of 1pp. At current
-      traffic, this corresponds to approximately $\$240{,}000$ additional
-      revenue per quarter. No SRM detected; no guardrail metrics degraded.
+      <strong>Recommendation:</strong> Ship treatment_a. It raised the share
+      of users placing a qualifying order from 19.1% to 24.8% — a lift of
+      5.8 percentage points (95% CI: 5.5 to 6.0) — far above any plausible
+      MDE. The control/treatment_a allocation matched the design (SRM
+      $p = 0.62$). <strong>Do not use variant_c:</strong> its allocation
+      failed the SRM check, so its results cannot be trusted. Before
+      shipping, confirm the guardrail metrics (e.g. average order value,
+      which Lesson 2.3 showed falls among converters).
     </div>
+    <p>
+      If the SRM check on the arms you analyse had failed, the only valid
+      recommendation would be "do not ship — fix the allocation and rerun",
+      however good the lift looks.
+    </p>
   </div>
 </div>
 
@@ -441,8 +529,11 @@ print(f"p-value  = {p:.4f}")</code></pre>
   The power formula from Lesson 2.3 becomes the sample size calculator
   here. The multiple testing corrections from 2.3 apply whenever you have
   more than one metric. Lesson 2.7 revisits A/B testing with CUPED
-  variance reduction and Bayesian sequential tests, letting you get
-  acceptable results with roughly half the sample size.
+  variance reduction and sequential tests. CUPED's saving depends on how
+  strongly a pre-period metric predicts the outcome: with correlation
+  $\rho = 0.7$ it cuts the required sample by 49%, but on this course's
+  experiment data the pre-period metric is weak and the reduction is only
+  about 4%.
 </p>
 
 <div class="reflection">

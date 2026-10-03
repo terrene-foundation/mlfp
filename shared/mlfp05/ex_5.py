@@ -41,11 +41,11 @@ BATCH_SIZE = 128
 try:
     _HERE = Path(__file__).resolve()
     REPO_ROOT = _HERE.parents[2]
-    OUTPUT_DIR = _HERE.parent
 except NameError:
     REPO_ROOT = Path.cwd()
-    OUTPUT_DIR = Path.cwd()
 DATA_DIR = REPO_ROOT / "data" / "mlfp05" / "mnist"
+OUTPUT_DIR = Path("outputs") / "ex5_gans"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ════════════════════════════════════════════════════════════════════════

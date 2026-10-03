@@ -141,6 +141,93 @@ def load_credit_data(
     return X_train, y_train, X_test, y_test, col_info["feature_columns"]
 
 
+def load_credit_default_sample(
+    n: int = 600,
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    """A small credit sample with the BINARY ``default`` outcome as target.
+
+    Used to show why stratified k-fold matters for an imbalanced target
+    (~13% defaults): with plain k-fold the default rate drifts from fold
+    to fold. Returns (X, y, feature_names); features are normalised and
+    the ID / post-outcome leak columns are dropped.
+    """
+    loader = MLFPDataLoader()
+    credit = (
+        loader.load("mlfp02", "sg_credit_scoring.parquet")
+        .drop(["customer_id", "future_default_indicator"])
+        .sample(n=n, seed=SEED)
+    )
+    pipeline = PreprocessingPipeline()
+    result = pipeline.setup(
+        data=credit,
+        target="default",
+        train_size=0.99,
+        seed=SEED,
+        normalize=True,
+        categorical_encoding="ordinal",
+        imputation_strategy="median",
+    )
+    frame = pl.concat([result.train_data, result.test_data])
+    feature_cols = [c for c in frame.columns if c != "default"]
+    X, y, col_info = to_sklearn_input(
+        frame, feature_columns=feature_cols, target_column="default"
+    )
+    return X, y.astype(int), col_info["feature_columns"]
+
+
+ICU_CV_FEATURES: list[str] = [
+    "age",
+    "gender",
+    "height_cm",
+    "weight_kg",
+    "bmi",
+    "insurance",
+    "ethnicity",
+    "diagnosis",
+    "icu_type",
+]
+
+
+def load_icu_admissions_for_cv() -> dict[str, Any]:
+    """ICU admissions with REAL time order and REAL repeated-patient groups.
+
+    One row per admission (8,000 admissions of ~4,000 patients), sorted by
+    ``admit_time`` so that TimeSeriesSplit's "earlier rows train, later
+    rows test" really means "past predicts future". Features are only
+    things known AT admission (patient demographics, diagnosis, ICU type);
+    the target is ``los_days`` (length of stay).
+
+    Returns a dict with X, y, groups (patient_id per row), admit_time
+    (polars Series), feature_names.
+    """
+    loader = MLFPDataLoader()
+    admissions = loader.load("mlfp02", "icu_admissions.parquet")
+    patients = loader.load("mlfp02", "icu_patients.parquet")
+    frame = (
+        admissions.join(patients, on="patient_id", how="left")
+        .with_columns(
+            pl.col("admit_time").str.to_datetime("%Y-%m-%d %H:%M:%S")
+        )
+        .sort("admit_time")
+    )
+    encoded = frame.with_columns(
+        [
+            pl.col(c).rank("dense").cast(pl.Float64)
+            for c in ICU_CV_FEATURES
+            if frame.schema[c] == pl.String
+        ]
+    ).with_columns(
+        [pl.col(c).cast(pl.Float64).fill_null(pl.col(c).median()) for c in ICU_CV_FEATURES]
+    )
+    return {
+        "X": encoded.select(ICU_CV_FEATURES).to_numpy(),
+        "y": encoded["los_days"].to_numpy(),
+        "groups": encoded["patient_id"].to_numpy(),
+        "admit_time": encoded["admit_time"],
+        "feature_names": list(ICU_CV_FEATURES),
+    }
+
+
 # ════════════════════════════════════════════════════════════════════════
 # SYNTHETIC 1D PROBLEM — for bias/variance and polynomial fits
 # ════════════════════════════════════════════════════════════════════════

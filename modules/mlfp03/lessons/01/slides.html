@@ -37,7 +37,7 @@
   <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
     <strong style="color: #0D9488;">⏱ 75 minutes</strong> &nbsp; · &nbsp;
     <strong>Prereq:</strong> MLFP02 complete &nbsp; · &nbsp;
-    <strong>Outcome:</strong> engineer and select features for ICU mortality
+    <strong>Outcome:</strong> engineer and select features for ICU long-stay prediction
   </div>
   <div class="slide-footer">MLFP — Module 3: Supervised ML</div>
 </section>
@@ -50,7 +50,7 @@
   </blockquote>
   <p style="font-size: 0.85em;">The skill that separates a senior ML engineer from a junior one is not knowing more algorithms — it is knowing how to turn a real problem into a feature matrix.</p>
   <div style="background: #FEF3C7; padding: 12px 18px; border-left: 4px solid #F59E0B; border-radius: 4px; margin-top: 1em; font-size: 0.85em;">
-    <strong>🟡 Applied:</strong> Today's dataset is a Singapore ICU cohort. Target = in-hospital mortality. Prediction time = 24 hours after admission.
+    <strong>🟡 Applied:</strong> Today's dataset is an ICU cohort (5,000 patients, 8,000 admissions). Target = <code>long_stay</code> (length of stay above the cohort median). Prediction time = 24 hours after admission.
   </div>
 </section>
 
@@ -163,6 +163,7 @@
         <text x="232" y="186" text-anchor="middle" font-size="10" fill="#475569">
           rows: 5000 → 4312 (cleaning)  |  cols: 12 → 18 (engineering) → 5 (selection)
         </text>
+        <text x="470" y="186" font-size="9" fill="#94A3B8" font-style="italic">(illustrative numbers)</text>
 
         <!-- Today callout -->
         <rect x="234" y="200" width="220" height="28" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5" stroke-dasharray="4 3"/>
@@ -221,8 +222,8 @@
 
         <rect x="420" y="50" width="280" height="100" rx="10" fill="#FEF2F2" stroke="#DC2626" stroke-width="2"/>
         <text x="560" y="75" text-anchor="middle" font-weight="700" fill="#B91C1C">✗ Leaky</text>
-        <text x="560" y="98" text-anchor="middle" font-size="12" fill="#7F1D1D">length_of_stay</text>
-        <text x="560" y="116" text-anchor="middle" font-size="12" fill="#7F1D1D">final diagnosis code</text>
+        <text x="560" y="98" text-anchor="middle" font-size="12" fill="#7F1D1D">los_days, discharge_time (the label's source)</text>
+        <text x="560" y="116" text-anchor="middle" font-size="12" fill="#7F1D1D">vitals, meds, labs after hour 24</text>
       </g>
     </svg>
   </figure>
@@ -268,25 +269,34 @@
 <section>
   <h2>Kailash engines: three verbs</h2>
   <ul style="font-size: 0.85em;">
-    <li><code>FeatureEngineer</code> — generate derived columns from declarative recipes</li>
-    <li><code>PreprocessingPipeline</code> — chain encoders, scalers, splitters (polars-native)</li>
-    <li><code>FeatureStore</code> — register schema so downstream models validate inputs</li>
+    <li><code>FeatureSchema</code> — declare the feature contract (names, dtypes, entity id)</li>
+    <li><code>FeatureEngineer</code> — <code>generate()</code> candidates (interactions, squares, bins), <code>select()</code> the top-k</li>
+    <li><code>PreprocessingPipeline</code> — impute, encode, scale (polars-native) — fit on training rows only</li>
   </ul>
   <pre><code class="language-python" data-trim>
-from kailash_ml import FeatureEngineer, PreprocessingPipeline
-from kailash_ml.types import FeatureSchema, FeatureField
+from kailash_ml import FeatureEngineer
+from kailash_ml.types import FeatureField, FeatureSchema
 
-fe = FeatureEngineer()
-features = fe.aggregate(vitals, group_by="admission_id",
-    agg={"heart_rate": ["mean", "std", "max"]}
-).then_derive("shock_index", "heart_rate_mean / systolic_bp_mean")
+schema = FeatureSchema(
+    name="icu_vitals_v1", entity_id_column="admission_id",
+    features=[FeatureField("heart_rate_mean", "float64"),
+              FeatureField("systolic_bp_mean", "float64"),
+              FeatureField("age", "int64")])
+
+fe = FeatureEngineer(max_features=10)
+cands = fe.generate(train_df, schema, strategies=["interactions"])
+picked = fe.select(cands.data, cands, target="long_stay",
+                   method="mutual_info")  # train rows only
+print(picked.selected_columns)
   </code></pre>
+  <p style="font-size: 0.7em; color: #64748B;">Ratios such as the shock index are not generated for you — write them in polars (next slides).</p>
 </section>
 
 <!-- ═══ Slide 11: Step 1-2 Load + clip ═══════════════════════ -->
 <section>
   <h2>Load and clip to the first 24h</h2>
   <pre><code class="language-python" data-trim>
+# vitals: icu_vitals.parquet (wide), timestamps parsed to datetime
 vitals_24h = (
     vitals.join(admissions.select(["admission_id", "admit_time"]),
                 on="admission_id")
@@ -295,7 +305,7 @@ vitals_24h = (
                   pl.col("timestamp") - pl.col("admit_time")
               ).dt.total_hours()
           )
-          .filter(pl.col("hours_since_admit") <= 24)
+          .filter(pl.col("hours_since_admit").is_between(0, 24))
 )
   </code></pre>
   <p style="font-size: 0.85em;">This is where point-in-time correctness is enforced. A vital at hour 48 cannot be a feature for an hour-24 prediction.</p>
@@ -340,15 +350,17 @@ from sklearn.feature_selection import mutual_info_classif, RFE
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 
+# Fit every selector on the TRAINING split only
 # Filter
-mi = mutual_info_classif(X.to_numpy(), y, random_state=42)
+mi = mutual_info_classif(X_train, y_train, random_state=42)
 
-# Wrapper
+# Wrapper (scale first: LR needs comparable feature units)
 rfe = RFE(LogisticRegression(max_iter=2000), n_features_to_select=10)
-rfe.fit(X.to_numpy(), y)
+rfe.fit(X_train_scaled, y_train)
 
 # Embedded
-rf = RandomForestClassifier(n_estimators=200, random_state=42).fit(X, y)
+rf = RandomForestClassifier(n_estimators=200, random_state=42)
+rf.fit(X_train, y_train)
   </code></pre>
   <p style="font-size: 0.85em;">The three rankings will disagree — that is the point. Use the intersection as your robust core.</p>
 </section>
@@ -360,7 +372,7 @@ rf = RandomForestClassifier(n_estimators=200, random_state=42).fit(X, y)
     <strong>1.</strong> Fitting the scaler on the full dataset before splitting — leaks test-set statistics into training.
   </div>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.85em;">
-    <strong>2.</strong> Using future-looking features — length_of_stay, final diagnosis, total meds over admission.
+    <strong>2.</strong> Using future-looking features — discharge time, anything derived from length of stay (it defines the label), meds or labs recorded after hour 24.
   </div>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.85em;">
     <strong>3.</strong> Selecting features on the full data, then splitting — selection has already seen the test set.

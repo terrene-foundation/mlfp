@@ -474,12 +474,12 @@
   <h2>Application: Customer Segmentation</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="case-study">
-    <h3 style="color: var(--mlfp-alert);">Singapore Retail Case</h3>
+    <h3 style="color: var(--mlfp-alert);">Singapore E-commerce Case (illustrative)</h3>
     <ul style="font-size: 0.85em;">
-      <li>RFM features: Recency, Frequency, Monetary value</li>
-      <li>K-means identifies 4 segments: loyal, at-risk, new, churned</li>
-      <li>HDBSCAN discovers a 5th micro-segment: seasonal bulk buyers</li>
-      <li>Cluster membership becomes a <strong>feature</strong> for churn prediction (M3 pipeline)</li>
+      <li>RFM-style features: recency, frequency, monetary value (+ tenure, satisfaction, returns)</li>
+      <li><code>churned</code> is an <strong>outcome</strong> &mdash; kept OUT of the clustering features</li>
+      <li>Segments get business names from their profiles, e.g. loyal, lapsing, new</li>
+      <li>Cluster membership then becomes a <strong>feature</strong> for churn prediction (M3 pipeline)</li>
     </ul>
   </div>
   <div class="callout callout-kailash" style="margin-top: 8px;">
@@ -489,42 +489,75 @@
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. This is the key pedagogical link: clustering is not an end in itself. The cluster labels become features for downstream supervised models. This connects back to M3 and forward to the USML spectrum.
+    Timing: 2 min. This is the key pedagogical link: clustering is not an end in itself. The cluster labels become features for downstream supervised models. This connects back to M3 and forward to the USML spectrum. The segment names are illustrative &mdash; the exercise derives its own from cluster profiles. Stress the leakage trap: if the churn label goes into the clustering, the clusters partly encode the answer and the downstream churn model looks better than it is.
   </aside>
 </section>
 
 <section>
-  <h2>Kailash Bridge: AutoMLEngine for Clustering</h2>
+  <h2>Kailash Bridge: ClusteringEngine</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>Theory &rarr; Engine</h3>
     <div class="theory-to-engine">
-      <span>K-means, GMM, HDBSCAN, Spectral, Hierarchical</span>
+      <span>K-means, GMM, DBSCAN, Spectral + choosing K</span>
       <span class="arrow">&rarr;</span>
-      <span><code>AutoMLEngine</code></span>
+      <span><code>ClusteringEngine</code></span>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import AutoMLEngine, AutoMLConfig
+  <pre style="font-size: 0.55em; line-height: 1.3"><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+from kailash_ml.engines.clustering import ClusteringEngine
 
-config = AutoMLConfig(
-    task="clustering",
-    algorithms=["kmeans", "gmm", "hdbscan", "spectral"],
-    metric="silhouette",
-    n_trials=50
-)
+FEATURES = ["total_revenue", "order_count", "avg_order_value",
+            "days_since_last_order", "customer_tenure_days",
+            "satisfaction_score", "num_returns"]  # churned = outcome, excluded
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X = customers.select(FEATURES).drop_nulls().sample(3000, seed=42)
+X = X.select((pl.all() - pl.all().mean()) / pl.all().std())  # standardise
 
-engine = AutoMLEngine(config)
-results = engine.fit(df)
-
-best = results.best_model
-print(f"Best: {best.algorithm}, Silhouette: {best.score:.3f}")
-labels = best.labels           # Hard assignments
-probabilities = best.probas    # Soft assignments (if available)</code></pre>
+engine = ClusteringEngine()  # algorithms: kmeans | gmm | dbscan | spectral
+sweep = engine.sweep_k(X, k_range=range(2, 9), criterion="silhouette")
+fit = engine.fit(X, algorithm="kmeans", n_clusters=sweep.optimal_k)
+print(f"K={fit.n_clusters}  silhouette={fit.silhouette_score:.3f}")</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "AutoMLEngine compares clustering algorithms for you. It runs each one, computes validation metrics, and reports the best. No manual tuning needed."
+    Timing: 2 min. "ClusteringEngine puts four of today's algorithms &mdash; kmeans, gmm, dbscan, spectral &mdash; behind one .fit() call that returns labels, silhouette, Calinski-Harabasz and inertia. sweep_k runs the K sweep you did by hand and reports the optimal K for the criterion you choose." Be honest about scope: Ward/agglomerative and HDBSCAN are not in the engine &mdash; the exercise uses scipy and hdbscan for those. On a 3,000-customer sample this picks K=3 with silhouette about 0.18: real customer data does not form crisp clusters, which is why business profiling matters more than the score. This is the engine the module assessment's clustering task uses.
+  </aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge: AutoMLEngine Search</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre style="font-size: 0.55em; line-height: 1.3"><code class="language-python">import asyncio
+from kailash_ml import AutoMLEngine
+from kailash_ml.automl import AutoMLConfig, ParamSpec, Trial, TrialOutcome
+
+config = AutoMLConfig(task_type="clustering", metric_name="silhouette",
+                      direction="maximize", search_strategy="grid",
+                      max_trials=12, agent=False, max_llm_cost_usd=1.0)
+space = [ParamSpec(name="algorithm", kind="categorical", choices=("kmeans", "gmm")),
+         ParamSpec(name="n_clusters", kind="int", low=3, high=8)]
+
+async def trial_fn(trial: Trial) -> TrialOutcome:  # YOU own the trainer
+    r = engine.fit(X, algorithm=trial.params["algorithm"],
+                   n_clusters=int(trial.params["n_clusters"]))
+    return TrialOutcome(trial_number=trial.trial_number, params=trial.params,
+                        metric=float(r.silhouette_score),
+                        metric_name="silhouette", direction="maximize")
+
+automl = AutoMLEngine(config=config, tenant_id="mlfp04", actor_id="student")
+result = asyncio.run(automl.run(space=space, trial_fn=trial_fn))
+print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
+  <div class="callout callout-kailash" style="margin-top: 4px; font-size: 0.75em;">
+    AutoMLEngine proposes trials, enforces the trial / time / cost budget and keeps the audit record. <code>agent=False</code>: no LLM is called.
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Timing: 2 min. Continues from the previous slide (same engine and X). "AutoMLEngine does not know what clustering is &mdash; you declare the search space and a trial function that trains one candidate and reports its metric. The engine runs the search, enforces budgets and records every trial." agent=True would let an LLM propose trials; that costs money and is non-deterministic, so it needs a double opt-in (the flag plus a cost cap). Without a governance engine or database attached, the engine logs that admission checks are skipped and keeps trials in memory &mdash; fine for class, not for production. This is exactly the search in Exercise 1.5.
   </aside>
 </section>
 
@@ -532,19 +565,20 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
   <h2>Exercise 4.1: Customer Segmentation</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Segment retail customers using RFM features.
+    <strong>Task:</strong> Segment Singapore e-commerce customers (behaviour features; <code>churned</code> excluded).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Apply K-means, hierarchical (with dendrogram), and HDBSCAN</li>
-      <li>Evaluate with silhouette score and Davies-Bouldin index</li>
+      <li>1.1 K-means++: choose K with elbow, silhouette and the gap statistic (1-SE rule)</li>
+      <li>1.2 Hierarchical with four linkages + Ward dendrogram; 1.3 DBSCAN + HDBSCAN</li>
+      <li>1.4 Spectral on two moons: spectral recovers them (ARI 1.0) while silhouette prefers K-means</li>
+      <li>1.5 Silhouette, DB, CH + ARI/NMI agreement; AutoMLEngine search over algorithm &times; K</li>
       <li>Interpret clusters with business meaning (not just "cluster 0, cluster 1")</li>
-      <li>Use AutoMLEngine to compare all algorithms programmatically</li>
     </ul>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Point students to the exercise notebook. Emphasise: the assessment criteria require business interpretation &mdash; not just running the code.
+    Timing: 1 min. Exercise 1 is a directory of five files (solutions/ex_1/01_kmeans.py &hellip; 05_evaluation_profiling.py). Point out the 1.4 lesson: silhouette is a Euclidean, convexity-loving score, so it can rank the WRONG answer higher on non-convex shapes &mdash; always look at the clusters too. Emphasise: the assessment criteria require business interpretation &mdash; not just running the code.
   </aside>
 </section>
 

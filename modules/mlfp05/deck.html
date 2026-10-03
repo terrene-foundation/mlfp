@@ -5639,8 +5639,14 @@ trainer.train()</code></pre>
         <li><strong>Warmup:</strong> gradual learning rate increase prevents early instability</li>
         <li><strong>Max sequence length:</strong> BERT supports up to 512 tokens</li>
       </ul>
-      <div class="callout callout-theory" style="margin-top: 8px;">
-        <strong>Adapter modules:</strong> Instead of fine-tuning all parameters, add small bottleneck layers between transformer layers. Train only the adapters. Much fewer parameters to update. Connects to LoRA in M6.
+      <p class="small" style="margin: 4px 0 0;"><strong>Inference with the Pipeline API:</strong></p>
+      <pre style="font-size: 0.38em; line-height: 1.3; margin-top: 2px;"><code class="language-python">from transformers import pipeline
+
+clf = pipeline("text-classification",
+               model=model, tokenizer=tokenizer)
+clf("Shares rallied after strong earnings")</code></pre>
+      <div class="callout callout-theory" style="margin-top: 6px;">
+        <strong>Adapter modules:</strong> add small bottleneck layers between transformer layers and train only those &mdash; ~1% of the parameters. Connects to LoRA in M6.
       </div>
     </div>
   </div>
@@ -5688,7 +5694,7 @@ trainer.train()</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. HuggingFace makes BERT fine-tuning straightforward. The key hyperparameters are learning rate and epochs. Adapter modules are mentioned as a preview for M6 (LoRA and parameter-efficient fine-tuning). Students should understand: full fine-tuning changes all weights, adapters change only a few.
+    Time: ~3 min. HuggingFace makes BERT fine-tuning straightforward: Trainer for training, the pipeline() API for inference (tokenise, forward pass and softmax in one call, returning a label and score). The key hyperparameters are learning rate and epochs. If students write their own TrainingArguments, the evaluation argument is eval_strategy (evaluation_strategy was removed in recent transformers versions). Adapter modules are mentioned as a preview for M6 (LoRA and parameter-efficient fine-tuning). Students should understand: full fine-tuning changes all weights, adapters change only a few.
   </aside>
 </section>
 

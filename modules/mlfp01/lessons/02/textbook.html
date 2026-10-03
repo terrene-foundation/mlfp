@@ -34,8 +34,8 @@
 </h1>
 
 <p class="lead">
-  Twelve rows of weather is the toy problem. Today we jump to 500,000 rows
-  of real Singapore HDB resale transactions and learn the three operations
+  Twelve rows of weather is the toy problem. Today we jump to 50,150 rows
+  of Singapore HDB resale transactions and learn the three operations
   that take a dataset from "everything" to "exactly the rows and columns I
   need to answer my question": <strong>filter</strong>, <strong>select</strong>,
   and <strong>with_columns</strong>. By the end you will chain them together
@@ -47,13 +47,27 @@
 <h2>Why This Matters</h2>
 
 <p>
-  Every analysis you will ever do starts with too much data. Singapore's
-  Housing &amp; Development Board publishes every public-housing resale
-  transaction since 1990 — about 900,000 rows spanning 26 towns, seven flat
-  types, four decades. A question like <em>"what is the median price of a
-  4-room flat in Bishan last year?"</em> touches fewer than 300 of those
-  rows. Your first job is to throw away the 899,700 you do not need.
+  Every analysis you will ever do starts with too much data. Our course file
+  <code>hdb_resale.parquet</code> holds 50,150 resale transactions from
+  January 2015 to December 2024, spanning 27 towns and six flat types. A
+  question like <em>"what did 4-room flats in Bishan sell for in 2023?"</em>
+  touches just 62 of those rows. Your first job is to throw away the other
+  50,088.
 </p>
+
+<div class="callout foundations">
+  <span class="label">🟢 About this dataset</span>
+  <p>
+    The HDB file is a <strong>synthetic</strong> dataset built for this course.
+    It follows the schema of public-housing resale records (month, town,
+    flat type, block, storey range, floor area, lease, price), but the
+    prices are generated: there is no real market trend in it, and it
+    contains deliberately planted defects for you to find — 107 sales
+    recorded at S$10 and 144 at S$9,000,000. The median price is
+    S$849,126. Use it to practise technique, not to draw conclusions about
+    the real property market.
+  </p>
+</div>
 
 <p>
   Beginners throw data away badly. They copy the file into Excel, drag-filter
@@ -74,13 +88,13 @@
   <!-- Raw data -->
   <rect x="20" y="40" width="180" height="180" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
   <text x="110" y="30" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">Raw dataset</text>
-  <text x="110" y="70" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B">~500,000 rows</text>
-  <text x="110" y="88" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B">14 columns</text>
+  <text x="110" y="70" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B">50,150 rows</text>
+  <text x="110" y="88" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B">11 columns</text>
   <g font-family="JetBrains Mono" font-size="10" fill="#94A3B8">
     <text x="110" y="115" text-anchor="middle">month · town · flat_type</text>
     <text x="110" y="132" text-anchor="middle">block · street_name</text>
     <text x="110" y="149" text-anchor="middle">storey_range · area_sqm</text>
-    <text x="110" y="166" text-anchor="middle">flat_model · lease</text>
+    <text x="110" y="166" text-anchor="middle">flat_model · lease_commence</text>
     <text x="110" y="183" text-anchor="middle">remaining_lease · price</text>
     <text x="110" y="200" text-anchor="middle">…</text>
   </g>
@@ -90,8 +104,8 @@
 
   <rect x="280" y="70" width="180" height="120" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
   <text x="370" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">After filter</text>
-  <text x="370" y="100" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">~300 rows</text>
-  <text x="370" y="118" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">14 columns</text>
+  <text x="370" y="100" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">668 rows</text>
+  <text x="370" y="118" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">11 columns</text>
   <text x="370" y="150" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">town == "BISHAN"</text>
   <text x="370" y="166" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">flat_type == "4 ROOM"</text>
 
@@ -100,7 +114,7 @@
 
   <rect x="540" y="90" width="220" height="80" rx="8" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
   <text x="650" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Analysis-ready</text>
-  <text x="650" y="115" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">~300 rows</text>
+  <text x="650" y="115" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">668 rows</text>
   <text x="650" y="133" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">4 columns + price_per_sqm</text>
   <text x="650" y="155" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">ready to answer question</text>
 </svg>
@@ -220,12 +234,14 @@ pl.col("floor_area_sqm") * pl.col("price_per_sqm")
   <span class="label">🔵 Theory</span>
   <p>
     Separating the <em>description</em> of work from its <em>execution</em> is
-    what lets Polars optimise your pipeline. When you write
-    <code>df.filter(A).filter(B).select(C)</code>, Polars can reorder
-    the filters, push them down below <code>select</code>, or fuse them into
-    a single scan — none of which would be safe if filters mutated the
-    DataFrame in place. You will see this again in Lesson 1.5 when we
-    introduce lazy frames, where the separation becomes explicit.
+    what lets Polars optimise your pipeline. Within a single call such as
+    <code>with_columns(a, b, c)</code>, Polars can compute the three
+    expressions in parallel. On an ordinary (eager) DataFrame, each method
+    in a chain runs as soon as it is called. In Lesson 1.5 you will meet
+    <em>lazy</em> frames: there, <code>lf.filter(A).filter(B).select(C)</code>
+    is only a plan, and Polars can reorder the filters, push them down to the
+    file scan, or fuse them before running anything — none of which would be
+    safe if filters mutated the DataFrame in place.
   </p>
 </div>
 
@@ -298,22 +314,22 @@ df.filter(pl.col("town").is_in(central))
     </marker>
   </defs>
   <rect x="250" y="20" width="260" height="40" rx="6" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
-  <text x="380" y="45" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">hdb  (500,000 rows)</text>
+  <text x="380" y="45" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">hdb  (50,150 rows)</text>
   <line x1="380" y1="60" x2="380" y2="85" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-chain)"/>
   <text x="520" y="78" font-family="JetBrains Mono" font-size="11" fill="#0D9488">.filter(year ≥ 2020)</text>
 
   <rect x="250" y="88" width="260" height="40" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-  <text x="380" y="113" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0F766E">180,000 rows</text>
+  <text x="380" y="113" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0F766E">24,904 rows</text>
   <line x1="380" y1="128" x2="380" y2="153" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-chain)"/>
   <text x="520" y="146" font-family="JetBrains Mono" font-size="11" fill="#0D9488">.filter(tier in premium/luxury)</text>
 
   <rect x="250" y="156" width="260" height="40" rx="6" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
-  <text x="380" y="181" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0F766E">32,000 rows</text>
+  <text x="380" y="181" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0F766E">23,254 rows</text>
   <line x1="380" y1="196" x2="380" y2="221" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-chain)"/>
   <text x="520" y="214" font-family="JetBrains Mono" font-size="11" fill="#0D9488">.select(date, town, type, price)</text>
 
   <rect x="250" y="224" width="260" height="40" rx="6" fill="#99F6E4" stroke="#0D9488" stroke-width="2"/>
-  <text x="380" y="249" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0F766E">32,000 rows × 4 cols</text>
+  <text x="380" y="249" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0F766E">23,254 rows × 4 cols</text>
   <line x1="380" y1="264" x2="380" y2="289" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-chain)"/>
   <text x="520" y="282" font-family="JetBrains Mono" font-size="11" fill="#0D9488">.sort("resale_price", desc)</text>
 
@@ -391,12 +407,12 @@ df.filter(pl.col("town").is_in(central))
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Finding Bishan's Million-Dollar Flats</h2>
+<h2>Worked Example: Finding Bishan's Top-End 4-Room Flats</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Load the HDB resale dataset (~500,000 rows) and answer: <em>how many
+    Load the HDB resale dataset (50,150 rows) and answer: <em>how many
     4-room flats in Bishan sold for more than S$800,000 in 2023, and what
     was their median price per square metre?</em>
   </p>
@@ -414,10 +430,20 @@ print(f"Shape: {hdb.shape}")
 print(f"Columns: {hdb.columns}")
 print(hdb.head(3))</code></pre>
     <p>
-      Typical output: <code>Shape: (500123, 11)</code> — roughly half a
-      million transactions. The columns include <code>month</code>,
-      <code>town</code>, <code>flat_type</code>, <code>floor_area_sqm</code>,
-      <code>resale_price</code>, and several others we will ignore today.
+      Output:
+    </p>
+    <pre><code class="language-text">Shape: (50150, 11)
+Columns: ['month', 'town', 'flat_type', 'block', 'street_name', 'storey_range',
+          'floor_area_sqm', 'flat_model', 'lease_commence_date',
+          'remaining_lease', 'resale_price']</code></pre>
+    <p>
+      Fifty thousand transactions, eleven columns. Notice the types in the
+      <code>head(3)</code> printout: <code>month</code> is a string like
+      <code>"2016-03"</code> (not a date yet), <code>resale_price</code> is an
+      integer, and <code>remaining_lease</code> is text such as
+      <code>"71 years 11 months"</code>. The third row already shows a
+      Jurong West 4-room flat "sold" for S$10 — one of the planted defects.
+      We will ignore most columns today.
     </p>
   </div>
 
@@ -452,9 +478,9 @@ print(hdb.head(3))</code></pre>
 
 print(f"Matching transactions: {million_dollar.height}")</code></pre>
     <p>
-      The exact count depends on the snapshot of the dataset, but in the
-      2023 HDB data this filter returns a handful of rows — "million-dollar
-      HDBs" are rare but exist. The headline pattern is what matters.
+      Output: <code>Matching transactions: 53</code>. Bishan had 62 4-room
+      sales in 2023, so 53 of them cleared S$800,000 — in this synthetic
+      dataset, high prices are the norm rather than the exception.
     </p>
   </div>
 
@@ -471,6 +497,11 @@ print(f"Matching transactions: {million_dollar.height}")</code></pre>
     print(f"  Median price / sqm: S${median_psm:,.0f}")
 else:
     print("No matching transactions")</code></pre>
+    <p>Output:</p>
+    <pre><code class="language-text">Bishan 4-room &gt; S$800k, 2023:
+  Transactions:       53
+  Median price:       S$995,458
+  Median price / sqm: S$10,171</code></pre>
   </div>
 
   <div class="step">
@@ -498,7 +529,8 @@ print(summary)</code></pre>
       That is the canonical shape of a Polars analysis: enrich, filter,
       select, sort. From here you could pipe the result into a chart, a CSV
       export, or an aggregation — without ever having to re-read the original
-      500,000 rows.
+      50,150 rows. The printout starts with a 2023-04 sale at S$1,156,035
+      (101.1 sqm) and ends 53 rows later with a 2023-03 sale at S$804,800.
     </p>
   </div>
 </div>
@@ -652,6 +684,17 @@ print(summary)</code></pre>
   </p>
 </div>
 
+<div class="callout foundations">
+  <span class="label">🟢 Check your answers</span>
+  <p>
+    A: 3,539 Jurong West rows. B: 35 rows. C: 22,133 flats are
+    <code>large_flat == True</code>. D: 6,148 rows; the top of the list shows
+    4-room flats at roughly S$95,000–S$99,000 per sqm. No HDB flat is worth
+    that — those rows are the planted S$9,000,000 prices. Sorting is one of
+    the fastest ways to surface bad data, and Lesson 1.7 automates the hunt.
+  </p>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Cross-References</h2>
 
@@ -672,7 +715,7 @@ print(summary)</code></pre>
 <h2>Reflection</h2>
 <p>
   In under an hour you went from looking at a twelve-row dataset to filtering
-  half a million rows of real Singapore property transactions down to the
+  50,000 rows of Singapore resale transactions down to the
   exact subset needed to answer a business question. The three verbs —
   <code>filter</code>, <code>with_columns</code>, <code>select</code> — and
   the glue of method chaining cover the vast majority of the data

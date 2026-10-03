@@ -24,3 +24,10 @@
 
 ## Deferred spec gaps (S6)
 - 5.2 Mixup, label smoothing, Kaiming init. 5.3 technical indicators, char-level LSTM generation, perplexity. 5.5 DCGAN, real Inception Score. 5.6 GIN, graph classification (TUDataset). 5.8 DDPG, SAC, A2C.
+
+---
+# Additions from the deck shard (S2a, merged 08ffdfb4)
+- OnnxBridge.export needs output_path as a pathlib.Path (a str fails) — teach Path everywhere.
+- Deck now 129 slides (2 new: stacked LSTMs & spatial attention; GIN with torch_geometric graph classification). Spec gaps shown on slides as "extensions" pending S6.
+- Assessment slide describes the 5-question quiz + four graded tasks (S5 must keep consistent).
+- speaker-notes.md rebuild from the deck (129 slides). deck.pdf + readings/deck.pdf regenerate + parity --update. index.html/README: RLTrainer, InferenceServer, exercise descriptions.

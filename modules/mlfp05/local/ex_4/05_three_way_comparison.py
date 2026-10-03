@@ -336,19 +336,16 @@ bert_losses, bert_accs = asyncio.run(
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — comparative Prescription Pad for all 3
 # ══════════════════════════════════════════════════════════════════
+# Same instruments, three architectures, same data. Probes come from the
+# training loaders (the probe runs in train mode).
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
-from kailash_ml import diagnose
+from shared.mlfp05.diagnostics import print_prescription_pad
 
-print("\n── Diagnostic Report (LSTM) ──")
-report = diagnose(lstm_model, kind="dl", data=val_loader, show=False)
 
-print("\n── Diagnostic Report (Transformer) ──")
-report = diagnose(
-    transformer_model,
-    kind="dl",
-    data=val_loader,
-    show=False,
-)
+def _ce_loss(m, batch):
+    """Cross-entropy on one (token_ids, labels) batch."""
+    xb, yb = batch
+    return F.cross_entropy(m(xb), yb)
 
 
 def _bert_loss(m, ids, mask, labels):
@@ -356,61 +353,35 @@ def _bert_loss(m, ids, mask, labels):
 
 
 def _bert_adapter(batch):
+    # BERT batches are (ids, mask, labels), passed to the loss as three args
     return batch[0], batch[1], batch[2]
 
 
-print("\n── Diagnostic Report (BERT fine-tune) ──")
-bert_diag, bert_findings = run_diagnostic_checkpoint(
-    bert_model,
-    bert_val_loader,
-    _bert_loss,
-    title="BERT fine-tune (3-way comparison)",
-    n_batches=4,
-    train_losses=bert_losses,
-    val_losses=[1.0 - a for a in bert_accs],
-    batch_adapter=_bert_adapter,
-    show=False,
-)
+for _title, _model, _loader, _loss, _hist, _adapter, _n in [
+    ("LSTM", lstm_model, train_loader, _ce_loss, lstm_losses, None, 8),
+    ("Transformer", transformer_model, train_loader, _ce_loss, transformer_losses, None, 8),
+    ("BERT fine-tune", bert_model, bert_train_loader, _bert_loss, bert_losses, _bert_adapter, 4),
+]:
+    print(f"\n── Diagnostic Report ({_title}) ──")
+    _diag, _findings = run_diagnostic_checkpoint(
+        _model,
+        _loader,
+        _loss,
+        title=f"{_title} (3-way comparison)",
+        n_batches=_n,
+        train_losses=_hist,
+        batch_adapter=_adapter,
+        show=False,
+    )
+    print_prescription_pad(_findings, f"{_title} (3-way comparison)")
 
-# ══════ EXPECTED OUTPUT (reference pattern — 3-way on AG News) ══════
-# All three reports follow their individual-file patterns (02, 03, 04).
-# Side-by-side takeaway:
-#   LSTM        : gradient-flow WARNING (recurrent weights 1:50 of head)
-#   Transformer : all HEALTHY, uniform gradients across encoder layers
-#   BERT        : all HEALTHY, frozen layers 0-7 show ZERO RMS (by design)
-#
-# STUDENT INTERPRETATION GUIDE — the comparative narrative:
-#
-#  [BLOOD TEST] compare gradient-flow readings across the three
-#     reports. The LSTM shows concentrated gradients at the head;
-#     the Transformer shows uniform gradients across `encoder.layers`;
-#     BERT shows zeros in frozen layers and healthy signal above layer
-#     8. This ONE instrument tells the whole story of slide 5.4:
-#     attention + residuals + pretraining stack three architectural
-#     wins on top of each other.
-#     >> Prescription Pad reading: the accuracy gap (LSTM -> Transformer
-#        -> BERT) is NOT just hyperparameter tuning — it's visible in
-#        the gradient-flow report before you ever look at val acc.
-#
-#  [STETHOSCOPE] loss curve shapes differ:
-#     - LSTM: slow convergence, plateau by epoch 5 (sequential ceiling)
-#     - Transformer: steady decline, could benefit from more epochs
-#     - BERT: sharp drop in 2 epochs, then gentle tail (pretraining
-#       head-start is doing the work)
-#     The Stethoscope surfaces the "how fast can this architecture
-#     learn" question that slide 5.4 frames as "inductive bias from
-#     pretraining amortises compute".
-#
-#  [FIVE-INSTRUMENT TAKEAWAY] This comparison is the most valuable
-#  diagnostic exercise in ex_4. You see the SAME instruments producing
-#  three distinct signatures on the SAME dataset. Students who memorise
-#  these three signatures can diagnose any NLP architecture in the
-#  future. Prescription Pad's value is as a classifier OF classifiers.
-#
-#  CONNECT TO SLIDE 5.4: The slide's "pretrain-then-finetune is the
-#  dominant paradigm" claim is proven by the ZERO RMS on BERT's
-#  frozen layers + the 4-point accuracy win at 3 epochs. That's the
-#  empirical form of the argument.
+# ══════ READING THE THREE PADS (key: see ex_1/01_standard_ae.py) ══════
+# Line the three pads up. They read optimisation health per layer and
+# the training-loss trend; the accuracy, size and speed table below is
+# what ranks the models. BERT's frozen layers 0-7 receive no gradient
+# by design. Readings you can tie to the architecture (the LSTM's
+# recurrent weights vs the Transformer's residual stack) are worth
+# writing down; differences you cannot explain are worth re-running.
 # ══════════════════════════════════════════════════════════════════
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
@@ -625,28 +596,27 @@ print("\n--- Checkpoint 5 passed --- visualisations complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# DESTINATION-FIRST CLOSE — km.diagnose
+# DESTINATION-FIRST CLOSE — one-call diagnostics
 # ════════════════════════════════════════════════════════════════════════
-# This lesson walked the journey of attention-based language models —
-# from-scratch self-attention, transformer encoder, LSTM baseline, and
-# BERT fine-tuning. The kailash-ml SDK ships a single-call diagnostic
-# primitive that closes the production loop: km.diagnose inspects a
-# trained model and emits an auto-dashboard (loss curves, gradient flow,
-# dead neurons, activation stats, weight distributions). One cell.
-# Every diagnostic students would otherwise hand-roll, ready to surface
-# in a Plotly dashboard.
-
-from kailash_ml import diagnose
-
-# We diagnose the from-scratch transformer (val_loader yields token-id
-# tensors compatible with its forward signature). `kind='auto'` dispatches
-# by model type — DLDiagnostics for torch.nn.Module.
-report = diagnose(transformer_model, kind="auto", data=val_loader, show=False)
-report.plot_training_dashboard()
-print()
-print("km.diagnose: 1 line of code -> the same observability the lesson")
-print("body hand-rolled in 200+ lines. This is what 'destination-first'")
-print("means — when the journey is internalised, the SDK is one call.")
+# This lesson built attention from scratch, a Transformer encoder, an
+# LSTM baseline and a fine-tuned BERT. kailash-ml's
+# run_diagnostic_checkpoint is the one call behind each pad: it hooks
+# every layer, runs a few probe batches (no weight updates), replays the
+# loss history and returns findings plus a DLDiagnostics session whose
+# plot_training_dashboard() draws the loss, gradient and activation
+# panels. (km.diagnose(model, kind="dl") on its own only builds an
+# un-instrumented session, so it has nothing to report.) It does not
+# replace the accuracy, latency and deployment comparisons above.
+diag, findings = run_diagnostic_checkpoint(
+    transformer_model,
+    train_loader,
+    _ce_loss,
+    title="Transformer (close)",
+    train_losses=transformer_losses,
+    show=False,
+)
+print_prescription_pad(findings, "Transformer (close)")
+dashboard = diag.plot_training_dashboard()  # Plotly figure: dashboard.show()
 
 
 # ══════════════════════════════════════════════════════════════════════

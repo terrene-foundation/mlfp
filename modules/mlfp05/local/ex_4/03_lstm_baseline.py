@@ -155,77 +155,37 @@ lstm_model = ...  # YOUR CODE HERE
 lstm_losses, lstm_accs = ...  # YOUR CODE HERE
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — LSTM baseline (contrast with Transformer 02)
+# DIAGNOSTIC CHECKPOINT — LSTM baseline (contrast with the Transformer in 02)
 # ══════════════════════════════════════════════════════════════════
-from kailash_ml import diagnose
+# Same data, same training loop as 02 — so differences between the two
+# pads come from the architecture.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _ce_loss(m, batch):
+    """Cross-entropy on one (token_ids, labels) batch."""
+    xb, yb = batch
+    return F.cross_entropy(m(xb), yb)
+
 
 print("\n── Diagnostic Report (LSTM baseline) ──")
-report = diagnose(lstm_model, kind="dl", data=val_loader, show=False)
-# ══════ EXPECTED OUTPUT (reference pattern — LSTM on AG News) ═══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Gradient flow (WARNING): RMS ratio
-#       `lstm.weight_ih_l0` : `head.weight` ≈ 1:50 —
-#       gradients concentrated at the classifier head, modest
-#       signal reaching the embedding layer. Classic mild form
-#       of the vanishing-gradient-through-time problem.
-#   [✓] Activations    (HEALTHY): tanh/sigmoid gates within
-#       [-1, 1] and [0, 1] — no saturation.
-#   [✓] Loss trend     (HEALTHY): train loss decreases steadily;
-#       val acc plateaus ~0.86 by epoch 6.
-# ════════════════════════════════════════════════════════════════
-# Best val acc: ~0.86 after 8 epochs — within 2% of the Transformer
-# on AG News (headlines are short, so the LSTM's sequential
-# bottleneck is manageable).
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST] Gradients concentrate in the CLASSIFIER HEAD.
-#     The LSTM's recurrent weights receive ~50x less signal than
-#     `head.weight`. On 25-token headlines this is tolerable; on
-#     500-token documents the same architecture would collapse
-#     (the first 400 tokens' embeddings never update). This IS
-#     the "vanishing gradient through time" that slide 5.3 warns
-#     about — the Transformer sidesteps it entirely via direct
-#     attention + residual connections.
-#     >> Prescription Pad: if deploying on long documents, switch
-#        to Transformer (ex_4/02) or add gradient clipping +
-#        truncated BPTT. Bidirectional helps but doesn't eliminate
-#        the issue.
-#
-#  [X-RAY] LSTM gate activations healthy — sigmoid outputs in
-#     [0, 1] without saturating at either end. Saturation would
-#     mean the forget gate is stuck "always remember" or "always
-#     forget" which kills the LSTM's ability to learn what to
-#     keep. If the X-Ray flags this, lower the learning rate and
-#     add LayerNorm inside the LSTM cell.
-#     >> Prescription Pad: healthy — no action.
-#
-#  [STETHOSCOPE] Loss curve shows the classic LSTM training
-#     shape: rapid descent for 3 epochs, then a plateau as the
-#     model hits the sequential-bottleneck ceiling. The
-#     Transformer (02) shows a similar trajectory but reaches
-#     a lower plateau — its plateau is the "architectural
-#     ceiling" of the data, not the model.
-#     >> Prescription Pad: compare final val acc side-by-side
-#        with the Transformer to quantify the headroom.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: on SHORT text the LSTM is 95%
-#  as good as the Transformer. The Prescription Pad shows WHY
-#  you would still prefer the Transformer — the gradient-flow
-#  WARNING will become CRITICAL on real production documents
-#  (news articles, support tickets, legal briefs). Never choose
-#  an architecture on toy-length inputs; profile on your real
-#  sequence length distribution.
-#
-#  CONNECT TO SLIDE 5.3 (RNNs) + 5.4 (Transformers): slide 5.3's
-#  unrolled-RNN diagram shows information squeezing through the
-#  hidden state; the WARNING reading above is the quantitative
-#  version of that diagram. Slide 5.4 claims attention "lets
-#  every token reach every other token in one step" — compare
-#  this WARNING with the HEALTHY Blood Test in ex_4/02 to see
-#  the architectural payoff in numbers.
+diag, findings = run_diagnostic_checkpoint(
+    lstm_model,
+    train_loader,
+    _ce_loss,
+    title="LSTM baseline",
+    train_losses=lstm_losses,
+    show=False,
+)
+print_prescription_pad(findings, "LSTM baseline")
+
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# Compare with 02: the LSTM must carry information across MAX_LEN (40) tokens
+# step by step, the Transformer looks at all positions at once. The
+# pad reads per-layer health (weight_ih / weight_hh / head), not
+# per-timestep decay, so judge the architectures mainly on the
+# accuracy and speed comparisons below.
 # ══════════════════════════════════════════════════════════════════
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────

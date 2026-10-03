@@ -275,78 +275,37 @@ transformer_losses, transformer_accs = ...  # YOUR CODE HERE
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — Transformer (attention + residual stack)
 # ══════════════════════════════════════════════════════════════════
-from kailash_ml import diagnose
+# Probes come from the training loader (the probe runs in train mode,
+# with dropout active).
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _ce_loss(m, batch):
+    """Cross-entropy on one (token_ids, labels) batch."""
+    xb, yb = batch
+    return F.cross_entropy(m(xb), yb)
+
 
 print("\n── Diagnostic Report (Transformer Encoder) ──")
-report = diagnose(
+diag, findings = run_diagnostic_checkpoint(
     transformer_model,
-    kind="dl",
-    data=val_loader,
+    train_loader,
+    _ce_loss,
+    title="Transformer Encoder",
+    train_losses=transformer_losses,
     show=False,
 )
+print_prescription_pad(findings, "Transformer Encoder")
 
-# ══════ EXPECTED OUTPUT (reference pattern — Transformer on AG News) ══
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): per-layer RMS uniform across
-#       `encoder.layers.{0..2}.self_attn` and `.linear1/2` —
-#       residuals + LayerNorm doing their job.
-#   [✓] Activations    (HEALTHY): no dead GELU units in the FFN
-#       sub-blocks; attention softmax outputs within expected
-#       entropy range (not collapsed onto one token).
-#   [✓] Loss trend     (HEALTHY): train loss falls monotonically,
-#       val loss tracks within 0.05 of train loss — no overfit
-#       signal at 8 epochs on 120K headlines.
-# ════════════════════════════════════════════════════════════════
-# Best val acc: ~0.88 after 8 epochs on MPS/CUDA.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST] Gradient flow is UNIFORM — this is the architectural
-#     payoff of the Transformer over the vanilla RNN (ex_3/01). The
-#     residual connection around every sub-block (self-attn + FFN)
-#     gives gradients a "highway" to the embedding layer, preventing
-#     the vanishing-gradient problem that plagues the LSTM on long
-#     sequences. Slide 5.4 (Transformers) calls this the "why we
-#     stopped using RNNs" moment — the Blood Test proves it.
-#     >> Prescription Pad: no action needed. If you see RMS spread
-#        >2 orders of magnitude across layers, suspect post-norm
-#        layout (unstable) — switch to pre-norm.
-#
-#  [X-RAY] Attention activations are not saturated. A collapsed
-#     attention head (one token getting ~100% of the softmax mass)
-#     is the Transformer's equivalent of the dead-ReLU problem —
-#     that head becomes a no-op and its projection weights stop
-#     learning. If the Prescription Pad flags WARNING on
-#     `self_attn` activation stats, lower d_model/n_heads (too
-#     many heads for too little signal) or add attention dropout.
-#     >> Prescription Pad: ratio check — healthy multi-head
-#        attention shows mean entropy per head near log(seq_len)/2.
-#
-#  [STETHOSCOPE] Loss curve converges smoothly — no instability,
-#     no NaN, no periodic spikes. With 8 epochs and LayerNorm,
-#     you should NOT need gradient clipping. If you see the
-#     training loss oscillate, check your learning rate — the
-#     Transformer is sensitive to warmup in particular.
-#     >> Prescription Pad: add linear warmup over first 10% of
-#        steps if loss is noisy early.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: the Transformer's diagnostic report
-#  should be almost boringly green. The Prescription Pad's value
-#  here is as a canary — when you later fine-tune on a small
-#  domain corpus (ex_4/04 BERT) you will see the same gradient
-#  flow degrade if the learning rate is wrong. Slide 5.4 uses
-#  this report as evidence that attention + residuals is the
-#  "train-it-and-it-just-works" architecture that made BERT and
-#  GPT possible.
-#
-#  CONNECT TO SLIDE 5.4: The slide claims "residuals + LayerNorm
-#  make deep Transformers trainable where deep RNNs weren't."
-#  The HEALTHY Blood Test reading across `layers.0..2` is the
-#  direct empirical proof of that claim. Compare to ex_4/03's
-#  LSTM report — gradients there concentrate in the final layer.
-# ════════════════════════════════════════════════════════════════
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# nn.TransformerEncoderLayer uses ReLU in its feed-forward block by
+# default, so the dead-neuron check applies to those units. Residual
+# connections plus LayerNorm give every layer a short gradient path —
+# compare the gradient-flow reading with the LSTM in 03. Only training
+# loss is passed in; the validation-accuracy curve below shows whether
+# more epochs would help.
+# ══════════════════════════════════════════════════════════════════
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 assert (

@@ -122,9 +122,9 @@ for z in test_values:
     print(f"  s({z:>3}) = {s:.6f}")
 
 # Key properties
-assert abs(sigmoid(np.array([0.0]))[0] - 0.5) < 1e-10, "s(0) must equal 0.5"
-assert sigmoid(np.array([100.0]))[0] > 0.999, "s(large) must be near 1"
-assert sigmoid(np.array([-100.0]))[0] < 0.001, "s(very negative) must be near 0"
+assert abs(sigmoid(np.array([0.0]))[0] - 0.5) < 1e-10, "σ(0) must equal 0.5"
+assert sigmoid(np.array([100.0]))[0] > 0.999, "σ(large) must be near 1"
+assert sigmoid(np.array([-100.0]))[0] < 0.001, "σ(very negative) must be near 0"
 
 # TODO: Verify symmetry: s(-z) = 1 - s(z).
 # Hint: compute sigmoid of -z_test and compare to 1 - sigmoid(z_test).

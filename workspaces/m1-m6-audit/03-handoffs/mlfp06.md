@@ -31,3 +31,14 @@
 ## Upstream notes (not course-fixable)
 - kailash-nexus logs "Unknown parameter(s) for HandlerNode" on every request; CORS preflight (OPTIONS) gets 401 because JWT runs before CORS.
 - @structured_tool(input_schema=…) combined with @server.tool() registers the tool with no parameters.
+
+---
+# Additions from the deck shard (S2a, merged a7269663)
+- Deny demos: attach envelopes and call apply_governance_specs; GovernedSupervisor runs your execute_node callback (does not wrap a BaseAgent).
+- Agents: ToolRegistry + make_delegate(); max_turns bounds loops; budget_limit_usd at construction (never trips on local Ollama).
+- Nexus: handler_extract + NexusAuthPlugin. Debugging: capture_run / tool_usage / detect_loops. Observatory: real shared.mlfp06.diagnostics methods.
+- ragas raises ImportError in this env (dependency import fails) → course uses judge-based compute_ragas_metrics / obs.retrieval.evaluate (falls back to judge). Integration: investigate the ragas import failure (zero-tolerance).
+- Deck assessment slide = shipped 4-task, 3-hour format; spec "End of Module Assessment" line still differs (owner/S5).
+- Spec 6.7 budget-exhausted "degrades gracefully … partial answer" claim unverified (needs an LLM run) → verify in S7.
+- index.html study time ~28h → ~24h (D17).
+- New deck slide: Advanced RAG patterns + RAGResearchAgent/MemoryAgent.

@@ -3056,8 +3056,10 @@ inverse is the **logit**:
 logit(p) = log(p / (1 − p))
 ```
 
-`p / (1 − p)` is the **odds ratio**: if `p = 0.8`, odds = 4
-(i.e. 4 to 1 in favour). `log(odds)` is the **log-odds**.
+`p / (1 − p)` is the **odds**: if `p = 0.8`, odds = 4 (i.e. 4 to 1
+in favour). `log(odds)` is the **log-odds**. The ratio of two odds —
+say the odds for a large flat divided by the odds for a small one — is
+the **odds ratio**, which is what `e^β` measures below.
 
 ### Logistic regression model
 
@@ -3090,9 +3092,12 @@ log-odds by `β₁`. Exponentiating, this multiplies the odds by
 - `β₁ = 0.693` → `e^0.693 = 2` → odds **double**.
 - `β₁ = −0.693` → `e^(−0.693) = 0.5` → odds **halve**.
 
-**Numerical example.** Suppose a churn model has `β_discount =
-−0.5`. Then each additional 10% discount multiplies churn odds
-by `e^(−0.5) ≈ 0.607`, i.e. cuts churn odds by about 39%.
+**Numerical example.** Suppose a churn model measures discount in
+units of 10 percentage points and estimates `β_discount = −0.5`. Then
+each additional 10 points of discount multiplies churn odds by
+`e^(−0.5) ≈ 0.607`, i.e. cuts churn odds by about 39%. Note that this
+is a change in _odds_, not in probability: if the churn probability
+was 20% (odds 0.25), the new odds are 0.152, a probability of 13.2%.
 
 ## Mathematical Foundations — Maximum Likelihood for Logistic Regression
 
@@ -3133,10 +3138,13 @@ gradient is the sum of residuals weighted by the feature vector.
 
 Unfortunately, setting this to zero does _not_ yield a closed
 form because `pᵢ` depends non-linearly on `β`. We solve it by
-iterative methods — typically **iteratively reweighted least
-squares** (IRLS) or Newton-Raphson. In practice, sklearn and
-kailash-ml use `liblinear` or L-BFGS solvers that converge in a
-handful of iterations.
+iterative methods — classically **Newton-Raphson**, which for
+logistic regression is the same as **iteratively reweighted least
+squares** (IRLS). The course code uses `scipy.optimize.minimize`
+with BFGS, a _quasi-Newton_ method: it builds up an approximation of
+the curvature from successive gradients instead of computing the exact
+Hessian. All of these converge to the same MLE in a handful of
+iterations on a problem this size.
 
 ### Sigmoid derivative (useful identity)
 
@@ -3201,7 +3209,8 @@ Metrics you'll meet in Module 3:
 A two-sample t-test compares two group means. With three or more
 groups you could do all pairwise t-tests, but the multiple-testing
 problem kicks in: three tests at α = 0.05 give an overall false
-positive rate of about `1 − 0.95³ ≈ 14%`.
+positive rate of up to `1 − 0.95³ ≈ 14%` (a little less in practice,
+because pairwise tests that share groups are correlated).
 
 **ANOVA** (Analysis of Variance) performs a single test of the
 joint hypothesis `H₀: μ₁ = μ₂ = … = μ_k` (all group means are
@@ -3245,53 +3254,82 @@ informative.
 
 ### Numerical example — HDB across flat types
 
-Three groups: 3-room, 4-room, 5-room. Summary:
+Three groups: the 2024 3-room, 4-room and 5-room sales in the course
+file (sentinel prices removed). Summary:
 
-| Group  | n   | x̄       | s      |
-| ------ | --- | ------- | ------ |
-| 3-room | 100 | 400_000 | 60_000 |
-| 4-room | 100 | 540_000 | 80_000 |
-| 5-room | 100 | 680_000 | 90_000 |
+| Group  | n     | x̄         | s       |
+| ------ | ----- | --------- | ------- |
+| 3-room | 1,252 | 595,100   | 73,599  |
+| 4-room | 2,054 | 849,626   | 102,826 |
+| 5-room | 1,047 | 1,084,859 | 129,845 |
 
-Overall mean: `x̄ ≈ 540_000`.
+Overall (weighted) mean: `x̄ = 832,999`, `N = 4,353`.
 
 ```
-SS_between = 100 × (400 − 540)² × 10^6
-           + 100 × (540 − 540)² × 10^6
-           + 100 × (680 − 540)² × 10^6
-           = 100 × 19_600 × 10^6 + 0 + 100 × 19_600 × 10^6
-           = 3.92e12
+SS_between = 1_252 × (595_100 − 832_999)²
+           + 2_054 × (849_626 − 832_999)²
+           + 1_047 × (1_084_859 − 832_999)²
+           = 7.086e13 + 0.057e13 + 6.641e13
+           ≈ 1.3784e14
 df_between = 3 − 1 = 2
-MS_between = 1.96e12
+MS_between ≈ 6.892e13
 
-SS_within = 99 × 60_000² + 99 × 80_000² + 99 × 90_000²
-          = 99 × (3.6e9 + 6.4e9 + 8.1e9)
-          = 99 × 1.81e10 ≈ 1.79e12
-df_within = 300 − 3 = 297
-MS_within ≈ 6.03e9
+SS_within = 1_251 × 73_599² + 2_053 × 102_826² + 1_046 × 129_845²
+          = 0.678e13 + 2.171e13 + 1.764e13
+          ≈ 4.612e13
+df_within = 4_353 − 3 = 4_350
+MS_within ≈ 1.0602e10
 
-F = 1.96e12 / 6.03e9 ≈ 325
+F = 6.892e13 / 1.0602e10 ≈ 6_501
 ```
 
-`F ≈ 325` with df `(2, 297)` — vastly beyond any reasonable
-critical value. We reject `H₀`. At least one flat-type mean
-differs (which — surprise — is all of them).
+`F ≈ 6,501` with df `(2, 4,350)` — vastly beyond any reasonable
+critical value (about 3.0 at α = 0.05). We reject `H₀`: at least one
+flat-type mean differs.
 
 ### Post-hoc tests
 
 ANOVA only tells you "somewhere, means differ." To find
 _which_ pairs differ, run post-hoc tests with corrections:
 
-- **Tukey's Honestly Significant Difference (HSD).** Tests all
-  pairwise differences controlling the family-wise error rate.
-  Default for most one-way ANOVAs.
-- **Bonferroni pairwise.** Simpler but more conservative.
+- **Tukey's Honestly Significant Difference (HSD).** Compares every
+  pair of means against the **studentized range** distribution —
+  the distribution of (largest mean − smallest mean) / SE among `k`
+  groups — so the family-wise error rate over _all_ pairs is held at
+  α. It is not the same as running pairwise t-tests and dividing α by
+  the number of pairs. Default for most one-way ANOVAs.
+- **Bonferroni pairwise.** Ordinary pairwise t-tests at `α / m`.
+  Simpler but more conservative than Tukey for all-pairs comparisons.
 - **Scheffé.** Controls all possible contrasts, not just
   pairs. Most conservative.
 - **Dunnett's.** Compares each group to a single control.
 
-For our HDB example, all three pairs (3 vs 4, 3 vs 5, 4 vs 5)
-would be highly significant under Tukey's HSD.
+In code, `scipy.stats.f_oneway` runs the ANOVA and
+`scipy.stats.tukey_hsd` the post-hoc test:
+
+```python
+import polars as pl
+from scipy import stats
+
+from shared import MLFPDataLoader
+
+hdb = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+sales_2024 = hdb.filter(
+    pl.col("month").str.starts_with("2024"),
+    pl.col("resale_price").is_between(100_000, 2_000_000),  # drop sentinel prices
+)
+groups = [sales_2024.filter(pl.col("flat_type") == ft)["resale_price"].to_numpy()
+          for ft in ("3 ROOM", "4 ROOM", "5 ROOM")]
+
+f_stat, p_value = stats.f_oneway(*groups)  # one-way ANOVA
+print(f"F = {f_stat:,.0f}", "p < 0.001" if p_value < 0.001 else f"p = {p_value:.3f}")
+print(stats.tukey_hsd(*groups))          # studentized-range post-hoc test
+```
+
+It prints `F = 6,501 p < 0.001` and a Tukey table in which every pair
+differs (p < 0.001): 4-room minus 3-room ≈ SGD 254,526 (95% CI
+245,871 to 263,182), 5-room minus 4-room ≈ 235,233 (226,066 to
+244,400), 5-room minus 3-room ≈ 489,759 (479,650 to 499,869).
 
 ### ANOVA vs regression
 
@@ -3302,53 +3340,112 @@ the F-statistic from the regression equals the ANOVA F. In
 modern practice, most statisticians just run regressions and
 use ANOVA as a reporting frame.
 
-## The Kailash Engine — TrainingPipeline for Classification
+## The Kailash Engine — ModelVisualizer for Classification
+
+As in Lesson 2.5, the model itself is fitted by hand: you write the
+Bernoulli negative log-likelihood and minimise it. `ModelVisualizer`
+then draws the two standard classification views — the ROC curve
+(`roc_curve(y_true, y_scores)`) and the confusion matrix
+(`confusion_matrix(y_true, y_pred)`). The standard errors come from
+the Fisher information `XᵀWX` with `W = diag(p̂(1 − p̂))` — the
+logistic counterpart of `σ²(XᵀX)⁻¹` in OLS.
+
+## Worked Example — Is This Flat Above the Median Price?
+
+**Setup.** The Exercise 6 question on the course's HDB file: for
+sales from 2020 onward (`n = 24,904`), predict whether a flat sells
+above the median price (SGD 847,465), using its floor area. Floor area
+is standardised, so one unit of the predictor is one standard
+deviation (26.8 sqm).
 
 ```python
-from kailash_ml import TrainingPipeline, ModelVisualizer
+import numpy as np
+import polars as pl
+from scipy.optimize import minimize
+from scipy.special import expit
+from kailash_ml import ModelVisualizer
 
-pipeline = TrainingPipeline(task="classification", estimator="logistic")
-pipeline.fit(X_train, y_train)
+from shared import MLFPDataLoader
 
-print(pipeline.summary())
-# Coefficient    β̂       SE    z     p      exp(β̂)
-# tenure_months  -0.04  0.003  −13   <.001   0.961
-# discount_pct   -0.02  0.002  −10   <.001   0.980
-# has_complaint  +1.20  0.100  +12   <.001   3.32
-# …
+df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet").filter(pl.col("month") >= "2020-01")
+y = (df["resale_price"] > df["resale_price"].median()).cast(pl.Int8).to_numpy()
+area = df["floor_area_sqm"].to_numpy()
+X = np.column_stack([np.ones(len(y)), (area - area.mean()) / area.std()])  # 1 unit = 1 SD
 
-ModelVisualizer().coefficient_plot(pipeline, as_odds_ratio=True)
+
+def nll(b):  # Bernoulli negative log-likelihood = binary cross-entropy
+    p = np.clip(expit(X @ b), 1e-12, 1 - 1e-12)
+    return -np.sum(y * np.log(p) + (1 - y) * np.log(1 - p))
+
+
+beta = minimize(nll, np.zeros(2), method="BFGS").x   # quasi-Newton MLE
+p_hat = expit(X @ beta)
+W = p_hat * (1 - p_hat)
+se = np.sqrt(np.diag(np.linalg.inv(X.T @ (X * W[:, None]))))  # from the Fisher information
+odds_ratio = np.exp(beta[1])
+or_ci = np.exp(beta[1] + np.array([-1.96, 1.96]) * se[1])
+accuracy = np.mean((p_hat >= 0.5) == y)
+print(f"beta = {beta.round(3)}, z = {beta[1] / se[1]:.1f}")
+print(f"odds ratio per SD of area = {odds_ratio:.1f} (95% CI {or_ci[0]:.1f}-{or_ci[1]:.1f})")
+print(f"accuracy at 0.5 = {accuracy:.3f}")
+
+viz = ModelVisualizer()
+fig_roc = viz.roc_curve(y, p_hat)
+fig_cm = viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))
 ```
 
-The `exp(β̂)` column is the odds ratio. A value of 3.32 on
-"has_complaint" means customers with complaints have 3.32 times
-the odds of churning, all else equal.
+**Results.**
 
-## Worked Example — Employee Attrition
+| Term                  | β̂      | SE    | z    | e^β̂ (odds ratio)       |
+| --------------------- | ------ | ----- | ---- | ---------------------- |
+| intercept             | −0.064 | 0.020 | −3.2 | —                      |
+| floor area (per 1 SD) | 3.996  | 0.061 | 65.4 | 54.4 (CI 48.2 to 61.3) |
 
-**Setup.** You have HR data on 14_999 employees (roles,
-salaries, tenure, promotion history, attrition flag). Goal:
-predict `attrition ∈ {0, 1}` and interpret the top drivers.
+Accuracy at the 0.5 threshold is 0.815 and the ROC AUC is 0.92.
 
-**Model.** Logistic regression on standardised predictors. After
-fitting:
+**Interpretation.**
 
-| Predictor                  | β̂     | OR   | Interpretation                                   |
-| -------------------------- | ----- | ---- | ------------------------------------------------ |
-| years_since_last_promotion | +0.35 | 1.42 | Each additional year → 42% more churn odds       |
-| monthly_hours              | +0.20 | 1.22 | 10 extra hours/mo → 22% more churn odds          |
-| promoted_last_2y           | −0.60 | 0.55 | Promotion → 45% less churn odds                  |
-| compensation_pct_of_band   | −0.45 | 0.64 | Well-paid employees → 36% less churn odds        |
-| dept_sales                 | +0.30 | 1.35 | Sales dept has 35% more churn odds than baseline |
+- Each extra standard deviation of floor area (26.8 sqm) multiplies the
+  odds of an above-median price by about 54. Per 10 sqm the odds ratio
+  is `e^(3.996 × 10 / 26.8) ≈ 4.4`. These are _odds_ multipliers, not
+  probability multipliers.
+- The intercept is the log-odds at the average floor area (97 sqm):
+  `σ(−0.064) ≈ 0.48`, so an average-sized flat is close to a coin flip.
+  The 50% point sits at about 97.4 sqm.
+- The confusion matrix (10,058 true negatives, 2,394 false positives,
+  2,217 false negatives, 10,235 true positives) shows the errors are
+  balanced — expected, because the target was split at the median.
+- A single predictor this strong is a warning sign as much as a
+  result: in this file, price is almost a function of floor area
+  (Lesson 2.5 found `R² = 0.86` with area and town). Adding town
+  dummies would be the next step.
+
+## Interpretation Drill — Employee Attrition (illustrative)
+
+The coefficients below are **invented for practice**: the course has no
+HR dataset. Continuous predictors are standardised, so `e^β` is the odds
+multiplier per one standard deviation; binary predictors are 0/1, so
+`e^β` compares the two groups.
+
+| Predictor                         | β̂     | OR   | Interpretation                                        |
+| --------------------------------- | ----- | ---- | ----------------------------------------------------- |
+| years_since_last_promotion (std.) | +0.35 | 1.42 | +1 SD of time since promotion → 42% higher churn odds |
+| monthly_hours (std.)              | +0.20 | 1.22 | +1 SD of monthly hours → 22% higher churn odds        |
+| promoted_last_2y (0/1)            | −0.60 | 0.55 | Promoted in last 2 years → 45% lower churn odds       |
+| compensation_pct_of_band (std.)   | −0.45 | 0.64 | +1 SD of pay within band → 36% lower churn odds       |
+| dept_sales (0/1)                  | +0.30 | 1.35 | Sales staff have 35% higher churn odds than base dept |
 
 **Interpretation for the CEO:**
 
-> "Three levers matter most for retention: make sure high
-> performers are promoted within two years, keep monthly hours
-> reasonable, and keep pay at or above band midpoint. The single
-> biggest risk factor is going 2+ years without a promotion; it
-> increases churn odds by 42% per extra year. The model has
-> AUROC 0.83 on held-out data."
+> "Promotion timing and pay matter most. Employees promoted in the
+> last two years have roughly half the odds of leaving; each standard
+> deviation of extra time since a promotion raises the odds by about
+> 40%. Keeping pay above the band midpoint and hours reasonable are
+> the next levers."
+
+To turn "+1 SD" into "+1 year", divide `β` by the predictor's standard
+deviation before exponentiating — exactly what we did for floor area
+above.
 
 ## Try It Yourself
 

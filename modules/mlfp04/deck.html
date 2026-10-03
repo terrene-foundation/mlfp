@@ -1094,12 +1094,13 @@ xy = emb.transformed                  # 2-D coordinates to plot</code></pre>
     <li>Density-based: compares a point's density to its neighbours'</li>
     <li>Detects anomalies in <strong>varying-density</strong> data where Isolation Forest may struggle</li>
     <li>More expensive: $O(n^2)$ for naive implementation</li>
+    <li><strong>Blind spot (masking):</strong> a tight, dense group of anomalies with $\geq k$ members looks <em>normal</em> to LOF &mdash; pick $k$ larger than the biggest group you must catch</li>
   </ul>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. LOF is the density-based complement to Isolation Forest. Use LOF when the data has regions of very different density.
+    Timing: 2 min. LOF is the density-based complement to Isolation Forest. Use LOF when the data has regions of very different density. The trap students must remember: LOF compares a point with its k nearest neighbours. If a fraud ring submits many near-identical applications, and the ring has at least k members, each one's k neighbours are other ring members &mdash; equally dense &mdash; so its density ratio is about 1 (or below) and LOF scores it as normal. k is therefore a domain decision: it must exceed the largest coordinated group you want to catch. Exercise 4.3 sweeps n_neighbors on a 40-member injected application ring and settles on k=50 from that ring-size assumption.
   </aside>
 </section>
 
@@ -1109,8 +1110,8 @@ xy = emb.transformed                  # 2-D coordinates to plot</code></pre>
   <ul>
     <li>No single detector is best everywhere</li>
     <li>Normalise scores to [0, 1] across detectors</li>
-    <li>Combine: simple average, weighted average, or max-vote</li>
-    <li>Blended scores are more robust than any individual method</li>
+    <li>Combine: simple average, weighted average, rank average, or max-vote</li>
+    <li>Blends are often more robust &mdash; but not guaranteed: a weak detector can drag the blend below its best member</li>
   </ul>
   <div class="callout callout-kailash" style="margin-top: 12px;">
     <strong>Pattern:</strong> Z-score catches distributional outliers. Isolation Forest catches multivariate anomalies. LOF catches density anomalies. Together: comprehensive coverage.
@@ -1119,36 +1120,39 @@ xy = emb.transformed                  # 2-D coordinates to plot</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "This is ensemble thinking applied to anomaly detection. The same principle from M3's ensemble methods, but for unsupervised outlier detection."
+    Timing: 2 min. "This is ensemble thinking applied to anomaly detection. The same principle from M3's ensemble methods, but for unsupervised outlier detection." A blend helps when detectors make DIFFERENT mistakes and each is better than chance on what it sees; averaging in a detector that is blind to an anomaly type dilutes the ones that catch it. Always compare the blend with its best single member on a labelled review sample.
   </aside>
 </section>
 
 <section>
-  <h2>Kailash Bridge: EnsembleEngine for Anomaly Detection</h2>
+  <h2>Kailash Bridge: AnomalyDetectionEngine</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>Theory &rarr; Engine</h3>
     <div class="theory-to-engine">
-      <span>Score blending, stacking, bagging, boosting</span>
+      <span>Isolation Forest, LOF, score blending</span>
       <span class="arrow">&rarr;</span>
-      <span><code>EnsembleEngine</code></span>
+      <span><code>AnomalyDetectionEngine</code></span>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import EnsembleEngine
+  <pre style="font-size: 0.55em; line-height: 1.3"><code class="language-python">from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
 
-ensemble = EnsembleEngine()
-ensemble.add("iforest", IsolationForest(contamination=0.05))
-ensemble.add("lof", LocalOutlierFactor(n_neighbors=20))
-ensemble.add("zscore", ZScoreDetector(threshold=3.0))
+# X: a polars frame of numeric features (e.g. the 4.1 customer features)
+detector = AnomalyDetectionEngine()  # isolation_forest | lof | one_class_svm
+iso = detector.detect(X, algorithm="isolation_forest", contamination=0.01)
+print(iso.n_anomalies)               # iso.scores: [0, 1], higher = more anomalous
 
-# Blend scores with automatic normalisation
-blended = ensemble.blend(df, method="weighted_average")
-anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
+blend = detector.ensemble_detect(X, algorithms=["isolation_forest", "lof"],
+                                 contamination=0.01, voting="score_average")
+top = blend.combined_scores          # normalised scores, averaged</code></pre>
+  <div class="callout callout-warning" style="margin-top: 4px; font-size: 0.75em;">
+    <code>EnsembleEngine.blend()</code> / <code>.stack()</code> are <strong>supervised</strong> classifier ensembles (they need a target). Use them only once analysts have labelled a review sample &mdash; as a second stage over the detector scores (Exercise 4.4).
+  </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "EnsembleEngine handles normalisation and blending. You focus on choosing the detectors and interpreting the results."
+    Timing: 2 min. "AnomalyDetectionEngine fits the detector, flips sklearn's sign convention so that higher always means more anomalous, normalises the scores to [0, 1] and applies the contamination threshold." ensemble_detect runs several detectors and combines them: voting="score_average" averages the normalised scores (the blend from the previous slide); the default "majority" votes on labels. Contamination only moves the cut-off &mdash; it does not change the ranking. Do NOT reach for EnsembleEngine.blend to blend anomaly scores: blend() soft- or hard-votes fitted CLASSIFIERS against a target column and does its own train/test split. It becomes useful once a labelled review sample exists; Exercise 4.4 trains a logistic regression and a random forest on the detector scores and blends / stacks them that way. This engine is the one the assessment's anomaly task uses.
   </aside>
 </section>
 
@@ -1179,27 +1183,27 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Connect to M3 drift monitoring: "Anomaly detection on model inputs is how you detect data drift in production."
+    Timing: 2 min. Connect to M3 drift monitoring: anomaly detection flags individual unusual rows, while drift monitoring compares whole distributions &mdash; kailash-ml's DriftMonitor (M3.8) uses PSI and KS tests against a reference set, not an anomaly detector. A rising anomaly rate on live inputs is a useful early warning that complements it.
   </aside>
 </section>
 
 <section>
-  <h2>Exercise 4.4: Financial Anomaly Detection</h2>
+  <h2>Exercise 4.4: Credit-Application Anomaly Detection</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Detect anomalies in financial transaction data.
+    <strong>Task:</strong> Screen 20,000 real Singapore credit applications with 200 injected, labelled anomalies (global, "synthetic identity", application ring).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Apply Z-score, Isolation Forest, and LOF separately</li>
-      <li>Blend scores using EnsembleEngine</li>
-      <li>Compare: which transactions are flagged by all three vs only one?</li>
-      <li>Business interpretation: true anomalies vs false positives?</li>
+      <li>4.1 Z-score and IQR (+ winsorisation); 4.2 Isolation Forest with a contamination sweep</li>
+      <li>4.3 LOF: sweep <code>n_neighbors</code>, see the masking trap on the ring</li>
+      <li>4.4 Blend: equal, AUC-weighted, rank, <code>ensemble_detect</code>; then <code>EnsembleEngine.blend</code>/<code>.stack</code> on a labelled review sample</li>
+      <li>Which anomaly type does each detector catch? True anomalies vs false positives?</li>
     </ul>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Assessment: multiple methods applied and compared; blended score improves over individual methods; business interpretation provided.
+    Timing: 1 min. The normal rows are real records from the course's credit-scoring dataset; the anomalies are injected with known types so detectors can be scored honestly (AUC-ROC / AUC-PR per type). Assessment: multiple methods applied and compared; blends compared against the best single detector (a blend does not win automatically); business interpretation provided. Remind students that "statistically unusual" and "will default" are different questions.
   </aside>
 </section>
 

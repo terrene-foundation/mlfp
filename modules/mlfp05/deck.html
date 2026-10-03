@@ -2334,7 +2334,7 @@ result["figure"].show()     # the curve below
     <text x="380" y="65" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#64748B">dot product</text>
     <text x="310" y="220" text-anchor="middle" font-family="Inter, sans-serif" font-size="13" fill="#1E293B" font-weight="600">y[i,j] = &#931;&#8342;&#8344; w[m,n] &#183; x[i+m, j+n]</text>
     <text x="310" y="245" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#64748B">Output size: (W &#8722; F + 2P) / S + 1</text>
-    <text x="310" y="262" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#64748B">Same filter weights everywhere &#8594; translation invariance</text>
+    <text x="310" y="262" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#64748B">Same filter weights everywhere &#8594; translation equivariance</text>
   </svg>
   </div>
   <div class="slide-footer">
@@ -2431,7 +2431,7 @@ result["figure"].show()     # the curve below
     </tbody>
   </table>
   <div class="callout callout-theory" style="margin-top: 8px;">
-    <strong>The depth problem:</strong> VGG showed deeper = better, but training became unstable beyond ~20 layers. ResNet solved this with skip connections, enabling 152-layer networks that outperform shallower ones.
+    <strong>The depth problem:</strong> VGG showed deeper = better, but plain nets beyond ~20 layers had <em>higher training error</em> (the degradation problem) &mdash; not overfitting, and not mainly vanishing gradients (batch norm was in use) but an optimisation difficulty. Skip connections fixed it, enabling 152-layer networks.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
@@ -2519,7 +2519,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~4 min. The skip connection is the single most important architectural innovation in modern deep learning. Walk through the gradient: even if F(x) has vanishing gradients, the +1 from the identity ensures signal flows. This is why ResNets can be 152 layers deep where VGG fails at 20+.
+    Time: ~4 min. The skip connection is the single most important architectural innovation in modern deep learning. Walk through the gradient: even if F(x) contributes little gradient, the +1 from the identity gives the signal a direct path. Precise framing (He et al., 2015): the 20+-layer failure of plain nets was a degradation of TRAINING accuracy that they judged &ldquo;unlikely to be caused by vanishing gradients&rdquo; (batch norm kept gradients healthy). It was an optimisation difficulty: near-identity mappings are hard for stacked nonlinear layers to learn, but trivial when the block only has to learn a residual. That is why ResNets reach 152 layers.
   </aside>
 </section>
 
@@ -2650,7 +2650,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Walk through the diagram left to right. Point out the skip connection (green dashed) — the original feature maps bypass the squeeze/excite pathway and are multiplied by the learned weights. The channel importance bars show that not all channels matter equally. SE adds only ~2,500 parameters for a 64-channel layer but consistently adds 0.5-1% accuracy.
+    Time: ~2 min. Walk through the diagram left to right. Point out the skip connection (green dashed) — the original feature maps bypass the squeeze/excite pathway and are multiplied by the learned weights. The channel importance bars show that not all channels matter equally. SE is cheap: for a 64-channel layer with reduction 16 it adds 64&times;4 + 4 + 4&times;64 + 64 = 580 parameters. The original paper reports about 1.5 points of ImageNet top-1 for ResNet-50 &mdash; a modest but consistent gain.
   </aside>
 </section>
 
@@ -2662,7 +2662,7 @@ result["figure"].show()     # the curve below
     <div class="col">
       <h3>Initialisation</h3>
       <div class="gate-box">
-        <strong>Kaiming initialisation:</strong> <span class="katex-inline">W \sim \mathcal{N}(0, \sqrt{2/n_{\text{in}}})</span><br/>
+        <strong>Kaiming initialisation:</strong> <span class="katex-inline">W \sim \mathcal{N}(0,\, 2/n_{\text{in}})</span> (std <span class="katex-inline">\sqrt{2/n_{\text{in}}}</span>)<br/>
         <span class="small muted">Designed for ReLU networks. Prevents signal from vanishing or exploding through layers.</span>
       </div>
       <h3>Mixed Precision Training</h3>
@@ -2690,7 +2690,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. These are the techniques that separate research-grade from production-grade CNN training. Kaiming init is essential for deep networks. Mixed precision is free performance. Mixup and label smoothing are strong regularisers. Students should use all of these in the exercise.
+    Time: ~3 min. These are the techniques that separate research-grade from production-grade CNN training. Kaiming init is essential for deep networks. Mixed precision is free performance. Mixup and label smoothing are strong regularisers. What Exercise 5.2 actually exercises: SE blocks and automatic mixed precision (the PRECISION constant picks 16-mixed on MPS/CUDA), plus a flip-and-crop augmentation comparison in file 04. Kaiming init, Mixup and label smoothing are not yet in the exercise files &mdash; set them as a one-change-at-a-time extension: add one, rerun, compare the train/val gap. Notation check: N(0, 2/n_in) gives the VARIANCE; the standard deviation is sqrt(2/n_in).
   </aside>
 </section>
 
@@ -2764,7 +2764,7 @@ result["figure"].show()     # the curve below
     </div>
     <div class="col">
       <div class="callout callout-advanced" style="margin-top: 0;">
-        <strong>Key result:</strong> ViT outperforms CNNs on large datasets (ImageNet-21k). CNNs win on small datasets due to inductive biases (translation invariance, locality).
+        <strong>Key result:</strong> ViT outperforms CNNs on large datasets (ImageNet-21k). CNNs win on small datasets due to inductive biases (translation equivariance, locality).
       </div>
       <p class="small muted" style="margin-top: 8px;">Full transformer derivation in Lesson 5.4.</p>
     </div>

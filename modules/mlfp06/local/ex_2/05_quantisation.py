@@ -43,7 +43,8 @@ torch.manual_seed(42)
 # ════════════════════════════════════════════════════════════════════════
 # Transformer weights are bell-shaped — most values cluster near 0.
 # FP16 spends 16 bits everywhere regardless. Quantisation maps the
-# continuous range onto an integer grid: INT8 (256 levels), INT4 (16),
+# continuous range onto an integer grid: INT8 (256 levels, ~2x smaller
+# than FP16), INT4 (16),
 # or NF4 (16 levels laid out to match the normal distribution).
 # GPTQ uses the Hessian; AWQ protects salient weights; GGUF is CPU-
 # optimised; QLoRA quantises the frozen base and trains LoRA on top.
@@ -150,10 +151,12 @@ bytes_per_param = [4, 2, 1, 0.5, 0.25]
 # TODO: memory_gb = [7 * b for b in bytes_per_param]
 memory_gb = ____
 
-# TODO: Vertical bar plot with annotations of each bar's GB value.
-# Save to OUTPUT_DIR / "ex2_quantisation_memory.png"
-____
 fname = OUTPUT_DIR / "ex2_quantisation_memory.png"
+fname.unlink(missing_ok=True)  # the checkpoint must see THIS run's plot
+
+# TODO: Vertical bar plot with annotations of each bar's GB value.
+# Save to fname and close the figure.
+____
 print(f"  Saved: {fname}")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
@@ -164,7 +167,7 @@ print("✓ Checkpoint 4 passed — memory footprint visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore SME on-device assistant (GGUF on CPU)
 # ════════════════════════════════════════════════════════════════════════
-# A Singapore F&B chain runs 42 outlets with 8 GB ARM tablets (no GPU).
+# (Illustrative) A Singapore F&B chain runs 42 outlets with 8 GB ARM tablets (no GPU).
 # PDPA requires data stays on-device. FP16 7B (14 GB) impossible; INT8
 # 7B (7 GB) leaves no headroom; GGUF Q4_K_M (~4.5 GB) fits with room
 # for the POS app. Multilingual (EN/MS/ID) response <1.5s SLA.

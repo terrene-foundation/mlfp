@@ -1837,7 +1837,7 @@ class LoRALayer(nn.Module):
         <div class="arr">&rarr;</div>
         <div class="box">Down <span class="katex-inline">W_d</span></div>
         <div class="arr">&rarr;</div>
-        <div class="box">ReLU</div>
+        <div class="box">GELU</div>
         <div class="arr">&rarr;</div>
         <div class="box">Up <span class="katex-inline">W_u</span></div>
         <div class="arr">&rarr;</div>
@@ -1851,7 +1851,7 @@ class LoRALayer(nn.Module):
         super().__init__()
         self.down = nn.Linear(
             hidden_size, bottleneck)
-        self.activation = nn.ReLU()
+        self.activation = nn.GELU()
         self.up = nn.Linear(
             bottleneck, hidden_size)
         # Init up-project near zero
@@ -2016,33 +2016,37 @@ class LoRALayer(nn.Module):
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>AlignmentPipeline &mdash; From Theory to One Call</h3>
-    <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_align import AlignmentPipeline, AlignmentConfig, AdapterRegistry
+    <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import os
+from datasets import Dataset
+from kailash_align import (AdapterRegistry, AdapterSignature,
+    AlignmentConfig, AlignmentPipeline, LoRAConfig, SFTConfig)
 
-# Configure LoRA fine-tuning
+# Configure SFT + LoRA (base model from SFT_BASE_MODEL; course default
+# is Qwen/Qwen2.5-0.5B-Instruct)
 config = AlignmentConfig(
-    method="lora",
-    model_name="meta-llama/Llama-3-8B",
-    rank=8,
-    alpha=16,
-    target_modules=["q_proj", "v_proj"],
-    learning_rate=2e-4,
-    num_epochs=3,
+    method="sft",
+    base_model_id=os.environ.get("SFT_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct"),
+    lora=LoRAConfig(rank=8, alpha=16, target_modules=("q_proj", "v_proj")),
+    sft=SFTConfig(num_train_epochs=3, learning_rate=2e-4),
 )
 
-# Train
+# Train — dataset is a HuggingFace Dataset with a "text" column
+train_ds = Dataset.from_dict(sft_frame.to_dict(as_series=False))
 pipeline = AlignmentPipeline(config)
-result = pipeline.train(dataset="imdb_sentiment")
+result = await pipeline.train(train_ds, adapter_name="sentiment-lora-v1")
+print(result.training_metrics["train_loss"], result.adapter_path)
 
-# Store adapter for later use
-registry = AdapterRegistry()
-registry.register("sentiment-lora-v1", result.adapter)
-print(f"Trainable params: {result.trainable_params:,}")  # ~262K</code></pre>
+# Store a versioned adapter for later use
+version = await AdapterRegistry().register_adapter(
+    name="sentiment-lora-v1", adapter_path=result.adapter_path,
+    signature=AdapterSignature(base_model_id=config.base_model_id,
+                               adapter_type="lora", training_method="sft"))</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. This is the Kailash bridge: everything we learned about LoRA, adapters, and quantisation is wrapped in AlignmentPipeline. The AdapterRegistry stores versioned adapters for deployment. Students implement from scratch first, then see how the engine does it.
+    Time: ~2 min. This is the Kailash bridge: the LoRA maths is wrapped in AlignmentPipeline (typed sub-configs: LoRAConfig, SFTConfig). Point out three API facts: <code>train()</code> is async and needs an <code>adapter_name</code>; the dataset is a HuggingFace <code>Dataset</code>, not a polars frame; losses come from <code>result.training_metrics</code>. The AdapterRegistry stores versioned adapters for deployment. Students implement from scratch first (ex_2/01&ndash;02), then run this in ex_2/06.
   </aside>
 </section>
 
@@ -2055,20 +2059,21 @@ print(f"Trainable params: {result.trainable_params:,}")  # ~262K</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Implement <code>LoRALayer</code> from scratch</li>
-        <li>Implement <code>AdapterLayer</code> from scratch</li>
-        <li>Fine-tune on IMDB sentiment with both approaches</li>
-        <li>Compare: accuracy, parameter count, training time</li>
-        <li>Merge two LoRA adapters with TIES</li>
+        <li>Implement <code>LoRALayer</code> from scratch; sweep parameter count over rank (<code>ex_2/01</code>)</li>
+        <li>Implement <code>AdapterLayer</code> from scratch; compare with LoRA (<code>02</code>)</li>
+        <li>Pick a technique with the landscape decision tree (<code>03</code>)</li>
+        <li>Merge task vectors with TIES and SLERP (<code>04</code>, synthetic deltas)</li>
+        <li>INT8 quantisation from scratch (<code>05</code>)</li>
+        <li>SFT + LoRA on IMDB instruction pairs with <code>AlignmentPipeline</code>; register the adapter (<code>06</code>)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>Both from-scratch implementations produce correct gradients</li>
-        <li>LoRA achieves comparable accuracy to full fine-tuning</li>
-        <li>Quantitative comparison table produced</li>
-        <li>Merged model retains both capabilities</li>
+        <li>Both from-scratch layers start as the identity and have the expected parameter counts</li>
+        <li>Quantitative LoRA-vs-adapter comparison table produced</li>
+        <li>Merge preserves weight norms as expected per strategy</li>
+        <li>SFT run reports a real training loss and a registered adapter</li>
       </ul>
       <div class="callout callout-warning" style="margin-top:8px;">
         <strong>Common mistake:</strong> Forgetting to freeze the original weights. If <code>W_0.requires_grad = True</code>, you are doing full fine-tuning, not LoRA.
@@ -2079,7 +2084,7 @@ print(f"Trainable params: {result.trainable_params:,}")  # ~262K</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The from-scratch implementations are the core of this exercise. Students must understand the maths before using AlignmentPipeline. The merging task is a stretch goal for advanced students.
+    Time: ~1 min. The from-scratch implementations are the core of this exercise. Students must understand the maths before using AlignmentPipeline. Merging (file 04) is a required file but works on synthetic task vectors &mdash; merging two trained adapters end-to-end is an extension for advanced students.
   </aside>
 </section>
 

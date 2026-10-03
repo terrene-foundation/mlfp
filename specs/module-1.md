@@ -74,7 +74,7 @@
 **Topics**:
 - `def` functions, parameters, `return` statements
 - `for` loops, lists, dictionaries
-- Polars: `group_by()`, `agg()`, `pl.mean()`, `pl.sum()`, `pl.count()`
+- Polars: `group_by()`, `agg()`, expression aggregations (`pl.col(...).mean()`, `.sum()`), `pl.len()` for row counts (`pl.count()` is deprecated)
 - Writing helper functions for reusable analysis
 
 **Key Concepts**: Function abstraction, iteration, collection types, grouped aggregation
@@ -102,7 +102,7 @@
 - `if/else/elif` conditional statements
 - `import` and packages
 - Join concepts: left, inner, outer. When to use each.
-- Polars: `join()`, multi-table operations on HDB 15M rows
+- Polars: `join()`, multi-table operations on the HDB resale data (~50K rows)
 - Dictionary lookups and mapping
 
 **Key Concepts**: Conditional logic, package imports, relational joins, multi-source data integration
@@ -113,7 +113,7 @@
 - Join multiple DataFrames on shared keys
 - Reason about which join type to use for a given task
 
-**Exercise**: Join HDB resale data with MRT station data and school data. Compute distance-to-amenity features. Handle missing joins with appropriate join type.
+**Exercise**: Join HDB resale data with MRT station data and school data. Compute town-level amenity features (station count, station spacing, distance from the town to the CBD — the MRT table's distance column is station-to-station spacing, and the HDB data has no flat coordinates). Handle missing joins with appropriate join type.
 
 **Assessment Criteria**: Correct join type selected. Missing data handled (not silently dropped). Combined dataset has expected row count.
 
@@ -188,8 +188,8 @@
 **Spectrum Position**: Automated data assessment — machine-detected quality issues
 
 **Topics**:
-- DataExplorer: automated profiling with 8 alert types
-- AlertConfig: configure thresholds for missing values, outliers, duplicates, skew, correlation, cardinality, constants, type inference
+- DataExplorer: automated profiling with 8 alert types (`high_nulls`, `constant`, `high_skewness`, `high_zeros`, `high_cardinality`, `high_correlation`, `duplicates`, `imbalanced`); outliers are a per-column statistic (`outlier_count`), not an alert
+- AlertConfig: configure thresholds (`high_null_pct_threshold`, `constant_threshold`, `skewness_threshold`, `zero_pct_threshold`, `high_cardinality_ratio`, `high_correlation_threshold`, `duplicate_pct_threshold`, `imbalance_ratio_threshold`)
 - DataProfile object: access profiling results programmatically
 - `compare()`: compare two datasets (before/after cleaning, train/test distributions)
 - Classes as users (not authors): students use DataExplorer, not build it
@@ -221,7 +221,7 @@
 - None/null handling: `is_null()`, `fill_null()`, `drop_nulls()`
 - ETL concepts: Extract (APIs, files), Transform (clean, encode, scale), Load (output)
 - REST APIs: GET, POST, JSON responses, query parameters (OneMap Singapore example from Deck 1C)
-- PreprocessingPipeline: auto-detect data types, encode categoricals, scale numerics, impute missing values
+- PreprocessingPipeline: `setup(data, target, ...)` auto-detects data types, imputes missing values, encodes categoricals, scales numerics and splits train/test; `transform()` applies the fitted rules to new data
 - Full pipeline: load -> profile -> clean -> visualise -> report
 - Project structure: modules, imports, putting it all together
 

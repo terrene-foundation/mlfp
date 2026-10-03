@@ -29,7 +29,7 @@
 Time: ~2 min
 Talking points:
 - Welcome to Module 1 of MLFP. This module takes you from zero Python to building complete data pipelines.
-- The provocative question on screen is not rhetorical. By the end of today, you will load 15 million rows and find patterns dashboards miss.
+- The provocative question on screen is not rhetorical. By the end of today, you will load ~50,000 HDB resale transactions and find problems a summary dashboard hides.
 - If beginners confused: reassure them no prior programming is needed.
 - If experts bored: mention we will reach window functions, lazy frames, and automated profiling by the end.
 Transition: "Let me show you what you will be able to do after these 8 lessons."
@@ -117,13 +117,13 @@ Transition: "Before we start coding, let me introduce the three Kailash engines 
       </div>
       <div class="kailash-bridge" style="margin-top:12px;">
         <h3>PreprocessingPipeline</h3>
-        <p>Auto-detect types, encode categoricals, scale numerics, impute missing values.</p>
+        <p>Auto-detect types, impute missing values, encode categoricals, scale numerics, split train/test &mdash; model-ready data.</p>
       </div>
     </div>
     <div class="col">
       <div class="kailash-bridge">
         <h3>ModelVisualizer</h3>
-        <p>Histograms, scatter plots, bar charts, heatmaps &mdash; interactive EDA charts.</p>
+        <p>Histograms, scatter plots, box plots, bar comparisons &mdash; interactive Plotly charts, plus model charts in later modules.</p>
       </div>
       <div class="callout callout-kailash" style="margin-top:12px;">
         <strong>Why Kailash?</strong> Instead of writing 50 lines of boilerplate, you call one engine. The pattern repeats across all MLFP modules: learn the concept, then let the engine handle the plumbing.
@@ -137,7 +137,7 @@ Talking points:
 - Three engines: DataExplorer for profiling, PreprocessingPipeline for cleaning, ModelVisualizer for charts.
 - These appear in lessons 1.6-1.8. Lessons 1.1-1.5 teach core Python and Polars so you understand what the engines automate.
 - If beginners confused: think of engines as power tools. You learn the hand tool first, then the power tool.
-- If experts bored: mention DataExplorer runs 8 statistical tests asynchronously under the hood.
+- If experts bored: mention DataExplorer's methods are async; Module 1 uses small sync wrappers (shared.run_profile) so you meet async later.
 Transition: "Let us begin with Lesson 1.1 and your very first line of Python."
   </aside>
 </section>
@@ -156,21 +156,20 @@ Transition: "Let us begin with Lesson 1.1 and your very first line of Python."
         <li><strong>Plotly</strong> &mdash; interactive visualisation</li>
         <li><strong>Kailash ML</strong> &mdash; <code>pip install kailash-ml</code></li>
       </ul>
-      <pre style="font-size: 0.55em;"><code class="language-python"># Quick setup
+      <pre style="font-size: 0.55em;"><code class="language-bash"># Quick setup (run in a terminal, not in Python)
 uv pip install polars plotly kailash-ml python-dotenv requests</code></pre>
     </div>
     <div class="col">
-      <h3>Three Exercise Formats</h3>
+      <h3>Two Exercise Formats</h3>
       <table>
         <thead><tr><th>Format</th><th>Location</th></tr></thead>
         <tbody>
-          <tr><td>Local .py</td><td><code>modules/mlfp01/local/</code></td></tr>
-          <tr><td>Jupyter</td><td><code>modules/mlfp01/notebooks/</code></td></tr>
-          <tr><td>Google Colab</td><td><code>modules/mlfp01/colab/</code></td></tr>
+          <tr><td>VS Code (local .py)</td><td><code>modules/mlfp01/local/</code></td></tr>
+          <tr><td>Google Colab</td><td><code>modules/mlfp01/colab-selfcontained/</code></td></tr>
         </tbody>
       </table>
       <div class="callout callout-foundations" style="margin-top:8px;">
-        <strong>All three formats produce identical results.</strong> Choose the one that fits your workflow.
+        <strong>Both formats produce identical results.</strong> Choose the one that fits your workflow. Worked solutions live in <code>solutions/</code> (VS Code) and <code>colab-selfcontained-solutions/</code> (Colab).
       </div>
     </div>
   </div>
@@ -179,36 +178,38 @@ uv pip install polars plotly kailash-ml python-dotenv requests</code></pre>
 Time: ~2 min
 Talking points:
 - uv is a fast Python package installer. Students can also use pip directly.
-- Three formats: local Python files, Jupyter notebooks, and Google Colab. All produce the same results.
-- If beginners confused: start with Jupyter notebooks for interactive exploration.
+- Two formats: local Python files for VS Code (modules/mlfp01/local/) and self-contained Colab notebooks (modules/mlfp01/colab-selfcontained/). Both produce the same results.
+- The Colab notebooks need no git clone: helpers are inlined and the data downloads automatically.
+- If beginners confused: start with Colab, there is nothing to install.
 - If experts bored: local .py files are better for version control and production code.
 Transition: "Everything is set up. Let us begin Lesson 1.1."
   </aside>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     THE STORY: HDB FLASH CRASH (motivating case)
+     THE STORY: THE DASHBOARD THAT SAID EVERYTHING WAS FINE (motivating case)
      ═══════════════════════════════════════════════════════════════ -->
 <section>
   <h2>The Story That Starts Everything</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
-  <h3>Singapore HDB Resale Flash Crash &mdash; Q4 2023</h3>
+  <h3>A Scenario: The Dashboard That Said Everything Was Fine</h3>
   <div class="columns">
     <div class="col">
       <ul>
-        <li>October 2023: HDB resale prices had risen 10 consecutive quarters</li>
-        <li>Then a <strong>sudden anomaly</strong> &mdash; median prices in three mature estates dropped 8-12% in a single month</li>
-        <li>Property portals and dashboards showed <em>nothing unusual</em></li>
-        <li>The anomaly was only caught by a data analyst who ran exploratory analysis on raw transaction data</li>
+        <li>Imagine an analytics team publishing a <strong>monthly median</strong> resale-price dashboard</li>
+        <li>Hidden in the raw transactions: a batch of records with <strong>impossible prices</strong> &mdash; data-entry errors, mis-keyed figures</li>
+        <li>The median barely moves, so the dashboard shows <em>nothing unusual</em></li>
+        <li>Every model trained on that data quietly learns from the errors</li>
       </ul>
+      <p style="font-size:0.6em;"><em>An illustrative scenario, not a reported incident.</em></p>
     </div>
     <div class="col">
       <div class="callout callout-warning">
         <strong>The Dashboard Said Everything Was Fine.</strong><br>
-        Aggregated dashboards masked the signal. Monthly medians smoothed out the crash. Only row-level EDA revealed the pattern.
+        A median is <em>designed</em> to ignore extremes. Only looking at the full distribution reveals them.
       </div>
       <div class="callout callout-kailash" style="margin-top:12px;">
-        <strong>By the end of today</strong>, you will be able to load this exact dataset, filter for those estates, and identify the anomaly yourself.
+        <strong>By the end of today</strong>, you will load the course's HDB resale dataset (~50,000 transactions) and find the planted bad prices yourself.
       </div>
     </div>
   </div>
@@ -216,11 +217,12 @@ Transition: "Everything is set up. Let us begin Lesson 1.1."
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- This is a real Singapore case. HDB resale data is publicly available from data.gov.sg.
-- Dashboards aggregate data. Aggregation hides outliers. Only hands-on EDA catches anomalies.
+- This is an illustrative scenario, not a real incident. Say so explicitly.
+- The course HDB file is a synthetic dataset modelled on the public HDB resale data, with data-quality problems planted on purpose so you can practise finding them.
+- Dashboards aggregate data. A median is robust to extremes by design, which is exactly why it hides them.
 - If beginners confused: the point is that looking at data yourself matters more than trusting a summary.
-- If experts bored: the root cause was subsidised transfers entering the public dataset without classification.
-Transition: "What went wrong? Let us dig deeper."
+- If experts bored: ask what a mean-based dashboard would have shown instead (the bad prices pull the mean, not the median).
+Transition: "What does a summary hide? Let us look."
   </aside>
 </section>
 
@@ -231,24 +233,21 @@ Transition: "What went wrong? Let us dig deeper."
     <div class="col">
       <h3>Dashboard Blindness</h3>
       <ul>
-        <li><strong>Aggregation hides outliers</strong> &mdash; a mean over 50,000 transactions masks 200 anomalous ones</li>
+        <li><strong>Aggregation hides outliers</strong> &mdash; a median over 50,000 transactions does not move for 251 bad ones</li>
         <li><strong>Pre-built charts answer yesterday's questions</strong> &mdash; they cannot ask new ones</li>
         <li><strong>No distribution view</strong> &mdash; the dashboard showed a single number, not a histogram</li>
       </ul>
     </div>
     <div class="col">
-      <h3>What EDA Would Have Caught</h3>
-      <ul>
-        <li>A <strong>bimodal distribution</strong> in the price column</li>
-        <li><strong>Temporal clustering</strong> &mdash; low prices all in a 2-week window</li>
-        <li><strong>Flat type correlation</strong> &mdash; only 3-room and 4-room affected</li>
-      </ul>
+      <h3>What EDA Catches in the Course Data</h3>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>The Fix:</strong>
-        <pre><code class="language-python">df.filter(pl.col("town") == "QUEENSTOWN")
-  .group_by("month")
-  .agg(pl.col("resale_price").median())</code></pre>
-        3 lines of Polars. That is all it took.
+        <pre><code class="language-python">df.select(
+    pl.col("resale_price").min(),     # 10
+    pl.col("resale_price").median(),  # 849,126
+    pl.col("resale_price").max(),     # 9,000,000
+)</code></pre>
+        A <span class="nomath">S$10</span> flat (107 rows) and a <span class="nomath">S$9,000,000</span> flat (144 rows). The median never noticed.
       </div>
     </div>
   </div>
@@ -257,10 +256,10 @@ Transition: "What went wrong? Let us dig deeper."
 Time: ~3 min
 Talking points:
 - Three failures: aggregation hiding outliers, static charts, no distribution view.
-- Three things EDA catches: bimodality, temporal clustering, flat-type correlation.
-- The 3-line code preview shows what students will learn by the end of today.
+- On the course HDB file, min and max expose the problem instantly: 107 sales at S$10 and 144 at S$9,000,000, while the median stays at about S$849k.
+- The code preview shows what students will be able to write by the end of today.
 - If beginners confused: the takeaway is "always look at the raw data yourself."
-- If experts bored: discuss how automated profiling (Lesson 1.7) would have flagged this.
+- If experts bored: automated profiling in Lesson 1.7 (DataExplorer) reports skewness and per-column outlier counts for exactly this.
 Transition: "This is why you learn exploratory data analysis. Let us start."
   </aside>
 </section>
@@ -451,25 +450,27 @@ Transition: "We have been working with single values. Data analysis needs collec
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <h3>Loading Data with Polars</h3>
   <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
 
-# Load Singapore weather data
-df = pl.read_csv("data/singapore_weather.csv")
+# Load Singapore monthly weather data
+df = MLFPDataLoader().load("mlfp01", "sg_weather.csv")
 
 # What do we have?
-print(f"Shape: {df.shape}")           # (1095, 8) = 1095 rows, 8 columns
-print(f"Columns: {df.columns}")       # ['date', 'station', 'rainfall_mm', ...]
+print(f"Shape: {df.shape}")      # (12, 3) = 12 rows, 3 columns
+print(f"Columns: {df.columns}")  # ['month', 'mean_temperature_c', 'total_rainfall_mm']
 
 # First 5 rows
-print(df.head())</code></pre>
+print(df.head())                 # January 26.5 167 / February 27.1 108 / ...</code></pre>
   <div class="callout callout-foundations">
-    <strong>Key Insight:</strong> A DataFrame is a table. Rows are observations (one per day). Columns are variables (temperature, rainfall). This structure is the foundation of all data analysis.
+    <strong>Key Insight:</strong> A DataFrame is a table. Rows are observations (one per month). Columns are variables (temperature, rainfall). This structure is the foundation of all data analysis.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
 Time: ~3 min
 Talking points:
 - import polars as pl is the convention, like import numpy as np.
-- read_csv returns a DataFrame, the central data structure for the entire course.
+- MLFPDataLoader finds the course file for you (locally or in Colab); under the hood it calls pl.read_csv and returns a DataFrame, the central data structure for the entire course.
+- The file is 12 monthly climate averages prepared for this course (illustrative, not official station records).
 - shape gives (rows, columns). columns gives the list of column names. head() shows the first 5 rows.
 - If beginners confused: compare DataFrame to a spreadsheet where every column has a name and a type.
 - If experts bored: mention Polars uses Apache Arrow memory format, which is why it is faster than pandas.
@@ -486,18 +487,14 @@ Transition: "Let us dig deeper into what the data actually contains."
       <pre><code class="language-python"># Statistical summary of every column
 print(df.describe())
 
-# Output (abridged):
-# +-----------+----------+----------+
-# | statistic | temp_max | rainfall |
-# | ---       | ---      | ---      |
-# | str       | f64      | f64      |
-# +===========+==========+==========+
-# | count     | 1095.0   | 1095.0   |
-# | mean      | 31.4     | 6.2      |
-# | std       | 1.3      | 15.8     |
-# | min       | 26.1     | 0.0      |
-# | max       | 36.2     | 138.4    |
-# +-----------+----------+----------+</code></pre>
+# Output (abridged; temp = mean_temperature_c,
+#         rain = total_rainfall_mm):
+#        month      temp   rain
+# count  12         12.0   12.0
+# mean   null       27.47  171.75
+# std    null       0.62   40.10
+# min    April      26.5   108.0
+# max    September  28.3   254.0</code></pre>
     </div>
     <div class="col">
       <h3>What describe() Tells You</h3>
@@ -508,7 +505,7 @@ print(df.describe())
         <li><strong>min / max</strong> &mdash; range (any extreme outliers?)</li>
       </ul>
       <div class="callout callout-theory" style="margin-top:12px;">
-        <strong>Why std matters:</strong> If mean rainfall is 6.2 mm but std is 15.8 mm, the data is highly skewed. Most days have zero rainfall, but when it rains, it pours.
+        <strong>Why std matters:</strong> Temperature std is 0.62&deg;C &mdash; every month is warm. Rainfall std is 40 mm on a mean of 172 mm: monthly rain varies far more (Feb 108 mm vs Nov 254 mm).<br><strong>Careful:</strong> min/max of the text column <code>month</code> are <em>alphabetical</em> (April, September) &mdash; not the coolest or hottest month.
       </div>
     </div>
   </div>
@@ -517,7 +514,8 @@ print(df.describe())
 Time: ~3 min
 Talking points:
 - describe() is the single most important function in EDA. Always run it first.
-- Point out that std being larger than mean is a red flag for skewness.
+- Compare spread to the mean: temperature barely moves (std 0.62 on 27.47, CV ~2%), rainfall moves a lot (std 40.1 on 171.75, CV ~23%).
+- For a string column, describe() min/max are alphabetical, unrelated to the other columns. April and September are NOT the coolest and hottest months; May (28.3) is the hottest.
 - If beginners confused: focus on count, mean, min, max. Standard deviation can wait.
 - If experts bored: mention Polars describe() also shows 25th, 50th, 75th percentiles.
 Transition: "Let us see how Polars tells us about column types."
@@ -532,16 +530,13 @@ Transition: "Let us see how Polars tells us about column types."
       <h3>Checking Column Types</h3>
       <pre><code class="language-python"># Schema shows every column's type
 print(df.schema)
-# {'date': String,
-#  'station': String,
-#  'rainfall_mm': Float64,
-#  'temp_max': Float64,
-#  'temp_min': Float64,
-#  'humidity': Int64}
+# Schema({'month': String,
+#         'mean_temperature_c': Float64,
+#         'total_rainfall_mm': Int64})
 
 # Single column access
-print(df["rainfall_mm"].dtype)
-# Float64</code></pre>
+print(df["total_rainfall_mm"].dtype)
+# Int64</code></pre>
     </div>
     <div class="col">
       <h3>Polars Type System</h3>
@@ -582,7 +577,7 @@ Transition: "Let us put it all together with the exercise."
 from shared import MLFPDataLoader
 
 loader = MLFPDataLoader()
-df = loader.load("mlfp01", "singapore_weather.csv")
+df = loader.load("mlfp01", "sg_weather.csv")
 
 # 1. Print the shape
 print(f"Rows: {df.shape[0]}, Cols: {df.shape[1]}")
@@ -600,9 +595,9 @@ print(stats)</code></pre>
     <div class="col">
       <h3>Answer These Questions</h3>
       <ol>
-        <li>How many days of data do we have?</li>
-        <li>What is the hottest temperature ever recorded?</li>
-        <li>What is the average daily rainfall in mm?</li>
+        <li>How many months of data do we have?</li>
+        <li>What is the highest monthly mean temperature?</li>
+        <li>What is the average monthly rainfall in mm?</li>
       </ol>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>Assessment:</strong> Code runs without error. All 3 questions answered correctly with evidence from <code>describe()</code> output.
@@ -616,7 +611,9 @@ Talking points:
 - Walk through the exercise requirements. Emphasise that answers must cite specific numbers from describe().
 - The shared data loader handles file paths so students do not need to worry about absolute paths.
 - If beginners confused: demonstrate loading the file live and running describe() step by step.
-- If experts bored: challenge them to also compute the coefficient of variation for rainfall.
+- Answers from describe(): count = 12 months; max mean_temperature_c = 28.3 C; mean total_rainfall_mm = 171.75 mm.
+- describe() gives the hottest value but not which month it was; filtering for it (May) is Task 8 of the exercise.
+- If experts bored: challenge them to also compute the coefficient of variation for rainfall (40.10 / 171.75 = ~23%).
 Transition: "You can now load data and inspect it. Next, we learn to filter and transform it."
   </aside>
 </section>
@@ -637,7 +634,7 @@ Transition: "You can now load data and inspect it. Next, we learn to filter and 
     <div class="col">
       <h3>Polars Essentials</h3>
       <ul>
-        <li><code>pl.read_csv()</code> &mdash; load data</li>
+        <li><code>loader.load()</code> / <code>pl.read_csv()</code> &mdash; load data</li>
         <li><code>df.shape</code> &mdash; (rows, columns)</li>
         <li><code>df.columns</code> &mdash; column names</li>
         <li><code>df.head()</code> &mdash; first N rows</li>
@@ -711,7 +708,8 @@ print(price != 550000)  # False
 print(price &gt;= 550000)  # True
 print(price &lt; 400000)   # False</code></pre>
       <h3 style="margin-top:12px;">Combining Conditions</h3>
-      <pre><code class="language-python"># &amp; means AND, | means OR
+      <pre><code class="language-python"># &amp; means AND, | means OR (shown on bools here)
+area = 92
 is_expensive = price &gt; 500000
 is_large = area &gt; 100
 
@@ -754,23 +752,24 @@ Transition: "Now let us apply these comparisons to filter entire DataFrames."
   <h2>Filtering Rows with filter()</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
 
-df = pl.read_csv("data/hdb_resale.csv")
+df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
 
 # Filter: only Queenstown flats
 queenstown = df.filter(pl.col("town") == "QUEENSTOWN")
-print(f"Queenstown transactions: {queenstown.shape[0]:,}")
+print(f"Queenstown transactions: {queenstown.shape[0]:,}")   # 1,523
 
 # Filter: expensive flats (over $700K)
 expensive = df.filter(pl.col("resale_price") &gt; 700_000)
-print(f"Over $700K: {expensive.shape[0]:,}")
+print(f"Over $700K: {expensive.shape[0]:,}")                 # 35,157
 
 # Combine conditions: Queenstown AND over $700K
 qt_expensive = df.filter(
     (pl.col("town") == "QUEENSTOWN") &amp;
     (pl.col("resale_price") &gt; 700_000)
 )
-print(f"Queenstown over $700K: {qt_expensive.shape[0]:,}")</code></pre>
+print(f"Queenstown over $700K: {qt_expensive.shape[0]:,}")   # 1,223</code></pre>
   <div class="callout callout-foundations">
     <strong>Key Pattern:</strong> <code>df.filter(pl.col("column") operator value)</code> &mdash; this is the syntax you will use hundreds of times.
   </div>
@@ -844,9 +843,10 @@ df = df.with_columns(
     (pl.col("resale_price") / pl.col("floor_area_sqm"))
     .alias("price_per_sqm"),
 
-    # Remaining lease in years (from months)
-    (pl.col("remaining_lease_months") / 12)
-    .round(1)
+    # Remaining lease in whole years, parsed from text
+    # ("71 years 11 months" or "92" -> 71 / 92)
+    pl.col("remaining_lease").str.extract(r"^(\d+)", 1)
+    .cast(pl.Int64)
     .alias("remaining_lease_years"),
 
     # High-value flag
@@ -856,7 +856,7 @@ df = df.with_columns(
 
 print(df.select("town", "price_per_sqm", "remaining_lease_years", "is_high_value").head())</code></pre>
   <div class="callout callout-theory">
-    <strong>Why expressions, not loops?</strong> Polars expressions run on the entire column at once (vectorised). Processing 15 million rows takes milliseconds, not minutes. This is why Polars beats pandas for large datasets.
+    <strong>Why expressions, not loops?</strong> Polars expressions run on the entire column at once (vectorised). Processing all ~50,000 HDB rows takes milliseconds, and the same code scales to tens of millions. This is why Polars beats pandas for large datasets.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
@@ -864,7 +864,7 @@ Time: ~3 min
 Talking points:
 - with_columns is the most important transformation method. It creates new columns from expressions.
 - .alias() names the result. Without it, Polars auto-names the column from the expression.
-- .round(1) chains onto the expression, rounding to 1 decimal place.
+- remaining_lease is text in two formats ("71 years 11 months" and plain "92"); str.extract pulls the leading number, then cast makes it an integer. About 1,474 rows have no remaining_lease and stay null.
 - If beginners confused: think of it as adding a formula column in a spreadsheet.
 - If experts bored: explain that Polars compiles these expressions into a single pass over the data.
 Transition: "Let us chain multiple operations together."
@@ -934,7 +934,7 @@ Transition: "Time to practice. Here is your exercise."
 from shared import MLFPDataLoader
 
 loader = MLFPDataLoader()
-df = loader.load("mlfp01", "hdb_resale.csv")
+df = loader.load("mlfp01", "hdb_resale.parquet")
 
 # 1. Filter by town = "BISHAN"
 # 2. Filter by price 400K-800K
@@ -1165,16 +1165,16 @@ Transition: "Let us see the available aggregation functions."
       <table>
         <thead><tr><th>Function</th><th>Description</th></tr></thead>
         <tbody>
-          <tr><td><code>pl.mean()</code></td><td>Average</td></tr>
-          <tr><td><code>pl.median()</code></td><td>Middle value</td></tr>
-          <tr><td><code>pl.sum()</code></td><td>Total</td></tr>
-          <tr><td><code>pl.count()</code></td><td>Number of rows</td></tr>
-          <tr><td><code>pl.min()</code></td><td>Minimum</td></tr>
-          <tr><td><code>pl.max()</code></td><td>Maximum</td></tr>
-          <tr><td><code>pl.std()</code></td><td>Standard deviation</td></tr>
-          <tr><td><code>pl.first()</code></td><td>First value</td></tr>
-          <tr><td><code>pl.last()</code></td><td>Last value</td></tr>
-          <tr><td><code>pl.n_unique()</code></td><td>Distinct count</td></tr>
+          <tr><td><code>pl.col(c).mean()</code></td><td>Average</td></tr>
+          <tr><td><code>pl.col(c).median()</code></td><td>Middle value</td></tr>
+          <tr><td><code>pl.col(c).sum()</code></td><td>Total</td></tr>
+          <tr><td><code>pl.len()</code></td><td>Number of rows</td></tr>
+          <tr><td><code>pl.col(c).min()</code></td><td>Minimum</td></tr>
+          <tr><td><code>pl.col(c).max()</code></td><td>Maximum</td></tr>
+          <tr><td><code>pl.col(c).std()</code></td><td>Standard deviation</td></tr>
+          <tr><td><code>pl.col(c).first()</code></td><td>First value</td></tr>
+          <tr><td><code>pl.col(c).last()</code></td><td>Last value</td></tr>
+          <tr><td><code>pl.col(c).n_unique()</code></td><td>Distinct count</td></tr>
         </tbody>
       </table>
     </div>
@@ -1186,7 +1186,7 @@ Transition: "Let us see the available aggregation functions."
     .agg(
         pl.col("resale_price").mean()
           .alias("avg_price"),
-        pl.count().alias("n"),
+        pl.len().alias("n"),
     )
     .sort("town", "flat_type")
 )
@@ -1200,7 +1200,8 @@ print(df.select(
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- Each aggregation reduces a group of rows to a single number.
+- Each aggregation reduces a group of rows to a single number. Write them as expressions on a column: pl.col("resale_price").mean(). pl.mean() on its own needs a column name.
+- Use pl.len() to count rows; the old pl.count() is deprecated and prints a warning.
 - You can group by multiple columns to get finer-grained breakdowns.
 - n_unique() is useful for understanding cardinality: how many unique towns, flat types, etc.
 - If beginners confused: mean is the average, median is the middle value, count is how many.
@@ -1250,18 +1251,21 @@ Transition: "Here is the exercise for this lesson."
   <div class="columns">
     <div class="col">
       <h3>Building a Report</h3>
-      <pre><code class="language-python"># Get unique towns
-towns = df.select(
-    pl.col("town").unique()
-).to_series().to_list()
+      <pre><code class="language-python"># Get unique towns, alphabetically
+towns = df["town"].unique().sort().to_list()
 
 # Loop and build summaries
 results = []
-for town in towns[:5]:  # top 5
+# first 5 towns alphabetically
+for town in towns[:5]:
     summary = district_summary(df, town)
-    avg = summary["avg_price"][0]
-    results.append({"town": town, "avg": avg})
-    print(f"{town}: ${avg:,.0f}")
+    # row 0 = the priciest flat type
+    top = summary.row(0, named=True)
+    flat, avg = top["flat_type"], top["avg_price"]
+    results.append(
+        {"town": town, "top_type": flat,
+         "avg": avg})
+    print(f"{town}: {flat} avg ${avg:,.0f}")
 
 # Convert to DataFrame
 report = pl.DataFrame(results)
@@ -1286,6 +1290,8 @@ print(report.sort("avg", descending=True))</code></pre>
 Time: ~3 min
 Talking points:
 - This slide shows the loop + function pattern: iterate, call, collect.
+- district_summary groups by flat type and sorts by avg_price descending, so row 0 is the town's most expensive flat type, not the town average. The print labels it that way.
+- unique() returns towns in no particular order; .sort() makes the "first 5" reproducible.
 - The performance note is important: group_by is vectorised, loops are sequential.
 - If beginners confused: focus on the pattern. The code will become second nature.
 - If experts bored: mention list comprehensions as a more Pythonic alternative.
@@ -1337,9 +1343,9 @@ Transition: "In Lesson 1.4, we learn to combine multiple datasets using joins."
       <h3>Polars Aggregation</h3>
       <ul>
         <li><code>group_by("col").agg(...)</code></li>
-        <li><code>pl.mean()</code>, <code>pl.sum()</code>, <code>pl.count()</code></li>
-        <li><code>pl.min()</code>, <code>pl.max()</code>, <code>pl.std()</code></li>
-        <li><code>pl.n_unique()</code> for cardinality</li>
+        <li><code>pl.col(c).mean()</code>, <code>.sum()</code>, <code>pl.len()</code></li>
+        <li><code>pl.col(c).min()</code>, <code>.max()</code>, <code>.std()</code></li>
+        <li><code>pl.col(c).n_unique()</code> for cardinality</li>
         <li>Multiple grouping columns supported</li>
       </ul>
     </div>
@@ -1388,7 +1394,7 @@ Talking points:
 - Real-world analysis almost always involves multiple data sources.
 - This lesson adds conditionals (if/else) to your toolkit and teaches you to combine datasets.
 - If beginners confused: think of joining as merging two spreadsheets on a common column.
-- If experts bored: mention we will handle 15M row joins efficiently with Polars.
+- If experts bored: mention Polars joins are hash joins and run in parallel; a 50,000-row join takes milliseconds.
 Transition: "First, let us learn Python's if/else for making decisions in code."
   </aside>
 </section>
@@ -1458,8 +1464,11 @@ one_year_ago = today - timedelta(days=365)
 print(f"One year ago: {one_year_ago:%Y-%m-%d}")
 
 config_path = Path("config.json")
+settings = {"town": "BISHAN"}
+config_path.write_text(json.dumps(settings))
 with open(config_path) as f:
-    config = json.load(f)</code></pre>
+    config = json.load(f)
+print(config["town"])  # BISHAN</code></pre>
     </div>
     <div class="col">
       <h3>Packages You Will Use in MLFP</h3>
@@ -1546,16 +1555,17 @@ Transition: "Now let us learn about joins."
         <tbody>
           <tr><td><strong>Inner</strong></td><td>Only matching rows</td><td>Need complete data only</td></tr>
           <tr><td><strong>Left</strong></td><td>All left + matching right</td><td>Keep all primary records</td></tr>
-          <tr><td><strong>Outer</strong></td><td>All rows from both</td><td>Want everything, fill nulls</td></tr>
+          <tr><td><strong>Outer</strong> (<code>how="full"</code>)</td><td>All rows from both</td><td>Want everything, fill nulls</td></tr>
         </tbody>
       </table>
     </div>
     <div class="col">
-      <pre><code class="language-python"># HDB data has: town, price, area
-# MRT data has: town, nearest_mrt, distance_km
+      <pre><code class="language-text"># HDB: one row per SALE   - town "BISHAN" (UPPER)
+# MRT: one row per STATION - town "Bishan" (Title)
+#      150 stations over 32 towns
 
 # Inner: only towns in BOTH datasets
-# Left:  all HDB towns, nulls if no MRT
+# Left:  all HDB sales, nulls if no MRT
 # Outer: all towns from both sources</code></pre>
       <div class="callout callout-warning" style="margin-top:8px;">
         <strong>Key Decision:</strong> Do you want to <em>drop</em> rows without a match (inner) or <em>keep</em> them with nulls (left/outer)?
@@ -1567,7 +1577,8 @@ Transition: "Now let us learn about joins."
 Time: ~3 min
 Talking points:
 - Joins combine two tables on a shared key column. The key here is "town".
-- Inner join is the safest. Left join is the most common.
+- Left join is the safe default for enrichment; inner join silently drops unmatched rows.
+- Before any join, check two things about the key: does it match (HDB is UPPERCASE, MRT is Title Case) and is it unique on the right (MRT has several stations per town).
 - If beginners confused: draw the Venn diagram. Inner = overlap. Left = left circle. Outer = both.
 - If experts bored: mention anti-join and cross-join which Polars also supports.
 Transition: "Let us see joins in action with Polars."
@@ -1577,29 +1588,32 @@ Transition: "Let us see joins in action with Polars."
 <section>
   <h2>Polars Joins in Practice</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
-  <pre><code class="language-python">hdb = pl.read_csv("data/hdb_resale.csv")
-mrt = pl.read_csv("data/mrt_stations.csv")
-schools = pl.read_csv("data/primary_schools.csv")
+  <pre><code class="language-python">loader = MLFPDataLoader()
+hdb = loader.load("mlfp01", "hdb_resale.parquet")
+mrt = loader.load("mlfp_assessment", "mrt_stations.parquet")
+schools = loader.load("mlfp_assessment", "schools.parquet")
 
-# Left join: keep all HDB records
-hdb_mrt = hdb.join(mrt, on="town", how="left")
-print(f"After MRT join: {hdb_mrt.shape}")
+# Naive: hdb.join(mrt, on="town") matches NOTHING ("BISHAN" != "Bishan")
+# Fix 1: normalise the key.  Fix 2: one row per town on the right.
+mrt_town = (mrt.with_columns(pl.col("town").str.to_uppercase())
+    .group_by("town").agg(pl.len().alias("station_count")))
+school_town = (schools.with_columns(pl.col("town").str.to_uppercase())
+    .group_by("town").agg(pl.len().alias("school_count")))
 
-# Chain a second join: add school proximity
-hdb_enriched = (
-    hdb
-    .join(mrt, on="town", how="left")
-    .join(schools, on="town", how="left")
-)
-print(f"Enriched: {hdb_enriched.shape}")</code></pre>
+hdb_enriched = (hdb
+    .join(mrt_town, on="town", how="left")
+    .join(school_town, on="town", how="left"))
+print(hdb_enriched.shape)  # (50150, 13): every sale kept, no fan-out</code></pre>
   <div class="callout callout-foundations">
-    <strong>Pattern:</strong> <code>left_df.join(right_df, on="key_column", how="left")</code> &mdash; always specify <code>how=</code> explicitly.
+    <strong>Pattern:</strong> normalise the key, make the right side unique, then <code>left_df.join(right_df, on="key", how="left")</code> &mdash; always specify <code>how=</code>.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
 Time: ~3 min
 Talking points:
 - The on= parameter specifies the join key. Both DataFrames must have a column with this name.
+- Trap 1 (case): HDB towns are UPPERCASE, MRT and school towns are Title Case. Joined raw, all 50,150 rows get nulls and the row count still looks "correct".
+- Trap 2 (fan-out): MRT has 150 stations over 32 towns. Joined after fixing case but without aggregating, the result explodes to 186,997 rows. Aggregate to one row per town first.
 - how= specifies the join type. Always be explicit; do not rely on defaults.
 - If beginners confused: after the join, print the shape to verify row counts match expectations.
 - If experts bored: mention left_on/right_on for different column names.
@@ -1616,9 +1630,9 @@ Transition: "What about rows that do not match?"
 print(null_counts)
 
 no_mrt = hdb_enriched.filter(
-    pl.col("nearest_mrt").is_null()
+    pl.col("station_count").is_null()
 )
-print(f"Missing MRT: {no_mrt.shape[0]:,}")
+print(f"Missing MRT: {no_mrt.shape[0]:,}")  # 11,032
 
 region_map = {
     "QUEENSTOWN": "Central",
@@ -1639,7 +1653,7 @@ hdb_enriched = hdb_enriched.with_columns(
         <strong>Left join:</strong> Keep all primary records. Missing data appears as <code>null</code>. Always check null counts.
       </div>
       <div class="callout callout-theory" style="margin-top:8px;">
-        <strong>Row count check:</strong> After a left join, result rows should equal left table rows (unless duplicates on the join key).
+        <strong>Row count check:</strong> After a left join, result rows equal left table rows <em>only if</em> the right key is unique. An equal count can also mean nothing matched &mdash; check nulls too.
       </div>
     </div>
   </div>
@@ -1647,7 +1661,8 @@ hdb_enriched = hdb_enriched.with_columns(
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- After any join, always check null_count() to see what did not match.
+- After any join, always check null_count() to see what did not match. Here 6 HDB towns (11,032 sales) have no station in the MRT table: BOON LAY, CENTRAL AREA, HOUGANG, KALLANG/WHAMPOA, PUNGGOL, SENGKANG.
+- Read the unmatched names: some are genuinely absent, others are naming mismatches (KALLANG/WHAMPOA vs KALLANG). fill_null cannot fix a naming mismatch.
 - The replace() method with a dictionary is a quick way to map values.
 - If beginners confused: null means "no data". Left join keeps the row, puts null where no match.
 - If experts bored: discuss join key cardinality issues (one-to-many duplications).
@@ -1662,8 +1677,8 @@ Transition: "Here is your exercise for this lesson."
     <div class="col">
       <ol>
         <li>Load HDB resale, MRT station, and school data</li>
-        <li>Join all three on the appropriate key</li>
-        <li>Compute distance-to-amenity features</li>
+        <li>Normalise the town key; aggregate MRT and schools to one row per town</li>
+        <li>Join all three; add town-level features: station count, station spacing, distance to the CBD</li>
         <li>Handle missing joins appropriately</li>
         <li>Verify the combined dataset row count</li>
       </ol>
@@ -1678,7 +1693,8 @@ Transition: "Here is your exercise for this lesson."
   <aside class="notes">
 Time: ~2 min
 Talking points:
-- The expected answer: left join on "town" to keep all HDB records, check nulls, compute distance features.
+- The expected answer: upper-case the town keys, aggregate the right tables per town, left join on "town" to keep all 50,150 HDB records, check nulls.
+- The MRT table's distance_to_mrt_km is the gap between neighbouring STATIONS, not a flat's distance to the MRT (the HDB data has no flat coordinates). The exercise builds honest town-level features instead: station count (MRT access), typical station spacing, and haversine distance from the town's station centroid to the CBD, which tracks price (r about -0.55).
 - If beginners confused: start with inner join, check row count, then switch to left join and compare.
 - If experts bored: challenge them to detect duplicate join keys.
 Transition: "Lesson 1.5 takes us into time-series territory with window functions."
@@ -1701,7 +1717,7 @@ Transition: "Lesson 1.5 takes us into time-series territory with window function
         <li><code>df.join(other, on="key", how="left")</code></li>
         <li><strong>Inner:</strong> only matching rows</li>
         <li><strong>Left:</strong> all left + matching right</li>
-        <li><strong>Outer:</strong> all from both sides</li>
+        <li><strong>Outer</strong> (<code>how="full"</code>): all from both sides</li>
         <li>Always check <code>null_count()</code> after joins</li>
       </ul>
     </div>
@@ -1764,7 +1780,7 @@ Transition: "Let us start with over(), the heart of window operations."
 town_avg = df.group_by("town").agg(
     pl.col("resale_price").mean()
       .alias("avg_price")
-)  # 26 rows
+)  # 27 rows (one per town)
 
 # over(): result on EVERY row
 df_with_avg = df.with_columns(
@@ -1806,22 +1822,21 @@ Transition: "Now let us apply this to time-series data with rolling averages."
 <section>
   <h2>Rolling Averages</h2>
   <span class="marker marker-theory">THEORY</span>
-  <pre><code class="language-python">monthly = (
-    df
-    .group_by("town", "month")
-    .agg(pl.col("resale_price").mean().alias("avg_price"))
-    .sort("town", "month")
-)
+  <pre><code class="language-python">monthly = (df.group_by("town", "month")
+    .agg(pl.col("resale_price").mean().alias("avg_price")))  # 3,236 rows
+
+# Make the calendar complete: every town x every month (27 x 120)
+grid = (df.select("town").unique()
+    .join(df.select("month").unique(), how="cross"))
+monthly = (grid.join(monthly, on=["town", "month"], how="left")
+    .sort("town", "month"))  # 3,240 rows: 4 missing months are now null
 
 # 3-month rolling average per town
 monthly = monthly.with_columns(
-    pl.col("avg_price")
-      .rolling_mean(window_size=3)
-      .over("town")
-      .alias("rolling_3m_avg")
-)</code></pre>
+    pl.col("avg_price").rolling_mean(window_size=3)
+      .over("town").alias("rolling_3m_avg"))</code></pre>
   <div class="callout callout-theory">
-    <strong>Rolling Window:</strong> For each row, the rolling average looks at the current row and the previous N-1 rows. With window_size=3, it averages the current month and two preceding months. The first two rows will be <code>null</code> (not enough history).
+    <strong>Rolling Window:</strong> Windows count <em>rows</em>, not months. With window_size=3 the average covers the current row and the two before it &mdash; that is "the last 3 months" only if no month is missing. The first two rows per town are <code>null</code> (not enough history).
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
@@ -1829,6 +1844,7 @@ Time: ~3 min
 Talking points:
 - Rolling averages smooth noisy data. Essential for spotting trends in property prices.
 - The over("town") ensures the rolling average resets for each town.
+- The course data has 3,236 of the 3,240 town-month cells: BUKIT TIMAH has no sales in 2015-10, 2017-02 and 2022-07, CENTRAL AREA none in 2015-08. Without the grid, a 3-row window would silently span 4 months there.
 - If beginners confused: draw a sliding window on the whiteboard.
 - If experts bored: discuss exponentially weighted moving averages.
 Transition: "Let us compute year-on-year changes."
@@ -1877,7 +1893,8 @@ print(growth.head(5))</code></pre>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- shift(12) moves the column down by 12 rows, giving you the value from 12 months ago.
+- shift(12) moves the column down by 12 rows. That equals "same month last year" ONLY because we completed the calendar on the previous slide. Without the grid, 40 rows compare against the wrong month (e.g. CENTRAL AREA 2016-03 vs 2015-02).
+- With the grid, a missing month gives a null YoY instead of a wrong one.
 - The YoY formula: (current - previous) / previous * 100.
 - If beginners confused: YoY asks "compared to the same month last year, did the price go up or down?"
 - If experts bored: discuss CAGR as an alternative metric.
@@ -1913,12 +1930,12 @@ print(seasonal)</code></pre>
       <h3>What to Look For</h3>
       <ul>
         <li><strong>Trend:</strong> Long-term direction (up or down over years)</li>
-        <li><strong>Seasonality:</strong> Repeating pattern within each year (e.g., CNY dip in Feb)</li>
+        <li><strong>Seasonality:</strong> Repeating pattern within each year (e.g., a holiday-month dip)</li>
         <li><strong>Cyclicality:</strong> Multi-year patterns (property cooling measures)</li>
         <li><strong>Noise:</strong> Random month-to-month variation</li>
       </ul>
       <div class="callout callout-theory" style="margin-top:12px;">
-        <strong>Singapore Context:</strong> HDB resale volumes typically dip in February (Chinese New Year) and spike in July-August (school-year timing for families with children).
+        <strong>Test, don't assume:</strong> In the course's synthetic HDB data the 12 calendar-month averages sit within about &plusmn;2% of each other (S$875k&ndash;908k) &mdash; no real seasonal pattern. A hypothesis like "a Chinese New Year dip" must show up in your output before you claim it.
       </div>
     </div>
   </div>
@@ -1927,7 +1944,8 @@ print(seasonal)</code></pre>
 Time: ~3 min
 Talking points:
 - Trend, seasonality, cyclicality, and noise are the four components of any time series.
-- The Singapore-specific seasonal patterns are real: CNY slows transactions, mid-year accelerates them.
+- Seasonality is a hypothesis you test with this group-by. On the course data the answer is "no seasonal pattern": calendar-month averages range only from about S$875k (October) to S$908k (September), and transaction counts are similar every month (about 4,000-4,300).
+- The HDB file is synthetic, so it carries no real market seasonality; with real data the same code is how you would find it.
 - If beginners confused: trend is "going up or down overall", seasonality is "same pattern every year".
 - If experts bored: discuss decomposition methods (additive vs multiplicative) which come in Module 2.
 Transition: "Now let us look at lazy frames for performance."
@@ -1939,8 +1957,11 @@ Transition: "Now let us look at lazy frames for performance."
   <span class="marker marker-advanced">ADVANCED</span>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python"># Eager: executes immediately
-df = pl.read_csv("data/hdb_resale.csv")
+      <pre><code class="language-python">path = MLFPDataLoader().load_raw(
+    "mlfp01", "hdb_resale.parquet")
+
+# Eager: executes immediately
+df = pl.read_parquet(path)
 result = (
     df
     .filter(pl.col("town") == "BISHAN")
@@ -1948,7 +1969,7 @@ result = (
 )
 
 # Lazy: builds query plan, executes on collect()
-lf = pl.scan_csv("data/hdb_resale.csv")
+lf = pl.scan_parquet(path)
 result = (
     lf
     .filter(pl.col("town") == "BISHAN")
@@ -1973,6 +1994,7 @@ result = (
 Time: ~3 min
 Talking points:
 - Lazy frames do NOT load data until .collect(). This lets Polars optimise the query.
+- loader.load_raw() returns the local file path (downloading it first if needed), which is what scan_parquet needs.
 - This is ADVANCED. Students can complete all exercises with eager mode.
 - If beginners confused: skip this slide entirely.
 - If experts bored: show the query plan with lf.explain().
@@ -1984,7 +2006,7 @@ Transition: "Let us inspect the query plan."
   <h2>Inspecting the Query Plan</h2>
   <span class="marker marker-advanced">ADVANCED</span>
   <pre><code class="language-python">lf = (
-    pl.scan_csv("data/hdb_resale.csv")
+    pl.scan_parquet(path)
     .filter(pl.col("town") == "BISHAN")
     .select("month", "resale_price")
     .sort("month")
@@ -1992,12 +2014,12 @@ Transition: "Let us inspect the query plan."
 
 print(lf.explain())
 # SORT BY [col("month")]
-#   FAST_PROJECT: [month, resale_price]
-#     FILTER col("town") == "BISHAN"
-#       CSV SCAN data/hdb_resale.csv
-#       PROJECT 3/12 COLUMNS   &lt;-- only reads 3 columns!</code></pre>
+#   simple π 2/2 ["month", "resale_price"]
+#     Parquet SCAN [.../data/mlfp01/hdb_resale.parquet]
+#     PROJECT 3/11 COLUMNS              &lt;-- only reads 3 columns!
+#     SELECTION: [(col("town")) == ("BISHAN")]   &lt;-- filter pushed into the scan</code></pre>
   <div class="callout callout-advanced">
-    <strong>Performance:</strong> "PROJECT 3/12 COLUMNS" means Polars only reads 3 of the 12 columns from disk. For large files, lazy can be 2-5x faster than eager.
+    <strong>Performance:</strong> "PROJECT 3/11 COLUMNS" means Polars only reads 3 of the 11 columns from disk, and SELECTION shows the filter runs during the scan. For large files, lazy can be several times faster than eager.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
@@ -2017,7 +2039,7 @@ Transition: "Time for the exercise."
   <div class="columns">
     <div class="col">
       <ol>
-        <li>Compute monthly average prices per district</li>
+        <li>Compute monthly average prices per district on a complete town &times; month grid</li>
         <li>Add a 3-month rolling average per district</li>
         <li>Calculate YoY price change percentage</li>
         <li>Identify top 5 highest-growth districts</li>
@@ -2035,7 +2057,8 @@ Transition: "Time for the exercise."
 Time: ~2 min
 Talking points:
 - This exercise combines group_by, rolling_mean, shift, and sorting.
-- Key pitfall: ensure rolling_mean and shift use over("town").
+- Key pitfall 1: ensure rolling_mean and shift use over("town").
+- Key pitfall 2: shift(12) counts rows. Complete the calendar first, or YoY compares the wrong months (this is what "proper time alignment" in the assessment means).
 - If beginners confused: do steps 1-3 first, then tackle ranking.
 - If experts bored: challenge them to use lazy frames for the entire pipeline.
 Transition: "Lesson 1.5 recap."
@@ -2051,14 +2074,14 @@ Transition: "Lesson 1.5 recap."
       <ul>
         <li><code>.over("col")</code> &mdash; compute per group, keep all rows</li>
         <li><code>.rolling_mean(N)</code> &mdash; N-period moving average</li>
-        <li><code>.shift(N)</code> &mdash; look back N periods</li>
+        <li><code>.shift(N)</code> &mdash; look back N <em>rows</em> (complete the calendar first)</li>
         <li>YoY = (current - prior) / prior * 100</li>
       </ul>
     </div>
     <div class="col">
       <h3>Lazy Evaluation</h3>
       <ul>
-        <li><code>pl.scan_csv()</code> &mdash; lazy load</li>
+        <li><code>pl.scan_parquet()</code> / <code>pl.scan_csv()</code> &mdash; lazy load</li>
         <li><code>.collect()</code> &mdash; trigger execution</li>
         <li><code>.explain()</code> &mdash; inspect query plan</li>
         <li>Optional: not needed for correctness</li>
@@ -2128,7 +2151,7 @@ Transition: "Why bother with charts when you have describe()?"
     </div>
     <div class="col">
       <div class="callout callout-warning">
-        <strong>Remember the flash crash?</strong> The dashboard showed a single median number. A histogram would have revealed the bimodal distribution instantly.
+        <strong>Remember the dashboard scenario?</strong> It showed a single median number. A histogram of the course HDB prices shows the stray bars at <span class="nomath">S$10</span> and <span class="nomath">S$9M</span> instantly.
       </div>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>Rule:</strong> Always plot your data before computing statistics.
@@ -2233,7 +2256,7 @@ Transition: "Now let us pick the right chart for the right data."
       <tr><td>How are values distributed?</td><td><strong>Histogram</strong></td><td>HDB price distribution</td></tr>
       <tr><td>How does a value change over time?</td><td><strong>Line chart</strong></td><td>Monthly median price</td></tr>
       <tr><td>How do categories compare?</td><td><strong>Vertical bar</strong></td><td>Average price by town</td></tr>
-      <tr><td>How do many categories rank?</td><td><strong>Horizontal bar</strong></td><td>26 towns ranked</td></tr>
+      <tr><td>How do many categories rank?</td><td><strong>Horizontal bar</strong></td><td>27 towns ranked</td></tr>
       <tr><td>What is the composition?</td><td><strong>Stacked bar</strong></td><td>Flat type mix per town</td></tr>
       <tr><td>How do two variables relate?</td><td><strong>Scatter plot</strong></td><td>Area vs price</td></tr>
       <tr><td>How do variables correlate?</td><td><strong>Heatmap</strong></td><td>Correlation matrix</td></tr>
@@ -2259,14 +2282,14 @@ Transition: "Let us build these charts with Plotly Express."
       <pre><code class="language-python">import plotly.express as px
 
 fig = px.histogram(
-    df.to_pandas(),
+    df,  # a Polars DataFrame, passed directly
     x="resale_price", nbins=50,
     title="HDB Resale Price Distribution"
 )
 fig.show()
 
 fig = px.line(
-    monthly.to_pandas(),
+    monthly,
     x="month", y="avg_price",
     color="town",
     title="Monthly Average Price by Town"
@@ -2275,14 +2298,14 @@ fig.show()</code></pre>
     </div>
     <div class="col">
       <pre><code class="language-python">fig = px.bar(
-    town_stats.to_pandas(),
+    town_stats,
     x="town", y="avg_price",
     title="Average Price by Town"
 )
 fig.show()
 
 fig = px.scatter(
-    df.to_pandas(),
+    df,
     x="floor_area_sqm",
     y="resale_price",
     color="flat_type",
@@ -2292,13 +2315,14 @@ fig.show()</code></pre>
     </div>
   </div>
   <div class="callout callout-warning">
-    <strong>Note:</strong> Plotly requires pandas. Use <code>.to_pandas()</code> to convert from Polars. This is the only place we use pandas.
+    <strong>Note:</strong> Plotly Express accepts Polars DataFrames directly &mdash; including <code>color=</code> grouping. No pandas anywhere in this course.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
 Time: ~3 min
 Talking points:
 - Plotly Express creates interactive charts with hover, zoom, pan built in.
+- Pass the Polars DataFrame straight in. Plotly 6 reads Polars natively, so there is no .to_pandas() step.
 - If beginners confused: copy the pattern, change the column names.
 - If experts bored: mention Plotly Graph Objects for fine-grained control.
 Transition: "Let us see how Kailash ModelVisualizer simplifies this."
@@ -2316,19 +2340,27 @@ Transition: "Let us see how Kailash ModelVisualizer simplifies this."
 
 viz = ModelVisualizer()
 
-viz.plot_correlation(df,
-    title="HDB Correlations")
+fig = viz.histogram(
+    df, "resale_price", bins=40,
+    title="Price Distribution")
+fig.show()
 
-viz.plot_distribution(df,
-    column="resale_price",
-    title="Price Distribution")</code></pre>
+fig = viz.scatter(
+    df, "floor_area_sqm",
+    "resale_price", color="flat_type",
+    title="Floor Area vs Price")
+
+fig = viz.box_plot(
+    df, "resale_price",
+    group_by="flat_type",
+    title="Price by Flat Type")</code></pre>
       </div>
       <div class="col">
         <ul>
-          <li>Consistent styling across all MLFP modules</li>
-          <li>Built-in best practices (no misleading axes)</li>
-          <li>Polars-native: no <code>.to_pandas()</code> needed</li>
-          <li>Extends into ML visualisations in later modules</li>
+          <li>EDA methods: <code>histogram</code>, <code>scatter</code>, <code>box_plot</code></li>
+          <li>Every call returns a Plotly figure &mdash; refine with <code>fig.update_layout()</code></li>
+          <li>Polars-native: pass the DataFrame directly</li>
+          <li>ML charts in later modules: <code>confusion_matrix</code>, <code>roc_curve</code>, <code>feature_importance</code></li>
         </ul>
         <div class="callout callout-kailash" style="margin-top:8px;">
           <strong>Pattern:</strong> Plotly for custom charts. ModelVisualizer for standard EDA.
@@ -2340,7 +2372,8 @@ viz.plot_distribution(df,
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- ModelVisualizer wraps Plotly with sensible defaults.
+- ModelVisualizer wraps Plotly with sensible defaults. The EDA methods are histogram(data, column, bins=, title=), scatter(data, x, y, color=, title=) and box_plot(data, column, group_by=, title=).
+- Most other methods are for models (confusion_matrix takes y_true/y_pred, not a correlation matrix), so a correlation heatmap is built with Plotly on the next slide.
 - Polars-native, so no conversion needed.
 - If beginners confused: it is a shortcut. Fall back to Plotly Express for custom charts.
 - If experts bored: mention the ModelVisualizer is extensible with custom themes.
@@ -2356,11 +2389,13 @@ Transition: "Let us build a heatmap and stacked bar chart."
       <pre><code class="language-python">numeric_cols = df.select(
     pl.col(pl.Float64, pl.Int64)
 )
-corr = numeric_cols.to_pandas().corr()
+corr = numeric_cols.corr()  # Polars
 
 fig = px.imshow(
-    corr, text_auto=".2f",
+    corr.to_numpy(), text_auto=".2f",
+    x=corr.columns, y=corr.columns,
     color_continuous_scale="RdBu_r",
+    zmin=-1, zmax=1,
     title="HDB Feature Correlations"
 )
 fig.show()</code></pre>
@@ -2369,11 +2404,11 @@ fig.show()</code></pre>
       <pre><code class="language-python">composition = (
     df
     .group_by("town", "flat_type")
-    .agg(pl.count().alias("n"))
+    .agg(pl.len().alias("n"))
 )
 
 fig = px.bar(
-    composition.to_pandas(),
+    composition,
     x="town", y="n",
     color="flat_type",
     title="Flat Type Mix by Town",
@@ -2386,7 +2421,8 @@ fig.show()</code></pre>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- Heatmaps show correlations: red = positive, blue = negative.
+- Heatmaps show correlations: with RdBu_r and zmin=-1, zmax=1, red = positive, blue = negative, white = zero. Without zmin/zmax the colour midpoint is not pinned at zero.
+- On the course data: area vs price r = 0.47 (moderate); lease_commence_date vs price r is about 0, the synthetic data has no age effect.
 - Stacked bars show composition per category.
 - If beginners confused: focus on reading the charts, not memorising code.
 - If experts bored: discuss limitations of Pearson correlation for non-linear relationships.
@@ -2401,7 +2437,7 @@ Transition: "Time for the exercise."
     <div class="col">
       <ol>
         <li><strong>Heatmap</strong> &mdash; price feature correlations</li>
-        <li><strong>Line chart</strong> &mdash; monthly price trend for 3 towns</li>
+        <li><strong>Line chart</strong> &mdash; annual median price for the 5 busiest towns</li>
         <li><strong>Bar chart</strong> &mdash; top 10 towns by average price</li>
         <li><strong>Scatter plot</strong> &mdash; floor area vs resale price</li>
         <li><strong>Histogram</strong> &mdash; price distribution</li>
@@ -2502,31 +2538,34 @@ Transition: "Let us profile a dataset with one call."
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="kailash-bridge">
     <h3>DataExplorer &mdash; Automated Data Quality Assessment</h3>
-    <pre><code class="language-python">from kailash_ml import DataExplorer
-from shared import run_profile
+    <pre><code class="language-python">from shared import run_profile  # sync wrapper around DataExplorer.profile()
 
-explorer = DataExplorer()
-profile = run_profile(explorer, df)
+profile = run_profile(df)        # df = HDB resale data
 
-print(f"Rows: {profile.row_count}")
-print(f"Columns: {profile.column_count}")
-print(f"Missing: {profile.missing_summary}")
-print(f"Alerts: {len(profile.alerts)}")
+print(f"Rows: {profile.n_rows}")                 # 50150
+print(f"Columns: {profile.n_columns}")           # 11
+print(f"Duplicates: {profile.duplicate_count}")  # 300
+print(f"Alerts: {len(profile.alerts)}")          # 7
 
-for alert in profile.alerts:
-    print(f"  [{alert.severity}] {alert.column}: {alert.message}")</code></pre>
+for alert in profile.alerts:  # each alert is a dict
+    where = alert.get("column", alert.get("columns"))
+    print(f"  [{alert['severity']}] {alert['type']}: {where}")
+# [info] high_skewness: resale_price   (skew 11.4)
+# [warning] duplicates: None           (300 rows)</code></pre>
   </div>
   <div class="callout callout-foundations">
-    <strong>Checks:</strong> Missing values, outliers, duplicates, skewness, high correlation, low cardinality, constant columns, type inference issues.
+    <strong>8 alert types:</strong> high_nulls, constant, high_skewness, high_zeros, high_cardinality, high_correlation, duplicates, imbalanced. Outliers are a per-column <em>statistic</em> (<code>outlier_count</code>), not an alert.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- One call gives you everything: distributions, correlations, alerts.
-- The shared.run_profile wrapper hides the async complexity.
+- One call gives you everything: per-column statistics (profile.columns), correlations (profile.correlation_matrix), duplicates and alerts.
+- DataExplorer.profile() is async. shared.run_profile(df) runs it for you, in a script or in Colab/Jupyter, so you can use it before async is taught.
+- Alerts are dicts with keys type, column (or columns for a correlated pair), value and severity ("info" or "warning"). Use alert["type"], not alert.type.
+- On the HDB data the skewness alert (11.4) is the S$10 / S$9M prices from the opening scenario.
 - If beginners confused: run the code, read the alerts.
-- If experts bored: DataExplorer runs 8 tests in parallel using async.
+- If experts bored: look at profile.columns for resale_price: outlier_count is 646 by the IQR rule, even though no "outlier" alert exists.
 Transition: "What if the default thresholds are wrong?"
   </aside>
 </section>
@@ -2538,32 +2577,36 @@ Transition: "What if the default thresholds are wrong?"
     <div class="col">
       <pre><code class="language-python">from kailash_ml import AlertConfig
 
+# comments show each default
 config = AlertConfig(
-    missing_threshold=0.05,
-    outlier_std=3.0,
-    duplicate_threshold=0.01,
-    skew_threshold=2.0,
-    correlation_threshold=0.95,
-    cardinality_threshold=0.95,
-    constant_threshold=0.99,
+    high_null_pct_threshold=0.02,    # 0.05
+    skewness_threshold=2.0,          # 2.0
+    high_correlation_threshold=0.95, # 0.9
+    high_cardinality_ratio=0.9,      # 0.9
+    zero_pct_threshold=0.5,          # 0.5
+    imbalance_ratio_threshold=0.1,   # 0.1
+    duplicate_pct_threshold=0.0,     # 0.0
+    # a count of unique values, not a share
+    constant_threshold=1,            # 1
 )
 
-explorer = DataExplorer(alert_config=config)
-profile = run_profile(explorer, df)</code></pre>
+profile = run_profile(df, alert_config=config)
+# now also: high_nulls on remaining_lease
+# (2.9% null)</code></pre>
     </div>
     <div class="col">
       <h3>8 Alert Types</h3>
       <table>
-        <thead><tr><th>Alert</th><th>Detects</th></tr></thead>
+        <thead><tr><th>Alert</th><th>Fires when (default)</th></tr></thead>
         <tbody>
-          <tr><td>Missing</td><td>Null values above threshold</td></tr>
-          <tr><td>Outlier</td><td>Extreme values (by std)</td></tr>
-          <tr><td>Duplicate</td><td>Repeated rows</td></tr>
-          <tr><td>Skewness</td><td>Non-symmetric distributions</td></tr>
-          <tr><td>Correlation</td><td>Redundant features</td></tr>
-          <tr><td>Cardinality</td><td>Near-unique columns</td></tr>
-          <tr><td>Constant</td><td>No-variance columns</td></tr>
-          <tr><td>Type</td><td>Type inference issues</td></tr>
+          <tr><td>high_nulls</td><td>null share &gt; 0.05</td></tr>
+          <tr><td>constant</td><td>unique values &le; 1</td></tr>
+          <tr><td>high_skewness</td><td>|skewness| &gt; 2.0</td></tr>
+          <tr><td>high_zeros</td><td>zero share &gt; 0.5</td></tr>
+          <tr><td>high_cardinality</td><td>unique/rows &gt; 0.9 (near-unique)</td></tr>
+          <tr><td>high_correlation</td><td>|r| &gt; 0.9 for a column pair</td></tr>
+          <tr><td>duplicates</td><td>duplicate-row share &gt; 0</td></tr>
+          <tr><td>imbalanced</td><td>rarest category share &lt; 0.1</td></tr>
         </tbody>
       </table>
     </div>
@@ -2572,10 +2615,11 @@ profile = run_profile(explorer, df)</code></pre>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- AlertConfig lets you tune what counts as a problem.
-- Lower thresholds = more alerts. Higher = fewer.
+- AlertConfig lets you tune what counts as a problem. Every argument is optional; omitted ones keep the default shown in the comment.
+- Lower thresholds = more alerts. Higher = fewer. On HDB, remaining_lease is 2.9% null: silent at the 0.05 default, flagged at 0.02.
+- constant_threshold is a COUNT of unique values (a column with at most 1 distinct value is constant), not a fraction.
 - If beginners confused: defaults are fine to start.
-- If experts bored: discuss IQR vs z-score outlier detection.
+- If experts bored: outliers are not an alert; each ColumnProfile carries outlier_count / outlier_pct (IQR rule) for you to judge.
 Transition: "DataExplorer can also compare two datasets."
   </aside>
 </section>
@@ -2585,32 +2629,36 @@ Transition: "DataExplorer can also compare two datasets."
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python">profile_before = run_profile(explorer, df_dirty)
+      <pre><code class="language-python"># wraps DataExplorer.compare()
+from shared import run_compare
 
 df_clean = (
-    df_dirty
-    .drop_nulls(subset=["resale_price"])
-    .filter(pl.col("resale_price") &gt; 0)
+    df.unique()  # drop duplicate rows
+    .filter(pl.col("resale_price")
+            .is_between(50_000, 3_000_000))
 )
 
-profile_after = run_profile(explorer, df_clean)
+result = run_compare(df, df_clean)  # dict
+print(result["shape_comparison"])
+# {'rows_a': 50150,
+#  'rows_b': 49750, ...}
 
-comparison = explorer.compare(
-    profile_before, profile_after
-)
-print(comparison.summary)</code></pre>
+for d in result["column_deltas"]:
+    if d["column"] == "resale_price":
+        print(d["mean_delta"],
+              d["std_delta"])
+# about -21,479 and -244,897</code></pre>
     </div>
     <div class="col">
-      <h3>What compare() Shows</h3>
+      <h3>What compare() Returns</h3>
       <ul>
-        <li>Row count change</li>
-        <li>Alert count change</li>
-        <li>Distribution shifts per column</li>
-        <li>Missing value reduction</li>
-        <li>Outlier count change</li>
+        <li><code>shape_comparison</code> &mdash; rows/cols before and after</li>
+        <li><code>column_deltas</code> &mdash; per column: mean, std, null % and unique-count change</li>
+        <li><code>profile_a</code>, <code>profile_b</code> &mdash; full profiles, alerts included</li>
+        <li><code>missing_in_a</code> / <code>missing_in_b</code> &mdash; schema drift</li>
       </ul>
       <div class="callout callout-kailash" style="margin-top:12px;">
-        <strong>Use Case:</strong> Compare train vs test for drift. Compare pre vs post cleaning.
+        <strong>Use Case:</strong> Original vs cleaned. Train vs test. One period vs another.
       </div>
     </div>
   </div>
@@ -2618,7 +2666,8 @@ print(comparison.summary)</code></pre>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- compare() verifies that cleaning improved the data.
+- compare() verifies that cleaning improved the data. It takes two DataFrames (not two profiles) and returns a dict.
+- Compare the two alert lists in result["profile_a"].alerts and result["profile_b"].alerts: after cleaning, the skewness alert is gone (11.4 -> 0.39) and a NEW high_correlation alert appears (floor area vs price, r = 0.91). The bad prices were hiding the real relationship.
 - If beginners confused: think of it as a "before and after photo".
 - If experts bored: discuss KS tests and Population Stability Index.
 Transition: "Let us add error handling."
@@ -2631,8 +2680,9 @@ Transition: "Let us add error handling."
   <div class="columns">
     <div class="col">
       <pre><code class="language-python">try:
-    df = pl.read_csv("data/economic.csv")
-    profile = run_profile(explorer, df)
+    df = loader.load(
+        "mlfp01", "economic_indicators.csv")
+    profile = run_profile(df)
     print(f"Profiled {df.shape[0]} rows")
 except FileNotFoundError:
     print("Error: Data file not found.")
@@ -2659,6 +2709,7 @@ finally:
 Time: ~3 min
 Talking points:
 - try/except prevents crashes on expected errors. Always be specific about exception types.
+- loader.load raises FileNotFoundError for a file name it cannot find; change the name to see the first except branch run.
 - If beginners confused: "try this, but if it fails, do this instead."
 - If experts bored: discuss custom exceptions and context managers.
 Transition: "Exercise time."
@@ -2671,12 +2722,12 @@ Transition: "Exercise time."
   <div class="columns">
     <div class="col">
       <ol>
-        <li>Load the dirty economic indicators dataset</li>
-        <li>Profile with DataExplorer</li>
+        <li>Load CPI (monthly), employment (quarterly) and FX (daily) data</li>
+        <li>Align them on one monthly timeline and merge</li>
         <li>Configure AlertConfig with sensible thresholds</li>
-        <li>Clean the data</li>
-        <li>Profile the cleaned version</li>
-        <li>Compare original vs cleaned</li>
+        <li>Profile with DataExplorer; interpret every alert</li>
+        <li>Compare pre-COVID vs COVID-era data with <code>compare()</code></li>
+        <li>Handle errors with try/except; save an HTML report</li>
       </ol>
     </div>
     <div class="col">
@@ -2689,7 +2740,8 @@ Transition: "Exercise time."
   <aside class="notes">
 Time: ~2 min
 Talking points:
-- Deliberately messy dataset. Students must identify and fix issues.
+- Three deliberately messy synthetic datasets modelled on Singapore statistics (illustrative values): mixed granularity, mixed date formats, gaps, COVID-era outliers, near-zero JPY rates.
+- The original-vs-cleaned comparison is the capstone's job: Exercise 1.8 runs run_compare(raw, cleaned).
 - If beginners confused: run default profiler, read every alert, then decide how to clean.
 - If experts bored: write an automated cleaning function.
 Transition: "Lesson 1.7 recap."
@@ -2703,10 +2755,10 @@ Transition: "Lesson 1.7 recap."
     <div class="col">
       <h3>DataExplorer</h3>
       <ul>
-        <li><code>DataExplorer()</code> + <code>run_profile()</code></li>
+        <li><code>run_profile(df)</code> &mdash; sync wrapper for <code>DataExplorer.profile()</code></li>
         <li><code>AlertConfig</code> for thresholds</li>
-        <li>8 alert types</li>
-        <li><code>compare()</code> for before vs after</li>
+        <li>8 alert types; outliers are a column statistic</li>
+        <li><code>run_compare(df_a, df_b)</code> for before vs after</li>
       </ul>
     </div>
     <div class="col">
@@ -2830,7 +2882,7 @@ params = {
     "returnGeom": "Y",
     "getAddrDetails": "Y",
 }
-response = requests.get(url, params=params)
+response = requests.get(url, params=params, timeout=10)
 data = response.json()</code></pre>
     </div>
     <div class="col">
@@ -2844,7 +2896,7 @@ print(f"{first['ADDRESS']}: ({lat}, {lng})")
 df_locations = pl.DataFrame(results)</code></pre>
       <div class="callout callout-warning" style="margin-top:8px;">
         <pre style="font-size: 0.55em;"><code class="language-python">try:
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=10)
     response.raise_for_status()
 except requests.RequestException as e:
     print(f"API error: {e}")</code></pre>
@@ -2855,7 +2907,9 @@ except requests.RequestException as e:
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- REST APIs are how you get data from external services. OneMap is Singapore's mapping API.
+- REST APIs are how you get data from external services. OneMap is Singapore's public mapping API; its search endpoint needs no key.
+- GET asks for data (query parameters go in params=); POST sends data in the request body (requests.post(url, json={...})). Both usually answer in JSON.
+- Always set a timeout so a slow server cannot hang the pipeline.
 - Always wrap API calls in try/except. Networks fail, servers go down.
 - If beginners confused: an API is like ordering food. Send a request, get a response.
 - If experts bored: discuss pagination, rate limiting, async.
@@ -2872,24 +2926,27 @@ Transition: "Now let us automate cleaning with PreprocessingPipeline."
       <div class="col">
         <pre><code class="language-python">from kailash_ml import PreprocessingPipeline
 
-pipeline = PreprocessingPipeline()
-df_clean = pipeline.fit_transform(df)
-
-print(pipeline.steps_applied)
-# ['type_inference',
-#  'missing_imputation',
-#  'categorical_encoding',
-#  'numeric_scaling',
-#  'outlier_handling']</code></pre>
+pipeline = PreprocessingPipeline()  # no args
+result = pipeline.setup(
+    data=train_rows,  # incl. target
+    target="fare_sgd",
+    imputation_strategy="median",
+    categorical_encoding="onehot",
+    normalize=True)
+print(result.task_type)  # regression
+print(result.train_data.shape,
+      result.test_data.shape)
+test_ready = pipeline.transform(
+    test_rows)</code></pre>
       </div>
       <div class="col">
-        <h3>What It Automates</h3>
+        <h3>What setup() Automates</h3>
         <ul>
-          <li><strong>Type inference</strong></li>
-          <li><strong>Missing imputation</strong> (median/mode)</li>
-          <li><strong>Categorical encoding</strong></li>
-          <li><strong>Numeric scaling</strong></li>
-          <li><strong>Outlier handling</strong></li>
+          <li><strong>Type detection</strong> (numeric vs categorical)</li>
+          <li><strong>Missing imputation</strong> (mean/median/...)</li>
+          <li><strong>Categorical encoding</strong> (one-hot)</li>
+          <li><strong>Numeric scaling</strong> (z-score)</li>
+          <li><strong>Train/test split</strong> (<code>train_size=0.8</code>); optional outlier removal, PCA</li>
         </ul>
       </div>
     </div>
@@ -2901,10 +2958,12 @@ print(pipeline.steps_applied)
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- fit_transform learns cleaning rules (fit) and applies them (transform).
-- steps_applied tells you exactly what it did.
+- setup() learns the preparation rules (medians, categories, scaling) and returns a SetupResult with train_data / test_data; transform() applies the same rules to new rows.
+- setup() needs a target column: it prepares data for a model, it does not repair bad rows. Cleaning (negative fares, duplicates) happens before it.
+- setup() learns from every row it is given and splits afterwards, so hold out your test rows first and pass only training rows to setup().
+- result.summary prints what it did (encoding, normalisation, imputation, shapes).
 - If beginners confused: dishwasher analogy. Same cycle every time.
-- If experts bored: pipeline can be serialised for train/test consistency.
+- If experts bored: pipeline.get_config() returns the full configuration, so the same preparation can be reproduced.
 Transition: "The ETL pattern."
   </aside>
 </section>
@@ -2914,20 +2973,24 @@ Transition: "The ETL pattern."
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python"># EXTRACT
-df_hdb = pl.read_csv("data/hdb_resale.csv")
-df_mrt = pl.read_csv("data/mrt_stations.csv")
+      <pre><code class="language-python">from pathlib import Path
+
+# EXTRACT
+taxi = loader.load("mlfp01", "sg_taxi_trips.parquet")
 
 # TRANSFORM
-pipeline = PreprocessingPipeline()
-df_clean = pipeline.fit_transform(df_hdb)
-df_enriched = df_clean.join(
-    df_mrt, on="town", how="left"
+taxi_clean = (
+    taxi
+    .with_columns(pl.col("pickup_datetime", "dropoff_datetime")
+                  .str.to_datetime("%Y-%m-%d %H:%M:%S"))
+    .filter(pl.col("fare_sgd") &gt; 0, pl.col("passengers") &gt;= 1)
+    .with_columns(pl.col("tip_sgd").fill_null(0.0))
 )
 
 # LOAD
-df_enriched.write_csv("output/hdb_clean.csv")
-df_enriched.write_parquet("output/hdb_clean.parquet")</code></pre>
+Path("output").mkdir(exist_ok=True)
+taxi_clean.write_csv("output/taxi_clean.csv")
+taxi_clean.write_parquet("output/taxi_clean.parquet")</code></pre>
     </div>
     <div class="col">
       <h3>Full Pipeline Steps</h3>
@@ -2948,7 +3011,7 @@ df_enriched.write_parquet("output/hdb_clean.parquet")</code></pre>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- ETL is the standard data engineering pattern.
+- ETL is the standard data engineering pattern. Path comes from pathlib (Lesson 1.4); mkdir creates the output folder if it is missing.
 - Parquet is the professional format. CSV for humans, Parquet for computers.
 - If beginners confused: factory assembly line: raw materials in, finished product out.
 - If experts bored: discuss orchestration frameworks (Airflow, Dagster).
@@ -2961,7 +3024,7 @@ Transition: "Project structure."
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python">project/
+      <pre><code class="language-text">project/
   data/
     raw/           # Never modify originals
     processed/     # Cleaned data
@@ -3006,11 +3069,12 @@ Transition: "Capstone exercise."
   <div class="columns">
     <div class="col">
       <ol>
-        <li><strong>Extract:</strong> Load messy taxi trip data</li>
-        <li><strong>Profile:</strong> DataExplorer, document all issues</li>
-        <li><strong>Clean:</strong> PreprocessingPipeline</li>
-        <li><strong>Visualise:</strong> At least 3 charts with insights</li>
-        <li><strong>Report:</strong> Generate HTML report</li>
+        <li><strong>Extract:</strong> load 50,000 messy taxi trips</li>
+        <li><strong>Profile:</strong> describe() + DataExplorer; turn alerts into a cleaning plan</li>
+        <li><strong>Clean:</strong> GPS swaps, bad fares/passengers, future dates, payment labels, duplicate IDs</li>
+        <li><strong>Engineer + prepare:</strong> hour, weekday, duration; PreprocessingPipeline</li>
+        <li><strong>Visualise:</strong> at least 3 charts with insights</li>
+        <li><strong>Report:</strong> compare original vs cleaned; HTML report</li>
       </ol>
     </div>
     <div class="col">
@@ -3024,7 +3088,9 @@ Transition: "Capstone exercise."
 Time: ~2 min
 Talking points:
 - Module 1 capstone. Uses every skill from all 8 lessons.
-- The taxi trip dataset is deliberately messy.
+- The taxi trip dataset is synthetic and deliberately messy: 250 swapped coordinates, 1,000 non-positive fares, 500 passenger counts below 1, 500 trips dated 2025-2027, 15 spellings of 4 payment methods, 500 rows sharing trip_ids.
+- Polars dt.weekday() is ISO: Monday = 1 ... Sunday = 7, so the weekend is weekday >= 6.
+- The exercise loads from a file; pulling extra context from an API (as on the REST slide) is an extension.
 - If beginners confused: follow ETL steps in order.
 - If experts bored: add API enrichment and lazy evaluation.
 Transition: "Reference implementation."
@@ -3035,39 +3101,47 @@ Transition: "Reference implementation."
   <h2>Capstone Pipeline Code</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">import polars as pl
-from kailash_ml import DataExplorer, PreprocessingPipeline, ModelVisualizer
-from shared import MLFPDataLoader, run_profile
-from dotenv import load_dotenv
-
-load_dotenv()
+from kailash_ml import ModelVisualizer, PreprocessingPipeline
+from shared import MLFPDataLoader, run_compare, run_profile, run_report
 
 # 1. EXTRACT
-loader = MLFPDataLoader()
-df = loader.load("mlfp01", "taxi_trips.csv")
+taxi_raw = MLFPDataLoader().load("mlfp01", "sg_taxi_trips.parquet")
 
 # 2. PROFILE
-explorer = DataExplorer()
-profile_before = run_profile(explorer, df)
+profile_raw = run_profile(taxi_raw)            # 12 alerts
 
-# 3. CLEAN
-pipeline = PreprocessingPipeline()
-df_clean = pipeline.fit_transform(df)
-profile_after = run_profile(explorer, df_clean)
-comparison = explorer.compare(profile_before, profile_after)
+# 3. CLEAN (one auditable step per problem found)
+taxi_clean = (
+    taxi_raw
+    .filter(pl.col("fare_sgd") &gt; 0, pl.col("passengers") &gt;= 1)
+    .filter(~pl.col("trip_id").is_duplicated())
+    .with_columns(pl.col("tip_sgd").fill_null(0.0),
+                  pl.col("pickup_zone").fill_null("Unknown"))
+)
+comparison = run_compare(taxi_raw, taxi_clean)  # original vs cleaned
 
-# 4. VISUALISE
+# 4. PREPARE for a model (hold out test rows before setup in real work)
+result = PreprocessingPipeline().setup(
+    data=taxi_clean.select("distance_km", "passengers", "pickup_zone", "fare_sgd"),
+    target="fare_sgd", imputation_strategy="median")
+
+# 5. VISUALISE
 viz = ModelVisualizer()
-viz.plot_distribution(df_clean, column="trip_distance", title="Trip Distance Distribution")
-viz.plot_correlation(df_clean, title="Feature Correlations")
+viz.histogram(taxi_clean, "fare_sgd", bins=50, title="Fare Distribution").write_html("fare.html")
+viz.scatter(taxi_clean, "distance_km", "fare_sgd", title="Distance vs Fare").write_html("dist_fare.html")
 
-# 5. REPORT
-print(comparison.summary)</code></pre>
+# 6. REPORT
+print(comparison["shape_comparison"])
+with open("taxi_report.html", "w") as f:
+    f.write(run_report(taxi_clean, title="Taxi Trips - Cleaned"))</code></pre>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
 Time: ~3 min
 Talking points:
 - Reference implementation. Students adapt for their own pipeline.
-- Pattern: load, profile, clean, profile again, compare, visualise.
+- Pattern: load, profile, clean, compare original vs cleaned, prepare, visualise, report.
+- run_profile / run_compare / run_report are the shared sync wrappers around DataExplorer's async profile / compare / to_html; they work in scripts and Colab.
+- This is the short version; ex_8 adds GPS repair, date parsing and filtering, payment-label normalisation and feature engineering.
 - If beginners confused: copy this structure and modify.
 - If experts bored: parameterise into a reusable pipeline class.
 Transition: "Lesson 1.8 recap."
@@ -3082,7 +3156,7 @@ Transition: "Lesson 1.8 recap."
       <h3>Data Cleaning</h3>
       <ul>
         <li><code>df.null_count()</code>, <code>drop_nulls()</code>, <code>fill_null()</code></li>
-        <li><code>PreprocessingPipeline</code> for automation</li>
+        <li><code>PreprocessingPipeline().setup()</code> + <code>transform()</code></li>
       </ul>
     </div>
     <div class="col">

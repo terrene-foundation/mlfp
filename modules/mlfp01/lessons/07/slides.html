@@ -59,7 +59,7 @@
         <text x="40" y="100">shape, head, describe</text>
         <text x="40" y="120">null_count()</text>
         <text x="40" y="140">histograms, scatter</text>
-        <text x="40" y="165" fill="#F43F5E">Misses: mixed formats, near-</text>
+        <text x="40" y="165" fill="#F43F5E">Easy to skip: duplicates, near-</text>
         <text x="40" y="183" fill="#F43F5E">constants, subtle correlations</text>
       </g>
       <!-- Arrow -->
@@ -115,24 +115,26 @@
 <!-- ═══ Slide 4: Eight alert types ═══════════════════════════ -->
 <section>
   <h2>Eight alert types</h2>
-  <table style="font-size: 0.65em;">
+  <table style="font-size: 0.6em;">
     <thead>
-      <tr><th>#</th><th>Alert</th><th>Default threshold</th><th>Example</th></tr>
+      <tr><th>#</th><th>Alert</th><th>Fires when (default)</th><th>Example in the course data</th></tr>
     </thead>
     <tbody>
-      <tr><td>1</td><td>high_nulls</td><td>&gt; 5%</td><td>CPI column 14% missing</td></tr>
-      <tr><td>2</td><td>outliers</td><td>&gt; 3 IQR</td><td>FX rate spike during crisis</td></tr>
-      <tr><td>3</td><td>duplicates</td><td>&gt; 0</td><td>Repeated row ID</td></tr>
-      <tr><td>4</td><td>high_skewness</td><td>|skew| &gt; 2</td><td>Salary right-skew</td></tr>
-      <tr><td>5</td><td>high_correlation</td><td>|r| &gt; 0.95</td><td>CPI vs employment</td></tr>
-      <tr><td>6</td><td>low_cardinality</td><td>&lt; 3 unique</td><td>Gender column with 1 value</td></tr>
-      <tr><td>7</td><td>constant</td><td>std = 0</td><td>Country column all "SG"</td></tr>
-      <tr><td>8</td><td>type_inference</td><td>mismatch</td><td>Number stored as string</td></tr>
+      <tr><td>1</td><td>high_nulls</td><td>null share &gt; 0.05</td><td>CPI columns, 5% null (silent at default)</td></tr>
+      <tr><td>2</td><td>constant</td><td>unique values &le; 1</td><td>a column that is all "SG"</td></tr>
+      <tr><td>3</td><td>high_skewness</td><td>|skew| &gt; 2.0</td><td>HDB resale_price, skew 11.4</td></tr>
+      <tr><td>4</td><td>high_zeros</td><td>zero share &gt; 0.5</td><td>a tip column that is mostly 0</td></tr>
+      <tr><td>5</td><td>high_cardinality</td><td>unique / rows &gt; 0.9</td><td>CPI date: every value unique</td></tr>
+      <tr><td>6</td><td>high_correlation</td><td>|r| &gt; 0.9 for a pair</td><td>cpi_all_items &harr; cpi_housing, r = 0.998</td></tr>
+      <tr><td>7</td><td>duplicates</td><td>duplicate-row share &gt; 0</td><td>300 duplicate HDB rows</td></tr>
+      <tr><td>8</td><td>imbalanced</td><td>rarest category &lt; 10%</td><td>HDB flat_type: MULTI-GENERATION ~1%</td></tr>
     </tbody>
   </table>
-  <div style="background: #F0FDF4; padding: 12px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1em;">
+  <div style="background: #F0FDF4; padding: 12px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em;">
     <strong style="color: #22C55E;">🟢 Foundations:</strong>
-    You do not need to memorise thresholds. You need to know the eight <em>kinds</em> of problem.
+    Know the eight <em>kinds</em> of problem. Outliers are not an alert &mdash; each column
+    reports <code>outlier_count</code> instead. Mixed date formats are not detected at all:
+    that check stays yours.
   </div>
 </section>
 
@@ -140,22 +142,23 @@
 <section>
   <h2>Running your first profile</h2>
   <pre><code class="language-python" data-trim>
-from kailash_ml import DataExplorer
 from shared import MLFPDataLoader, run_profile
 
 loader = MLFPDataLoader()
-df = loader.load("mlfp01", "sg_economic_indicators.csv")
+cpi = loader.load("mlfp01", "sg_cpi.csv")   # monthly CPI, 300 rows
 
-explorer = DataExplorer()
-profile = run_profile(explorer, df)
+profile = run_profile(cpi)
 
-print(f"Alerts fired: {len(profile.alerts)}")
-for alert in profile.alerts:
-    print(f"  {alert.type}: {alert.column} — {alert.message}")
+print(f"Alerts fired: {len(profile.alerts)}")   # 11
+for alert in profile.alerts:                     # each alert is a dict
+    where = alert.get("column", alert.get("columns"))
+    print(f"  {alert['type']}: {where} ({alert['value']:.2f})")
   </code></pre>
   <p style="font-size: 0.8em; color: #64748B;">
-    <code>run_profile()</code> is a sync wrapper around the async
-    <code>explorer.profile(df)</code>. Same result, simpler call.
+    <code>run_profile(df)</code> is a sync wrapper around the async
+    <code>DataExplorer().profile(df)</code> &mdash; it works in a script and in
+    Colab/Jupyter. Alerts are dicts: <code>type</code>, <code>column</code> (or
+    <code>columns</code>), <code>value</code>, <code>severity</code>.
   </p>
 </section>
 
@@ -165,30 +168,30 @@ for alert in profile.alerts:
   <figure style="text-align: center;">
     <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg">
       <rect x="40" y="20" width="640" height="260" rx="10" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
-      <text x="360" y="48" text-anchor="middle" font-family="Inter" font-weight="700" font-size="15" fill="#92400E">DataProfile</text>
+      <text x="360" y="48" text-anchor="middle" font-family="Inter" font-weight="700" font-size="15" fill="#92400E">DataProfile (n_rows=300, n_columns=5)</text>
       <!-- Alerts section -->
       <rect x="60" y="65" width="280" height="195" rx="6" fill="white" stroke="#E2E8F0"/>
-      <text x="200" y="88" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#F59E0B">alerts[]</text>
+      <text x="200" y="88" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#F59E0B">alerts (list of dicts)</text>
       <g font-family="JetBrains Mono" font-size="10" fill="#1E293B">
-        <text x="80" y="110" fill="#F59E0B">⚠ high_nulls: cpi (14%)</text>
-        <text x="80" y="128" fill="#F59E0B">⚠ high_nulls: fx (8%)</text>
-        <text x="80" y="146" fill="#F43F5E">🚨 mixed_format: date</text>
-        <text x="80" y="164" fill="#F43F5E">🚨 constant: country</text>
-        <text x="80" y="182" fill="#F59E0B">⚠ high_skewness: cpi</text>
-        <text x="80" y="200" fill="#F59E0B">⚠ high_correlation: cpi↔emp</text>
-        <text x="80" y="218">... + per-column statistics</text>
+        <text x="75" y="110" fill="#3B82F6">i high_cardinality: date (1.00)</text>
+        <text x="75" y="128" fill="#3B82F6">i high_cardinality: cpi_food (0.94)</text>
+        <text x="75" y="146" fill="#3B82F6">i ... 3 more numeric columns</text>
+        <text x="75" y="164" fill="#F59E0B">⚠ high_correlation:</text>
+        <text x="75" y="182" fill="#F59E0B">  all_items↔housing (0.998)</text>
+        <text x="75" y="200" fill="#F59E0B">⚠ ... 5 more CPI pairs</text>
+        <text x="75" y="225">i = info, ⚠ = warning</text>
       </g>
       <!-- Stats section -->
       <rect x="360" y="65" width="300" height="195" rx="6" fill="white" stroke="#E2E8F0"/>
-      <text x="510" y="88" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#3B82F6">column_stats{}</text>
+      <text x="510" y="88" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#3B82F6">columns (ColumnProfile list)</text>
       <g font-family="JetBrains Mono" font-size="10" fill="#1E293B">
-        <text x="380" y="110">cpi:</text>
-        <text x="400" y="128">mean=102.3, std=4.1</text>
-        <text x="400" y="146">null_pct=0.14</text>
-        <text x="400" y="164">skewness=3.8</text>
-        <text x="380" y="188">emp:</text>
-        <text x="400" y="206">mean=96.1, std=1.2</text>
-        <text x="400" y="224">null_pct=0.02</text>
+        <text x="380" y="110">cpi_all_items:</text>
+        <text x="400" y="128">mean=120.0, std=36.8</text>
+        <text x="400" y="146">null_pct=0.05, skewness=0.36</text>
+        <text x="380" y="170">cpi_food:</text>
+        <text x="400" y="188">mean=121.0, std=38.2</text>
+        <text x="400" y="206">null_pct=0.05, outlier_count=0</text>
+        <text x="380" y="232" fill="#64748B">+ correlation_matrix, duplicate_count</text>
       </g>
     </svg>
   </figure>
@@ -201,18 +204,23 @@ for alert in profile.alerts:
 from kailash_ml import AlertConfig
 
 config = AlertConfig(
-    null_threshold=0.10,       # fire at 10%, not 5%
-    skew_threshold=3.0,        # tolerate more skew
-    correlation_threshold=0.90,# stricter correlation
-    outlier_iqr_factor=2.5,    # tighter outlier fence
+    high_null_pct_threshold=0.02,     # fire above 2% (default 0.05)
+    high_correlation_threshold=0.99,  # only near-duplicates (default 0.9)
+    skewness_threshold=2.0,           # default 2.0
 )
 
-profile = run_profile(explorer, df, config=config)
+profile = run_profile(cpi, alert_config=config)
+print(len(profile.alerts))   # 12: now also 4 x high_nulls (5% null)
   </code></pre>
-  <div style="background: #EFF6FF; padding: 14px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; margin-top: 1em;">
+  <p style="font-size: 0.8em; color: #64748B;">
+    Other fields: <code>constant_threshold</code> (a unique-value <em>count</em>, default 1),
+    <code>zero_pct_threshold</code> 0.5, <code>high_cardinality_ratio</code> 0.9,
+    <code>imbalance_ratio_threshold</code> 0.1, <code>duplicate_pct_threshold</code> 0.0.
+  </p>
+  <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; margin-top: 0.6em;">
     <strong style="color: #3B82F6;">🔵 Theory:</strong>
     There is no universal "correct" threshold. Thresholds encode your
-    domain expectations. Economic data tolerates more skew than medical data.
+    domain expectations. Lower = more alerts; higher = fewer.
   </div>
 </section>
 
@@ -222,63 +230,65 @@ profile = run_profile(explorer, df, config=config)
   <figure style="text-align: center;">
     <svg viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg">
       <rect x="20" y="20" width="680" height="180" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
-      <text x="360" y="45" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">sg_economic_indicators.csv</text>
+      <text x="360" y="45" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">sg_cpi.csv (first rows)</text>
       <g font-family="JetBrains Mono" font-size="12" fill="#1E293B">
-        <text x="40" y="75" fill="#0D9488" font-weight="600">date        cpi     employment  fx_rate</text>
-        <text x="40" y="97">2020-01     98.3    95.1        1.352</text>
-        <text x="40" y="115" fill="#F43F5E">01/2020     NaN     95.0        NaN</text>
-        <text x="40" y="133">2020-03     99.1    N/A         1.401</text>
-        <text x="40" y="151" fill="#F43F5E">202004      100.0   96.2        —</text>
-        <text x="40" y="169">2020-05     99.4    96.0        1.411</text>
+        <text x="40" y="75" fill="#0D9488" font-weight="600">date      all_items  food   transport</text>
+        <text x="40" y="97" fill="#F43F5E">01/2000   70.0       67.22  63.81</text>
+        <text x="40" y="115">2000-02   71.45      68.48  70.21</text>
+        <text x="40" y="133" fill="#F43F5E">200003    72.45      71.72  79.26</text>
+        <text x="40" y="151" fill="#F43F5E">04/2000   72.07      75.59  75.05</text>
+        <text x="40" y="169">2005-05   null       80.45  77.40</text>
       </g>
-      <text x="530" y="100" font-family="Inter" font-size="11" fill="#F43F5E">← 3 date formats</text>
-      <text x="530" y="120" font-family="Inter" font-size="11" fill="#F43F5E">← null as NaN</text>
-      <text x="530" y="140" font-family="Inter" font-size="11" fill="#F43F5E">← null as "N/A"</text>
-      <text x="530" y="160" font-family="Inter" font-size="11" fill="#F43F5E">← null as "—"</text>
+      <text x="530" y="100" font-family="Inter" font-size="11" fill="#F43F5E">← MM/YYYY</text>
+      <text x="530" y="118" font-family="Inter" font-size="11" fill="#0D9488">← YYYY-MM</text>
+      <text x="530" y="136" font-family="Inter" font-size="11" fill="#F43F5E">← YYYYMM</text>
+      <text x="530" y="172" font-family="Inter" font-size="11" fill="#F43F5E">← 15 nulls per CPI column</text>
     </svg>
   </figure>
-  <p style="font-size: 0.85em;">Three date formats. Three null representations. Real government data looks like this.</p>
+  <p style="font-size: 0.85em;">Three date formats in one column, 5% missing values. A synthetic course dataset modelled on published statistics &mdash; illustrative values, realistic mess.</p>
 </section>
 
 <!-- ═══ Slide 9: Profile walkthrough ═════════════════════════ -->
 <section>
   <h2>Reading the profile</h2>
   <pre><code class="language-text" data-trim>
-Alerts fired: 6
-  high_nulls:       cpi — 14% null (threshold: 5%)
-  high_nulls:       fx_rate — 8% null (threshold: 5%)
-  type_inference:   date — mixed formats detected
-  constant:         country — 1 unique value
-  high_skewness:    cpi — skew=3.8 (threshold: 2.0)
-  high_correlation: cpi ↔ employment — r=0.94
+Alerts fired: 11   (default AlertConfig)
+  high_cardinality: date (1.00)
+  high_cardinality: cpi_all_items (0.94)   ... and 3 more CPI columns
+  high_correlation: ['cpi_all_items', 'cpi_housing'] (1.00)
+  high_correlation: ['cpi_all_items', 'cpi_food'] (1.00)   ... 4 more pairs
   </code></pre>
-  <p style="font-size: 0.85em;">
-    Six alerts from one call. By hand, the skewness and the correlation
-    would take minutes to discover. The mixed date formats might take an hour.
-  </p>
+  <ul style="font-size: 0.8em;">
+    <li><strong>No high_nulls:</strong> the CPI columns are exactly 5% null, and the rule is <em>&gt;</em> 0.05.</li>
+    <li><strong>No date alert:</strong> the three formats just look like unique text (high_cardinality). Profiling complements your own inspection &mdash; it does not replace it.</li>
+    <li><strong>Correlations:</strong> CPI components move together &mdash; a domain fact, not a defect.</li>
+  </ul>
 </section>
 
 <!-- ═══ Slide 10: compare() ══════════════════════════════════ -->
 <section>
   <h2>compare(): before vs after</h2>
   <pre><code class="language-python" data-trim>
-# Clean the data
-df_clean = (
-    df.with_columns(pl.col("date").str.to_date("%Y-%m"))
-    .drop_nulls(subset=["cpi", "fx_rate"])
-    .drop("country")
+from shared import run_compare
+
+cpi_clean = (
+    cpi.with_columns(
+        pl.col("date")                       # 3 formats -> YYYY-MM-01
+        .str.replace(r"^(\d{2})/(\d{4})$", "$2-$1-01")
+        .str.replace(r"^(\d{4})(\d{2})$", "$1-$2-01")
+        .str.replace(r"^(\d{4})-(\d{2})$", "$1-$2-01")
+        .str.to_date("%Y-%m-%d"))
+    .sort("date")
+    .with_columns(pl.col(pl.Float64).interpolate())   # fill the gaps
 )
 
-# Compare original vs cleaned
-comparison = run_profile(explorer, df, df_compare=df_clean)
-
-for diff in comparison.differences:
-    print(f"  {diff.column}: {diff.metric} "
-          f"{diff.before:.2f} → {diff.after:.2f}")
+result = run_compare(cpi, cpi_clean)   # a dict
+for d in result["column_deltas"]:
+    print(d["column"], d["null_pct_delta"])   # cpi_*: -0.05
   </code></pre>
-  <div style="background: #F0FDF4; padding: 12px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 0.8em;">
+  <div style="background: #F0FDF4; padding: 10px 16px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 0.6em; font-size: 0.85em;">
     <strong style="color: #22C55E;">🟢 Foundations:</strong>
-    <code>compare()</code> answers: "did my cleaning actually help?"
+    <code>compare(df_a, df_b)</code> takes two DataFrames and answers: "did my cleaning actually help?"
   </div>
 </section>
 
@@ -296,11 +306,11 @@ for diff in comparison.differences:
       <rect x="30" y="30" width="250" height="200" rx="8" fill="#FFF1F2" stroke="#F43F5E" stroke-width="2"/>
       <text x="155" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#F43F5E">Before (raw)</text>
       <g font-family="JetBrains Mono" font-size="11" fill="#1E293B">
-        <text x="50" y="90">cpi null: 14%</text>
-        <text x="50" y="112">fx null: 8%</text>
-        <text x="50" y="134">date formats: 3</text>
-        <text x="50" y="156">alerts: 6</text>
-        <text x="50" y="180">rows: 120</text>
+        <text x="50" y="90">CPI nulls: 5% each</text>
+        <text x="50" y="112">date: text, 3 formats</text>
+        <text x="50" y="134">warnings: 7</text>
+        <text x="50" y="156">alerts: 12</text>
+        <text x="50" y="180">rows: 300</text>
       </g>
       <!-- Arrow -->
       <line x1="290" y1="130" x2="390" y2="130" stroke="#0D9488" stroke-width="3" marker-end="url(#arr17c)"/>
@@ -309,17 +319,18 @@ for diff in comparison.differences:
       <rect x="400" y="30" width="250" height="200" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
       <text x="525" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#22C55E">After (cleaned)</text>
       <g font-family="JetBrains Mono" font-size="11" fill="#1E293B">
-        <text x="420" y="90">cpi null: 0%</text>
-        <text x="420" y="112">fx null: 0%</text>
-        <text x="420" y="134">date formats: 1</text>
-        <text x="420" y="156" fill="#22C55E">alerts: 1</text>
-        <text x="420" y="180">rows: 103</text>
+        <text x="420" y="90">CPI nulls: 0%</text>
+        <text x="420" y="112">date: Date type</text>
+        <text x="420" y="134" fill="#22C55E">warnings: 3</text>
+        <text x="420" y="156">alerts: 8</text>
+        <text x="420" y="180">rows: 300</text>
       </g>
     </svg>
   </figure>
   <p style="text-align: center; font-size: 0.85em; color: #64748B;">
-    Cleaning reduced alerts from 6 to 1 — the remaining alert (high correlation)
-    is a domain fact, not a data quality issue.
+    With the stricter <code>config</code>: the four high_nulls warnings are gone. The rest are
+    expected &mdash; measurements are near-unique (info) and CPI components move together.
+    Judge each alert; do not chase a count of zero.
   </p>
 </section>
 
@@ -327,13 +338,17 @@ for diff in comparison.differences:
 <section>
   <h2>Classes: using, not building</h2>
   <pre><code class="language-python" data-trim>
-# You USE DataExplorer — you don't build it
-explorer = DataExplorer()   # create an instance
-profile  = run_profile(explorer, df)   # call a method
+from kailash_ml import DataExplorer
 
-# The class hides complexity behind a simple interface
+# You USE DataExplorer — you don't build it
+explorer = DataExplorer(alert_config=config)   # create an instance
+print(type(explorer).__name__)                 # DataExplorer
+
+# Its methods (profile, compare, to_html) are async;
+# run_profile(df, alert_config=config) creates the instance
+# and runs profile() for you.
 # Same pattern for every Kailash engine:
-#   engine = EngineClass()
+#   engine = EngineClass(settings)
 #   result = engine.do_something(data)
   </code></pre>
   <p style="font-size: 0.85em;">
@@ -347,8 +362,8 @@ profile  = run_profile(explorer, df)   # call a method
   <h2>Handling errors: try/except</h2>
   <pre><code class="language-python" data-trim>
 try:
-    df = loader.load("mlfp01", "nonexistent.csv")
-    profile = run_profile(explorer, df)
+    df = loader.load("mlfp01", "nonexistent.csv")  # expect-error
+    profile = run_profile(df)
 except FileNotFoundError as e:
     print(f"File missing: {e}")
 except ValueError as e:
@@ -365,23 +380,21 @@ except ValueError as e:
 <section>
   <h2>compare() for train vs test</h2>
   <pre><code class="language-python" data-trim>
-# Split data
-n = len(df_clean)
-df_train = df_clean.head(int(n * 0.8))
-df_test  = df_clean.tail(n - int(n * 0.8))
+# Time-ordered split: first 80% of months vs last 20%
+n = cpi_clean.height
+df_train = cpi_clean.head(int(n * 0.8))
+df_test  = cpi_clean.tail(n - int(n * 0.8))
 
-# Compare distributions
-comparison = run_profile(explorer, df_train, df_compare=df_test)
-
-# If distributions differ → data leakage or temporal shift
-for diff in comparison.differences:
-    if diff.severity == "high":
-        print(f"⚠ Distribution shift: {diff.column}")
+result = run_compare(df_train, df_test)
+for d in result["column_deltas"]:
+    if "mean_delta" in d:
+        print(f"{d['column']}: mean shifted {d['mean_delta']:+.1f}")
+# cpi_all_items: mean shifted +68.4   (prices rise over time)
   </code></pre>
   <div style="background: #EDE9FE; padding: 12px 18px; border-left: 4px solid #8B5CF6; border-radius: 4px; margin-top: 0.8em;">
     <strong style="color: #8B5CF6;">🟣 Advanced:</strong>
-    This is the preview of <strong>drift monitoring</strong> (Module 3).
-    Same concept: compare two distributions, flag differences.
+    A trending series always shifts across a time split. This is the preview of
+    <strong>drift monitoring</strong> (Module 3): compare two distributions, flag differences.
   </div>
 </section>
 

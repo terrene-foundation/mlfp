@@ -42,3 +42,11 @@
 - Spec 6.7 budget-exhausted "degrades gracefully … partial answer" claim unverified (needs an LLM run) → verify in S7.
 - index.html study time ~28h → ~24h (D17).
 - New deck slide: Advanced RAG patterns + RAGResearchAgent/MemoryAgent.
+
+---
+# Additions from the lesson-slides shard (S2b, merged 75b68cee)
+- Data: data/mlfp06/ is gitignored (not in worktrees/snapshots) — integration must confirm M6 data is obtainable (exercise downloads or bundled).
+- Lesson notes.html + textbook.html still carry old APIs (L1–L4, L10) → S3/S4.
+- Measured on the installed engine: four verdicts incl. fail-open for envelope-less + unknown addresses; verdict levels auto_approved / flagged / held / blocked.
+- DPO LR: ~1e-6 full fine-tuning, ~5e-5 with LoRA (ex_3.3). Unauthorised role → refused inside the Nexus handler with `blocked: true` (not a 403).
+- Full fine-tuning a 7B model needs ~112 GB (not 28 GB). Tokenisation slide uses real cl100k_base IDs. SFT base model from SFT_BASE_MODEL (no TinyLlama).

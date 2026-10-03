@@ -243,7 +243,6 @@ print(f"  Saved: {OUTPUT_DIR / 'fp_growth_rules.csv'}")
 import time
 
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 # (A) Itemset frequency bar chart — top 15 by support
 top_itemsets = fp_frequent_df.sort("support", descending=True).head(15)

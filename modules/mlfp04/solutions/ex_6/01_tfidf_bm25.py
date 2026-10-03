@@ -29,7 +29,6 @@
 from __future__ import annotations
 
 import numpy as np
-import polars as pl
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 from kailash_ml import ModelVisualizer

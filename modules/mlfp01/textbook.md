@@ -14,7 +14,7 @@ By the end of this chapter you will be able to:
 
 - Read, write, and execute Python programs that use variables, data types, f-strings, functions, loops, conditionals, imports, and basic error handling — enough Python to be productive in any data-related task.
 - Load tabular data from CSV, Parquet, and API sources into Polars DataFrames and inspect their shape, schema, and summary statistics.
-- Filter, select, sort, transform, and aggregate datasets of half a million rows using Polars expressions and method chaining, without reaching for pandas.
+- Filter, select, sort, transform, and aggregate datasets of tens of thousands of rows (and far more) using Polars expressions and method chaining, without reaching for pandas.
 - Write reusable helper functions that classify values, format numbers, and compute statistics, and apply them through `group_by` / `agg` pipelines.
 - Join multiple tables on shared keys, reason about left vs inner vs outer joins, and handle the NULLs that arise after a join.
 - Compute rolling averages, year-over-year changes, and rank within group using Polars window functions with `.over()` partitioning.
@@ -630,9 +630,9 @@ If any of those feels shaky, re-read the corresponding section before moving on.
 
 ## Why This Matters
 
-The weather dataset in Lesson 1.1 had twelve rows. You could have inspected it with your eyes, no code required. The dataset in this lesson has five hundred thousand rows: every HDB resale transaction in Singapore over the last decade. You cannot scroll through five hundred thousand rows. If you try, you will miss every pattern of interest. The only way to work with data of this size is to let the computer filter, sort, and transform it while you ask increasingly specific questions.
+The weather dataset in Lesson 1.1 had twelve rows. You could have inspected it with your eyes, no code required. The dataset in this lesson has about fifty thousand rows: HDB resale transactions across ten years (2015–2024). You cannot scroll through fifty thousand rows. If you try, you will miss every pattern of interest. The only way to work with data of this size is to let the computer filter, sort, and transform it while you ask increasingly specific questions.
 
-That is what this lesson is about: asking questions of a dataset that is too large to hold in your head. "Show me only Ang Mo Kio flats." "Of those, show me only the ones between three hundred thousand and five hundred thousand dollars." "Of those, show me only recent transactions and sort them by price." Each of those questions is a filter, a sort, or a transformation — and the cleanest way to stack them together is Polars' method chaining syntax, which you will meet in Step 5 of the worked example.
+That is what this lesson is about: asking questions of a dataset that is too large to hold in your head. "Show me only Ang Mo Kio flats." "Of those, show me only the 4-room flats." "Of those, show me only recent transactions and sort them by price." Each of those questions is a filter, a sort, or a transformation — and the cleanest way to stack them together is Polars' method chaining syntax, which you will meet in Step 5 of the worked example.
 
 The habit we are building here is not syntactic. It is interrogative. When you open a new dataset, you should automatically begin asking it questions. What are the extreme values? Which subset looks different from the rest? What does the distribution look like when I cut it by category? The Polars syntax is just the keyboard shortcut for the question. Over time, the questions become automatic; the syntax is the glue that makes them cheap to ask.
 
@@ -693,7 +693,7 @@ The `.filter()` method takes a Boolean expression and returns a new DataFrame co
 ang_mo_kio = hdb.filter(pl.col("town") == "ANG MO KIO")
 ```
 
-After this line, `hdb` still contains all 500,000 rows of the original dataset. `ang_mo_kio` is a new DataFrame containing only the Ang Mo Kio rows — perhaps 20,000 of them.
+After this line, `hdb` still contains all 50,150 rows of the original dataset. `ang_mo_kio` is a new DataFrame containing only the Ang Mo Kio rows — 2,486 of them.
 
 You can combine filters in three ways:
 
@@ -723,7 +723,7 @@ There are also Polars convenience methods for common patterns: `.is_null()` for 
 core_cols = hdb.select("month", "town", "flat_type", "floor_area_sqm", "resale_price")
 ```
 
-The original `hdb` DataFrame may have twelve columns; `core_cols` has exactly five. Everything else is dropped. This matters for two reasons. First, it reduces memory: the 500,000-row dataset takes far less space when it only has five columns instead of twelve. Second, it reduces visual clutter: when you print a DataFrame, only the columns you have selected appear, and you can focus on what matters for the current question.
+The original `hdb` DataFrame has eleven columns; `core_cols` has exactly five. Everything else is dropped. This matters for two reasons. First, it reduces memory: a large dataset takes far less space when it only has five columns instead of eleven. Second, it reduces visual clutter: when you print a DataFrame, only the columns you have selected appear, and you can focus on what matters for the current question.
 
 A rule of thumb: the first thing you usually do when exploring a new question is `.select()` the three to six columns relevant to the question. Working with a wide DataFrame when you only need a narrow one is like writing an email with fifty people on cc when three would do.
 
@@ -837,7 +837,7 @@ Lesson 1.2 is pure Polars — no Kailash engine is involved yet. But the pattern
 
 ## Worked Example: HDB Resale Flats
 
-The dataset for this lesson is `hdb_resale.parquet` — roughly half a million transactions from the Singapore Housing and Development Board. This is real data, published openly by the HDB at `data.gov.sg`. It is also our first use of the *Parquet* file format instead of CSV. Parquet is a columnar storage format that is much more efficient than CSV for numeric data: it is smaller on disk, faster to load, and remembers column types so you do not have to re-parse dates and numbers on every load. Polars reads Parquet with `pl.read_parquet()`, but `MLFPDataLoader.load()` figures out the format from the file extension, so your code is the same.
+The dataset for this lesson is `hdb_resale.parquet` — 50,150 resale transactions from 2015 to 2024. It is a *synthetic* dataset modelled on the public HDB resale data at `data.gov.sg`: the columns and categories match the public file, but the rows are generated for teaching, prices do not follow the real market's trends, and data-quality problems (such as the S$10 and S$9,000,000 sales) are planted on purpose for you to find. Treat every interpretation in this chapter as a statement about *this file*, not about the Singapore property market. It is also our first use of the *Parquet* file format instead of CSV. Parquet is a columnar storage format that is much more efficient than CSV for numeric data: it is smaller on disk, faster to load, and remembers column types so you do not have to re-parse dates and numbers on every load. Polars reads Parquet with `pl.read_parquet()`, but `MLFPDataLoader.load()` figures out the format from the file extension, so your code is the same.
 
 ### Step 1: Load the data
 
@@ -856,23 +856,24 @@ print(f"Columns: {hdb.columns}")
 print(hdb.head(3))
 ```
 
-Expected output (values may vary slightly by dataset version):
+Expected output (Polars hides middle columns behind `…` when the table is wider than your terminal):
 
 ```
-Shape: (487_293, 11)
-Columns: ['month', 'town', 'flat_type', 'block', 'street_name', 'storey_range',
-          'floor_area_sqm', 'flat_model', 'lease_commence_date',
-          'remaining_lease', 'resale_price']
+Shape: (50150, 11)
+Columns: ['month', 'town', 'flat_type', 'block', 'street_name', 'storey_range', 'floor_area_sqm', 'flat_model', 'lease_commence_date', 'remaining_lease', 'resale_price']
 shape: (3, 11)
-┌─────────┬────────────┬───────────┬───────┬───┬─────────────────────┬─────────────────┬──────────────┐
-│ month   ┆ town       ┆ flat_type ┆ block ┆ … ┆ lease_commence_date ┆ remaining_lease ┆ resale_price │
-│ 2017-01 ┆ ANG MO KIO ┆ 2 ROOM    ┆ 406   ┆ … ┆ 1979                ┆ 61 years        ┆ 232000.0     │
-│ 2017-01 ┆ ANG MO KIO ┆ 3 ROOM    ┆ 108   ┆ … ┆ 1978                ┆ 60 years        ┆ 250000.0     │
-│ 2017-01 ┆ ANG MO KIO ┆ 3 ROOM    ┆ 602   ┆ … ┆ 1980                ┆ 62 years        ┆ 262000.0     │
-└─────────┴────────────┴───────────┴───────┴───┴─────────────────────┴─────────────────┴──────────────┘
+┌─────────┬───────────────┬───────────┬───────┬───┬─────────────────────┬────────────────────┬──────────────┐
+│ month   ┆ town          ┆ flat_type ┆ block ┆ … ┆ lease_commence_date ┆ remaining_lease    ┆ resale_price │
+│ ---     ┆ ---           ┆ ---       ┆ ---   ┆   ┆ ---                 ┆ ---                ┆ ---          │
+│ str     ┆ str           ┆ str       ┆ str   ┆   ┆ i64                 ┆ str                ┆ i64          │
+╞═════════╪═══════════════╪═══════════╪═══════╪═══╪═════════════════════╪════════════════════╪══════════════╡
+│ 2016-03 ┆ BUKIT PANJANG ┆ 4 ROOM    ┆ 674D  ┆ … ┆ 1996                ┆ 71 years 11 months ┆ 868241       │
+│ 2018-04 ┆ TOA PAYOH     ┆ 4 ROOM    ┆ 552B  ┆ … ┆ 2017                ┆ 92                 ┆ 1023539      │
+│ 2023-06 ┆ JURONG WEST   ┆ 4 ROOM    ┆ 692   ┆ … ┆ 1975                ┆ 50 years 00 months ┆ 10           │
+└─────────┴───────────────┴───────────┴───────┴───┴─────────────────────┴────────────────────┴──────────────┘
 ```
 
-Half a million rows, eleven columns. That is already too big to scan by eye. Every subsequent question has to be answered with code.
+Fifty thousand rows, eleven columns. That is already too big to scan by eye — and yet three rows are enough to spot two problems. `remaining_lease` is stored as text in two different formats (`"71 years 11 months"` and a bare `"92"`), and the third sale was recorded at S$10. Every subsequent question has to be answered with code, and the first questions should be about whether the data can be trusted.
 
 ### Step 2: Basic filters
 
@@ -894,10 +895,12 @@ print(f"Transactions S$300k-500k: {affordable.height:,}")
 Expected output:
 
 ```
-Ang Mo Kio transactions: 28,847
-4-room flats: 199,254
-Transactions S$300k-500k: 188,912
+Ang Mo Kio transactions: 2,486
+4-room flats: 20,299
+Transactions S$300k-500k: 2,885
 ```
+
+Only 2,885 of 50,150 sales (under 6%) fall between S$300k and S$500k. In this dataset the typical sale is far above that band — the median is about S$849,000.
 
 Notice that the `town` values are all-caps. This is a quirk of the source data — HDB publishes town names in all capitals. If you had written `pl.col("town") == "Ang Mo Kio"` (title case), you would have got zero rows and spent ten minutes wondering why. When a filter returns zero, always inspect the actual values in the column with `df["town"].unique()` to see what casing the source data uses.
 
@@ -917,10 +920,12 @@ print(f"AMK 4-room under S$500k: {amk_4room_affordable.height:,}")
 Expected output:
 
 ```
-AMK 4-room under S$500k: 7,214
+AMK 4-room under S$500k: 0
 ```
 
-Each `&` narrows the result further. The combined filter must be a subset of each single filter — `amk_4room_affordable` has fewer rows than `ang_mo_kio` (which was 28,847) and fewer than `four_room` (199,254) and fewer than `affordable` (188,912). The intersection is always smaller than any of its parts.
+Zero rows. Earlier we said a zero-row result usually means a typo — so check before you conclude anything. `"ANG MO KIO"` and `"4 ROOM"` both matched rows on their own (2,486 and 20,299), so the spelling is fine. Drop the price condition and look at the prices instead: the 1,015 Ang Mo Kio 4-room sales range from S$618,796 upwards, with a median of about S$827,000. The answer really is zero — in this dataset no Ang Mo Kio 4-room flat sold for S$500k or less. Telling "my filter is wrong" apart from "the answer is genuinely empty" is exactly the interrogative habit this lesson is about.
+
+Each `&` narrows the result further. The combined filter must be a subset of each single filter — `amk_4room_affordable` can never have more rows than `ang_mo_kio` (2,486), `four_room` (20,299) or `affordable` (2,885). The intersection is never larger than any of its parts, and as here it can be empty.
 
 And use `.is_in()` for the central-towns question:
 
@@ -928,6 +933,7 @@ And use `.is_in()` for the central-towns question:
 central_towns = ["BISHAN", "TOA PAYOH", "QUEENSTOWN", "BUKIT MERAH"]
 central = hdb.filter(pl.col("town").is_in(central_towns))
 print(f"Central towns transactions: {central.height:,}")
+# Central towns transactions: 6,495
 ```
 
 This is cleaner than `(pl.col("town") == "BISHAN") | (pl.col("town") == "TOA PAYOH") | ...`.
@@ -952,12 +958,15 @@ Expected:
 
 ```
 shape: (3, 5)
-┌────────────┬────────────┬───────────┬──────────┬──────────┐
-│ sale_month ┆ town       ┆ flat_type ┆ area_sqm ┆ price    │
-│ 2017-01    ┆ ANG MO KIO ┆ 2 ROOM    ┆ 44.0     ┆ 232000.0 │
-│ 2017-01    ┆ ANG MO KIO ┆ 3 ROOM    ┆ 67.0     ┆ 250000.0 │
-│ 2017-01    ┆ ANG MO KIO ┆ 3 ROOM    ┆ 68.0     ┆ 262000.0 │
-└────────────┴────────────┴───────────┴──────────┴──────────┘
+┌────────────┬───────────────┬───────────┬──────────┬─────────┐
+│ sale_month ┆ town          ┆ flat_type ┆ area_sqm ┆ price   │
+│ ---        ┆ ---           ┆ ---       ┆ ---      ┆ ---     │
+│ str        ┆ str           ┆ str       ┆ f64      ┆ i64     │
+╞════════════╪═══════════════╪═══════════╪══════════╪═════════╡
+│ 2016-03    ┆ BUKIT PANJANG ┆ 4 ROOM    ┆ 95.7     ┆ 868241  │
+│ 2018-04    ┆ TOA PAYOH     ┆ 4 ROOM    ┆ 104.5    ┆ 1023539 │
+│ 2023-06    ┆ JURONG WEST   ┆ 4 ROOM    ┆ 95.4     ┆ 10      │
+└────────────┴───────────────┴───────────┴──────────┴─────────┘
 ```
 
 Now when you write `pl.col("price")` you do not have to remember whether it was `resale_price` or `resale_price_sgd` or something else; it is just `price`.
@@ -985,15 +994,18 @@ Expected:
 shape: (5, 4)
 ┌─────────┬──────────────────┬──────┬───────────────┐
 │ month   ┆ transaction_date ┆ year ┆ price_per_sqm │
-│ 2017-01 ┆ 2017-01-01       ┆ 2017 ┆ 5272.727273   │
-│ 2017-01 ┆ 2017-01-01       ┆ 2017 ┆ 3731.343284   │
-│ 2017-01 ┆ 2017-01-01       ┆ 2017 ┆ 3852.941176   │
-│ 2017-01 ┆ 2017-01-01       ┆ 2017 ┆ 4864.864865   │
-│ 2017-01 ┆ 2017-01-01       ┆ 2017 ┆ 5266.666667   │
+│ ---     ┆ ---              ┆ ---  ┆ ---           │
+│ str     ┆ date             ┆ i32  ┆ f64           │
+╞═════════╪══════════════════╪══════╪═══════════════╡
+│ 2016-03 ┆ 2016-03-01       ┆ 2016 ┆ 9072.528736   │
+│ 2018-04 ┆ 2018-04-01       ┆ 2018 ┆ 9794.631579   │
+│ 2023-06 ┆ 2023-06-01       ┆ 2023 ┆ 0.104822      │
+│ 2022-11 ┆ 2022-11-01       ┆ 2022 ┆ 9300.893054   │
+│ 2021-11 ┆ 2021-11-01       ┆ 2021 ┆ 9506.095552   │
 └─────────┴──────────────────┴──────┴───────────────┘
 ```
 
-The first row has a high price per sqm because it is a small two-room flat — a reminder that small flats often have higher per-sqm prices because some costs (entrance, bathroom) are fixed regardless of size.
+Most rows sit around S$9,000–9,800 per square metre. The third row, at S$0.10 per square metre, is the S$10 sale you saw in Step 1 — a derived column inherits every error in the columns it was computed from. Note also that `transaction_date` is a real `date` and `year` is an integer (`i32`), so both can be compared and sorted numerically.
 
 ### Step 6: Conditional price tier
 
@@ -1020,16 +1032,19 @@ print(tier_counts)
 
 ```
 shape: (4, 2)
-┌────────────┬─────────┐
-│ price_tier ┆ count   │
-│ mid_range  ┆ 198543  │
-│ budget     ┆ 132857  │
-│ premium    ┆ 107824  │
-│ luxury     ┆ 48069   │
-└────────────┴─────────┘
+┌────────────┬───────┐
+│ price_tier ┆ count │
+│ ---        ┆ ---   │
+│ str        ┆ u32   │
+╞════════════╪═══════╡
+│ luxury     ┆ 35157 │
+│ premium    ┆ 11664 │
+│ mid_range  ┆ 2160  │
+│ budget     ┆ 1169  │
+└────────────┴───────┘
 ```
 
-The mid-range tier dominates — 198,000 transactions out of 487,000, roughly 40%. The luxury tier is the smallest at about 10%. This distribution is the reason the "million-dollar HDB" transactions that make newspaper headlines are genuinely unusual: they are the tail of the tail.
+The "luxury" tier holds 35,157 of 50,150 sales — 70%. Budget and mid-range together are under 7%. A tier scheme where most rows are "luxury" is not telling you much: the S$350k / S$500k / S$700k cut-offs were chosen without looking at this data, whose 25th, 50th and 75th percentiles are about S$656k, S$849k and S$1.02M (27.5% of sales are S$1M or more). The lesson is general — before you hard-code thresholds, check the quantiles (`hdb["resale_price"].quantile(0.25)` and friends), or the categories you build will be lopsided. Note also that the 107 planted S$10 sales land in "budget": a tier column built on dirty data is dirty too.
 
 ### Step 7: Chain everything together
 
@@ -1051,7 +1066,7 @@ print(f"Count: {recent_premium.height:,}")
 print(recent_premium.head(10))
 ```
 
-Reading the chain top-to-bottom: "start with the HDB dataset, keep rows from 2020 onwards, keep premium and luxury tiers, pick these six columns, sort by price descending". The output starts with the absolute most expensive recent transactions — typically in the $1.3–1.5 million range for the much-publicised million-dollar HDBs.
+Reading the chain top-to-bottom: "start with the HDB dataset, keep rows from 2020 onwards, keep premium and luxury tiers, pick these six columns, sort by price descending". It returns 23,254 rows, and the output starts with five sales at exactly S$9,000,000 (with prices per square metre near S$95,000). Those are the planted bad records again. A sort to the top is one of the fastest ways to surface outliers: the first rows of a descending sort should always be read with suspicion before they are reported.
 
 The `recent_premium` DataFrame is the answer to a specific question ("what are the highest-priced recent HDB resales?"), derived from the raw data in five lines of chained Polars. If someone asks the next question ("now group them by town"), you add another line to the chain. This is the rhythm of exploratory data analysis: one question, one chain, one answer, next question.
 
@@ -1071,7 +1086,7 @@ The `recent_premium` DataFrame is the answer to a specific question ("what are t
 
 - **Lesson 1.3** will use the `group_by` + `agg` pattern that appeared briefly in Step 6 of this lesson, and combine it with functions and loops for reusable analysis.
 - **Lesson 1.5** will extend `.with_columns` with window functions like `rolling_mean` and `shift`, which compute values across *nearby rows* rather than per-row.
-- **Lesson 1.8** will use Polars filtering extensively to clean a messy taxi dataset — removing GPS points outside Singapore's bounding box, fares below zero, and trip durations above 3 hours.
+- **Lesson 1.8** will use Polars filtering extensively to clean a messy taxi dataset — removing negative fares, impossible passenger counts, trips dated in the future, and duplicate trip IDs.
 
 ## Reflection
 
@@ -1093,7 +1108,7 @@ You should now be able to:
        (pl.col("town") == "BISHAN") &
        (pl.col("resale_price") > 600_000)
    )
-   print(result.height)
+   print(result.height)   # 956
    ```
 2. ```python
    hdb.with_columns(
@@ -1119,6 +1134,7 @@ You should now be able to:
    )
    print(hdb.group_by("flat_size_category").agg(pl.len().alias("count")))
    ```
+   You should see large 25,696, standard 12,636, jumbo 9,835 and compact 1,983 (the row order of a `group_by` result is not guaranteed — add `.sort("count", descending=True)` if you want it stable).
 5. ```python
    lux_psm = hdb.filter(pl.col("price_tier") == "luxury")["price_per_sqm"].median()
    bud_psm = hdb.filter(pl.col("price_tier") == "budget")["price_per_sqm"].median()
@@ -1126,7 +1142,7 @@ You should now be able to:
    print(f"Budget median PSM: {bud_psm:.0f}")
    print(f"Ratio: {lux_psm / bud_psm:.2f}")
    ```
-   The ratio is typically around 1.8–2.2 — luxury tier flats are not twice as big, they're in more expensive neighbourhoods, so the normalised price per square metre tells you the location premium directly.
+   You should see roughly S$8,938 (luxury) and S$7,698 (budget), a ratio of about 1.16. The luxury tier costs far more in absolute terms, but only about 16% more per square metre — its median flat is 103 sqm against 40 sqm for the budget tier. In this dataset, the price tiers mostly separate *big* flats from *small* ones. Normalising by area is what reveals that.
 
 ---
 

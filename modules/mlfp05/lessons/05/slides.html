@@ -33,7 +33,7 @@
   <h1>Generative Models — GANs and Diffusion</h1>
   <p style="font-size: 0.7em; color: #64748B;">DCGAN · WGAN-GP · Mode collapse · DDPM · FID evaluation</p>
   <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
-    <strong>⏱ 90 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> implement DCGAN and WGAN, understand diffusion, evaluate with FID
+    <strong>⏱ 90 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> train a GAN and a WGAN-GP, understand diffusion, evaluate with FID
   </div>
 </section>
 
@@ -130,7 +130,7 @@
       <text x="533" y="226" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#22C55E">generated image</text>
 
       <!-- Arrow labels -->
-      <text x="380" y="260" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">Each ConvTranspose2d doubles spatial dimensions. Channels decrease as spatial size grows.</text>
+      <text x="380" y="260" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">Each ConvTranspose2d upsamples ~2× (the last layer's padding lands on 28x28). Channels shrink as size grows.</text>
       <text x="380" y="278" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">No FC layers, no pooling. BatchNorm + ReLU at every stage except the final Tanh.</text>
 
       <!-- Scale indicator -->
@@ -165,19 +165,19 @@
       <text x="435" y="155" text-anchor="middle" font-size="10" fill="#64748B">All samples look the same</text>
     </svg>
   </figure>
-  <p style="font-size: 0.85em;">Generator finds one output that fools D and repeats it. WGAN fixes this.</p>
+  <p style="font-size: 0.85em;">Generator finds one output that fools D and repeats it. WGAN-GP reduces this (it does not eliminate it).</p>
 </section>
 
 <section>
   <h2>WGAN — Wasserstein distance</h2>
   \[ \min_G \max_{D \in \mathcal{D}} \;\bigl[\mathbb{E}_{x}[D(x)] - \mathbb{E}_{z}[D(G(z))]\bigr] \]
   <ul style="font-size: 0.85em;">
-    <li>Replaces JS divergence with Wasserstein (Earth Mover's) distance.</li>
+    <li>Replaces JS divergence with Wasserstein (Earth Mover's) distance. When real and fake supports don't overlap, JS is stuck at log 2 — no useful gradient; W still shrinks as the distributions approach.</li>
     <li>Gradient penalty (WGAN-GP) enforces the Lipschitz constraint.</li>
     <li>More stable training, meaningful loss curve, reduced mode collapse.</li>
   </ul>
   <div class="callout-slide theory">
-    <strong>🔵 Theory:</strong> WGAN loss correlates with sample quality — you can actually use it to monitor training.
+    <strong>🔵 Theory:</strong> −(critic loss without GP) estimates W, so the critic loss <em>rises toward 0</em> as quality improves — you can use it to monitor training.
   </div>
 </section>
 
@@ -221,7 +221,7 @@
     </svg>
   </figure>
   <ul style="font-size: 0.85em;">
-    <li>More stable than GANs. Better diversity. No mode collapse.</li>
+    <li>More stable than GANs. Better diversity. Far less prone to mode collapse.</li>
     <li>Slower to sample (many denoising steps). Active research on speed.</li>
   </ul>
 </section>
@@ -230,9 +230,9 @@
   <h2>FID — evaluating generated samples</h2>
   \[ \text{FID} = \|\mu_r - \mu_g\|^2 + \text{Tr}\bigl(\Sigma_r + \Sigma_g - 2(\Sigma_r \Sigma_g)^{1/2}\bigr) \]
   <ul style="font-size: 0.85em;">
-    <li>Compare statistics of real vs generated features (from Inception network).</li>
-    <li>Lower FID = closer to real data. FID = 0 means identical distributions.</li>
-    <li>Standard metric. Report it for every generative model.</li>
+    <li>Compare statistics of real vs generated features (usually Inception; Exercise 5.5 uses a small LeNet, so its values compare only with each other).</li>
+    <li>Lower FID = closer distributions (fidelity + diversity). FID = 0 means identical feature statistics.</li>
+    <li>Distribution-level, not per-image — and not a privacy test: a model that copies its training images scores well.</li>
   </ul>
 </section>
 
@@ -249,7 +249,7 @@
 </section>
 
 <section>
-  <h2>DCGAN training loop</h2>
+  <h2>GAN training loop (any G / D architecture)</h2>
   <pre><code class="language-python" data-trim>
 for epoch in range(epochs):
     for real_batch in dataloader:
@@ -261,7 +261,7 @@ for epoch in range(epochs):
                            + torch.log(1 - D(fake.detach())))
         d_loss.backward(); d_opt.step()
 
-        # Train G: minimise log(1-D(G(z)))
+        # Train G (non-saturating): minimise -log D(G(z))
         g_opt.zero_grad()
         z = torch.randn(batch_size, latent_dim)
         fake = generator(z)
@@ -282,7 +282,9 @@ d_interp = critic(interp)
 gradients = torch.autograd.grad(d_interp, interp,
     grad_outputs=torch.ones_like(d_interp),
     create_graph=True)[0]
-gp = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+# norm over the WHOLE input per sample, not per pixel
+gp = ((gradients.view(gradients.size(0), -1).norm(2, dim=1) - 1) ** 2).mean()
+d_real, d_fake = critic(real), critic(fake.detach())
 d_loss = d_fake.mean() - d_real.mean() + 10 * gp
   </code></pre>
 </section>
@@ -290,16 +292,16 @@ d_loss = d_fake.mean() - d_real.mean() + 10 * gp
 <section>
   <h2>Singapore applications</h2>
   <ul>
-    <li><strong>Synthetic data:</strong> generate realistic financial transactions for fraud model training (privacy-safe).</li>
-    <li><strong>Data augmentation:</strong> generate rare disease images for medical diagnosis training at NUS.</li>
-    <li><strong>Simulation:</strong> generate realistic traffic patterns for LTA planning models.</li>
+    <li><strong>Synthetic data:</strong> generate realistic transactions to enlarge a bank's rare-fraud training set. Synthetic is <em>not</em> private by default — it needs formal guarantees (e.g. DP-SGD) and memorisation tests before sharing.</li>
+    <li><strong>Data augmentation:</strong> generate extra examples of rare conditions for a hospital imaging classifier — always evaluate on real images.</li>
+    <li><strong>Simulation:</strong> generate realistic traffic patterns for a transport planner's scenario models.</li>
   </ul>
 </section>
 
 <section>
   <h2>Common mistakes</h2>
   <ol style="font-size: 0.85em;">
-    <li><strong>Training G too aggressively</strong> — D must stay ahead. Use k=5 D steps per G step.</li>
+    <li><strong>Training G too aggressively</strong> — D must stay informative. WGAN-GP uses 5 critic steps per G step.</li>
     <li><strong>Ignoring mode collapse</strong> — monitor sample diversity, not just D loss.</li>
     <li><strong>No FID evaluation</strong> — visual inspection is subjective. Report FID.</li>
     <li><strong>Using GANs when diffusion is better</strong> — if quality matters more than speed, use diffusion.</li>
@@ -309,7 +311,7 @@ d_loss = d_fake.mean() - d_real.mean() + 10 * gp
 <section>
   <h2>What you can now do</h2>
   <ul>
-    <li>✓ Implement DCGAN and WGAN with training loops.</li>
+    <li>✓ Implement GAN and WGAN-GP training loops; describe the DCGAN architecture.</li>
     <li>✓ Explain mode collapse and how WGAN addresses it.</li>
     <li>✓ Describe DDPM forward/reverse process.</li>
     <li>✓ Evaluate generated data with FID.</li>

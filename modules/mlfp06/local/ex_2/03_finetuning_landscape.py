@@ -172,11 +172,13 @@ print("=" * 70)
 names = techniques_df["name"].to_list()
 pcts = techniques_df["params_pct"].to_list()
 
+fname = OUTPUT_DIR / "ex2_finetuning_landscape.png"
+fname.unlink(missing_ok=True)  # the checkpoint must see THIS run's plot
+
 # TODO: Horizontal log-scale bar plot of names vs pcts, coloured by band
 # (<10 steelblue, <80 darkorange, else crimson). Annotate each bar with
-# the percentage. Save to OUTPUT_DIR / "ex2_finetuning_landscape.png".
+# the percentage. Save to fname and close the figure.
 ____
-fname = OUTPUT_DIR / "ex2_finetuning_landscape.png"
 print(f"  Saved: {fname}")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
@@ -187,11 +189,12 @@ print("✓ Checkpoint 3 passed — landscape visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore hospital — differential-privacy SFT
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore hospital wants to fine-tune a 7B model on
+# SCENARIO (illustrative): A Singapore hospital wants to fine-tune a 7B model on
 # 250,000 de-identified discharge summaries under PDPA. De-identified
 # is not enough — LLMs memorise. The Data Protection Officer mandates
 # a provable (epsilon, delta)-DP guarantee via DP-SGD.
-# Trade-off: ~20% slower training, ~1-3 quality points lost vs plain SFT.
+# Trade-off: noticeably slower training (per-example gradients), some
+# quality lost vs plain SFT.
 # Benefit: formal bound on single-patient influence on final weights.
 
 print("Singapore hospital — DP-SGD decision:")
@@ -228,7 +231,7 @@ print(
   [x] Built a decision tree mapping constraints to techniques
   [x] Visualised the parameter-cost landscape on a log scale
   [x] Applied the tree to a Singapore hospital DP-SGD scenario
-      (~S$960k/year saving across two sites)
+      (illustrative ~S$973k/year saving across two sites)
 
   KEY INSIGHT: there is no "best" fine-tuning technique. Only the
   best technique FOR a specific dataset size, GPU budget, privacy

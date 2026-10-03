@@ -241,6 +241,9 @@ print("=" * 70)
 names = techniques_df["name"].to_list()
 pcts = techniques_df["params_pct"].to_list()
 
+fname = OUTPUT_DIR / "ex2_finetuning_landscape.png"
+fname.unlink(missing_ok=True)  # the checkpoint must see THIS run's plot
+
 fig, ax = plt.subplots(1, 1, figsize=(10, 5.5))
 colors = [
     "steelblue" if p < 10 else ("darkorange" if p < 80 else "crimson") for p in pcts
@@ -260,7 +263,6 @@ for bar, p in zip(bars, pcts):
     )
 ax.grid(True, axis="x", alpha=0.3)
 plt.tight_layout()
-fname = OUTPUT_DIR / "ex2_finetuning_landscape.png"
 plt.savefig(fname, dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved: {fname}")
@@ -273,7 +275,7 @@ print("✓ Checkpoint 3 passed — landscape visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore hospital — differential-privacy SFT
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore hospital wants to fine-tune a 7B open-source
+# SCENARIO (illustrative): A Singapore hospital wants to fine-tune a 7B open-source
 # model on 250,000 de-identified discharge summaries.  The goal is a
 # triage assistant that highlights urgent follow-ups.  The hospital is
 # bound by the Personal Data Protection Act (PDPA) and the MOH health
@@ -289,15 +291,16 @@ print("✓ Checkpoint 3 passed — landscape visualised\n")
 # DECISION: the decision tree routes us to DP-SGD (Differential
 # Privacy SGD).  DP-SGD clips per-example gradients and adds Gaussian
 # noise at every step, producing a formal (epsilon, delta)-DP
-# guarantee.  Cost: ~20% slower training and ~1-3 points of quality
-# drop vs plain SFT.  Benefit: a provable bound on how much any single
+# guarantee.  Cost: noticeably slower training (per-example gradients
+# are computed and clipped one by one) and some quality drop vs plain SFT.  Benefit: a provable bound on how much any single
 # patient record can influence the final weights.
 #
-# BUSINESS IMPACT: without DP-SGD, the hospital cannot deploy the
+# BUSINESS IMPACT (illustrative figures): without DP-SGD, the hospital cannot deploy the
 # triage assistant at all (legal risk + reputational risk).  With
-# DP-SGD, the assistant reduces triage nurse workload on the night
-# shift by ~30%, saving ~S$480,000/year in overtime across two
-# hospitals while staying within PDPA's enforcement envelope.
+# DP-SGD, suppose the assistant saves each of 12 night-shift nurses
+# ~6 overtime hours/week at S$130/hour: ~S$487,000/year per site,
+# ~S$973,000/year across two hospitals, while meeting the PDPA's
+# protection obligation for the patient data used in training.
 #
 # You could combine DP-SGD with LoRA (DP-LoRA) to recover some of the
 # quality drop by constraining the update to a low-rank subspace.
@@ -335,7 +338,7 @@ print(
   [x] Built a decision tree mapping constraints to techniques
   [x] Visualised the parameter-cost landscape on a log scale
   [x] Applied the tree to a Singapore hospital DP-SGD scenario
-      (~S$960k/year saving across two sites)
+      (illustrative ~S$973k/year saving across two sites)
 
   KEY INSIGHT: there is no "best" fine-tuning technique.  There is
   only the best technique FOR a specific dataset size, GPU budget,

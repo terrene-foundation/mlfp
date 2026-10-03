@@ -7,7 +7,8 @@
 #
 # WHAT YOU'LL LEARN:
 #   - Why GCN doesn't scale to large graphs (full adjacency in memory)
-#   - Inductive learning: generalise to unseen nodes at inference time
+#   - Inductive learning: why GraphSAGE CAN embed unseen nodes (and why
+#     this Cora exercise does not yet prove it)
 #   - Neighbour sampling strategy: fixed-size random subsets per node
 #   - Separate self/neighbour projections for richer representations
 #   - Train a scalable node classifier on the Cora citation network
@@ -50,9 +51,9 @@ import matplotlib.pyplot as plt
 # For Cora (2,708 nodes), that's a 2708 x 2708 matrix — no problem.
 # But real-world graphs are much bigger:
 #
-#   - Singapore food delivery network: ~500K users x ~50K restaurants
-#   - Facebook social graph: 3 billion nodes
-#   - Google Knowledge Graph: 500 billion edges
+#   - A city-scale food delivery network: ~500K users x ~50K restaurants
+#   - A global social network: billions of user nodes
+#   - A web-scale knowledge graph: hundreds of billions of facts (edges)
 #
 # A 500K x 500K dense adjacency matrix needs ~1 TB of memory. Even
 # sparse representations strain GPU memory when you need multi-hop
@@ -100,9 +101,12 @@ print(
      -> A FUNCTION, not a lookup — works on any neighbour set
 
   3. INDUCTIVE: learns HOW to aggregate, not WHAT to embed
-     -> New nodes at inference time? No problem — just sample their
-        neighbours and run the learned aggregator
-     -> GCN/GAT are TRANSDUCTIVE: they need the full graph at test time
+     -> New nodes at inference time? Sample their neighbours and run
+        the learned aggregator
+     -> GCN as trained in ex_6.1 is used TRANSDUCTIVELY: one fixed,
+        full-graph normalised adjacency, with the test nodes already in
+        the graph during training. (GAT also learns a function of node
+        features and was shown to be inductive in its own paper.)
 
   Formula: h'_i = sigma( W_self @ h_i + W_neigh @ MEAN(sample(N(i))) )
   Separate W_self and W_neigh = "what I know" vs "what neighbours say"
@@ -252,20 +256,66 @@ sage_losses, sage_val, sage_test = train_node_classifier(
 # ── Train Checkpoint ────────────────────────────────────────────────
 assert len(sage_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses for GraphSAGE"
 assert sage_losses[-1] < sage_losses[0], "GraphSAGE loss should decrease"
-best_val = max(sage_val)
-best_test = max(sage_test)
+# Model selection by VALIDATION accuracy; report test accuracy at that
+# epoch (the harness has already restored that epoch's weights).
+best_epoch = int(np.argmax(sage_val))
+best_val = sage_val[best_epoch]
+best_test = sage_test[best_epoch]
 print(f"\n  GraphSAGE Results:")
-print(f"    Best validation accuracy: {best_val:.4f}")
-print(f"    Best test accuracy:       {best_test:.4f}")
+print(f"    Best validation accuracy: {best_val:.4f} (epoch {best_epoch + 1})")
+print(f"    Test accuracy, that epoch: {best_test:.4f}")
 print(f"    Final loss:               {sage_losses[-1]:.4f}")
-# INTERPRETATION: GraphSAGE is INDUCTIVE — it learns a generalised
-# aggregation function that works on unseen nodes. During training, it
+# INTERPRETATION: GraphSAGE is designed to be INDUCTIVE — it learns an
+# aggregation FUNCTION that can be applied to nodes it never saw. Note
+# that this run is still transductive: every Cora node, including the
+# test nodes, sits in the graph during training. During training, it
 # randomly samples K neighbours per node (like dropout for graphs),
 # which provides regularisation and makes it scalable to large graphs.
 # The separate W_self and W_neigh projections let the model learn
 # different transformations for a node's own features versus its
 # neighbours' features.
 print("\n--- Train checkpoint passed --- GraphSAGE trained successfully\n")
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — Prescription Pad before Visualise
+# ══════════════════════════════════════════════════════════════════
+# run_diagnostic_checkpoint instruments the trained model, replays a few
+# forward/backward passes of the REAL training objective (cross-entropy
+# on the labelled training nodes; no weights are updated) and replays
+# the per-epoch training losses. The whole graph is one "batch", so the
+# loader is the same full-graph tuple repeated.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _node_loss(m, batch):
+    feats, graph, labels, mask = batch
+    return F.cross_entropy(m(feats, graph)[mask], labels[mask])
+
+
+diag, findings = run_diagnostic_checkpoint(
+    sage,
+    [(X, A, y, graph_data["train_mask"])] * 4,
+    _node_loss,
+    title="GraphSAGE — Sample and Aggregate",
+    n_batches=4,
+    train_losses=sage_losses,
+    show=False,
+)
+print_prescription_pad(findings, "GraphSAGE — Sample and Aggregate")
+# HOW TO READ IT (your readings depend on your run):
+#  GRADIENT FLOW — a 2-layer GNN rarely vanishes. Exploding readings
+#     usually mean the propagation matrix is not normalised (a raw
+#     adjacency multiplies feature scale by node degree) or the learning
+#     rate is too high.
+#  DEAD NEURONS — this model applies its activation functionally
+#     (F.relu / F.elu), so there is no activation LAYER for the
+#     instrument to hook; an UNKNOWN reading here is expected, not a
+#     fault. Use nn.ReLU modules if you want this reading.
+#  LOSS TREND — this sees only the training loss. Over-fitting shows up
+#     in the gap between the validation and training curves, not here.
+# ══════════════════════════════════════════════════════════════════
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -355,11 +405,22 @@ plt.savefig(filepath, dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved: {filepath}")
 
-high_var_nodes = (per_node_var > np.percentile(per_node_var, 90)).sum()
-low_var_nodes = (per_node_var < np.percentile(per_node_var, 10)).sum()
-print(f"    High-variance nodes (top 10%): {high_var_nodes} — mostly high-degree nodes")
-print(f"    Low-variance nodes (bottom 10%): {low_var_nodes} — mostly low-degree nodes")
-print(f"    Nodes with degree <= {SAMPLE_K}: deterministic (no sampling needed)")
+high_var = per_node_var > np.percentile(per_node_var, 90)
+low_var = per_node_var < np.percentile(per_node_var, 10)
+print(
+    f"    High-variance nodes (top 10%): {int(high_var.sum())}, "
+    f"mean degree {degrees[high_var].mean():.1f}"
+)
+print(
+    f"    Low-variance nodes (bottom 10%): {int(low_var.sum())}, "
+    f"mean degree {degrees[low_var].mean():.1f}"
+)
+small = degrees <= SAMPLE_K
+print(
+    f"    Nodes with degree <= {SAMPLE_K}: their layer-1 neighbourhood is never "
+    f"subsampled (mean variance {per_node_var[small].mean():.2e} vs "
+    f"{per_node_var[~small].mean():.2e} for larger-degree nodes)"
+)
 
 # ── Visualise Checkpoint ────────────────────────────────────────────
 assert sage_emb.shape == (
@@ -373,12 +434,12 @@ print("\n--- Visualise checkpoint passed --- GraphSAGE embeddings + variance plo
 # PHASE 5 — APPLY: Recommendation Engine for Food Delivery
 # ════════════════════════════════════════════════════════════════════════
 print("=" * 70)
-print("  PHASE 5 — APPLY: Food Delivery Recommendations (GrabFood/foodpanda)")
+print("  PHASE 5 — APPLY: Food Delivery Recommendations")
 print("=" * 70)
 print(
     """
-  SCENARIO: You're building a recommendation engine for a Singapore food
-  delivery platform (GrabFood, foodpanda, or Deliveroo).
+  SCENARIO (illustrative): You're building a recommendation engine for a
+  Singapore food delivery platform.
 
   THE GRAPH:
   - User nodes: ~500K users with features (location, order frequency, cuisine prefs)
@@ -389,12 +450,13 @@ print(
   WHY GRAPHSAGE IS THE RIGHT CHOICE:
   1. SCALE: 550K nodes = GCN's adjacency matrix would need 302 billion entries
      GraphSAGE samples 10 neighbours per node = bounded memory
-  2. INDUCTIVE: new restaurants join daily. GCN would need to retrain on the
-     entire graph. GraphSAGE classifies new restaurants immediately by
-     sampling their first customers' embeddings.
+  2. INDUCTIVE: new restaurants join daily. A full-graph GCN like ex_6.1's
+     has to be re-run (and usually retrained) on the whole updated graph.
+     GraphSAGE is trained to embed a new restaurant directly from a
+     sample of its first customers' features.
   3. COLD START: a new restaurant with just 3 orders can be embedded —
-     GraphSAGE averages those 3 users' embeddings. GCN has no mechanism
-     for unseen nodes.
+     GraphSAGE aggregates those 3 users. Whether that embedding is GOOD
+     is something you measure on held-out new restaurants, not assume.
 
   RECOMMENDATION PIPELINE:
   1. Train GraphSAGE on the user-restaurant graph
@@ -405,19 +467,22 @@ print(
 """
 )
 
-# Demonstrate collaborative filtering baseline vs GraphSAGE
+# Demonstrate a neighbour-majority (CF-style) baseline vs GraphSAGE
 # Using Cora as proxy: predict class membership from neighbourhood
-print("  Collaborative Filtering Baseline vs GraphSAGE:")
+print("  Neighbour-Majority Baseline vs GraphSAGE:")
 
-# Baseline: predict node class from majority class of neighbours
-majority_preds = torch.zeros(N, dtype=torch.long, device=device)
+# Baseline: predict a node's class by majority vote over the labels of its
+# TRAINING-set neighbours only. Using every neighbour's label would read
+# the true labels of validation/test nodes — label leakage.
+train_mask = graph_data["train_mask"]
 test_mask = graph_data["test_mask"]
+fallback_class = int(torch.bincount(y[train_mask], minlength=n_classes).argmax())
+majority_preds = torch.full((N,), fallback_class, dtype=torch.long, device=device)
 
 for i in range(N):
-    neighbours = torch.where(A[i] > 0)[0]
+    neighbours = torch.where((A[i] > 0) & train_mask)[0]
     if len(neighbours) == 0:
-        majority_preds[i] = 0
-        continue
+        continue  # no labelled neighbour: keep the majority training class
     neighbour_labels = y[neighbours]
     # Majority vote
     counts = torch.bincount(neighbour_labels, minlength=n_classes)
@@ -425,16 +490,16 @@ for i in range(N):
 
 cf_acc = (majority_preds[test_mask] == y[test_mask]).float().mean().item()
 
-print(f"    Collaborative filtering (neighbour majority): {cf_acc:.4f}")
-print(f"    GraphSAGE (learned aggregation):              {best_test:.4f}")
+print(f"    Neighbour majority (train labels only): {cf_acc:.4f}")
+print(f"    GraphSAGE (learned aggregation):        {best_test:.4f}")
 improvement = best_test - cf_acc
 print(
-    f"    Improvement:                                  +{improvement:.4f} ({improvement*100:.1f} pp)"
+    f"    Difference:                             {improvement:+.4f} ({improvement*100:+.1f} pp)"
 )
 
 print(
     """
-  WHY GRAPHSAGE BEATS SIMPLE COLLABORATIVE FILTERING:
+  HOW GRAPHSAGE DIFFERS FROM THE NEIGHBOUR-MAJORITY BASELINE:
   - CF just counts neighbours — GraphSAGE LEARNS what to aggregate
   - CF has no features — GraphSAGE combines structure with node features
   - CF is one-hop — 2-layer GraphSAGE captures 2-hop patterns
@@ -457,7 +522,7 @@ if has_registry:
         model=sage,
         metrics=[
             MetricSpec(name="best_val_accuracy", value=best_val),
-            MetricSpec(name="best_test_accuracy", value=best_test),
+            MetricSpec(name="test_accuracy_at_best_val", value=best_test),
             MetricSpec(name="final_loss", value=sage_losses[-1]),
             MetricSpec(name="cf_baseline_accuracy", value=cf_acc),
             MetricSpec(name="improvement_over_cf", value=improvement),
@@ -485,10 +550,12 @@ print(
   [x] Neighbour sampling: fixed K neighbours per node bounds memory
   [x] Mean aggregator: MEAN(h_j for j in Sample(N(i)))
   [x] Separate projections: W_self @ h_i + W_neigh @ h_agg
-  [x] INDUCTIVE learning: generalises to unseen nodes (new restaurants!)
+  [x] INDUCTIVE design: a learned aggregation FUNCTION can embed unseen
+      nodes — this run trained on the full Cora graph, so it shows the
+      mechanism; proving generalisation needs held-out nodes
   [x] Trained on {dataset_name}: {best_val:.1%} val accuracy, {best_test:.1%} test accuracy
-  [x] Analysed sampling stochasticity: high-degree nodes -> more variance
-  [x] Beat collaborative filtering baseline by {improvement*100:.1f} percentage points
+  [x] Analysed sampling stochasticity: variance vs node degree
+  [x] Compared with a neighbour-majority baseline: {improvement*100:+.1f} percentage points
 
   THREE-WAY COMPARISON (so far):
   - GCN: fixed weights, full graph, fast, simple
@@ -508,64 +575,3 @@ print(
 
 # Clean up
 asyncio.run(conn.close())
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # GraphSAGE with neighbour sampling
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (GraphSAGE — Inductive Graph Learning) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        sage,
-        sampled_loader,
-        _diag_loss,
-        title="GraphSAGE — Inductive Graph Learning",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS 6.3e-04 to 9.8e-03 across sampling layers.
-# [✓] Dead neurons  (HEALTHY): 11% inactive.
-# [✓] Loss trend    (HEALTHY): val accuracy 83%, train-val gap stable.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST] Neighbour sampling (vs full graph) makes gradients
-#     slightly noisier but doesn't cause vanishing. The sampled
-#     aggregation is a form of gradient estimation — healthy variance.
-#
-#  [X-RAY] 11% inactive is fine for ReLU + mean aggregation.
-#     GraphSAGE's strength is INDUCTIVE — it generalises to
-#     unseen nodes (unlike GCN which is transductive).
-#
-#  [STETHOSCOPE] Comparable to GAT, but scales to graphs GCN/GAT
-#     can't fit in memory. The architecture trade-off: sampling
-#     noise vs scalability.
-

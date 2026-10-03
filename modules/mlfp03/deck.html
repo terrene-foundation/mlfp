@@ -1328,16 +1328,16 @@ asyncio.run(compare())</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. This lesson is where theory meets reality. Students learn why accuracy can lie, how to handle imbalanced data, and how to calibrate model confidence. The Credit Suisse AML case from the opening is the running example: 99.9% accuracy was useless because the wrong metric was used.</aside>
+  <aside class="notes">Timing: 1 min. This lesson is where theory meets reality. Students learn why accuracy can lie, how to handle imbalanced data, and how to calibrate model confidence. The running example is an illustrative anti-money-laundering (AML) model, introduced on the next slide: 99.999% accuracy and no use at all, because the wrong metric was used.</aside>
 </section>
 
 <!-- SLIDE 44 — Opening Case Revisited -->
 <section>
-  <h2>Remember the AML Model?</h2>
+  <h2>The 99.999% Accurate AML Model</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <div class="case-stat">99.9% accuracy</div>
-  <div class="case-caption">But the compliance team called it useless.</div>
-  <p>10 million transactions. Only ~100 suspicious. The model said "everything is fine" and was 99.99% accurate.</p>
+  <div class="case-stat">99.999% accuracy</div>
+  <div class="case-caption">An illustrative anti-money-laundering case &mdash; and the compliance team calls it useless.</div>
+  <p>10 million transactions. Only ~100 suspicious. The model says "everything is fine" for every one: 9,999,900 of 10,000,000 correct = 99.999% accurate, and zero launderers caught.</p>
   <div class="callout callout-error">
     <strong>When only 0.001% of data is positive, accuracy is the WRONG metric.</strong> The model needs to find those 100 needles in 10 million haystacks. That requires precision and recall.
   </div>
@@ -1345,7 +1345,7 @@ asyncio.run(compare())</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Bring back the opening case. Now students have the vocabulary (from Lessons 3.2-3.4) to understand why accuracy failed. Walk them through: if 0.001% is positive, a "predict all negative" model is 99.999% accurate. Completely useless. We need metrics that penalise missing the positives.</aside>
+  <aside class="notes">Timing: 2 min. Introduce the case; it is a teaching illustration, not a real bank's model. Students now have the vocabulary (from Lessons 3.2-3.4) to understand why accuracy failed. Walk them through: if 0.001% is positive, a "predict all negative" model is 99.999% accurate. Completely useless. We need metrics that penalise missing the positives.</aside>
 </section>
 
 <!-- SLIDE 45 — Classification Metrics -->
@@ -1523,15 +1523,60 @@ asyncio.run(compare())</code></pre>
   </div>
   <div class="equation-box" style="padding:8px 20px; font-size:0.9em;">
     <span class="katex-display">\text{Brier Score} = \frac{1}{N}\sum_{i=1}^{N}(p_i - y_i)^2</span>
-    <div class="annotation">Measures calibration quality. Lower is better. 0 = perfect calibration.</div>
+    <div class="annotation">Lower is better; 0 = perfect prediction. Brier mixes calibration and discrimination &mdash; check calibration itself on the reliability diagram.</div>
   </div>
   <div class="callout callout-foundations">
-    <strong>Why calibrate?</strong> When decisions depend on predicted probabilities (lending thresholds, medical triage, insurance pricing), miscalibrated probabilities lead to wrong decisions.
+    <strong>Order matters:</strong> fit the calibrator on held-out rows (<code>TrainingPipeline.calibrate(model, X_val, y_val, method="sigmoid")</code>), then pick the decision threshold <span class="katex-inline">t^* = c_{FP}/(c_{FP}+c_{FN})</span> &mdash; valid only for calibrated, unweighted probabilities.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Calibration is critical for professionals. A bank that uses model probabilities to set interest rates needs those probabilities to be correct, not just well-ranked. The reliability diagram (calibration plot) shows predicted vs actual probability. A well-calibrated model follows the diagonal.</aside>
+  <aside class="notes">Timing: 2 min. Calibration is critical for professionals. A lender that uses model probabilities to set prices needs those probabilities to be correct, not just well-ranked. The reliability diagram plots predicted probability against observed frequency; a calibrated model follows the diagonal. Points above the diagonal mean the predicted probabilities are too low; below means too high. Brier score is not a pure calibration measure: a perfectly calibrated model that always predicts the base rate of 0.3 scores 0.21. Brier decomposes into reliability minus resolution plus uncertainty. Platt scaling ("sigmoid") and isotonic regression are both fitted on data the model did not train on: Exercise 3.5 holds out 20% and calls TrainingPipeline.calibrate. The cost threshold t* = c_FP/(c_FP + c_FN) assumes the probabilities are calibrated and unweighted. If you already trained with class weights, the weights have moved the boundary; applying the cost ratio again double-counts it. Use one or the other, and tune the threshold on out-of-fold predictions, not the test set.</aside>
+</section>
+
+<!-- SLIDE 50b — Stacking and Blending -->
+<section class="code-fit">
+  <h2>Stacking and Blending</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <ul style="font-size:0.8em;">
+        <li><strong>Blending:</strong> weighted average of the base models' probabilities (soft) or majority vote (hard)</li>
+        <li><strong>Stacking:</strong> a meta-model (logistic regression) learns how to combine base models from their <em>out-of-fold</em> predictions</li>
+        <li>Pays off when base models make <strong>different</strong> mistakes; near-identical boosters gain little</li>
+        <li>Score the ensemble on rows no base model saw</li>
+      </ul>
+    </div>
+    <div class="col">
+      <pre style="font-size: 0.45em;"><code class="language-python">from lightgbm import LGBMClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import GaussianNB
+from kailash_ml import EnsembleEngine
+from shared.mlfp03.ex_7 import prepare_credit_frames
+
+dev, test, cols = prepare_credit_frames()  # test untouched
+dev = dev.drop("application_id")
+fit_part, ens_part = dev.head(40_000), dev.tail(40_000)
+X = fit_part.drop("default").to_numpy()
+y = fit_part["default"].to_numpy()
+base = [m.fit(X, y) for m in (       # engine expects fitted models
+    LGBMClassifier(n_estimators=300, learning_rate=0.05, verbose=-1),
+    RandomForestClassifier(200, min_samples_leaf=20, random_state=42),
+    GaussianNB())]
+
+ens = EnsembleEngine()
+stacked = ens.stack(base, ens_part, target="default", fold=5)
+blended = ens.blend(base, ens_part, target="default",
+                    weights=[0.6, 0.3, 0.1])
+print(stacked.metrics["auc"], blended.metrics["auc"])
+for c in stacked.component_contributions:
+    print(c["model_class"], round(c["metrics"]["auc"], 3))</code></pre>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">Timing: 2 min. Spec 3.5 asks for a brief look at combining models; M4 uses EnsembleEngine to blend anomaly scores. EnsembleEngine.blend and .stack take a polars frame, split it 80/20 themselves, fit the ensemble on the 80% and report metrics on the 20%. They also score each base model on that 20% for comparison, which is why the base models must already be fitted, and fitted on DIFFERENT rows (fit_part) so the comparison is not on rows they memorised. On the leak-free credit data the result is instructive: ROC AUC is about 0.79 for the stack, about 0.79 for the blend, 0.79 for the random forest, 0.79 for LightGBM and 0.73 for Naive Bayes. Stacking matched the best single model rather than beating it, because the strong base models agree. Stacking is also slow: it refits every base model once per fold. If experts bored: "the meta-model must be trained on out-of-fold predictions; training it on in-sample predictions rewards whichever base model overfits most."</aside>
 </section>
 
 <!-- SLIDE 51 — Lesson 3.5 Summary -->
@@ -1543,15 +1588,16 @@ asyncio.run(compare())</code></pre>
     <li><strong>Regression:</strong> R&sup2;, RMSE, MAE, MAPE &mdash; use RMSE as default</li>
     <li><strong>Imbalance:</strong> Class weights and focal loss over SMOTE</li>
     <li><strong>Focal loss:</strong> <span class="katex-inline">-\alpha_t(1-p_t)^\gamma \log(p_t)</span></li>
-    <li><strong>Calibration:</strong> Platt scaling or isotonic regression; Brier score to measure</li>
+    <li><strong>Calibration:</strong> Platt or isotonic on held-out rows; reliability diagram + Brier</li>
+    <li><strong>Combining models:</strong> blending and stacking (<code>EnsembleEngine</code>)</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.5:</strong> Train on imbalanced credit scoring data. Compare accuracy vs F1 vs AUC. Apply SMOTE and cost-sensitive approaches. Calibrate with Platt scaling. Show improvement on calibration plot.
+    <strong>Exercise 3.5:</strong> Imbalanced credit data (~13% default): metrics taxonomy vs an all-negative baseline; SMOTE vs cost-sensitive weights; real focal loss as a LightGBM objective; cost threshold tuned out-of-fold; Platt and isotonic via <code>TrainingPipeline.calibrate</code> on a 20% holdout.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to confront imbalanced data and discover why accuracy lies. They calibrate the model and see the Brier score improve.</aside>
+  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to confront imbalanced data and discover why accuracy lies. Focal loss is implemented as a true custom objective (gradient and Hessian) and the gamma = 0 run must reproduce the plain baseline, which is how the code is tested. The threshold is tuned on out-of-fold predictions and reported once on the test set. Calibration is fitted on a held-out 20% split, and students read the reliability diagram rather than trusting the Brier score alone. Cost-sensitive weighting improves ranking for the minority class but distorts probabilities; calibration is what repairs them.</aside>
 </section>
 
 

@@ -31,7 +31,8 @@
 #   10. Cross-column analysis — temperature vs rainfall relationship
 #
 # DATASET: Singapore monthly weather data (temperature, rainfall)
-#   Source: Meteorological Service Singapore (data.gov.sg)
+#   Source: approximate monthly climate averages prepared for this course
+#   (illustrative — not official station records)
 #   Rows: 12 monthly records | Columns: month, mean_temperature_c,
 #   total_rainfall_mm
 #
@@ -172,7 +173,7 @@ print(f"Center:      {'Singapore':^20} | end")
 report_header = f"""
 ╔{'═' * 40}╗
 ║{'Singapore Weather Report':^40}║
-║{'Data from Meteorological Service':^40}║
+║{'Illustrative monthly averages':^40}║
 ╚{'═' * 40}╝
 """
 print(report_header)
@@ -422,8 +423,10 @@ print(f"  Maximum:  {max_temp:.2f}°C")
 print(f"  Std dev:  {std_temp:.2f}°C")
 # INTERPRETATION: Std dev measures how spread out the values are.
 # A small std dev means temperatures cluster tightly around the mean.
-# Singapore's tropical climate means low temperature variation (~1°C std).
-# Compare this to London (std ~5°C) or Moscow (std ~12°C).
+# Singapore's tropical climate keeps the monthly averages within about a
+# degree of each other — compare the std you just printed with the range
+# (max - min). In cities with cold winters, monthly averages swing by
+# 15°C or more between seasons.
 
 mean_rain = df["total_rainfall_mm"].mean()
 max_rain = df["total_rainfall_mm"].max()
@@ -434,10 +437,11 @@ print(f"  Average:  {mean_rain:.1f} mm/month")
 print(f"  Maximum:  {max_rain:.1f} mm/month")
 print(f"  Minimum:  {min_rain:.1f} mm/month")
 print(f"  Std dev:  {std_rain:.1f} mm/month")
-# INTERPRETATION: Singapore receives ~170mm of rain per month on average.
-# The monsoon season (Nov-Jan) can bring 250+ mm — nearly 50% above average.
-# The high std dev relative to the mean tells you rainfall is more variable
-# than temperature — which makes sense: it can pour one month and be dry the next.
+# INTERPRETATION: Compare the maximum with the average you just printed:
+# the wettest month is far above the typical month, while the hottest
+# month is barely above the average temperature. The std dev relative to
+# the mean tells you rainfall is much more variable than temperature —
+# which makes sense: it can pour one month and be dry the next.
 
 # ── Checkpoint 6 ─────────────────────────────────────────────────────
 assert mean_temp is not None, "mean_temp should not be None"
@@ -467,9 +471,8 @@ print(f"  50th percentile (Q2): {temp_q50:.2f}°C  (this is the median)")
 print(f"  75th percentile (Q3): {temp_q75:.2f}°C")
 print(f"  Interquartile range:  {temp_iqr:.2f}°C  (Q3 - Q1)")
 # INTERPRETATION: The IQR tells you the range of the "middle 50%" of values.
-# For Singapore temperature, IQR ≈ 1°C means the middle half of all monthly
-# temperatures span just 1 degree. This is remarkably stable — a property
-# investor doesn't need to worry about weather-driven demand swings.
+# For Singapore temperature, an IQR under 1°C means the middle half of all
+# monthly temperatures fit inside a single degree — remarkably stable.
 
 # --- 7b: Quantiles for rainfall ---
 rain_series = df["total_rainfall_mm"]
@@ -494,9 +497,9 @@ print(f"\n=== Coefficient of Variation ===")
 print(f"  Temperature CV: {cv_temp:.1f}%  (very low — stable climate)")
 print(f"  Rainfall CV:    {cv_rain:.1f}%  (much higher — seasonal variation)")
 # INTERPRETATION: A CV under 10% means the variable barely changes.
-# Temperature CV ≈ 2% means Singapore's climate is one of the most stable
-# in the world. Rainfall CV ≈ 30% means month-to-month rainfall is
-# unpredictable — a key risk factor for outdoor construction projects.
+# Temperature's CV of about 2% means the monthly averages hardly move.
+# Rainfall's CV is roughly ten times larger: month-to-month rainfall
+# varies a lot — a key risk factor for outdoor construction projects.
 
 # --- 7d: Data range and total ---
 total_annual_rain = rain_series.sum()
@@ -565,11 +568,12 @@ print(f"Hottest month is {hottest_pct_above:+.1f}% above average temperature")
 print(f"Wettest month is {wettest_pct_above:+.1f}% above average rainfall")
 # The + in :+.1f forces a + sign for positive numbers — makes deviations clearer
 
-# INTERPRETATION: Singapore's hottest months are May-Jun (pre-monsoon),
-# coldest are Dec-Jan (NE monsoon), and wettest are Nov-Jan (monsoon peak).
-# The temperature deviation is small (maybe +3%) while the rainfall
-# deviation is large (maybe +50%). This asymmetry matters for planning:
-# temperature is not a risk, but rainfall is.
+# INTERPRETATION: In this data the hottest months are May-June, the
+# coolest are December-January, and the wettest are November-December —
+# the start of the Northeast Monsoon. The hottest month is only about 3%
+# above the average temperature, while the wettest is nearly 50% above
+# the average rainfall (see the deviations printed above). This asymmetry
+# matters for planning: temperature is not a risk, but rainfall is.
 
 # ── Checkpoint 8 ─────────────────────────────────────────────────────
 assert hottest_temp >= coldest_temp, "Hottest should be >= coldest"
@@ -593,7 +597,7 @@ separator = "═" * 60
 print(f"\n{separator}")
 print(f"  SINGAPORE WEATHER SUMMARY REPORT")
 print(f"{separator}")
-print(f"  Source:     Meteorological Service Singapore")
+print(f"  Source:     Illustrative monthly climate averages")
 print(f"  Records:    {rows:>6,} monthly observations")
 print(f"  Variables:  {cols:>6} columns")
 print(f"")
@@ -645,8 +649,11 @@ cool_avg_rain = cool_months_df["total_rainfall_mm"].mean()
 print("=== Temperature vs Rainfall ===")
 print(f"Warm months (>= {temp_q50:.1f}°C):  avg rainfall = {warm_avg_rain:.1f} mm")
 print(f"Cool months (<  {temp_q50:.1f}°C):  avg rainfall = {cool_avg_rain:.1f} mm")
+# if / else picks which line to print depending on a condition. You'll
+# learn it properly in Lesson 1.4 — for now, read it as "if this is
+# true, do the first thing; otherwise do the second".
 if cool_avg_rain > warm_avg_rain:
-    print("  → Cool months are wetter — this aligns with the NE monsoon (Dec-Feb)")
+    print("  → Cool months are wetter — the cool, wet Northeast Monsoon months")
 else:
     print("  → Warm months are wetter")
 
@@ -685,11 +692,11 @@ elif temp_rain_corr < 0:
 else:
     print("  → Positive correlation: hotter months tend to be wetter")
 
-# INTERPRETATION: For Singapore, you'll likely see a weak negative correlation.
-# The NE monsoon (cooler, wetter) and inter-monsoon (warmer, drier) seasons
-# create this inverse relationship. But it's weak because Singapore's
-# temperature range is so narrow — rainfall is driven more by monsoon
-# patterns than by temperature alone.
+# INTERPRETATION: Read the r printed above. A negative value means the
+# cooler months tend to be the wetter ones — the Northeast Monsoon at
+# the end of the year is both cooler and rainier. With only 12 points,
+# one or two months can move r a lot, so treat it as a hint, not a law:
+# rainfall is driven by monsoon patterns, not by temperature itself.
 
 # ── Checkpoint 10 ────────────────────────────────────────────────────
 assert warm_avg_rain is not None, "warm_avg_rain should not be None"
@@ -727,6 +734,6 @@ print(
   NEXT: In Exercise 2, you'll learn to filter and transform data
   using Polars expressions — selecting rows by condition, creating
   new columns, and chaining operations together. The HDB resale
-  dataset (500K+ transactions) will be your playground.
+  dataset (~50,000 transactions) will be your playground.
 """
 )

@@ -531,7 +531,7 @@ If the last point feels weak, go back to Step 5 of the worked example and spend 
 
 K-means assigns each customer to exactly one segment. In reality, a customer who buys groceries on weekdays and hosts dinner parties on weekends belongs partially to two segments. Forcing a hard assignment loses information. Gaussian Mixture Models solve this by assigning each point a probability of belonging to each cluster — soft clustering. The algorithm that fits GMMs is the Expectation-Maximisation (EM) algorithm, one of the most important algorithms in all of machine learning. EM is not limited to clustering; it is a general template for any model with latent (hidden) variables. You will see its echoes in variational autoencoders (Lesson 5.1), topic models (Lesson 4.6), and the training of hidden Markov models. Understanding EM here gives you a tool you will use repeatedly.
 
-The EM algorithm also has a modern descendant that is worth knowing about: the Mixture of Experts (MoE) architecture, which is the backbone of models like GPT-4. In an MoE model, a gating network selects which expert sub-network processes each input — a direct generalisation of the mixture model idea where the "assignment" of inputs to components is itself learned. We will touch on this briefly at the end of the lesson, and return to it in Module 6.
+The mixture idea also has a modern descendant that is worth knowing about: the Mixture of Experts (MoE) architecture, used in several openly documented large language models such as Mixtral 8x7B. In an MoE model, a gating network selects which expert sub-network processes each input — a direct generalisation of the mixture model idea where the "assignment" of inputs to components is itself learned. We will touch on this briefly at the end of the lesson, and return to it in Module 6.
 
 ## Core Concepts
 
@@ -589,7 +589,7 @@ In a Mixture of Experts (MoE) model, the mixing coefficients $\pi_k$ are not con
 
 $$p(y \mid \mathbf{x}) = \sum_{k=1}^{K} g_k(\mathbf{x}) \, p_k(y \mid \mathbf{x})$$
 
-where $g_k(\mathbf{x})$ is the probability that expert $k$ handles input $\mathbf{x}$, and $p_k(y \mid \mathbf{x})$ is expert $k$'s prediction. Modern large language models (discussed in Module 6) use sparse MoE architectures where only a few experts are activated per token, dramatically increasing model capacity without proportionally increasing computation.
+where $g_k(\mathbf{x})$ is the probability that expert $k$ handles input $\mathbf{x}$, and $p_k(y \mid \mathbf{x})$ is expert $k$'s prediction. Some modern large language models (discussed in Module 6) use *sparse* MoE layers in which only the top few experts are activated per token, increasing model capacity without a proportional increase in computation. Mixtral 8x7B is a well-documented example (Jiang et al., 2024): each feed-forward block is replaced by 8 experts and a learned router sends every token to the top 2. Because the attention layers are shared, the model has about 46.7 billion parameters in total (not $8 \times 7 = 56$ billion) but uses only about 12.9 billion per token. Unlike a classical MoE fitted with EM, these routers are trained end-to-end by backpropagation (Lesson 4.8).
 
 ## Mathematical Foundations
 
@@ -617,41 +617,45 @@ $$\boldsymbol{\mu}_k = \frac{1}{N_k} \sum_{n=1}^{N} r_{nk} \, \mathbf{x}_n$$
 
 This is a weighted mean, where the weights are the responsibilities. The M-step updates for $\boldsymbol{\Sigma}_k$ and $\pi_k$ follow similar derivations using Lagrange multipliers (for the constraint $\sum_k \pi_k = 1$).
 
-## The Kailash Engine: AutoMLEngine (GMM mode)
+## The Kailash Engine: ClusteringEngine (GMM)
+
+The same `ClusteringEngine` from Lesson 4.1 fits a Gaussian mixture with `algorithm="gmm"`. It wraps scikit-learn's `GaussianMixture` (the same EM you derive in this lesson), passes extra keyword arguments such as `covariance_type` straight through, and returns the hard labels (each point's most probable component) plus BIC and AIC in `metrics`:
 
 ```python
-from kailash_ml import AutoMLEngine
+import polars as pl
+from shared import MLFPDataLoader
+from kailash_ml.engines.clustering import ClusteringEngine
 
-engine = AutoMLEngine(task="clustering", method="gmm")
-result = engine.fit(df, n_components=3)
-responsibilities = result.predict_proba(df)
+GMM_FEATURES = ["total_revenue", "avg_order_value",
+                "days_since_last_order", "customer_tenure_days"]
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X_gmm = customers.select(GMM_FEATURES).drop_nulls()
+X_gmm = X_gmm.sample(5000, seed=42)  # the engine also scores silhouette, O(n^2)
+X_gmm = X_gmm.select((pl.all() - pl.all().mean()) / pl.all().std())
+
+engine = ClusteringEngine()
+gmm_fit = engine.fit(X_gmm, algorithm="gmm", n_clusters=3, covariance_type="full")
+print(gmm_fit.n_clusters, round(gmm_fit.metrics["bic"]), round(gmm_fit.metrics["aic"]))
 ```
 
-The engine handles numerical stability (adding a small regularisation term to the covariance diagonal to prevent singularity), BIC-based model selection for choosing the number of components, and visualisation of soft assignments.
+What the engine does *not* return is the soft assignment itself: for the responsibilities $r_{nk}$ you call scikit-learn's `GaussianMixture.predict_proba` directly, as in Part C below. Choosing the number of components is your job — loop over $K$ and compare `metrics["bic"]` (Drill 2).
 
 ## Worked Example: EM on Synthetic and Real Data
 
 ### Part A: From-scratch EM on 2D synthetic data
 
+The data in Part A is synthetic: 600 points drawn from three known Gaussians, so we can check whether EM recovers them.
+
 ```python
 import numpy as np
 
-np.random.seed(42)
-# Generate 3 Gaussians
-n_per = 200
+rng = np.random.default_rng(42)
+TRUE_MEANS = np.array([[0.0, 0.0], [5.0, 5.0], [2.0, 8.0]])
 X = np.vstack([
-    np.random.multivariate_normal([0, 0], [[1, 0.5], [0.5, 1]], n_per),
-    np.random.multivariate_normal([5, 5], [[1, -0.3], [-0.3, 1]], n_per),
-    np.random.multivariate_normal([2, 8], [[0.5, 0], [0, 2]], n_per),
+    rng.multivariate_normal(TRUE_MEANS[0], [[1, 0.5], [0.5, 1]], 200),
+    rng.multivariate_normal(TRUE_MEANS[1], [[1, -0.3], [-0.3, 1]], 200),
+    rng.multivariate_normal(TRUE_MEANS[2], [[0.5, 0], [0, 2]], 200),
 ])
-
-K = 3
-N, D = X.shape
-
-# Initialise parameters
-mu = X[np.random.choice(N, K, replace=False)]
-sigma = np.array([np.eye(D)] * K)
-pi = np.ones(K) / K
 
 def gaussian_pdf(X, mu, sigma):
     D = X.shape[1]
@@ -661,124 +665,177 @@ def gaussian_pdf(X, mu, sigma):
     norm = 1.0 / ((2 * np.pi) ** (D / 2) * np.linalg.det(sigma) ** 0.5)
     return norm * np.exp(exponent)
 
-for iteration in range(50):
-    # E-step: compute responsibilities
-    resp = np.zeros((N, K))
-    for k in range(K):
-        resp[:, k] = pi[k] * gaussian_pdf(X, mu[k], sigma[k])
-    resp /= resp.sum(axis=1, keepdims=True)
+def log_likelihood(X, mu, sigma, pi):
+    dens = sum(pi[k] * gaussian_pdf(X, mu[k], sigma[k]) for k in range(len(pi)))
+    return float(np.log(dens).sum())
 
-    # M-step: update parameters
-    Nk = resp.sum(axis=0)
-    for k in range(K):
-        mu[k] = (resp[:, k:k+1] * X).sum(axis=0) / Nk[k]
-        diff = X - mu[k]
-        sigma[k] = (resp[:, k:k+1] * diff).T @ diff / Nk[k]
-        sigma[k] += 1e-6 * np.eye(D)  # regularise
-    pi = Nk / N
+def em_gmm(X, K, n_iter=50, diagonal=False, seed=0):
+    """Fit a K-component GMM by EM. Returns (mu, sigma, pi, resp, log-likelihoods)."""
+    N, D = X.shape
+    r = np.random.default_rng(seed)
+    mu = X[r.choice(N, K, replace=False)].copy()
+    sigma = np.array([np.eye(D)] * K)
+    pi = np.ones(K) / K
+    lls = []
+    for _ in range(n_iter):
+        # E-step: responsibilities r_nk
+        resp = np.column_stack([pi[k] * gaussian_pdf(X, mu[k], sigma[k]) for k in range(K)])
+        resp /= resp.sum(axis=1, keepdims=True)
+        # M-step: weighted MLE
+        Nk = resp.sum(axis=0)
+        for k in range(K):
+            mu[k] = (resp[:, k:k + 1] * X).sum(axis=0) / Nk[k]
+            diff = X - mu[k]
+            if diagonal:
+                sigma[k] = np.diag((resp[:, k:k + 1] * diff**2).sum(axis=0) / Nk[k])
+            else:
+                sigma[k] = (resp[:, k:k + 1] * diff).T @ diff / Nk[k]
+            sigma[k] += 1e-6 * np.eye(D)  # regularise against singular covariances
+        pi = Nk / N
+        lls.append(log_likelihood(X, mu, sigma, pi))
+    return mu, sigma, pi, resp, lls
 
-    # Log-likelihood
-    ll = sum(np.log(sum(pi[k] * gaussian_pdf(X, mu[k], sigma[k]) for k in range(K))))
-    if iteration % 10 == 0:
-        print(f"Iteration {iteration}: log-likelihood = {ll:.2f}")
+# EM finds a LOCAL maximum: run it from 5 initialisations, keep the best
+fits = [em_gmm(X, K=3, seed=s) for s in range(5)]
+for s, f in enumerate(fits):
+    print(f"seed {s}: final log-likelihood = {f[4][-1]:.2f}")
+mu, sigma, pi, resp, lls = max(fits, key=lambda f: f[4][-1])
+
+for it in [0, 1, 2, 5, 10, 20, 49]:
+    print(f"Iteration {it:>2}: log-likelihood = {lls[it]:.2f}")
+order = np.argsort(mu[:, 0])
+print("Recovered means:", np.round(mu[order], 2).tolist())
+print("Mixing weights:  ", np.round(pi[order], 3).tolist())
 ```
 
-The log-likelihood increases monotonically, as guaranteed by the EM convergence theorem. After 30–40 iterations, the changes become negligible and the algorithm has converged. The recovered means should be close to the true means [0,0], [5,5], and [2,8].
+The five restarts make the central caveat of EM visible. Seeds 1 and 4 reach a log-likelihood of −2283.13; seeds 0, 2 and 3 stop at −2526.75, −2374.99 and −2375.36 — local maxima where two components share one blob and a third straddles the other two. Every run is monotone (the EM guarantee), but monotone only means "never worse than the previous step", not "best possible". Keeping the run with the highest log-likelihood is exactly what scikit-learn's `n_init` does. For the best run the log-likelihood rises quickly in the first few iterations and then flattens, the recovered means are $(0.00, -0.04)$, $(5.04, 4.93)$ and $(2.03, 7.92)$ — close to the true $(0, 0)$, $(5, 5)$ and $(2, 8)$ — and the mixing weights are close to the true $1/3$ each.
 
 ### Part B: Verify responsibilities sum to 1
 
 ```python
-print(f"Responsibilities sum per point (should all be 1.0):")
-print(f"  Min: {resp.sum(axis=1).min():.6f}")
-print(f"  Max: {resp.sum(axis=1).max():.6f}")
+row_sums = resp.sum(axis=1)
+print("Responsibilities sum per point (should all be 1.0):")
+print(f"  Min: {row_sums.min():.6f}")
+print(f"  Max: {row_sums.max():.6f}")
 ```
 
-### Part C: Compare with sklearn GMM on real data
+### Part C: Soft clustering of real customers with scikit-learn
+
+We now fit a three-component GMM to all 50,000 e-commerce customers. One modelling decision matters here: we use the four continuous behavioural features only. `satisfaction_score` (1–5) and `num_returns` (0–6) are small integer counts, and a full-covariance Gaussian can "collapse" onto a single integer value — its variance along that axis shrinks towards zero and its density, and so the likelihood, grows without bound. The fit then reports spectacular log-likelihoods that describe the integer grid, not customer segments (try it in Drill 2).
 
 ```python
+import polars as pl
 from sklearn.mixture import GaussianMixture
+from shared import MLFPDataLoader
 
-loader = MLFPDataLoader()
-df = loader.load("mlfp04", "sg_ecommerce_customers.csv")
-X_real = df.select(["recency", "frequency", "monetary"]).to_numpy()
-scaler = StandardScaler()
-X_real_scaled = scaler.fit_transform(X_real)
+GMM_FEATURES = ["total_revenue", "avg_order_value",
+                "days_since_last_order", "customer_tenure_days"]
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X_real = customers.select(GMM_FEATURES).drop_nulls().to_numpy().astype(np.float64)
+X_real_scaled = (X_real - X_real.mean(axis=0)) / X_real.std(axis=0)
 
 gmm = GaussianMixture(n_components=3, covariance_type="full", random_state=42)
 gmm.fit(X_real_scaled)
-probs = gmm.predict_proba(X_real_scaled)
+probs = gmm.predict_proba(X_real_scaled)  # the responsibilities r_nk
 
-# Soft assignments: show customers on the boundary
-boundary_mask = (probs.max(axis=1) < 0.7)
-n_boundary = boundary_mask.sum()
-print(f"{n_boundary} customers ({100*n_boundary/len(X_real):.1f}%) are on cluster boundaries")
+confidence = probs.max(axis=1)
+n_boundary = int((confidence < 0.7).sum())
+print(f"Mixing weights: {np.round(gmm.weights_, 3).tolist()}")
+print(f"{n_boundary} customers ({n_boundary / len(X_real):.1%}) have no component above 0.7")
 ```
 
-Typically 15–25% of customers fall on boundaries between clusters. These are the customers that K-means would assign arbitrarily; GMM quantifies the uncertainty.
+About 11% of customers (5,600 of 50,000) have no component with a responsibility above 0.7. These are the customers K-means would assign with false certainty; the GMM says, in effect, "this customer is 55% segment A and 40% segment B". For a marketing team that is useful information: a boundary customer can receive a blend of both segments' offers, or be excluded from a campaign whose targeting must be precise.
 
 ## Try It Yourself
 
-**Drill 1.** Modify the from-scratch EM implementation to use diagonal covariance matrices instead of full covariance. How does this change the number of parameters per component? Run both versions on the synthetic data and compare the recovered cluster shapes.
+**Drill 1.** Run the from-scratch EM with diagonal instead of full covariance matrices (`diagonal=True`). How does this change the number of covariance parameters per component? Compare the recovered covariances and the final log-likelihood with the full-covariance fit.
 
 **Solution:**
 
 ```python
-# Diagonal covariance: only D parameters per component instead of D*(D+1)/2
-# Replace sigma[k] update with:
-sigma_diag = np.zeros((K, D))
-for k in range(K):
-    diff = X - mu[k]
-    sigma_diag[k] = (resp[:, k:k+1] * diff**2).sum(axis=0) / Nk[k] + 1e-6
-# Use np.diag(sigma_diag[k]) when computing gaussian_pdf
+fits_d = [em_gmm(X, K=3, diagonal=True, seed=s) for s in range(5)]
+mu_d, sigma_d, pi_d, resp_d, lls_d = max(fits_d, key=lambda f: f[4][-1])
+print(f"Final log-likelihood  full: {lls[-1]:.2f}   diagonal: {lls_d[-1]:.2f}")
+for k in np.argsort(mu[:, 0]):
+    print(f"full  component at {np.round(mu[k], 1)}: off-diagonal = {sigma[k][0, 1]:+.2f}")
+for k in np.argsort(mu_d[:, 0]):
+    print(f"diag  component at {np.round(mu_d[k], 1)}: off-diagonal = {sigma_d[k][0, 1]:+.2f}")
 ```
 
-Full covariance: $D(D+1)/2 = 3$ parameters per component in 2D. Diagonal: $D = 2$ parameters. Diagonal cannot capture correlations between features, so tilted ellipses become axis-aligned.
+A full covariance matrix has $D(D+1)/2$ free parameters per component — 3 in 2D (two variances and one covariance). A diagonal matrix has $D = 2$. The full fit recovers the tilted ellipses (off-diagonal terms near the true $+0.5$ and $-0.3$); the diagonal fit forces every off-diagonal term to exactly zero, so tilted clusters become axis-aligned ellipses, and its log-likelihood is lower because the restricted model cannot describe the correlations. In 7 dimensions the gap in parameter count is 28 versus 7 per component, which is why diagonal or tied covariances are often preferred when data are limited.
 
-**Drill 2.** Implement BIC (Bayesian Information Criterion) to select the number of components. BIC $= -2\mathcal{L} + p \log N$, where $p$ is the number of parameters. Run GMM with $K = 1, 2, \ldots, 8$ and plot BIC versus $K$. Which $K$ minimises BIC?
+**Drill 2.** Implement model selection with the Bayesian Information Criterion, $\text{BIC} = -2\mathcal{L} + p \log N$, where $p$ is the number of free parameters. Run GMM with $K = 1, 2, \ldots, 8$ on the four-feature customer data and print BIC versus $K$. Which $K$ minimises BIC? Then repeat with all seven features, including the two integer counts. What goes wrong?
 
 **Solution:**
 
 ```python
-bics = {}
-for k in range(1, 9):
-    gmm = GaussianMixture(n_components=k, random_state=42)
-    gmm.fit(X_real_scaled)
-    bics[k] = gmm.bic(X_real_scaled)
-    print(f"K={k}: BIC={bics[k]:.1f}")
-best_k = min(bics, key=bics.get)
-print(f"Optimal K by BIC: {best_k}")
+def bic_sweep(Xs, k_values=range(1, 9)):
+    bics = {}
+    for k in k_values:
+        g = GaussianMixture(n_components=k, covariance_type="full", random_state=42).fit(Xs)
+        bics[k] = g.bic(Xs)
+    return bics
+
+bics4 = bic_sweep(X_real_scaled)
+print("4 continuous features:", {k: round(b) for k, b in bics4.items()})
+
+ALL7 = GMM_FEATURES + ["order_count", "satisfaction_score", "num_returns"]
+X7 = customers.select(ALL7).drop_nulls().to_numpy().astype(np.float64)
+X7 = (X7 - X7.mean(axis=0)) / X7.std(axis=0)
+bics7 = bic_sweep(X7)
+print("7 features incl. counts:", {k: round(b) for k, b in bics7.items()})
 ```
 
-**Drill 3.** For the real e-commerce data, compare K-means hard assignments with GMM soft assignments. For each customer, compute the "assignment confidence" as $\max_k r_{nk}$. Plot a histogram of assignment confidences. What fraction of customers have confidence below 0.6?
+On the four continuous features BIC falls at every step — from about 497,000 at $K = 1$ to 352,000 at $K = 4$, then only slowly to 325,000 at $K = 8$ — so the formal minimum is at the edge of the range. That is a common result with 50,000 points: the $p \log N$ penalty is small relative to the likelihood gain from using extra Gaussians to model the long right tail of revenue, so BIC keeps "improving" even though the new components describe the shape of a skewed distribution rather than new customer segments. Read the curve for where the gains become small (here after about $K = 4$) and judge the profiles. With all seven features the sweep is erratic — BIC drops from about 701,000 at $K = 3$ to 354,000 at $K = 4$, rises again to over 600,000 at $K = 6$, then plunges to about 106,000 at $K = 8$ — the signature of components collapsing onto integer values of the count columns, as described in Part C.
+
+**Drill 3.** For the real customer data, compute each customer's "assignment confidence" $\max_k r_{nk}$ and plot a histogram of it. What fraction of customers have confidence below 0.6? How well do the GMM's hard labels agree with K-means at $K = 3$?
 
 **Solution:**
 
 ```python
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from sklearn.metrics import adjusted_rand_score
+
 confidences = probs.max(axis=1)
-low_conf = (confidences < 0.6).mean()
-print(f"{low_conf:.1%} of customers have assignment confidence < 0.6")
+print(f"{(confidences < 0.6).mean():.1%} of customers have assignment confidence < 0.6")
+
+labels_km = KMeans(n_clusters=3, n_init=10, random_state=42).fit_predict(X_real_scaled)
+print(f"ARI between K-means and GMM hard labels: "
+      f"{adjusted_rand_score(labels_km, probs.argmax(axis=1)):.3f}")
+
+plt.hist(confidences, bins=30)
+plt.xlabel("max responsibility")
+plt.ylabel("customers")
+plt.savefig("gmm_confidence.png")
 ```
 
-**Drill 4.** Verify empirically that the log-likelihood never decreases. Run EM for 100 iterations and assert that $\mathcal{L}_{t+1} \geq \mathcal{L}_t$ for all $t$. If you deliberately skip the M-step on one iteration (keep old parameters), what happens to the log-likelihood?
+About 6% of customers have confidence below 0.6, and the histogram is heavily skewed towards 1.0 — most customers sit clearly inside one component. The adjusted Rand index between the K-means partition and the GMM's hard labels is only about 0.42: the two methods carve the same data quite differently, because K-means assumes equal spherical clusters while the full-covariance GMM lets each component have its own size, orientation and elongation.
+
+**Drill 4.** Verify empirically that the log-likelihood never decreases. Run EM for 100 iterations and assert that $\mathcal{L}_{t+1} \geq \mathcal{L}_t$ for all $t$. If you deliberately skip the M-step on one iteration (keep the old parameters), what happens to the log-likelihood?
 
 **Solution:**
 
 ```python
-lls = []
-for iteration in range(100):
-    # E-step and M-step as before
-    ll = compute_log_likelihood(X, mu, sigma, pi)
-    if len(lls) > 0:
-        assert ll >= lls[-1] - 1e-10, f"LL decreased at iteration {iteration}"
-    lls.append(ll)
-print("Log-likelihood never decreased (verified)")
+_, _, _, _, lls_100 = em_gmm(X, K=3, n_iter=100, seed=1)
+for t in range(1, len(lls_100)):
+    assert lls_100[t] >= lls_100[t - 1] - 1e-9, f"log-likelihood decreased at iteration {t}"
+print(f"Log-likelihood never decreased over {len(lls_100)} iterations "
+      f"({lls_100[0]:.2f} -> {lls_100[-1]:.2f})")
+
+# Skipping the M-step: an E-step alone does not change mu, sigma or pi
+ll_before = log_likelihood(X, mu, sigma, pi)
+resp_again = np.column_stack([pi[k] * gaussian_pdf(X, mu[k], sigma[k]) for k in range(3)])
+resp_again /= resp_again.sum(axis=1, keepdims=True)
+ll_after = log_likelihood(X, mu, sigma, pi)
+print(f"E-step only: {ll_before:.4f} -> {ll_after:.4f}")
 ```
 
-Skipping the M-step means the E-step is repeated with the same parameters, producing the same responsibilities, so the log-likelihood stays constant.
+The assertion holds on every iteration (the tolerance only absorbs floating-point rounding). Skipping the M-step leaves the log-likelihood exactly unchanged: $\mathcal{L}$ depends only on the parameters $(\boldsymbol{\mu}, \boldsymbol{\Sigma}, \boldsymbol{\pi})$, and an E-step merely recomputes the responsibilities from them, so the iteration stalls rather than gets worse.
 
 **Drill 5.** Explain in three sentences why Mixture of Experts is a generalisation of GMM. What plays the role of the responsibilities $r_{nk}$ in an MoE model? What plays the role of the component distributions?
 
-**Solution:** In GMM, the mixing coefficients $\pi_k$ are constants — the same for every data point. In MoE, the mixing coefficients are produced by a gating network $g_k(\mathbf{x})$ that depends on the input, so different inputs are routed to different experts. The gating probabilities play the role of responsibilities, and the expert networks play the role of the component distributions.
+**Solution:** In a GMM the mixing coefficients $\pi_k$ are constants — the same for every data point. In an MoE the mixing coefficients are produced by a gating network $g_k(\mathbf{x})$ that depends on the input, so different inputs are routed to different experts, and each expert models $p_k(y \mid \mathbf{x})$ rather than a density over $\mathbf{x}$. The gating probabilities $g_k(\mathbf{x})$ play the role of the prior $\pi_k$, the posterior over which expert produced an observed $(\mathbf{x}, y)$ plays the role of the responsibilities $r_{nk}$ when an MoE is fitted with EM, and the expert networks play the role of the component distributions.
 
 ## Cross-References
 

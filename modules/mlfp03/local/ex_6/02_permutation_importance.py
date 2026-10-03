@@ -11,6 +11,7 @@
 #   - Quantify estimator variance via repeated shuffles (mean +/- std)
 #   - Compare the permutation ranking against SHAP for the same model
 #   - See how correlated features distort BOTH permutation and SHAP rankings
+#   - Draw an ALE curve: a feature's effect shape without impossible rows
 #   - Apply: champion/challenger monitoring at an (illustrative) bank
 #
 # PREREQUISITES: 01_shap_global.py (we re-use its SHAP ranking for the
@@ -22,7 +23,7 @@
 #   1. Theory — why permutation importance is model-agnostic
 #   2. Build — implement permutation_importance_manual() from scratch
 #   3. Train — no training; we MEASURE the trained model
-#   4. Visualise — ranking table + SHAP vs permutation top-10 overlap
+#   4. Visualise — ranking table, SHAP overlap, correlated twins, ALE curve
 #   5. Apply — champion/challenger monitoring (illustrative bank)
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -209,6 +210,49 @@ for idx in (i_twin, j_twin):
         f"  {name:<28} permutation={perm_imp[name]['mean']:+.4f}  "
         f"mean|SHAP|={shap_lookup[name]:.4f}"
     )
+
+# ── ALE: the effect SHAPE of a correlated feature, without impossible rows ──
+# Partial-dependence plots set x_j to a value for EVERY row — producing
+# rows like "employed 30 years, aged 25" when x_j is correlated with age.
+# ALE (Apley & Zhu 2020) avoids this: within each quantile bin of x_j it
+# moves ONLY the rows already in that bin from the bin's lower to upper
+# edge, averages the change in the model's log-odds, and accumulates.
+
+
+def ale_curve(model, X: np.ndarray, j: int, n_bins: int = 10) -> tuple[np.ndarray, np.ndarray]:
+    """First-order ALE of feature j on the log-odds scale (centred)."""
+    edges = np.unique(np.quantile(X[:, j], np.linspace(0, 1, n_bins + 1)))
+    bin_of_row = np.clip(np.searchsorted(edges, X[:, j], side="right") - 1, 0, len(edges) - 2)
+    local_effects = np.zeros(len(edges) - 1)
+    counts = np.zeros(len(edges) - 1)
+    for b in range(len(edges) - 1):
+        rows = X[bin_of_row == b]
+        if len(rows) == 0:
+            continue
+        lo_rows, hi_rows = rows.copy(), rows.copy()
+        lo_rows[:, j], hi_rows[:, j] = edges[b], edges[b + 1]
+        # TODO: change in raw log-odds when the bin's rows move from lower to upper edge
+        # Hint: model.predict(..., raw_score=True) on hi_rows minus on lo_rows
+        diff = ____
+        local_effects[b], counts[b] = diff.mean(), len(rows)
+    ale = np.concatenate([[0.0], np.cumsum(local_effects)])
+    centre = np.sum((ale[:-1] + ale[1:]) / 2 * counts) / counts.sum()
+    return edges, ale - centre
+
+
+ale_feature = feature_names[i_twin]
+ale_x, ale_y = ale_curve(model, X_test[:3000], i_twin)
+print(f"\n  ALE of {ale_feature}: effect range {ale_y.min():+.3f} to {ale_y.max():+.3f} log-odds")
+fig_ale = go.Figure(go.Scatter(x=ale_x, y=ale_y, mode="lines+markers", line=dict(color="#10b981")))
+fig_ale.update_layout(
+    title=f"ALE: effect of {ale_feature} on default log-odds (centred)",
+    xaxis_title=ale_feature,
+    yaxis_title="ALE (log-odds)",
+    height=420,
+)
+ale_path = OUTPUT_DIR / "ex6_02_ale.html"
+fig_ale.write_html(str(ale_path))
+print(f"  Saved: {ale_path}")
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
 assert len(perm_imp) == len(feature_names), "Task 4: all features must be permuted"

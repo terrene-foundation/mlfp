@@ -8,7 +8,8 @@
 # WHAT YOU'LL LEARN:
 #   - Apply K-means with k-means++ initialisation and understand why it
 #     converges faster than random initialisation
-#   - Use the elbow method and silhouette score to select K objectively
+#   - Use the elbow method, silhouette score and the gap statistic to
+#     select K, and see where the three criteria disagree
 #   - Read per-sample silhouette to spot mis-assigned points
 #   - Interpret inertia (within-cluster sum of squares) as a loss value
 #
@@ -18,10 +19,10 @@
 #
 # TASKS:
 #   1. Theory — why K-means works and how k-means++ fixes its weakness
-#   2. Build — the elbow + silhouette sweep across K
+#   2. Build — the elbow + silhouette sweep and the gap statistic across K
 #   3. Train — fit K-means with k-means++ vs random and compare
-#   4. Visualise — silhouette curves vs K + per-sample silhouette
-#   5. Apply — Singapore Shopee loyalty segmentation, $ impact per tier
+#   4. Visualise — silhouette / gap curves vs K + per-sample silhouette
+#   5. Apply — Singapore e-commerce loyalty segmentation, $ impact per tier
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -63,7 +64,14 @@ tracker, exp_name = setup_engines()
 #     J = Σ_k Σ_{x in C_k} ||x - μ_k||²
 # It alternates two steps: assign each point to the nearest centroid,
 # then recompute each centroid as the mean of its assigned points.
-# k-means++ seeds centroids far apart to avoid poor local minima.
+# k-means++ seeds centroids far apart to avoid poor local minima — it
+# usually helps a SINGLE start; with many restarts (n_init) random seeding
+# often catches up, so measure, don't assume.
+#
+# Gap statistic: Gap(k) = E*[log W_k] - log W_k, where W_k is the
+# within-cluster sum of squares and E* averages over B uniform reference
+# datasets drawn from the data's bounding box. Pick the SMALLEST k with
+# Gap(k) >= Gap(k+1) - s_{k+1}, where s_k = sd_k * sqrt(1 + 1/B).
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -114,11 +122,80 @@ best_k = ____
 print(f"\n  Best K by silhouette: {best_k} (score={max(sweep['silhouette']):.4f})")
 
 
+def gap_statistic(
+    X: np.ndarray, k_values: range, n_refs: int = 10, n_sub: int = 5000
+) -> dict[str, list[float] | int]:
+    """Tibshirani gap statistic with the 1-standard-error rule.
+
+    Runs on a random subsample (n_sub rows) because every K needs n_refs
+    extra K-means fits on uniform reference data.
+    """
+    rng = np.random.default_rng(RANDOM_STATE)
+    idx = rng.choice(X.shape[0], min(n_sub, X.shape[0]), replace=False)
+    X_sub = X[idx]
+    lo, hi = X_sub.min(axis=0), X_sub.max(axis=0)
+    # TODO: draw n_refs reference datasets uniformly inside [lo, hi],
+    # each with the same shape as X_sub.
+    # Hint: rng.uniform(low, high, size=shape) inside a list comprehension
+    refs = ____
+
+    gaps, s_k = [], []
+    for k in k_values:
+        log_wk = np.log(
+            KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=3)
+            .fit(X_sub)
+            .inertia_
+        )
+        ref_log_wk = np.array(
+            [
+                np.log(
+                    KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=3)
+                    .fit(R)
+                    .inertia_
+                )
+                for R in refs
+            ]
+        )
+        # TODO: Gap(k) = mean of the reference log W_k minus the real log W_k;
+        # s_k = std of the reference log W_k times sqrt(1 + 1/n_refs).
+        gaps.append(____)
+        s_k.append(____)
+
+    ks = list(k_values)
+    # 1-SE rule: smallest k whose gap is within one SE of the next k's gap
+    chosen = ks[int(np.argmax(gaps))]
+    for i in range(len(ks) - 1):
+        # TODO: apply the 1-SE rule test to (gaps[i], gaps[i + 1], s_k[i + 1])
+        if ____:
+            chosen = ks[i]
+            break
+    return {"gap": gaps, "s_k": s_k, "best_k": chosen}
+
+
+gap = gap_statistic(X_scaled, K_RANGE)
+gap_k = int(gap["best_k"])
+print(f"\n  {'K':>3} {'Gap(k)':>10} {'s_k':>8}")
+for k, g, s in zip(K_RANGE, gap["gap"], gap["s_k"]):
+    print(f"  {k:>3} {g:>10.4f} {s:>8.4f}")
+print(f"  Best K by gap statistic (1-SE rule): {gap_k}")
+if gap_k == best_k:
+    print(f"  Silhouette and gap agree on K={best_k}.")
+else:
+    print(
+        f"  Silhouette picks K={best_k}, gap picks K={gap_k}. They answer "
+        "different questions\n  (separation between clusters vs tightness "
+        "relative to no-structure data),\n  so disagreement means the data "
+        "has no single 'true' K — K becomes a business choice."
+    )
+
+
 # ── Checkpoint 1 ──────────────────────────────────────────────────────────
 assert 2 <= best_k <= 10, "Task 2: best_k must be in the tested range"
 assert max(sweep["silhouette"]) > 0, "Task 2: best silhouette should be positive"
 assert len(sweep["inertia"]) == len(list(K_RANGE)), "Task 2: sweep size mismatch"
-print("\n  [ok] Checkpoint 1 passed — silhouette sweep complete\n")
+assert len(gap["gap"]) == len(list(K_RANGE)), "Task 2: gap sweep size mismatch"
+assert 2 <= gap_k <= 10, "Task 2: gap-statistic K must be in the tested range"
+print("\n  [ok] Checkpoint 1 passed — silhouette + gap sweeps complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -146,15 +223,39 @@ print(
     f"    Random:    inertia={km_random.inertia_:12.0f}  iters={km_random.n_iter_:>3}  time={t_random:.3f}s"
 )
 
+
+# With n_init=10 both runs keep their best of 10 restarts, which hides the
+# seeding difference. A fair test of SEEDING compares single-start runs
+# (n_init=1) averaged over several seeds.
+single_plus, single_random = [], []
+for seed in range(5):
+    # TODO: fit one KMeans per init with n_clusters=best_k, random_state=seed,
+    # n_init=1, and append each model's .inertia_ to its list.
+    single_plus.append(____)
+    single_random.append(____)
+mean_plus, mean_random = float(np.mean(single_plus)), float(np.mean(single_random))
+print(
+    f"    Single-start mean over 5 seeds: k-means++={mean_plus:,.0f}  "
+    f"random={mean_random:,.0f}"
+)
+if mean_plus < mean_random:
+    print("    k-means++ seeding reached a lower inertia on average from one start.")
+else:
+    print(
+        "    Random seeding matched or beat k-means++ here — on well-spread data\n"
+        "    the seeding advantage can vanish; restarts (n_init) matter more."
+    )
+
 km_labels = km_plus.predict(X_scaled)
 
 
 # ── Checkpoint 2 ──────────────────────────────────────────────────────────
-assert (
-    km_plus.inertia_ <= km_random.inertia_ + 1
-), "Task 3: k-means++ should achieve inertia at least as good as random"
+assert np.isfinite(km_plus.inertia_) and np.isfinite(
+    km_random.inertia_
+), "Task 3: both initialisations should produce a finite inertia"
+assert len(single_plus) == len(single_random) == 5, "Task 3: 5 single-start runs each"
 assert len(set(km_labels.tolist())) == best_k, "Task 3: wrong cluster count"
-print("\n  [ok] Checkpoint 2 passed — k-means++ confirmed superior\n")
+print("\n  [ok] Checkpoint 2 passed — initialisation comparison complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -165,9 +266,13 @@ viz = ModelVisualizer()
 history = {
     "Silhouette": sweep["silhouette"],
     "Inertia (scaled)": [i / max(sweep["inertia"]) for i in sweep["inertia"]],
+    "Gap statistic (scaled)": [g / max(gap["gap"]) for g in gap["gap"]],
 }
 fig = viz.training_history(history, x_label="K")
-fig.update_layout(title=f"K-means: Silhouette and Inertia vs K (best K={best_k})")
+fig.update_layout(
+    title=f"K-means: Silhouette, Inertia and Gap vs K "
+    f"(silhouette K={best_k}, gap K={gap_k})"
+)
 fig.write_html(str(out_path("01_kmeans_elbow.html")))
 print(f"  Saved: {out_path('01_kmeans_elbow.html')}")
 
@@ -193,16 +298,18 @@ print("\n  [ok] Checkpoint 3 passed — visualisation and per-sample audit done\
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Shopee Singapore Loyalty Segmentation
+# TASK 5 — APPLY: Singapore E-commerce Loyalty Segmentation
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Shopee SG replaces its hand-coded Bronze/Silver/Gold tiers
-# with data-driven K-means segments. K-means is the right tool: small K,
-# roughly spherical clusters, centroids ARE the segment profiles.
+# SCENARIO: A regional e-commerce platform's Singapore CRM team replaces
+# its hand-coded Bronze/Silver/Gold tiers with data-driven K-means
+# segments. K-means is a reasonable first tool: small K, standardised
+# features, and the centroids ARE the segment profiles.
 #
-# BUSINESS IMPACT: On a 3M buyer base, a 20% lift on S$20/buyer
-# incremental campaign revenue is ~S$12M / year. Training cost: 2 seconds.
+# BUSINESS IMPACT (illustrative assumptions, not a published figure): on an
+# assumed 3M buyer base, a 20% lift on S$20/buyer incremental campaign
+# revenue is ~S$12M / year. Training cost: seconds.
 
-print("  APPLY — Shopee SG Loyalty Segmentation")
+print("  APPLY — Singapore E-commerce Loyalty Segmentation")
 print("  ─────────────────────────────────────────────────────────────────")
 
 # TODO: Compute segment sizes via np.bincount(km_labels). Print each
@@ -211,7 +318,7 @@ segment_sizes = ____
 for i, n in enumerate(segment_sizes):
     pct = n / n_samples * 100
     print(f"    Segment {i}: {n:>5,} customers ({pct:5.1f}%)")
-print("    Estimated annual lift: S$12M (3M buyers × S$20 × 20%).")
+print("    Illustrative annual lift: S$12M (assumed 3M buyers × S$20 × 20%).")
 
 
 # ── Checkpoint 4 ──────────────────────────────────────────────────────────
@@ -253,10 +360,14 @@ track_run(
         "kmeans_random_iters": float(km_random.n_iter_),
         "kmeans_pp_time_s": float(t_plus),
         "kmeans_random_time_s": float(t_random),
+        "gap_best_k": float(gap_k),
+        "single_start_pp_inertia_mean": mean_plus,
+        "single_start_random_inertia_mean": mean_random,
     },
     series_metrics={
         "sweep_silhouette": ____,
         "sweep_inertia": ____,
+        "sweep_gap": gap["gap"],
     },
 )
 print(f"  [tracked] sweep + final-fit metrics logged to {exp_name}\n")
@@ -270,8 +381,9 @@ print(f"  [tracked] sweep + final-fit metrics logged to {exp_name}\n")
 # ~120 lines of structure to internalise the moving parts.
 #
 # kailash-ml ships a single engine that IS that pipeline. ClusteringEngine.
-# `sweep_k` runs the whole K-vs-criterion sweep for any supported algorithm
-# (kmeans, hierarchical, dbscan, spectral, gmm) and `fit` returns a
+# `sweep_k` runs the K-vs-criterion sweep (silhouette or Calinski-Harabasz)
+# for the algorithms that take a K (kmeans, gmm, spectral), and `fit`
+# (kmeans, dbscan, gmm, spectral) returns a
 # ClusterResult with labels + silhouette + Calinski-Harabasz + inertia.
 
 import polars as pl
@@ -313,13 +425,19 @@ print(
     f"""
   [x] K-means minimises within-cluster sum of squares via alternating
       assignment/update steps — guaranteed to converge
-  [x] k-means++ seeding beats random init on speed and final inertia
+  [x] Compared k-means++ and random seeding fairly (single starts
+      averaged over seeds) instead of assuming k-means++ always wins
   [x] Silhouette score gives an objective criterion for choosing K
+      (the elbow alone is subjective); the gap statistic compares the
+      fit against structureless reference data
   [x] Per-sample silhouette exposes mis-assigned points for re-review
-  [x] Mapped K={best_k} clusters onto a Shopee SG loyalty tier system
+  [x] Mapped K={best_k} clusters onto an e-commerce loyalty tier system
+      with an illustrative S$12M / year campaign revenue lift
 
-  KEY INSIGHT: K-means gives you the centroids for free — the centroids
-  ARE the segment profiles, ready for the marketing team.
+  KEY INSIGHT: K-means gives you the centroids for free. The centroids
+  ARE the segment profiles — no extra analysis needed before handing them
+  to marketing. This is why K-means is the default first-pass clustering
+  algorithm for customer segmentation.
 
   Next: 02_hierarchical.py — when you need a dendrogram instead of a K.
 """

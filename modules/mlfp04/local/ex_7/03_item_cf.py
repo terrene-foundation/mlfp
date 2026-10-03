@@ -9,30 +9,33 @@
 #   - Flip CF from user-similarity to item-similarity
 #   - Understand why item similarity is more stable than user similarity
 #   - Implement item-item cosine similarity with mean-centring per item
-#   - See why Amazon/Netflix/Spotify converged on item-CF at scale
+#   - See why item-to-item CF is the classic choice for large catalogues
 #
 # PREREQUISITES: Exercise 7.2 (user-based CF)
 #
 # ESTIMATED TIME: ~30 min
 #
 # TASKS:
-#   1. Theory — "items co-rated by the same people are similar"
+#   1. Theory — "items that were co-rated by the same people"
 #   2. Build — item similarity + weighted sum predictor
 #   3. Train — precompute the item x item matrix once
-#   4. Visualise — item similarity heatmap + nearest neighbours
-#   5. Apply — Amazon-style "customers also bought"
+#   4. Visualise — item similarity heatmap + most-similar items
+#   5. Apply — Amazon-style "customers who bought this also bought..."
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
 import plotly.express as px
+from kailash_ml import ModelVisualizer  # noqa: F401
 
 from shared.mlfp04.ex_7 import (
     N_ITEMS,
     build_rating_dataset,
     holdout_rmse,
+    print_baselines,
     print_method_scores,
+    print_warm_comparison,
     save_html,
 )
 
@@ -42,10 +45,25 @@ K_NEIGHBOURS = 20
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Why item-based CF dominates at scale
 # ════════════════════════════════════════════════════════════════════════
-# User-CF asks "who rates like me?" and struggles with scale. Item-CF
-# asks "which items were rated similarly?" — the item set is smaller and
-# more stable. Mean-centre PER ITEM (not per user) to remove the
-# "everyone loves this item" bias.
+# User-based CF asks: "who rates like me?" and is unstable — users change
+# tastes, new users have no history, and the N-user set grows with every
+# signup (often into the millions).
+#
+# Item-based CF asks: "which items were rated the same way?" When the
+# actively-sold catalogue is smaller than the user base, the item-item
+# matrix is the cheaper one to compute. More importantly, item-item
+# relationships ("people who bought A also bought B") change slowly, so the
+# precompute can run nightly and still be accurate, while an individual
+# user's neighbourhood shifts every time they rate something.
+#
+# Key trick: mean-centre PER ITEM (not per user). This removes the
+# "everyone loves this item" bias and compares how items RANK in each
+# user's preference order.
+#
+# Item-to-item CF was popularised by Amazon's 2003 paper (Linden, Smith &
+# York, "Amazon.com Recommendations: Item-to-Item Collaborative
+# Filtering", IEEE Internet Computing) behind the "Customers who bought
+# this also bought..." feature.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -59,16 +77,15 @@ def item_similarity_matrix(
     """Pairwise cosine similarity between items on mean-centred ratings."""
     n_items = R.shape[1]
     sim = np.zeros((n_items, n_items))
-
-    # TODO: Compute the mean rating per item using np.nanmean over the
-    # observed raters for each column.
-    item_means = np.array([____ for j in range(n_items)])
-
-    # TODO: Build a mean-centred copy of R. Subtract item_means[j] from
-    # each column's observed rows; zero out unobserved entries.
+    item_means = np.array(
+        [
+            float(np.nanmean(R[obs_mask[:, j], j])) if obs_mask[:, j].any() else 0.0
+            for j in range(n_items)
+        ]
+    )
     R_centred = R.copy()
     for j in range(n_items):
-        ____
+        R_centred[obs_mask[:, j], j] -= item_means[j]
     R_centred[~obs_mask] = 0.0
 
     for i in range(n_items):
@@ -80,7 +97,7 @@ def item_similarity_matrix(
             denom = np.linalg.norm(ri) * np.linalg.norm(rj)
             if denom < 1e-10:
                 continue
-            # TODO: cosine similarity between ri and rj
+            # TODO: cosine similarity of the co-rated, item-centred vectors
             s = ____
             sim[i, j] = s
             sim[j, i] = s
@@ -93,7 +110,21 @@ def item_based_cf_predict(
     item_sim: np.ndarray,
     k: int = K_NEIGHBOURS,
 ) -> np.ndarray:
-    """Weighted-sum predictor over the top-k most similar items."""
+    """Weighted-deviation predictor over the top-k most similar items.
+
+    For user u and target item j:
+      prediction = mean_j + sum(sim(j, i) * (r(u, i) - mean_i))
+                            / sum(|sim(j, i)|)
+    where i ranges over the top-k positively-similar items user u already
+    rated. Working in deviations from each item's mean mirrors the centring
+    used to compute the similarities.
+    """
+    item_means = np.array(
+        [
+            float(np.nanmean(R[obs_mask[:, j], j])) if obs_mask[:, j].any() else 0.0
+            for j in range(R.shape[1])
+        ]
+    )
     n_users, n_items = R.shape
     predictions = np.full((n_users, n_items), np.nan)
 
@@ -114,14 +145,16 @@ def item_based_cf_predict(
             denom = np.abs(weights).sum()
             if denom < 1e-10:
                 continue
-            # TODO: weighted average of the user's ratings on rated_items[pos_idx]
+            # TODO: user u's deviations from each neighbour item's mean,
+            # weighted by similarity / denom, added to item j's mean
+            deviations = ____
             predictions[u, j] = ____
 
     return np.clip(predictions, 1.0, 5.0)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — Precompute item x item once
+# TASK 3 — "TRAIN" (precompute item-item matrix once)
 # ════════════════════════════════════════════════════════════════════════
 
 print("\n" + "=" * 70)
@@ -135,8 +168,10 @@ train_mask = data["train_mask"]
 holdout_mask = data["holdout_mask"]
 item_ids = data["item_ids"]
 
-item_sim, item_means = item_similarity_matrix(R_train, train_mask)
-ibcf_predictions = item_based_cf_predict(R_train, train_mask, item_sim, k=K_NEIGHBOURS)
+# TODO: Precompute the item similarity matrix on the training ratings,
+# then predict with your top-k item-CF function
+item_sim, item_means = ____
+ibcf_predictions = ____
 
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
@@ -151,8 +186,12 @@ print(
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE similarity structure
+# TASK 4 — VISUALISE item similarity structure
 # ════════════════════════════════════════════════════════════════════════
+# Two visual signals matter:
+#   1. The similarity matrix — does it show block structure? (= categories)
+#   2. For a chosen "anchor" item, which items are most similar?
+#      These are the "customers who bought this also bought..." candidates.
 
 order = np.argsort(item_means)
 item_sim_sorted = item_sim[np.ix_(order, order)]
@@ -166,30 +205,56 @@ fig_heat = px.imshow(
 )
 save_html(fig_heat, "03_item_similarity_heatmap.html")
 
-# TODO: Pick the most-rated item (argmax over train_mask.sum(axis=0))
-# and print its top-5 most similar items as "customers also bought" candidates.
-rated_counts = ____
-anchor = ____
-top5 = np.argsort(item_sim[anchor])[::-1][1:6]
+# Pick the most-rated item and show its top-5 neighbours
+rated_counts = train_mask.sum(axis=0)
+anchor = int(np.argmax(rated_counts))
+# TODO: indices of the 5 most similar items to the anchor (skip itself)
+top5 = ____
 print(f"\nAnchor item: {item_ids[anchor]} (rated by {rated_counts[anchor]} users)")
 print("Top-5 most similar items ('customers also bought'):")
 for j in top5:
     print(f"  {item_ids[j]}  sim={item_sim[anchor, j]:+.3f}")
 
+print_baselines(R_train, train_mask, R_observed, holdout_mask)
 print_method_scores("Item-CF", ibcf_predictions, R_observed, holdout_mask)
+print_warm_comparison(
+    "Item-CF", ibcf_predictions, R_train, train_mask, R_observed, holdout_mask,
+    data["cold_items"],
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Amazon-Style "Customers Who Bought This Also Bought..."
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: SG cross-border e-commerce platform (1.8M users, 12M SKUs).
-# "You may also like" drives ~22% of GMV. Item-CF fits because:
-#   - O(M^2) scales with items, not users (M grows slower than N)
-#   - Item relationships are stable and precomputable
-#   - Redis top-50-neighbours cache = <5ms page-load recommendations
+# SCENARIO: A regional cross-border e-commerce platform serves 1.8M
+# active users. Its long-tail catalogue lists millions of SKUs, but the
+# "you may also like" carousel only needs neighbours for the ~60K SKUs
+# that are actively sold in a given month.
 #
-# BUSINESS IMPACT: 0.3% lift in cross-sell conversion on S$4.2B annual
-# GMV = S$12.6M/year, vs ~S$250K engineering/infra cost. 50x ROI.
+# Why item-CF fits this setting:
+#   - The similarity matrix is O(M^2) in items, not O(N^2) in users. With
+#     ~60K active SKUs vs 1.8M users, the item side is the smaller one.
+#     (If you had to cover every one of millions of listed SKUs, that size
+#     advantage would disappear — item-CF wins on SIZE only when M < N.)
+#   - Item relationships are stable: "phone + phone case" stays true for
+#     years, while user taste shifts monthly
+#   - Precompute nightly, cache: the sparse top-50 neighbours per item is
+#     a small record per SKU, so a page load is a cache lookup
+#
+# BUSINESS IMPACT (illustrative assumptions, not measured figures): on a
+# platform with S$4.2B annual GMV, better cross-sell that adds just 0.1%
+# to GMV is worth ~S$4.2M/year. A tuning effort costing ~S$250K/year in
+# engineering + infrastructure pays back if it adds ~0.006% of GMV
+# (S$250K / S$4.2B) — which is why carousel ranking is tested so heavily.
+#
+# LIMITATIONS:
+#   - Niche items (long tail) have sparse similarity rows
+#   - Items with wildly different rating distributions still leak through
+#   - Cold-start NEW items still need content features (back to Ex 7.1)
+#
+# The next technique (04_matrix_factorisation.py) takes a completely
+# different approach: learn dense user and item embeddings by minimising
+# a loss — the bridge from recommenders to deep learning.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -200,10 +265,18 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Built item-item similarity on mean-centred ratings
+  [x] Flipped CF from user-similarity to item-similarity
+  [x] Understood why items are more stable than users at scale
+  [x] Built the item-to-item "customers also bought" predictor
   [x] Inspected top-5 neighbours for the most-rated item
-  [x] Understood why item-CF scales better than user-CF
+  [x] Sized an (illustrative) cross-sell scenario for SG e-commerce
 
-  Next: 04_matrix_factorisation.py — learn dense embeddings by optimisation.
+  KEY INSIGHT: Item-CF pays off when item relationships are more stable
+  than user tastes and the active catalogue is smaller than the user base
+  — then the item-item matrix is cheap to precompute and cache.
+
+  Next: 04_matrix_factorisation.py — abandon similarity entirely and
+  learn dense embeddings by optimisation. This is the bridge from
+  classical recommenders to neural networks.
 """
 )

@@ -10,19 +10,20 @@
 #   - Compute the four standard rule-quality metrics
 #   - Apply a three-threshold filter (support + confidence + lift)
 #   - Separate cross-category rules from within-category rules
+#   - Rank actionable rules for business stakeholders
 #
 # PREREQUISITES:
-#   - 01_apriori_from_scratch.py
+#   - 01_apriori_from_scratch.py (frequent itemset mining)
 #   - Basic probability (conditional probability, independence)
 #
 # ESTIMATED TIME: ~40 min
 #
 # TASKS:
-#   1. Theory — rule metric definitions
-#   2. Build — implement `generate_rules()` + three-threshold filter
-#   3. Train — mine + score rules on Singapore retail baskets
-#   4. Visualise — top rules + category breakdown + polars export
-#   5. Apply — Watsons cart-page recommender
+#   1. Theory — what each rule metric means mathematically and in business terms
+#   2. Build — implement `generate_rules()` and the three-threshold filter
+#   3. Train — mine + score rules on the Singapore retail basket
+#   4. Visualise — top rules table + support/confidence/lift scatter
+#   5. Apply — health & beauty retailer "buy-together" recommender
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -43,20 +44,49 @@ from shared.mlfp04.ex_5 import (
     transactions_to_onehot,
 )
 
-# ── Kailash-ML ExperimentTracker — association-rules zoo shared store ────
+# ── Kailash-ML ExperimentTracker — every association-rules run logs here ─
 tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — The Four Rule Quality Metrics
 # ════════════════════════════════════════════════════════════════════════
-# support     = supp(X ∪ Y) = count(X ∪ Y) / N
-# confidence  = conf(X -> Y) = supp(X ∪ Y) / supp(X)   # = P(Y | X)
-# lift        = conf(X -> Y) / supp(Y)                 # = P(Y|X) / P(Y)
-# conviction  = (1 - supp(Y)) / (1 - conf(X -> Y))
+# A rule "X -> Y" says: baskets containing X tend to also contain Y.
+# It is a statistical summary, not a causal claim. We score it with four
+# metrics because each one catches a different failure mode.
 #
-# Three-threshold filter (the only one that matters in practice):
-#   keep if support >= s_min and confidence >= c_min and lift > 1
+#   SUPPORT     supp(X u Y) = count(X u Y) / N
+#               How often the pair appears. Low support = not enough data
+#               to trust the rule; rules with support < 1% are noise on
+#               most retail datasets.
+#
+#   CONFIDENCE  conf(X -> Y) = supp(X u Y) / supp(X)
+#               P(Y given X). How RELIABLE the rule is when X is present.
+#               A 95% confidence rule fires ~19 out of 20 times X appears.
+#
+#   LIFT        lift(X -> Y) = conf(X -> Y) / supp(Y)
+#               = P(Y|X) / P(Y). How SURPRISING the rule is. Lift = 1
+#               means X and Y are independent. Lift > 1 is positive
+#               association — X raises the probability of Y. Lift < 1 is
+#               negative association (substitutes, not complements).
+#
+#   CONVICTION  conv(X -> Y) = (1 - supp(Y)) / (1 - conf(X -> Y))
+#               Directional strength. Unlike lift (symmetric), conviction
+#               asymmetrically measures how much X IMPLIES Y. Conviction
+#               of 1 = independence; conviction of infinity = perfect
+#               implication (conf = 1, never violated).
+#
+# THE THREE-THRESHOLD FILTER (the only one that matters in practice)
+#
+#   keep the rule if:
+#     support >= s_min        (enough baskets -> statistical power)
+#     confidence >= c_min     (reliable enough to act on)
+#     lift > 1                (surprising enough to be informative)
+#
+# Any ONE of these alone is a trap: high-confidence low-lift rules are
+# just popularity (everyone buys milk, so any X -> milk has high
+# confidence but zero insight). Low-support high-lift rules are often
+# just statistical artefacts.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -111,7 +141,13 @@ def generate_rules(
     freq_itemsets: dict[frozenset[str], float],
     min_confidence: float,
 ) -> list[dict]:
-    """Generate all association rules that clear ``min_confidence``."""
+    """Generate all association rules that clear ``min_confidence``.
+
+    For every frequent itemset of size >= 2, every non-empty proper subset
+    is a candidate antecedent; its complement is the consequent. We score
+    each candidate with support / confidence / lift / conviction and
+    drop those below ``min_confidence``.
+    """
     rules: list[dict] = []
     for itemset, support in freq_itemsets.items():
         if len(itemset) < 2:
@@ -127,18 +163,17 @@ def generate_rules(
                 if supp_ant is None or supp_con is None:
                     continue
 
-                # TODO: compute confidence = support / supp_ant
-                # Hint: support is P(X and Y); supp_ant is P(X)
+                # TODO: confidence = P(Y | X). Hint: support is P(X and Y);
+                # supp_ant is P(X).
                 confidence = ____
                 if confidence < min_confidence:
                     continue
 
-                # TODO: compute lift = confidence / supp_con
+                # TODO: lift = confidence / P(Y), where P(Y) is supp_con.
                 lift = ____
-
-                # TODO: compute conviction. When confidence == 1.0 the
-                # denominator would be zero — return float("inf") instead.
-                # Formula: (1 - supp_con) / (1 - confidence)
+                # TODO: conviction = (1 - supp_con) / (1 - confidence). When
+                # confidence == 1.0 the denominator is zero — use
+                # float("inf") instead.
                 conviction = ____
 
                 rules.append(
@@ -162,11 +197,9 @@ def filter_actionable(
 ) -> list[dict]:
     """Apply the three-threshold filter and sort by descending lift."""
     # TODO: keep a rule only if it clears ALL three thresholds:
-    #   support >= min_support
-    #   confidence >= min_confidence
-    #   lift > min_lift
+    #   support >= min_support, confidence >= min_confidence, lift > min_lift
+    # Hint: a list comprehension over `rules` with three `and`-ed tests.
     kept = ____
-
     kept.sort(key=lambda r: -r["lift"])
     return kept
 
@@ -202,18 +235,18 @@ for rule in rules[:10]:
     assert rule["lift"] > 0, "lift must be positive"
 assert len(actionable) > 0, "At least one rule should clear the three thresholds"
 assert actionable[0]["lift"] > 1.5, "Top actionable rule should have lift > 1.5"
-print("\n[ok] Checkpoint passed — rule metrics valid and actionable set non-empty\n")
+print(
+    "\n[ok] Checkpoint passed — rule metrics are valid and actionable set is non-empty\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE: top rules + category breakdown
+# TASK 4 — VISUALISE: top rules + category breakdown + polars scatter
 # ════════════════════════════════════════════════════════════════════════
 
 print("Top 15 actionable rules by lift:")
-header = (
-    f"  {'Antecedent':<28} {'->':>3} {'Consequent':<20} "
-    f"{'Supp':>6} {'Conf':>6} {'Lift':>6} {'Conv':>7}"
-)
+header = f"  {'Antecedent':<28} {'->':>3} {'Consequent':<20} "
+header += f"{'Supp':>6} {'Conf':>6} {'Lift':>6} {'Conv':>7}"
 print(header)
 print("  " + "-" * 88)
 for rule in actionable[:15]:
@@ -242,33 +275,102 @@ print("\n=== Category Breakdown ===")
 print(f"  Cross-category rules: {cross}")
 print(f"  Within-category rules: {within}")
 
-scatter_df = rules_to_polars(rules).sort("lift", descending=True).head(100)
+# Polars frame of every rule (also saved for later lessons)
+scatter_df = rules_to_polars(rules).sort("lift", descending=True)
 scatter_df.write_csv(OUTPUT_DIR / "top_rules_scatter.csv")
+print(f"\n  Saved: {OUTPUT_DIR / 'top_rules_scatter.csv'}")
+
+# ── Visualisation ─────────────────────────────────────────────────────
+# Support (x) vs confidence (y), coloured by lift. The dashed lines are
+# the actionable thresholds: every rule in the top-right box AND with
+# lift > 1.5 survives the three-threshold filter. Rules high on the y-axis
+# but with lift ~1 are the "popularity" trap from the theory section.
+import plotly.graph_objects as go  # noqa: E402
+
+rule_labels = [
+    f"{a} -> {c}"
+    for a, c in zip(
+        scatter_df["antecedent"].to_list(), scatter_df["consequent"].to_list()
+    )
+]
+fig_rules = go.Figure(
+    go.Scatter(
+        x=scatter_df["support"].to_list(),
+        y=scatter_df["confidence"].to_list(),
+        mode="markers",
+        text=rule_labels,
+        marker=dict(
+            color=scatter_df["lift"].to_list(),
+            colorscale="Viridis",
+            colorbar=dict(title="Lift"),
+            size=8,
+            line=dict(width=0.5, color="white"),
+        ),
+        hovertemplate="%{text}<br>support=%{x:.3f}<br>confidence=%{y:.3f}"
+        "<br>lift=%{marker.color:.2f}<extra></extra>",
+    )
+)
+fig_rules.add_vline(x=0.03, line_dash="dash", line_color="grey")
+fig_rules.add_hline(y=0.4, line_dash="dash", line_color="grey")
+fig_rules.update_layout(
+    title=(
+        f"All {len(rules)} rules: support vs confidence, colour = lift "
+        f"({len(actionable)} actionable)"
+    ),
+    xaxis_title="Support",
+    yaxis_title="Confidence",
+    height=550,
+    width=900,
+)
+rules_path = OUTPUT_DIR / "03_rule_scatter.html"
+fig_rules.write_html(str(rules_path))
+print(f"[viz] Rule quality scatter: {rules_path}")
+
+# INTERPRETATION: Cross-category rules are the commercially interesting
+# ones. Within-category rules (shampoo + soap) mostly restate what a
+# store manager already knows — they both sit in the personal-care
+# aisle. Cross-category rules (breakfast items -> beverages) are where
+# Association Rules pay for themselves: they surface adjacencies you
+# did not explicitly plan for.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Watsons cart-page recommender
+# TASK 5 — APPLY: health & beauty cart-page recommender
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Watsons SG (~110 stores + online) wants a cart-page
-# recommender that surfaces ONE high-lift next-product suggestion.
-# Product spec:
-#   reliable  -> high confidence (doesn't annoy shoppers)
-#   surprising -> high lift (not just "shampoo -> soap")
-#   popular    -> high support (enough stock to fulfil)
+# SCENARIO: A Singapore health & beauty retailer runs ~100 stores plus
+# an online channel. The CRM team wants a "buy-together" recommender that shows
+# a shopper exactly ONE extra product on the cart page, chosen to
+# maximise incremental basket value. The recommendation MUST be:
+#   - Reliable  (high confidence — doesn't annoy shoppers with misses)
+#   - Surprising (high lift — not just "you bought shampoo, try soap")
+#   - Popular   (high support — enough stock to fulfil)
 #
-# These ARE the three-threshold filter inputs.
+# The three-threshold filter above is literally the product spec for
+# this recommender: support gates inventory, confidence gates annoyance,
+# lift gates relevance.
 #
-# BUSINESS IMPACT: Industry A/B tests show 2-4% conversion lift and 5-9%
-# AOV lift on recommended items. Watsons SG online GMV ~S$200M/year;
-# a 6% AOV lift on recommendations is ~S$3-6M/year in pure margin.
+# BUSINESS IMPACT (illustrative assumptions, not measured figures): take
+# an online channel with S$200M/year GMV. If 10% of orders see a
+# recommendation and those orders' value rises 3%, that is ~S$600K/year
+# of extra sales (S$200M x 10% x 3%); margin is a fraction of that.
+# Measure the real conversion and order-value lift with an A/B test
+# against a "most popular item" control before scaling.
+#
+# LIMITATIONS:
+#   - Association rules are backward-looking; seasonal or new-launch items
+#     need a cold-start fallback (Ex 7 matrix factorisation helps here)
+#   - A rule is a correlation, not a preference — always pair with
+#     business rules (don't recommend a more expensive substitute to a
+#     shopper who just demonstrated price sensitivity)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TRACK — Log the rule-quality distribution to ExperimentTracker
+# TRACK — Log rule-quality metrics to the kailash-ml ExperimentTracker
 # ════════════════════════════════════════════════════════════════════════
-# Same shared experiment as 01/02. Series = sorted lift / confidence /
-# support arrays so the M4 dashboard can plot the rule-quality
-# distribution alongside Apriori's ladder + FP-Growth's runtime curve.
+# Logs the four-metric distribution across all rules + the actionable cut +
+# the cross-vs-within category split. Series = sorted-lift / sorted-conf /
+# sorted-support arrays so the M4 dashboard can plot the rule-quality
+# distribution alongside the other techniques in this experiment.
 
 import math  # noqa: E402
 
@@ -280,30 +382,41 @@ finite_convs = [
 ]
 mean_finite_conv = sum(finite_convs) / len(finite_convs) if finite_convs else 0.0
 n_inf_conv = sum(1 for r in rules if math.isinf(r["conviction"]))
-top_lift = max(float(r["lift"]) for r in actionable) if actionable else 0.0
 
-# TODO: pick run_name="rule_evaluation_three_threshold" and fill in the
-# two cross-category counters you computed above + the actionable rate
-# (= n_actionable / n_rules).
+actionable_lifts = [float(r["lift"]) for r in actionable]
+top_lift = max(actionable_lifts) if actionable_lifts else 0.0
+mean_act_lift = (
+    sum(actionable_lifts) / len(actionable_lifts) if actionable_lifts else 0.0
+)
+
 track_run(
     tracker,
     exp_name,
-    run_name=____,
+    run_name=____,  # TODO: a stable name, e.g. "rule_evaluation_three_threshold"
     params={
         "algorithm": "association_rules",
         "implementation": "from_scratch",
         "n_transactions": len(transactions),
         "min_support_mining": MIN_SUPPORT,
         "min_confidence_filter": MIN_CONFIDENCE,
+        "actionable_min_support": 0.03,
+        "actionable_min_confidence": 0.4,
+        "actionable_min_lift": 1.5,
     },
     scalar_metrics={
         "n_frequent_itemsets": float(len(frequent)),
         "n_rules_generated": float(len(rules)),
         "n_rules_actionable": float(len(actionable)),
+        # TODO: actionable rate = n_actionable / n_rules (guard against
+        # zero rules), plus the two category counters from TASK 4.
         "actionable_rate": ____,
         "cross_category_rules": ____,
         "within_category_rules": ____,
         "top_lift": float(top_lift),
+        "mean_actionable_lift": float(mean_act_lift),
+        "mean_lift_all": float(sum(lifts) / max(len(lifts), 1)),
+        "mean_confidence_all": float(sum(confs) / max(len(confs), 1)),
+        "mean_support_all": float(sum(supps) / max(len(supps), 1)),
         "n_inf_conviction": float(n_inf_conv),
         "mean_finite_conviction": float(mean_finite_conv),
     },
@@ -319,15 +432,17 @@ print(f"  [tracked] Rule-quality distribution logged to {exp_name}\n")
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — mlxtend.frequent_patterns.association_rules
 # ════════════════════════════════════════════════════════════════════════
-# The hand-rolled pipeline made every metric explicit. The production
-# destination is two library calls (same as lesson 02) — fpgrowth +
-# association_rules — and the SAME three-threshold filter you just
-# implemented.
+# This lesson hand-rolled rule generation, all four quality metrics, and
+# the three-threshold filter — ~210 lines of structure to internalise WHY
+# each metric catches a different failure mode. The production destination
+# is the same one you used in lesson 02:
+#
+#   from mlxtend.frequent_patterns import fpgrowth, association_rules
+#
+# It runs FP-Growth + every metric (support, confidence, lift, conviction,
+# leverage, zhang's metric) in two calls and returns a pandas frame ready
+# for the same three-threshold filter you just implemented.
 
-# TODO: import mlxtend's fpgrowth + association_rules; mine + score on
-# the one-hot frame; apply the three-threshold filter and print how many
-# actionable rules mlxtend produces. Confirm it matches your hand-rolled
-# count (modulo floating-point edge cases right at the threshold).
 from mlxtend.frequent_patterns import association_rules as mlx_rules  # noqa: E402
 from mlxtend.frequent_patterns import fpgrowth as mlx_fpgrowth  # noqa: E402
 
@@ -337,13 +452,16 @@ mlx_rules_df = mlx_rules(mlx_freq, metric="confidence", min_threshold=MIN_CONFID
 mlx_actionable = mlx_rules_df[
     (mlx_rules_df["support"] >= 0.03)
     & (mlx_rules_df["confidence"] >= 0.4)
-    & (mlx_rules_df["lift"] > ____)
+    & (mlx_rules_df["lift"] > ____)  # TODO: the same lift threshold as above
 ]
 print(f"  mlxtend rules : {len(mlx_rules_df)}  hand-rolled : {len(rules)}")
 print(
     f"  mlxtend actionable: {len(mlx_actionable)}  "
     f"hand-rolled actionable: {len(actionable)}"
 )
+print()
+print("  Same four metrics, same three-threshold filter — the engine ships")
+print("  what you just built. Take the contract; ship the model card.\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -355,13 +473,20 @@ print("=" * 70)
 print(
     """
   [x] Generated directional association rules from frequent itemsets
-  [x] Computed support, confidence, lift, and conviction
-  [x] Applied the three-threshold filter
+  [x] Computed support, confidence, lift, and conviction for every rule
+  [x] Applied the three-threshold filter (support + confidence + lift)
   [x] Separated cross-category rules from within-category rules
-  [x] Reproduced the entire pipeline via two mlxtend calls
+  [x] Plotted every rule's support vs confidence coloured by lift
+  [x] Identified a production scenario (cart-page recommender)
+      where the three-threshold filter IS the product spec
+  [x] Reproduced the entire pipeline via two mlxtend calls — fpgrowth +
+      association_rules — confirming the production destination
 
-  Next: 04_rule_features.py — use the rules as features for a supervised
-  classifier and compare against a raw product-presence baseline.
+  KEY INSIGHT: Confidence alone is popularity. Lift alone is noise.
+  Support alone is volume. The three together are actionability.
+
+  Next: 04_rule_features.py — use the discovered rules as features for a
+  supervised classifier and measure whether they beat raw product presence.
 """
 )
 

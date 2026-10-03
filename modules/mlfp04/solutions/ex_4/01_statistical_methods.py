@@ -20,7 +20,7 @@
 #   2. Build — compute Z-scores and IQR bounds from standardised features
 #   3. Train — score every row (unsupervised — no parameter fitting)
 #   4. Visualise — distribution of flagged rows vs true anomalies
-#   5. Apply — Singapore NETS chargeback review queue prioritisation
+#   5. Apply — credit-application review queue at a Singapore lender
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -33,6 +33,7 @@ from scipy.stats import skew
 from shared.mlfp04.ex_4 import (
     _finite,
     load_dataset,
+    print_auc_by_type,
     print_metrics,
     score_metrics,
     setup_engines,
@@ -49,8 +50,8 @@ tracker, exp_name = setup_engines()
 # ════════════════════════════════════════════════════════════════════════
 # Z-score and IQR are the cheapest anomaly detectors on the planet. They
 # run in a single pass, need zero training, and produce a score that a
-# non-technical analyst can explain ("this account's return rate is 4.2
-# standard deviations above the average"). That explainability is worth
+# non-technical analyst can explain ("this applicant's declared savings
+# balance is 6.1 standard deviations above the average"). That explainability is worth
 # more than +2% AUC-ROC in regulated industries — the model's answer is
 # trivially defensible in a compliance audit.
 #
@@ -74,7 +75,11 @@ tracker, exp_name = setup_engines()
 # TASK 2 — BUILD the Z-score and IQR detectors
 # ════════════════════════════════════════════════════════════════════════
 
-X, y, feature_cols, _frame = load_dataset()
+# The dataset: 20,000 real Singapore credit applications plus 200 injected
+# anomalies of three known types (global / dependency / clustered) — see
+# shared/mlfp04/ex_4.py. The label comes from the injection, NOT from a
+# feature threshold, so the AUCs below are not circular.
+X, y, feature_cols, frame = load_dataset()
 n_samples, n_features = X.shape
 print("\n" + "=" * 70)
 print("  Statistical Outlier Detection — Z-score and IQR")
@@ -132,6 +137,11 @@ print("\nPer-method scores:")
 z_metrics = print_metrics("Z-score (max)", y, z_scores)
 iqr_metrics = print_metrics("IQR (outlier count)", y, iqr_scores)
 
+# WHICH anomalies does each rule find? AUC per injected anomaly type.
+print("\nPer anomaly type (1.0 = perfect, 0.5 = chance):")
+z_by_type = print_auc_by_type("Z-score (max)", frame, z_scores)
+iqr_by_type = print_auc_by_type("IQR (outlier count)", frame, iqr_scores)
+
 # Winsorisation — clip to IQR bounds and measure skewness reduction
 X_winsorised = np.clip(X, lower_bound, upper_bound)
 n_clipped = int((X != X_winsorised).sum())
@@ -146,8 +156,8 @@ print(f"  Mean |skewness| after:  {skew_after:.4f}")
 
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
-assert z_metrics["auc_roc"] > 0.4, "Z-score AUC should beat random floor"
-assert iqr_metrics["auc_roc"] > 0.4, "IQR AUC should beat random floor"
+assert z_metrics["auc_roc"] > 0.5, "Z-score AUC should beat random (0.5)"
+assert iqr_metrics["auc_roc"] > 0.5, "IQR AUC should beat random (0.5)"
 assert z_scores.min() >= 0, "Max |Z| scores must be non-negative"
 assert skew_after <= skew_before + 1e-2, "Winsorisation should not increase skew"
 print("\n[ok] Checkpoint passed — Z-score and IQR detectors scored\n")
@@ -201,7 +211,7 @@ print(f"[viz] Z-score distribution: {z_path}")
 # ── (B) IQR box plots per feature (first 6 features) ──────────────────
 n_show = min(6, X.shape[1])
 fig_box = make_subplots(
-    rows=1, cols=n_show, subplot_titles=[f"Feature {i}" for i in range(n_show)]
+    rows=1, cols=n_show, subplot_titles=feature_cols[:n_show]
 )
 for i in range(n_show):
     fig_box.add_trace(
@@ -233,41 +243,55 @@ box_path = Path("outputs") / "ex4_anomaly" / "01_iqr_boxplots.html"
 fig_box.write_html(str(box_path))
 print(f"[viz] IQR box plots: {box_path}")
 
-print("\nInterpretation:")
-print("  Z-score finds rows that are extreme on at least ONE feature.")
-print("  IQR counts HOW MANY features are extreme — rewards multi-dim outliers.")
-print("  For rare-event detection (<2% anomaly rate), AUC-PR is the honest")
-print("  metric: AUC-ROC looks healthy even when precision is near zero.")
+print("\nInterpretation (computed from the numbers above):")
+z_best = max(z_by_type, key=z_by_type.get)
+z_worst = min(z_by_type, key=z_by_type.get)
+print(
+    f"  Z-score is strongest on '{z_best}' anomalies "
+    f"(AUC={z_by_type[z_best]:.3f}) and weakest on '{z_worst}' "
+    f"(AUC={z_by_type[z_worst]:.3f})."
+)
+print(
+    "  Z-score only sees rows that are extreme on at least ONE feature;"
+    " IQR counts HOW MANY features are outside the box."
+)
+if z_by_type["dependency"] < 0.6 and iqr_by_type["dependency"] < 0.6:
+    print(
+        "  Neither rule finds the 'dependency' anomalies: every field of a"
+        " stitched-together application is individually normal, so no"
+        " per-feature rule can see it."
+    )
+print(
+    f"  AUC-ROC={z_metrics['auc_roc']:.3f} but AP={z_metrics['avg_precision']:.3f}"
+    f" at a {y.mean():.1%} anomaly rate: for rare events AUC-PR is the honest"
+    " metric — AUC-ROC can look healthy while most flags are false alarms."
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: NETS Chargeback Review Queue Prioritisation
+# TASK 5 — APPLY: Credit-Application Review Queue at a Singapore Lender
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: NETS (Network for Electronic Transfers, Singapore) processes
-# ~12 million e-payments per day. Its fraud operations team manually
-# reviews a queue of flagged transactions each morning; a typical reviewer
-# can look at about 400 cases before fatigue and false-positive blindness
-# set in.
+# SCENARIO (illustrative): a Singapore consumer lender receives several
+# thousand online credit applications a day. Its review team can examine
+# about 400 before fatigue and false-positive blindness set in. Some
+# applications contain fat-finger or inflated values (a S$5M savings
+# balance on a S$40K income), some are stitched together from other
+# people's details, and some arrive as near-identical batches.
 #
 # Why statistical outliers are the right tool FIRST:
-#   - Explainable to compliance ("this merchant's chargeback rate is 4.3
-#     standard deviations above normal") — no "the model said so"
+#   - Explainable to compliance ("this applicant's declared balance is
+#     6 standard deviations above normal") — no "the model said so"
 #   - Zero training data required — the rule runs against live features
-#   - Sub-millisecond scoring — fits inside the 120ms payment SLA
+#   - Sub-millisecond scoring — fits inside any online decision SLA
 #
-# BUSINESS IMPACT: If the Z-score + IQR pre-filter trims the daily queue
-# from 5,000 flagged cases to the 800 with the highest blended outlier
-# rank, reviewers see the top 400 in half the time. Industry benchmarks
-# from MAS-licensed issuers put each caught chargeback at S$180 recovered
-# and S$40 saved on dispute processing. Catching 30 extra chargebacks per
-# day that the prior rule-only system missed = ~S$6,600/day in net
-# recovery, or ~S$1.6M/year — for a detector that took three hours to
-# build and zero dollars to run.
+# BUSINESS IMPACT: computed below from the queue this file builds, using
+# an ILLUSTRATIVE assumption of S$2,000 average loss avoided per bad
+# application caught before approval (replace with your own loss data).
 #
-# LIMITATIONS: Statistical rules miss COORDINATED outliers (rings of
-# accounts whose individual features look normal but whose joint pattern
-# is suspicious). Exercise 4.2 (Isolation Forest) and 4.3 (LOF) catch
-# those. Exercise 4.4 blends all four into the production score.
+# LIMITATIONS: per-feature rules cannot see DEPENDENCY anomalies — rows
+# whose individual values are all normal but whose combination is
+# impossible. Exercise 4.2 (Isolation Forest) and 4.3 (LOF) look at the
+# joint feature space; Exercise 4.4 blends all four detectors.
 
 # Simple queue-prioritisation demo
 reviewer_budget = 400
@@ -283,6 +307,12 @@ print(
 print(
     f"  Recall in top-{reviewer_budget}:    {queue_recall:.3f}  "
     f"(fraction of ALL anomalies the reviewer sees)"
+)
+loss_per_case_sgd = 2_000  # ILLUSTRATIVE assumption, not a measured figure
+caught = int(y[queue_order].sum())
+print(
+    f"  Illustrative value: {caught} anomalies caught x S${loss_per_case_sgd:,}"
+    f" = S${caught * loss_per_case_sgd:,} per {n_samples:,} applications"
 )
 
 
@@ -325,7 +355,7 @@ print(
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — AnomalyDetectionEngine.detect()
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1's AnomalyDetectionEngine.detect() does NOT support
+# kailash-ml's AnomalyDetectionEngine.detect() does NOT support
 # zscore/IQR (those are pure statistical primitives — too simple to
 # merit an engine). It does support isolation_forest / lof / one_class_svm.
 # This close shows where the engine path begins — Lesson 02 onwards uses
@@ -366,14 +396,16 @@ print(
   [x] IQR outlier detection (the 1.5*IQR rule) without assuming normality
   [x] Winsorisation as a non-destructive alternative to dropping outliers
   [x] AUC-ROC vs AUC-PR on a <2% anomaly rate dataset
-  [x] Framed a NETS Singapore payments scenario with concrete dollar impact
+  [x] Read per-type AUC: which kinds of anomaly each rule can and cannot see
+  [x] Framed a lender's review-queue scenario with an illustrative dollar impact
 
   KEY INSIGHT: Statistical rules are the CHEAPEST and MOST EXPLAINABLE
-  anomaly detectors. Use them as your first filter, then layer
-  Isolation Forest / LOF / ensembles on top for the hard cases.
+  anomaly detectors, but they only see one feature at a time. Use them
+  as a first filter, then layer Isolation Forest / LOF / ensembles on
+  top for anomalies that live in feature COMBINATIONS.
 
-  Next: 02_isolation_forest.py — path-length isolation finds anomalies
-  that Z-score and IQR miss because it considers feature interactions.
+  Next: 02_isolation_forest.py — random-split isolation, which works on
+  all features jointly instead of one at a time.
 """
 )
 

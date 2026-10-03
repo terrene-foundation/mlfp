@@ -32,7 +32,9 @@ from shared.mlfp04.ex_7 import (
     N_USERS,
     build_rating_dataset,
     holdout_rmse,
+    print_baselines,
     print_method_scores,
+    print_warm_comparison,
     save_html,
 )
 
@@ -49,9 +51,11 @@ K_NEIGHBOURS = 20
 #
 # Why mean-centring matters:
 #   Generous raters give everything 4-5 stars; tough raters give 2-3.
-#   Without centring, they look dissimilar even when they rank items the
-#   same way. Subtracting each user's mean removes the bias and compares
-#   RANKINGS, not absolute scores.
+#   Ratings are all positive, so raw cosine similarity between ANY two
+#   users is high — a generous rater and a tough rater who rank items in
+#   OPPOSITE orders still look similar. Subtracting each user's mean turns
+#   ratings into "above / below my usual", so cosine compares how users
+#   RANK items, not how generous they are.
 #
 # Why top-k:
 #   - Averaging over all users drowns out signal with noise
@@ -205,14 +209,21 @@ print(
     f"min={np.min(neighbour_counts)}, max={np.max(neighbour_counts)}"
 )
 
+print_baselines(R_train, train_mask, R_observed, holdout_mask)
 print_method_scores("User-CF", ubcf_predictions, R_observed, holdout_mask)
+# Coverage < 100% is expected: brand-new SKUs have no raters, so no
+# neighbour can vouch for them. Compare on warm SKUs to see ranking skill.
+print_warm_comparison(
+    "User-CF", ubcf_predictions, R_train, train_mask, R_observed, holdout_mask,
+    data["cold_items"],
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore Streaming Platform Watchlist Expansion
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore-based streaming service (think mewatch / Viu) runs
-# a "because users like you enjoyed..." row on its homepage. The item
+# SCENARIO: A Singapore-based streaming service runs a "because users
+# like you enjoyed..." row on its homepage. The item
 # catalogue is 30K shows, ratings are explicit thumbs-up/down, and the
 # platform has ~2M monthly active users across SG, MY, and ID.
 #
@@ -223,11 +234,12 @@ print_method_scores("User-CF", ubcf_predictions, R_observed, holdout_mask)
 #   - The platform has years of rating history — similarity is stable
 #   - Row labels are explicit and explainable: "because u_042 liked this"
 #
-# BUSINESS IMPACT: Industry data from SEA streaming shows that a good
-# "users like you" row lifts watch-through rate by ~18%. On a 2M MAU
-# platform with S$12 ARPU, an 18% engagement lift translates to roughly
-# S$4.3M/year in retained subscription revenue (churn prevention + upsell
-# to annual plans).
+# BUSINESS IMPACT (illustrative assumptions, not measured figures): on a
+# 2M MAU platform with S$12 monthly ARPU, annual subscription revenue is
+# ~S$288M. If a good "users like you" row retained even 1.5% of that
+# revenue through lower churn, it would be worth ~S$4.3M/year. Whether a
+# row achieves that is an A/B-test question — the holdout P@5 and MAP
+# above only tell you the ranking beats the baselines offline.
 #
 # LIMITATIONS:
 #   - O(N^2) similarity: at 2M users that's 4 x 10^12 pairs; production
@@ -235,9 +247,9 @@ print_method_scores("User-CF", ubcf_predictions, R_observed, holdout_mask)
 #   - Cold-start users (signed up today): still zero neighbours
 #   - Popularity bias: heavily-rated shows dominate every recommendation
 #
-# The next technique (03_item_cf.py) solves the scale problem by flipping
-# the matrix and computing item-item similarity instead of user-user — the
-# item catalogue grows much slower than the user base.
+# The next technique (03_item_cf.py) flips the matrix and computes
+# item-item similarity instead of user-user — attractive when the
+# catalogue is smaller and more stable than the user base.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -251,14 +263,14 @@ print(
   [x] Computed pairwise user similarity on mean-centred ratings
   [x] Borrowed preferences from top-k most similar neighbours
   [x] Understood why mean-centring beats raw cosine for generous raters
-  [x] Measured holdout RMSE + ranking metrics on a real CF model
-  [x] Identified a SEA streaming scenario with S$4M/year in impact
+  [x] Measured holdout RMSE + ranking metrics against no-skill baselines
+  [x] Sized an (illustrative) SEA streaming scenario worth ~S$4M/year
 
   KEY INSIGHT: User-CF's strength is community taste that features can't
   capture. Its weakness is O(N^2) similarity compute that breaks at
   internet scale without approximation.
 
-  Next: 03_item_cf.py — flip the similarity direction and discover why
-  Amazon, Netflix, and Spotify all converged on item-based CF at scale.
+  Next: 03_item_cf.py — flip the similarity direction and see why
+  item-to-item CF became the classic choice for large retail catalogues.
 """
 )

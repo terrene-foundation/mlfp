@@ -40,3 +40,10 @@ For the textbook (S3) and notes (S4) shards — follow the corrected slides:
 - Lesson 1.8: taxi demand is flat by hour (1,917–2,054 trips each hour) — no invented rush-hour peaks.
 - speaker-notes.md: regenerate from the deck's notes (most were rewritten).
 - Open (S6): spec 1.1 says weather CSV ~1K rows; the file has 12 — ship a daily dataset or change the spec.
+
+---
+# Additions from the textbook shard (S3a, merged 0145cc8f)
+- ex_2: "AMK 4-room under S$500k" returns 0 rows (textbook teaches it as a genuine empty result) — S6/owner: keep or change threshold.
+- ex_8 Task 8 comment still says setup() learns from train only (X-PP) — fix in the X-PP integration pass; recheck its hourly range (X-NUM).
+- Lesson 1.8 REST examples need network; live counts labelled as examples.
+- Raw area vs price r = 0.47; on cleaned data r = 0.91.

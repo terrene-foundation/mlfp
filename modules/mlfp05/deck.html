@@ -1764,7 +1764,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Walk through the code. Encoder compresses 784 (MNIST) to latent_dim (e.g., 32). Decoder reconstructs. Sigmoid output because MNIST pixels are [0,1]. This is the simplest autoencoder &mdash; everything else builds on this.
+    Time: ~3 min. Walk through the code. Encoder compresses 784 inputs (28&times;28 Fashion-MNIST pixels) to latent_dim (16 in Exercise 5.1). Decoder reconstructs. Sigmoid output because the pixels are scaled to [0,1]. This is the simplest autoencoder &mdash; everything else builds on this.
   </aside>
 </section>
 
@@ -2116,17 +2116,17 @@ result["figure"].show()     # the curve below
       <tr><td>Contractive AE</td><td>Penalty on Jacobian of encoder &mdash; small input changes, small latent changes</td><td>Robust representations</td></tr>
       <tr><td>Stacked AE</td><td>Train layer-by-layer, then fine-tune end-to-end</td><td>Very deep encoders</td></tr>
       <tr><td>Recurrent AE</td><td>LSTM/GRU encoder-decoder for sequences</td><td>Time series, text (Lesson 5.3)</td></tr>
-      <tr><td>CVAE</td><td>Conditional VAE &mdash; condition generation on class labels</td><td>Controlled generation</td></tr>
+      <tr><td>Contractive VAE</td><td>VAE + contractive Jacobian penalty &mdash; smoother latent interpolation</td><td>Similarity search (Ex 5.1 file 10)</td></tr>
     </tbody>
   </table>
   <div class="callout callout-advanced" style="margin-top: 8px;">
-    <strong>Research note:</strong> VQ-VAE (Vector Quantised) discretises the latent space. Used in DALL-E 1 for image generation. Bridges autoencoders and modern generative AI.
+    <strong>Research note:</strong> VQ-VAE (Vector Quantised) discretises the latent space; a related discrete VAE tokenised images for DALL-E 1. Not to be confused with CVAE, which conventionally means <em>Conditional</em> VAE (generation conditioned on a class label).
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Quick survey only. Students do not need to implement these. The point is awareness: there are many variants, each adding one constraint. The four we implemented (vanilla, denoising, VAE, convolutional) cover the core ideas. VQ-VAE is mentioned for advanced students interested in modern generative models.
+    Time: ~2 min. Survey in the lecture, but Exercise 5.1 does build these: files 04 (sparse), 05 (contractive, a real per-sample Jacobian penalty &mdash; not weight decay), 07 (stacked), 08 (LSTM recurrent) and 10 (Contractive VAE). The point is that each variant adds one constraint. The four core ideas are vanilla, denoising, VAE and convolutional. Naming trap: the exercise's &ldquo;Contractive VAE&rdquo; is not a CVAE &mdash; CVAE conventionally means Conditional VAE. VQ-VAE is mentioned for advanced students interested in modern generative models.
   </aside>
 </section>
 
@@ -2138,23 +2138,23 @@ result["figure"].show()     # the curve below
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Implement vanilla autoencoder on MNIST (latent dim=32)</li>
-        <li>Implement denoising autoencoder &mdash; compare reconstruction quality</li>
-        <li>Implement VAE with reparameterisation trick</li>
-        <li>Generate new digits by sampling from VAE latent space</li>
-        <li>Implement convolutional autoencoder &mdash; compare with FC variants</li>
+        <li>Overcomplete vs undercomplete AE on Fashion-MNIST (784 &rarr; 16) &mdash; see the identity-copy risk</li>
+        <li>Denoising, sparse and contractive (Jacobian-penalty) variants</li>
+        <li>Convolutional, stacked and LSTM-recurrent autoencoders</li>
+        <li>VAE with the reparameterisation trick &mdash; generate new images from <span class="katex-inline">z \sim \mathcal{N}(0, I)</span>; Contractive VAE</li>
+        <li>Grand comparison of all 10 variants (ModelVisualizer, ModelRegistry)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>All 4 variants implemented and trained</li>
+        <li>The 4 core variants (vanilla, denoising, VAE, convolutional) trained</li>
         <li>VAE generates plausible new images</li>
-        <li>Latent space visualisation shows meaningful structure (t-SNE or PCA)</li>
+        <li>Latent space visualisation shows meaningful structure (2-D projection, traversal)</li>
         <li>Reconstruction quality compared across variants</li>
       </ul>
       <div class="callout callout-theory" style="margin-top: 12px;">
-        <strong>Stretch goal:</strong> Interpolate between two digits in VAE latent space. Watch the smooth transition.
+        <strong>Built in:</strong> interpolate between two items in latent space &mdash; vanilla VAE vs Contractive VAE (file 10). Watch the smooth transition.
       </div>
     </div>
   </div>
@@ -2162,7 +2162,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. Students implement all four variants. The VAE generation task is the highlight &mdash; producing new images from pure noise. The latent space visualisation should show digit clusters separating in 2D.
+    Time: ~1 min. Exercise 5.1 is 11 short files on Fashion-MNIST with a 16-D latent: overcomplete then undercomplete AE, denoising, sparse, contractive, convolutional, stacked, LSTM-recurrent, VAE, Contractive VAE, and a grand comparison of all 10. The VAE generation task is the highlight &mdash; producing new clothing images from pure noise. The 2-D latent projections should show garment classes separating.
   </aside>
 </section>
 
@@ -2205,11 +2205,11 @@ result["figure"].show()     # the curve below
   <div class="columns" style="margin-top: 12px;">
     <div class="col">
       <div class="callout callout-applications">
-        <strong>Finance &mdash; Credit Card Fraud (DBS, UOB, OCBC)</strong>
-        <p class="small">Train a vanilla or denoising AE on millions of <em>normal</em> card transactions. At runtime, a transaction whose reconstruction error exceeds a threshold is flagged for review. Works without any labelled fraud examples &mdash; critical, because less than 0.1% of real transactions are ever labelled as fraud.</p>
+        <strong>Finance &mdash; Credit Card Fraud (a Singapore retail bank)</strong>
+        <p class="small">Train a vanilla or denoising AE on millions of <em>normal</em> card transactions. At runtime, a transaction whose reconstruction error exceeds a threshold is flagged for review. Works without any labelled fraud examples &mdash; critical, because only a tiny fraction of transactions are ever labelled as fraud.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Healthcare &mdash; Medical Imaging Anomalies (SGH, NUH)</strong>
+        <strong>Healthcare &mdash; Medical Imaging Anomalies (a public hospital)</strong>
         <p class="small">Train a convolutional AE on thousands of <em>normal</em> chest X-rays. Lesions, tumours, or effusions produce high reconstruction error because the model has never seen their texture. A radiologist triages from a ranked anomaly list instead of scanning every image.</p>
       </div>
     </div>
@@ -2219,8 +2219,8 @@ result["figure"].show()     # the curve below
         <p class="small">A Singapore semiconductor fab trains a conv-AE on wafer images of good dies. When the reconstruction error exceeds a threshold, the wafer is routed for manual inspection. No one has to hand-label every defect class &mdash; the AE learns what "normal" looks like and flags the rest.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Telecom &mdash; Network Intrusion Detection (Singtel, StarHub)</strong>
-        <p class="small">Train an AE on normal network-flow statistics. Attacker traffic &mdash; scans, exfiltration bursts, lateral movement &mdash; reconstructs poorly and triggers an alert. The same principle protects VAEs used for synthetic healthcare data, where sampling from the latent prior generates privacy-preserving patient records.</p>
+        <strong>Telecom &mdash; Network Intrusion Detection (a telco)</strong>
+        <p class="small">Train an AE on normal network-flow statistics. Attacker traffic &mdash; scans, exfiltration bursts, lateral movement &mdash; reconstructs poorly and triggers an alert. Caution: VAE <em>samples</em> are not private by default &mdash; they can reproduce training records. Synthetic patient data needs formal guarantees (e.g. DP-SGD) and membership-inference testing.</p>
       </div>
     </div>
   </div>
@@ -2231,7 +2231,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Walk through the fraud example first &mdash; it is the one everyone has an intuition for. Emphasise: "This is the same model you just built on Fashion-MNIST. The only thing that changes is the training data." That should land the message that the technique generalises across domains. If someone asks "why not just a supervised classifier?", answer: imbalanced data &mdash; fraud is less than 0.1%, and the bank cannot afford to miss the first few instances of a new attack pattern.
+    Time: ~3 min. Walk through the fraud example first &mdash; it is the one everyone has an intuition for. Emphasise: "This is the same model you just built on Fashion-MNIST. The only thing that changes is the training data." That should land the message that the technique generalises across domains. If someone asks "why not just a supervised classifier?", answer: imbalanced data &mdash; labelled fraud is a tiny fraction of transactions, and the bank cannot afford to miss the first few instances of a new attack pattern. The organisations on this slide are generic illustrations, not claims about any named institution's systems. If someone raises synthetic patient data: a generative model can memorise and regenerate training records, so synthetic data is only private with formal guarantees (DP-SGD) plus memorisation / membership-inference tests.
   </aside>
 </section>
 

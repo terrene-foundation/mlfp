@@ -215,11 +215,11 @@ $$\hat\sigma^2 \;=\; \frac{e^\top e}{n - k - 1}$$
 </div>
 
 <table>
-  <thead><tr><th>Confidence</th><th>Approximate $t$ cutoff</th></tr></thead>
+  <thead><tr><th>Confidence</th><th>Two-sided $t$ cutoff (large $n$)</th></tr></thead>
   <tbody>
-    <tr><td>90%</td><td>$|t| > 1.6$</td></tr>
-    <tr><td>95%</td><td>$|t| > 1.96$</td></tr>
-    <tr><td>99%</td><td>$|t| > 2.58$</td></tr>
+    <tr><td>90%</td><td>$|t| > 1.645$</td></tr>
+    <tr><td>95%</td><td>$|t| > 1.960$</td></tr>
+    <tr><td>99%</td><td>$|t| > 2.576$</td></tr>
   </tbody>
 </table>
 
@@ -359,23 +359,26 @@ $$R^2_{\text{adj}} \;=\; 1 - (1 - R^2) \cdot \frac{n - 1}{n - k - 1}$$
 </p>
 
 <ul>
-  <li><strong>Polynomial terms</strong>: add $x^2$ (or $x^3$) to capture curvature. HDB floor area has diminishing returns — the second square metre is more valuable than the hundredth.</li>
+  <li><strong>Polynomial terms</strong>: add $x^2$ (or $x^3$) to capture curvature. Size effects can have diminishing returns — an extra square metre may matter more in a small flat than in a large one.</li>
   <li><strong>Interaction terms</strong>: add $x_1 \cdot x_2$ to capture effects that depend on each other. A 30-year-old flat in Bishan may not behave like a 30-year-old flat in Yishun.</li>
   <li><strong>Log transform</strong>: take $\log y$ when $y$ is strictly positive and right-skewed. Coefficients then have a multiplicative interpretation: a one-unit change in $x$ multiplies $y$ by $\exp(\hat\beta)$.</li>
 </ul>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>The Kailash Engine: TrainingPipeline</h2>
+<h2>The Kailash Engine: what does and does not do the statistics</h2>
 
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    <code>TrainingPipeline</code> runs the regression, stores the coefficients
-    with their standard errors, and logs the full fit summary to
-    <code>ExperimentTracker</code>. In today's exercise you will first roll
-    OLS by hand with numpy to feel the matrix algebra, then recreate the
-    same fit through <code>TrainingPipeline</code> to see what the engine
-    wraps.
+    In this lesson and in Exercise 5 you fit OLS yourself with NumPy — the
+    normal equations, standard errors, $t$-statistics, $R^2$ and $F$ are all
+    a few lines of matrix algebra, and that is the point. Kailash's
+    <code>TrainingPipeline</code> (used from Module 3) trains, evaluates and
+    registers predictive models from a <code>FeatureStore</code>; it reports
+    evaluation metrics, but it does <em>not</em> compute coefficient standard
+    errors, $t$-statistics or p-values. Inference about coefficients is
+    always your own computation; if you want a record of it, log the
+    results to an <code>ExperimentTracker</code> run (Lesson 2.4).
   </p>
 </div>
 
@@ -385,27 +388,36 @@ $$R^2_{\text{adj}} \;=\; 1 - (1 - R^2) \cdot \frac{n - 1}{n - k - 1}$$
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Build a model for Singapore HDB 4-room resale prices using floor area,
-    age of the flat, and town as predictors. Interpret coefficients, test
-    significance, evaluate fit, and add polynomial features.
+    Model the log of HDB resale price using floor area, the age of the flat
+    at sale, and dummies for three towns (Bishan, Tampines, Yishun; the base
+    is every other town). Interpret coefficients, test significance, evaluate
+    fit, and try a polynomial term. This is the same model as the lesson
+    slides.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1 — Load and prepare.</span>
+    <p>
+      The HDB file lives with the Module 1 datasets and stores the sale month
+      as a <code>"YYYY-MM"</code> string, so the age at sale is the sale year
+      minus <code>lease_commence_date</code>. Drop the sentinel prices
+      (<span class="nomath">$10</span>, <span class="nomath">$9,000,000</span>) first: a log-price fit with them in gives $R^2 \approx 0$.
+    </p>
     <pre><code class="language-python">import polars as pl
 import numpy as np
 from shared import MLFPDataLoader
 
 df = (
-    MLFPDataLoader().load("mlfp02", "hdb_resale.parquet")
-    .filter(pl.col("flat_type") == "4 ROOM")
-    .filter(pl.col("town").is_in(["TAMPINES", "BISHAN", "YISHUN", "JURONG WEST"]))
+    MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+    .filter(pl.col("resale_price").is_between(100_000, 2_000_000))
     .with_columns(
-        age=(pl.col("year") - pl.col("lease_commence_date")),
+        age=pl.col("month").str.slice(0, 4).cast(pl.Int64)
+        - pl.col("lease_commence_date"),
         log_price=pl.col("resale_price").log(),
     )
 )
 print(df.shape)</code></pre>
+    <pre><code class="language-text">(49899, 13)</code></pre>
   </div>
 
   <div class="step">
@@ -416,6 +428,11 @@ X_cols = ["floor_area_sqm", "age", "town_BISHAN", "town_TAMPINES", "town_YISHUN"
 X = df_encoded.select(X_cols).to_numpy()
 X = np.column_stack([np.ones(len(X)), X])   # intercept
 print(X.shape)</code></pre>
+    <pre><code class="language-text">(49899, 6)</code></pre>
+    <p>
+      Only three of the 26 town dummies enter the model, so each town
+      coefficient is a premium over the pooled "all other towns" base.
+    </p>
   </div>
 
   <div class="step">
@@ -426,30 +443,47 @@ beta_hat = np.linalg.solve(XtX, Xty)
 
 names = ["intercept"] + X_cols
 for name, b in zip(names, beta_hat):
-    print(f"{name:>22s}: {b:+.4f}")</code></pre>
+    print(f"{name:>22s}: {b:+.5f}")</code></pre>
+    <pre><code class="language-text">             intercept: +12.52150
+        floor_area_sqm: +0.01123
+                   age: +0.00002
+           town_BISHAN: +0.11935
+         town_TAMPINES: -0.01718
+           town_YISHUN: -0.02068</code></pre>
     <p>
-      Typical output: the intercept is the baseline log-price; the
-      coefficient on <code>floor_area_sqm</code> is how log-price changes per
-      additional square metre; the town dummies are the premia over Jurong
-      West (the dropped category).
+      The intercept is the baseline log-price; the coefficient on
+      <code>floor_area_sqm</code> is how log-price changes per additional
+      square metre; the town dummies are the premia over the base towns.
     </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 4 — Standard errors and $t$-statistics.</span>
-    <pre><code class="language-python">n, p = X.shape
+    <pre><code class="language-python">from scipy import stats as scipy_stats
+
+n, p = X.shape
 y_hat = X @ beta_hat
 e = y - y_hat
 sigma2 = (e @ e) / (n - p)
 cov_beta = sigma2 * np.linalg.inv(XtX)
 se = np.sqrt(np.diag(cov_beta))
 t_stats = beta_hat / se
-
-from scipy import stats as scipy_stats
-p_vals = 2 * (1 - scipy_stats.t.cdf(np.abs(t_stats), df=n - p))
+p_vals = 2 * scipy_stats.t.sf(np.abs(t_stats), df=n - p)
 
 for name, b, s, t, pv in zip(names, beta_hat, se, t_stats, p_vals):
-    print(f"{name:>22s}  b={b:+.4f}  se={s:.4f}  t={t:+6.2f}  p={pv:.3g}")</code></pre>
+    print(f"{name:>22s}  b={b:+.5f}  se={s:.5f}  t={t:+8.2f}  p={pv:.3g}")</code></pre>
+    <pre><code class="language-text">             intercept  b=+12.52150  se=0.00248  t=+5048.16  p=0
+        floor_area_sqm  b=+0.01123  se=0.00002  t= +489.63  p=0
+                   age  b=+0.00002  se=0.00004  t=   +0.62  p=0.537
+           town_BISHAN  b=+0.11935  se=0.00359  t=  +33.27  p=4.28e-240
+         town_TAMPINES  b=-0.01718  se=0.00261  t=   -6.59  p=4.35e-11
+           town_YISHUN  b=-0.02068  se=0.00283  t=   -7.32  p=2.58e-13</code></pre>
+    <p>
+      <code>t.sf</code> (the survival function, $1 - \text{CDF}$) is used
+      instead of <code>1 - t.cdf</code>: for $|t|$ in the hundreds,
+      <code>1 - cdf</code> rounds to exactly 0 while <code>sf</code> keeps
+      the tiny tail probability.
+    </p>
   </div>
 
   <div class="step">
@@ -461,11 +495,18 @@ r2     = 1 - ss_res / ss_tot
 r2_adj = 1 - (1 - r2) * (n - 1) / (n - p)
 k      = p - 1
 F      = (ss_reg / k) / (ss_res / (n - p))
-p_F    = 1 - scipy_stats.f.cdf(F, k, n - p)
+p_F    = scipy_stats.f.sf(F, k, n - p)
 
 print(f"R²       = {r2:.4f}")
 print(f"R²_adj   = {r2_adj:.4f}")
 print(f"F        = {F:.1f} on ({k}, {n - p}) df, p = {p_F:.3g}")</code></pre>
+    <pre><code class="language-text">R²       = 0.8284
+R²_adj   = 0.8284
+F        = 48172.1 on (5, 49893) df, p = 0</code></pre>
+    <p>
+      With almost 50,000 sales every $p$-value is tiny, so read the size of
+      the effects and $R^2$, not just significance.
+    </p>
   </div>
 
   <div class="step">
@@ -475,10 +516,17 @@ beta_poly = np.linalg.solve(X_poly.T @ X_poly, X_poly.T @ y)
 e_poly = y - X_poly @ beta_poly
 r2_poly = 1 - (e_poly @ e_poly) / ss_tot
 print(f"R² with age²: {r2_poly:.4f}")</code></pre>
+    <pre><code class="language-text">R² with age²: 0.8284</code></pre>
     <p>
-      The squared age term captures the curvature — prices drop with age but
-      at a decreasing rate as flats approach lease decay. Adjusted $R^2$ will
-      usually improve (but only slightly).
+      A squared term is how you would capture curvature — for example prices
+      falling faster as a lease runs down. In this file it adds nothing:
+      $R^2$ does not move in the fourth decimal place, because age has no
+      detectable effect here at all once area and town are in the model.
+      That is a legitimate finding, not a failure: always check a
+      hypothesised shape against the data rather than assume it.
+      (The file also contains some impossible leases — sales dated before
+      the lease began, giving a negative age. Exercise 8's validation rules
+      remove them; try refitting without them.)
     </p>
   </div>
 </div>
@@ -489,11 +537,17 @@ print(f"R² with age²: {r2_poly:.4f}")</code></pre>
 <table>
   <thead><tr><th>Coefficient</th><th>Interpretation</th></tr></thead>
   <tbody>
-    <tr><td>$\hat\beta_{\text{floor\_area}} = 0.012$</td><td>Each additional $m^2$ increases $\log$ price by 0.012 → $\approx 1.2\%$ increase in price</td></tr>
-    <tr><td>$\hat\beta_{\text{age}} = -0.004$</td><td>Each additional year of age decreases $\log$ price by 0.004 → $\approx 0.4\%$ decrease</td></tr>
-    <tr><td>$\hat\beta_{\text{BISHAN}} = 0.18$</td><td>Bishan commands an 18% premium over Jurong West (the base), holding area and age constant</td></tr>
+    <tr><td>$\hat\beta_{\text{floor\_area}} = 0.0112$ ($t \approx 490$)</td><td>Each additional $m^2$ increases $\log$ price by 0.0112 → $\approx 1.1\%$ higher price</td></tr>
+    <tr><td>$\hat\beta_{\text{age}} \approx 0.00002$ ($t \approx 0.6$)</td><td>No detectable age effect once area and town are held fixed</td></tr>
+    <tr><td>$\hat\beta_{\text{BISHAN}} = 0.119$ ($t \approx 33$)</td><td>Bishan premium $e^{0.119} - 1 \approx 13\%$ over the base (all towns not in the model), holding area and age constant</td></tr>
   </tbody>
 </table>
+
+<p>
+  With a log outcome, $\beta$ is approximately the proportional change when
+  it is small; use $e^{\beta} - 1$ for the exact percentage when it is not
+  (0.119 gives 12.6%, not 11.9%).
+</p>
 
 <p>
   The ceteris paribus phrasing ("holding other predictors constant") is
@@ -508,10 +562,11 @@ print(f"R² with age²: {r2_poly:.4f}")</code></pre>
 <div class="callout warning">
   <span class="label">⚠ Mistake 1: Interpreting in isolation</span>
   <p>
-    "The coefficient on age is $-0.004$, so a 1-year older flat is 0.4%
-    cheaper." Only in the presence of the other predictors. If you drop
-    <code>town</code> from the model, the age coefficient changes — it
-    picks up the correlation between age and town.
+    "Tampines flats are 1.7% cheaper than the base towns." Only with floor
+    area and age held fixed. Drop a predictor that is correlated with town
+    and the town coefficients absorb its effect. (In this file floor area
+    is nearly uncorrelated with town, so dropping it moves the town
+    coefficients only slightly — in most real data the shift is large.)
   </p>
 </div>
 

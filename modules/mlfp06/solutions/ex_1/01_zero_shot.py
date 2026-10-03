@@ -9,7 +9,8 @@
 #   - Call an LLM with zero examples using Kaizen Delegate
 #   - Write a minimal classification prompt (task + categories + input)
 #   - Normalise free-form LLM text into a discrete label
-#   - Measure accuracy, cost, and latency across a sample
+#   - Measure accuracy, tokens, and latency across a sample (plus an
+#     illustrative hosted-price estimate from the token count)
 #
 # PREREQUISITES: M5 (transformers, attention). Understanding that LLMs
 # predict the next token — prompts shift which tokens become likely.
@@ -21,7 +22,7 @@
 #   2. Build — write the zero-shot prompt
 #   3. Train — there is no training; we EVALUATE on SST-2 eval docs
 #   4. Visualise — per-doc predictions + headline metrics
-#   5. Apply — Singapore DBS multilingual review triage
+#   5. Apply — multilingual app-review triage at a Singapore retail bank
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -32,12 +33,15 @@ from dotenv import load_dotenv
 
 from shared.mlfp06.ex_1 import (
     CATEGORIES,
+    REFERENCE_PRICE_USD_PER_MTOK,
     compute_metrics,
     get_eval_docs,
     normalise_label,
     plot_accuracy_bars,
     print_summary,
+    reference_cost_usd,
     run_delegate,
+    save_technique_metrics,
 )
 
 load_dotenv()
@@ -57,7 +61,7 @@ load_dotenv()
 # fine-tuning, no training data. The LLM generalises from its pre-training
 # distribution to your task in a single forward pass.
 #
-# COST / QUALITY TRADE-OFF:
+# TOKEN / QUALITY TRADE-OFF:
 #   + cheapest (shortest prompt = fewest input tokens)
 #   + fastest (single LLM call per item, no reasoning)
 #   - inconsistent output format (may return "Positive" vs "positive")
@@ -92,7 +96,7 @@ Respond with ONLY the category name, nothing else."""
 # TASK 3 — TRAIN (evaluate across SST-2 eval docs)
 # ════════════════════════════════════════════════════════════════════════
 # Zero-shot has no training loop. Instead we run the classifier over a
-# held-out slice of SST-2 and measure accuracy/cost/latency directly.
+# held-out slice of SST-2 and measure accuracy/tokens/latency directly.
 
 
 async def evaluate() -> list[dict]:
@@ -138,6 +142,10 @@ print("\n[ok] Checkpoint passed — zero-shot evaluation complete\n")
 # ════════════════════════════════════════════════════════════════════════
 print_summary(zero_shot_results, "Zero-Shot")
 
+# Persist the MEASURED metrics so 02-05 can compare against your own run
+zero_shot_metrics = compute_metrics(zero_shot_results, "Zero-Shot")
+save_technique_metrics(zero_shot_metrics)
+
 # R9A: visual proof — per-category accuracy bar chart
 plot_accuracy_bars(
     zero_shot_results,
@@ -158,27 +166,48 @@ plot_accuracy_bars(
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: DBS Bank Multilingual Review Triage
+# TASK 5 — APPLY: Multilingual App-Review Triage at a Singapore Retail Bank
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: DBS Bank (Singapore) receives ~40,000 app-store reviews per
-# month across English, Mandarin, Malay, and Tamil. The CX team wants
-# every review tagged positive/negative within 10 minutes of posting so
-# complaints can be routed to the on-call support lead.
+# SCENARIO (illustrative): a Singapore retail bank receives tens of
+# thousands of app-store reviews per month across English, Mandarin,
+# Malay, and Tamil. The CX team wants every review tagged
+# positive/negative within 10 minutes of posting so complaints can be
+# routed to the on-call support lead.
 #
 # Why zero-shot is the right tool here:
 #   - The LLM already understands sentiment across all four languages
 #   - No labelled training data exists for Malay/Tamil reviews
-#   - Cost matters — 40K reviews/mo at CoT cost would be ~S$2,000/mo;
-#     zero-shot is ~S$120/mo (roughly 15x cheaper)
-#   - The downstream action (route to agent) is reversible, so occasional
-#     misclassifications are recoverable
+#   - Volume is high, so tokens per review drive the running cost
+#   - The downstream action (route to an agent) is reversible, so
+#     occasional misclassifications are recoverable
 #
-# BUSINESS IMPACT: A 10-minute detection window on negative reviews lets
-# DBS's support team reach frustrated customers BEFORE they escalate to
-# social media. Industry data from SGX-listed banks shows each prevented
-# viral complaint is worth ~S$8,000 in avoided remediation + PR cost.
-# Catching even 20 extra negative reviews/month = S$160K/mo in avoided
-# brand damage — vs S$120/mo in LLM inference cost. 1,300x ROI.
+# The sizing below uses YOUR measured tokens-per-review, an assumed
+# monthly volume, and the illustrative reference price — swap in your
+# own volume and your provider's real rate when you size a deployment.
+MONTHLY_REVIEWS = 40_000  # illustrative volume, not a real bank's figure
+tokens_per_review = zero_shot_metrics["total_tokens"] / max(zero_shot_metrics["n"], 1)
+monthly_tokens = int(tokens_per_review * MONTHLY_REVIEWS)
+print("\n  Illustrative sizing for the review-triage scenario:")
+print(f"    measured tokens/review : {tokens_per_review:,.0f}")
+print(f"    assumed reviews/month  : {MONTHLY_REVIEWS:,}")
+print(
+    f"    tokens/month           : {monthly_tokens:,} "
+    f"≈ ${reference_cost_usd(monthly_tokens):,.2f}/month at the "
+    f"${REFERENCE_PRICE_USD_PER_MTOK:.2f}/Mtok reference price "
+    f"(self-hosted Ollama: hardware cost only)"
+)
+print(
+    f"    measured accuracy      : {zero_shot_metrics['accuracy']:.0%} on "
+    f"{zero_shot_metrics['n']} SST-2 docs (1 - accuracy = misrouting rate)"
+)
+#
+# BUSINESS IMPACT: the value side depends on what a missed complaint
+# costs the bank. If, say, catching a frustrated customer before they
+# escalate on social media avoids S$1,000 of remediation effort, then
+# 20 extra complaints caught per month is worth S$20,000/month — compare
+# that with the token bill printed above. The decision rule
+# is the ratio, not the absolute numbers: zero-shot wins whenever its
+# accuracy clears the bar at a fraction of the cost of the higher rungs.
 #
 # LIMITATIONS:
 #   - Sarcasm is hard ("wow, another outage, just what I needed")
@@ -194,15 +223,15 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Invoked an LLM via Kaizen Delegate with a cost budget
+  [x] Invoked a local Ollama LLM via Kaizen Delegate (make_delegate)
   [x] Wrote a minimal zero-shot classification prompt
   [x] Normalised free-form LLM output into discrete labels
-  [x] Measured accuracy, cost, and latency on a real SST-2 sample
-  [x] Identified a production scenario (DBS review triage) where
+  [x] Measured accuracy, tokens, and latency on a real SST-2 sample
+  [x] Sized a production scenario (bank app-review triage) where
       zero-shot is the economically optimal choice
 
   KEY INSIGHT: Zero-shot is the first rung of the prompting ladder.
-  Every subsequent technique costs more per call — only climb higher
+  Every subsequent technique spends more tokens per call — only climb higher
   when the business outcome needs the accuracy.
 
   Next: 02_few_shot.py — add a handful of examples and watch accuracy

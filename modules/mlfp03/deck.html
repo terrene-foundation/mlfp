@@ -796,7 +796,7 @@ print(best, mean_squared_error(y_te, final.predict(X_te)))  # test: once</code><
   <span class="marker marker-theory">Theory</span>
   <p>There is no single model that is best for all problems.</p>
   <div class="callout callout-theory">
-    <strong>Wolpert &amp; Macready (1997):</strong> Averaged over ALL possible data distributions, every learning algorithm performs equally well. Any advantage on one class of problems is paid for by disadvantage on another.
+    <strong>Wolpert (1996), "The Lack of A Priori Distinctions Between Learning Algorithms":</strong> Averaged over ALL possible target functions, every learning algorithm has the same off-training-set error. Any advantage on one class of problems is paid for by disadvantage on another.
   </div>
   <p><strong>What this means in practice:</strong></p>
   <ul>
@@ -805,12 +805,12 @@ print(best, mean_squared_error(y_te, final.predict(X_te)))  # test: once</code><
     <li>The best model depends on: data size, feature types, noise level, interpretability needs</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Kailash bridge:</strong> <code>AutoMLEngine</code> systematically compares multiple models so you do not have to guess.
+    <strong>Kailash bridge:</strong> <code>AutoMLEngine</code> runs and records a model sweep on identical folds, so the comparison is auditable rather than guessed.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. No Free Lunch is why this lesson exists. We must know the full zoo to pick the right model for each problem. For experts: in practice, real-world data has structure that some algorithms exploit better than others, so some models do tend to win on tabular data (gradient boosting) and others on images (CNNs).</aside>
+  <aside class="notes">Timing: 2 min. No Free Lunch is why this lesson exists. (The 1997 Wolpert and Macready paper is the separate NFL theorem for optimisation; the learning version is Wolpert 1996.) We must know the full zoo to pick the right model for each problem. For experts: in practice, real-world data has structure that some algorithms exploit better than others, so some models do tend to win on tabular data (gradient boosting) and others on images (CNNs).</aside>
 </section>
 
 <!-- SLIDE 26 — SVM -->
@@ -1007,25 +1007,40 @@ print(best, mean_squared_error(y_te, final.predict(X_te)))  # test: once</code><
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>AutoMLEngine</h3>
-    <p>Systematically trains and compares multiple models with consistent evaluation.</p>
-    <pre><code class="language-python">from kailash_ml import AutoMLEngine
+    <p>You supply the trial function; the engine runs the sweep, records every trial and returns the best.</p>
+    <pre style="font-size: 0.5em;"><code class="language-python">import asyncio
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from kailash_ml import AutoMLEngine
+from kailash_ml.automl.engine import AutoMLConfig, ParamSpec, TrialOutcome
+from shared.mlfp03.ex_3 import build_train_test_split, cv_scores
 
-auto = AutoMLEngine(
-    task="classification",
-    models=["random_forest", "svm", "knn", "naive_bayes", "decision_tree"],
-    cv_folds=5,
-    metric="f1_weighted"
-)
-leaderboard = auto.fit(X_train, y_train)
-print(leaderboard.ranking())  # sorted by metric</code></pre>
-  </div>
-  <div class="callout callout-kailash">
-    <strong>Why AutoMLEngine?</strong> It enforces consistent evaluation: same CV splits, same preprocessing, same metrics. Human comparison across Jupyter cells often introduces subtle inconsistencies.
+d = build_train_test_split()   # one split, one set of stratified folds
+ZOO = {"svm": SVC(), "knn": KNeighborsClassifier(25), "nb": GaussianNB(),
+       "tree": DecisionTreeClassifier(max_depth=6),
+       "rf": RandomForestClassifier(300, random_state=42)}
+
+async def trial_fn(trial):
+    s = cv_scores(ZOO[trial.params["model"]], d["X_train"], d["y_train"], d["cv"])
+    return TrialOutcome(trial.trial_number, trial.params, s["auc_roc"],
+                        "auc_roc", "maximize", extras=s)
+
+engine = AutoMLEngine(config=AutoMLConfig(metric_name="auc_roc",
+                      search_strategy="grid", max_trials=5),
+                      tenant_id="_single", actor_id="mlfp03")
+result = asyncio.run(engine.run(
+    space=[ParamSpec("model", "categorical", choices=list(ZOO))],
+    trial_fn=trial_fn))
+for t in result.all_trials:
+    print(t.params["model"], round(t.metric_value, 3))</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. AutoMLEngine automates the "try every model" step. The key benefit is consistency: same splits, same preprocessing across all models. This prevents the common mistake of comparing models on different data splits. Students use this in the exercise to compare all 5 model families.</aside>
+  <aside class="notes">Timing: 2 min. AutoMLEngine does not choose models or preprocess for you: trial_fn trains and scores, and the engine supplies the sweep strategy, a time and cost budget, and an audit record of every trial. The value is consistency: every family is scored by the same cv_scores helper on the same stratified folds of the same e-commerce churn split, so differences are the models, not the data. With these default settings on this data, cross-validated ROC AUC lands around 0.74 to 0.79 for all five families, and Naive Bayes is not last. That is No Free Lunch in action. Exercise 3.3 does the comparison by hand and goes further: it tunes each family inside nested CV before comparing, so no model is judged with hand-picked settings. Churners are the majority class here (about 74%), so accuracy and churn-class F1 flatter every model; ROC AUC is the selection metric.</aside>
 </section>
 
 <!-- SLIDE 33 — Lesson 3.3 Summary -->
@@ -1039,15 +1054,15 @@ print(leaderboard.ranking())  # sorted by metric</code></pre>
     <li><strong>Naive Bayes:</strong> Bayesian with independence assumption; fast baseline</li>
     <li><strong>Decision Trees:</strong> Gini / entropy splits; interpretable but overfit</li>
     <li><strong>Random Forest:</strong> Bagging + feature subsampling; robust default</li>
-    <li><strong>Engine:</strong> <code>AutoMLEngine</code> for systematic comparison</li>
+    <li><strong>Engine:</strong> <code>AutoMLEngine</code> to run and record a sweep on identical folds</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.3:</strong> Train all 5 model families on e-commerce customer classification. Compare accuracy, F1, training time. Produce model comparison table.
+    <strong>Exercise 3.3:</strong> Predict e-commerce churn with all 5 families on the same stratified folds; tune each inside nested CV; beat the majority-class baseline; compare ROC AUC (mean &plusmn; spread), fit time and decision boundaries.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to use consistent evaluation (same CV splits) and justify their model selection with data evidence, not opinion.</aside>
+  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to use consistent evaluation (same CV splits) and justify their model selection with data evidence, not opinion. One data note worth telling the class: the dataset marks a customer churned exactly when days_since_last_order exceeds 180, so that column defines the label and is removed from the features. With it, a depth-1 tree scores 100%, which is leakage, not learning.</aside>
 </section>
 
 

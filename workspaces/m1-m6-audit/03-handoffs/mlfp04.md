@@ -26,3 +26,11 @@
 
 ## Upstream
 - kailash-ml OnnxBridge prints UserWarning/FutureWarning during torch export.
+
+---
+# Additions from the deck shard (S2a, merged ad801ce5)
+- Engines taught: ClusteringEngine (sweep_k/fit), AutoMLEngine search (agent=False, as ex_1.5), DimReductionEngine, AnomalyDetectionEngine (detect/ensemble_detect); EnsembleEngine blend/stack are SUPERVISED; OnnxBridge torch export with check_compatibility + onnxruntime parity.
+- Deck assessment slide = four 25-mark auto-graded tasks (S5 redesign must update it).
+- Deck "Looking Ahead" previews real Module 5 topics.
+- Owner question: specs/module-4.md exercise wording (4.4 "financial transactions", 4.6 "Singapore news", 4.8 from-scratch HDB network) and "Quiz + project" describe PLANNED content — reconcile after S5/S6.
+- Integration: regenerate deck.pdf + readings/deck.pdf; refresh parity baseline (M4 not in parity set). speaker-notes.md regenerate (D4).

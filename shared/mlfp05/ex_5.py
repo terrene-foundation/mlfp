@@ -100,6 +100,27 @@ def load_mnist(device: torch.device) -> tuple[torch.Tensor, torch.Tensor, DataLo
     return X_real, y_real, real_loader
 
 
+def load_mnist_test(device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+    """Load the 10K MNIST test digits — images no generator was trained on.
+
+    Returns:
+        X_test: (10000, 1, 28, 28) tensor on device, range [-1, 1]
+        y_test: (10000,) long tensor on device
+    """
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    test_set = torchvision.datasets.MNIST(
+        root=str(DATA_DIR),
+        train=False,
+        download=True,
+        transform=torchvision.transforms.ToTensor(),
+    )
+    X_test = torch.stack([test_set[i][0] for i in range(len(test_set))])
+    y_test = torch.tensor(
+        [test_set[i][1] for i in range(len(test_set))], dtype=torch.long
+    )
+    return (X_test * 2.0 - 1.0).to(device), y_test.to(device)
+
+
 # ════════════════════════════════════════════════════════════════════════
 # Kailash engine setup
 # ════════════════════════════════════════════════════════════════════════
@@ -138,17 +159,21 @@ async def close_engines(conn: ConnectionManager) -> None:
 class Generator(nn.Module):
     """MLP Generator: z -> 784-d -> (1, 28, 28).
 
-    Uses BatchNorm + LeakyReLU (DCGAN best practices) and Tanh output
-    to match the [-1, 1] image scaling.
+    A fully-connected (MLP) generator, not a convolutional DCGAN. It borrows
+    the DCGAN training recipe — BatchNorm + LeakyReLU in hidden layers and a
+    Tanh output to match the [-1, 1] image scaling. Linear layers that feed
+    BatchNorm have no bias: BatchNorm subtracts the batch mean, so such a
+    bias would be cancelled and would receive exactly zero gradient (which
+    the Prescription Pad would report as a vanishing-gradient layer).
     """
 
     def __init__(self, latent_dim: int = LATENT_DIM, hidden: int = 256):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(latent_dim, hidden),
+            nn.Linear(latent_dim, hidden, bias=False),
             nn.BatchNorm1d(hidden),
             nn.LeakyReLU(0.2),
-            nn.Linear(hidden, hidden * 2),
+            nn.Linear(hidden, hidden * 2, bias=False),
             nn.BatchNorm1d(hidden * 2),
             nn.LeakyReLU(0.2),
             nn.Linear(hidden * 2, IMG_DIM),
@@ -255,12 +280,14 @@ def compute_fid(
     real: torch.Tensor,
     generated: torch.Tensor,
 ) -> float:
-    """Frechet Inception Distance between real and generated images.
+    """Frechet distance between real and generated feature distributions.
 
     FID = ||mu_r - mu_g||^2 + Tr(Sigma_r + Sigma_g - 2*sqrt(Sigma_r @ Sigma_g))
 
-    Lower FID = closer to real distribution = better generator.
-    Uses eigendecomposition (no scipy dependency).
+    Computed in the 64-d LeNet feature space (not Inception), so values are
+    only comparable with other values from the same extractor. Lower = the
+    generated distribution is closer to the real one (fidelity AND
+    diversity). Uses eigenvalues of Sigma_r @ Sigma_g (no scipy dependency).
     """
     extractor.eval()
 

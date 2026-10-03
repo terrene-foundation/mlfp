@@ -3105,7 +3105,7 @@ You should now be able to:
 
 Every time you open a new dataset, you do the same things. Check the shape. Check the columns. Check the types. Count the nulls. Look at a few rows. Compute summary statistics. Look for outliers. Check for duplicates. Plot the distributions. Compute correlations. Look for columns that are suspiciously constant or suspiciously unique. This is a rigid, repetitive checklist that should never be done by hand — at least not after you have done it manually a dozen times to know what you are looking at.
 
-`DataExplorer` is the Kailash engine that automates this checklist. It takes a DataFrame, runs the full battery of profile checks in parallel, and returns a structured result you can inspect programmatically or render as an HTML report. More importantly, it emits *alerts*: typed, severity-tagged messages that tell you what looks wrong. An alert with type `"high_skewness"` on column `"fare"` is a concrete, actionable piece of information — you know exactly what to look at and what the suggested fix is.
+`DataExplorer` is the Kailash engine that automates this checklist. It takes a DataFrame, runs the full battery of profile checks in parallel, and returns a structured result you can inspect programmatically or render as an HTML report. More importantly, it emits *alerts*: typed, severity-tagged messages that tell you what looks wrong. An alert with type `"high_skewness"` on column `"fare_sgd"` is a concrete, actionable piece of information — you know exactly what to look at, and you can map it to a standard fix.
 
 This lesson is where you stop doing by hand what the engine can do for you. You will configure `AlertConfig` with thresholds appropriate for your domain, run `DataExplorer.profile()` on a deliberately messy economic-indicators dataset, interpret each alert, and compare two time-period slices of the same data to detect distribution drift. You will also meet `try` / `except` for error handling, and `async` / `await` for the first time in the course.
 
@@ -3117,26 +3117,28 @@ The profiling you did manually in Lessons 1.1 through 1.6 works, and there is no
 
 **Consistency.** A manual checklist is only as reliable as the person running it. Every dataset you miss a check on is a potential bug. An automated profiler runs the same checks on every dataset, so you never forget to look at skewness or cardinality.
 
-**Alerts as a decision layer.** Raw statistics are information; alerts are decisions. A mean of 3.5 is information. An alert saying "column 'fare' has skewness 4.2, above the threshold of 2.0 — recommend log-transform or winsorisation" is a decision. When you are moving fast through many datasets, the decision layer is what matters. You cannot stop to manually evaluate ten statistics per column for a dataset with fifty columns; the alert layer collapses five hundred statistics into the ten or twenty that actually need attention.
+**Alerts as a decision layer.** Raw statistics are information; alerts are decisions. A mean of 3.5 is information. An alert saying "column `fare_sgd` has skewness 4.2, above the threshold of 2.0" is a prompt to decide — log-transform, winsorise, or investigate the extreme rows. When you are moving fast through many datasets, the decision layer is what matters. You cannot stop to manually evaluate ten statistics per column for a dataset with fifty columns; the alert layer collapses five hundred statistics into the ten or twenty that actually need attention.
 
 DataExplorer does both: it computes the full statistics (so you can dig into any specific number if needed) and it emits alerts (so you know which numbers to dig into first). The rest of this lesson is about understanding the alerts and trusting them appropriately.
 
 ### FOUNDATIONS: The eight alert types
 
-DataExplorer supports eight alert categories out of the box. Each has a configurable threshold and a typical remediation.
+DataExplorer emits exactly eight alert categories — no more. Each has a configurable `AlertConfig` threshold (default shown) and a typical remediation.
 
 | Alert type | What it detects | Typical fix |
 |---|---|---|
-| `high_nulls` | column with more than X% missing values | impute, drop rows, or drop column |
-| `high_zeros` | column with more than X% zero values | check whether zeros are real or missing-coded-as-zero |
-| `high_skewness` | column with absolute skewness above X | log-transform, winsorise, or remove outliers |
-| `high_cardinality` | column with unique-value ratio above X | bin the values, use target encoding, or drop |
-| `constant` | column with one or fewer unique values | drop the column (no information) |
-| `high_correlation` | pairs of columns with correlation above X | drop one of the pair to avoid multicollinearity |
-| `duplicates` | more than X% of rows are exact duplicates | `.unique()` / `.drop_duplicates()` |
-| `imbalanced` | categorical column where minority class is below X | oversample, undersample, or class weights |
+| `high_nulls` | null fraction above `high_null_pct_threshold` (0.05) | impute, drop rows, or drop column |
+| `high_zeros` | zero fraction above `zero_pct_threshold` (0.5) | check whether zeros are real or missing-coded-as-zero |
+| `high_skewness` | absolute skewness above `skewness_threshold` (2.0) | log-transform, winsorise, or investigate outliers |
+| `high_cardinality` | unique-value ratio above `high_cardinality_ratio` (0.9) — near-unique columns such as IDs and dates | treat as an identifier, bin, or drop |
+| `constant` | unique values at or below `constant_threshold` (1) | drop the column (no information) |
+| `high_correlation` | a pair of columns with \|r\| above `high_correlation_threshold` (0.9) | drop one of the pair to avoid multicollinearity |
+| `duplicates` | duplicate-row fraction above `duplicate_pct_threshold` (0.0, i.e. any duplicate) | `.unique()` |
+| `imbalanced` | categorical column whose rarest class is below `imbalance_ratio_threshold` (0.1) | oversample, undersample, or class weights |
 
-Each alert includes a `severity` (usually `"info"`, `"warning"`, or `"error"`), a column name (or column pair for correlation), a value (the computed number that crossed the threshold), and optionally a recommendation string. The alert object is a plain dictionary you can iterate over in Python.
+Each alert is a plain Python dictionary with four keys: `type` (one of the eight names above), `column` (the column name — or `columns`, a two-element list, for `high_correlation`), `value` (the computed number that crossed the threshold), and `severity` (`"info"` or `"warning"`). There is no message or recommendation string — translating an alert into an action is your job, and the table above is the starting point. Because correlation alerts use `columns` rather than `column`, read the column with `alert.get("column", alert.get("columns"))`.
+
+Two details trip people up. First, the comparisons are *strictly greater than*: a column with exactly 5.0% nulls does **not** fire `high_nulls` at the default 0.05 threshold — and the course CPI file has exactly that (15 of 300 rows null in each CPI column). Second, there is no "outlier" alert. Outliers are reported per column as statistics (`outlier_count`, `outlier_pct`, using the 1.5 × IQR rule) on each column profile; you read them yourself.
 
 ### FOUNDATIONS: AlertConfig — tuning thresholds for your domain
 
@@ -3145,11 +3147,11 @@ Out-of-the-box thresholds are reasonable defaults for "typical tabular ML data",
 `AlertConfig` lets you tune each threshold:
 
 ```python
-from kailash_ml.engines.data_explorer import AlertConfig
+from kailash_ml import AlertConfig
 
 alert_config = AlertConfig(
-    high_correlation_threshold=0.95,    # only flag near-perfect collinearity
-    high_null_pct_threshold=0.10,       # allow up to 10% nulls before alerting
+    high_correlation_threshold=0.95,    # raise from the 0.90 default: only near-perfect collinearity
+    high_null_pct_threshold=0.10,       # relax from the 0.05 default: allow up to 10% nulls
     constant_threshold=1,                # flag columns with <= 1 unique value
     high_cardinality_ratio=0.95,        # flag columns where >95% of values are unique
     skewness_threshold=3.0,              # only flag severe skew
@@ -3187,6 +3189,19 @@ For Module 1 you only need to know the recipe:
 - Use `await` on every async call inside that wrapper.
 - Run the wrapper once at the top level with `asyncio.run()`.
 
+One catch: `asyncio.run()` works in a script, but inside Jupyter or Colab an event loop is already running and `asyncio.run()` raises `RuntimeError: asyncio.run() cannot be called from a running event loop`. The course ships synchronous helpers in `shared` that work in both places, so you can profile without writing any async code:
+
+```python
+from shared import run_compare, run_profile, run_report
+
+profile = run_profile(df)                          # DataProfile (default thresholds)
+profile = run_profile(df, alert_config=alert_config)
+diff = run_compare(df_raw, df_clean)               # dict, same as DataExplorer.compare
+html = run_report(df, title="My data")             # HTML string, same as DataExplorer.to_html
+```
+
+The worked example below writes the async version explicitly, so you see what the helpers hide.
+
 You will meet async again in Module 3 (for async inference servers) and Module 6 (for concurrent API calls to LLMs). For now, treat it as ceremonial boilerplate.
 
 ### FOUNDATIONS: `try` / `except` — handling errors
@@ -3213,25 +3228,25 @@ You should *not* use `try` / `except` to silently swallow errors. A bare `except
 
 ### THEORY: `DataExplorer.compare` — drift detection
 
-`DataExplorer.compare(df_a, df_b)` profiles two DataFrames separately and then computes column-level deltas between them. Mean delta, std delta, null delta for every shared column. It returns a comparison object you can iterate over.
+`DataExplorer.compare(df_a, df_b)` profiles two DataFrames separately and then computes column-level deltas between them: mean delta, std delta, null-fraction delta and unique-count delta for every shared column. It returns a plain dictionary.
 
 This is the foundation of *drift detection*. If you trained a model on last year's data and the distribution of incoming data has shifted, your model's predictions may be miscalibrated. Comparing a baseline profile (training data) with a current profile (production data) is the standard way to catch drift early. In Module 4 you will meet `DriftMonitor`, the Kailash engine dedicated to this problem; `compare` is its conceptual foundation.
 
-The comparison output is a list of per-column delta dictionaries:
+The dictionary's `column_deltas` entry is a list with one delta dictionary per shared column (each delta is B minus A):
 
-```python
+```text
 [
-    {"column": "cpi", "mean_delta": 5.3, "std_delta": 1.2, "null_delta": 0.0},
-    {"column": "employment_rate", "mean_delta": -2.1, "std_delta": 0.8, "null_delta": 0.0},
+    {"column": "cpi_all_items", "dtype": "Float64", "mean_delta": 68.4, "std_delta": ...,
+     "null_pct_delta": ..., "unique_count_delta": ...},
     ...
 ]
 ```
 
-Sort by `abs(mean_delta)` to surface the columns with the biggest distribution shifts. These are the ones to investigate.
+Sort by `abs(mean_delta)` to surface the columns with the biggest distribution shifts. But note that `mean_delta` is in each column's own units, so a column measured in dollars will always out-shift one measured in percentage points. To compare shifts across columns fairly, divide each delta by the column's mean or standard deviation in period A. The other keys of the dictionary are `profile_a`, `profile_b` (full profiles), `shape_comparison` (`{"rows_a", "rows_b", "cols_a", "cols_b"}`), `shared_columns`, `missing_in_a` and `missing_in_b`.
 
 ### FOUNDATIONS: Spearman vs Pearson correlation
 
-DataExplorer computes both Pearson and Spearman correlations. Pearson you already know — it measures *linear* relationships between two variables. Spearman measures *monotonic* relationships: any relationship where y always increases (or always decreases) as x increases, regardless of whether the increase is linear.
+DataExplorer computes both Pearson (`profile.correlation_matrix`) and Spearman (`profile.spearman_matrix`) correlations. Pearson you already know — it measures *linear* relationships between two variables. Spearman measures *monotonic* relationships: any relationship where y always increases (or always decreases) as x increases, regardless of whether the increase is linear.
 
 The Spearman correlation is the Pearson correlation of the *ranks* of the values. To compute it: rank each value in column A, rank each value in column B, then compute Pearson on the two rank columns. If the ranks agree (both columns rank observations in the same order), Spearman is 1. If the ranks are opposite, -1. If the ranks are unrelated, 0.
 
@@ -3242,53 +3257,63 @@ The rule: if you are screening for *any* dependency, use Spearman. If you specif
 ## The Kailash Engine: DataExplorer — full API
 
 ```python
-from kailash_ml import DataExplorer
-from kailash_ml.engines.data_explorer import AlertConfig
+import asyncio
 
-explorer = DataExplorer(alert_config=alert_config)
+import polars as pl
+from kailash_ml import AlertConfig, DataExplorer
 
-# Main profiling call — async
-profile = await explorer.profile(df)
+df = pl.DataFrame({"a": [1.0, 2.0, 3.0, 4.0], "b": [2.0, 4.0, 6.0, 9.0]})
+df_a, df_b = df.head(2), df.tail(2)
+alert_config = AlertConfig(high_null_pct_threshold=0.10)
 
-# Inspect results
-profile.n_rows             # int
-profile.n_columns          # int
-profile.duplicate_count    # int
-profile.duplicate_pct      # float in [0, 1]
-profile.type_summary       # dict like {"numeric": 8, "string": 2}
-profile.alerts             # list of alert dicts
-profile.columns            # list of per-column profile objects
-profile.pearson_matrix     # dict of dicts
-profile.spearman_matrix    # dict of dicts
 
-# Per-column fields (on profile.columns)
-col.name                   # str
-col.inferred_type          # "numeric" | "categorical" | "temporal" | "text"
-col.mean                   # float (numeric only)
-col.std                    # float
-col.min, col.max           # floats
-col.null_count, col.null_pct
-col.unique_count
-col.skewness, col.kurtosis  # numeric only
+async def tour() -> None:
+    explorer = DataExplorer(alert_config=alert_config)   # alert_config is optional
 
-# Compare two datasets
-comparison = await explorer.compare(df_a, df_b)
-comparison["shape_comparison"]   # {"a": (rows, cols), "b": (rows, cols)}
-comparison["shared_columns"]     # list of column names
-comparison["column_deltas"]      # list of per-column delta dicts
+    # Main profiling call — async
+    profile = await explorer.profile(df)
 
-# Generate HTML report
-report_html = await explorer.to_html(df, title="My Dataset")
-with open("report.html", "w") as f:
-    f.write(report_html)
+    # Inspect results (plain attributes — no await needed)
+    print(profile.n_rows, profile.n_columns)     # ints
+    print(profile.duplicate_count, profile.duplicate_pct)
+    print(profile.type_summary)       # dict of inferred type -> column count
+    print(profile.alerts)             # list of alert dicts (type, column/columns, value, severity)
+    print(profile.correlation_matrix) # Pearson, as a dict of dicts
+    print(profile.spearman_matrix)    # Spearman, as a dict of dicts
 
-# Generate individual chart figures
-vis_report = await explorer.visualize(df)
-for name, fig in vis_report.figures.items():
-    fig.write_html(f"{name}.html")
+    # Per-column fields (profile.columns is a list of ColumnProfile objects)
+    for col in profile.columns:
+        print(
+            col.name,
+            col.inferred_type,        # "numeric" | "categorical" | "boolean" | "constant" | "id" | "text"
+            col.mean, col.std,        # numeric columns only (None otherwise)
+            col.min_val, col.max_val,
+            col.null_count, col.null_pct, col.unique_count,
+            col.skewness, col.kurtosis,
+            col.outlier_count, col.outlier_pct,   # 1.5 x IQR rule — a statistic, not an alert
+        )
+
+    # Compare two datasets — returns a dict
+    comparison = await explorer.compare(df_a, df_b)
+    print(comparison["shape_comparison"])   # {"rows_a": ..., "rows_b": ..., "cols_a": ..., "cols_b": ...}
+    print(comparison["shared_columns"])     # list of column names
+    print(comparison["column_deltas"])      # list of per-column delta dicts
+
+    # Generate HTML report
+    report_html = await explorer.to_html(df, title="My Dataset")
+    with open("report.html", "w") as f:
+        f.write(report_html)
+
+    # Generate individual chart figures
+    vis_report = await explorer.visualize(df)
+    for name, fig in vis_report.figures.items():
+        fig.write_html(f"{name}.html")
+
+
+asyncio.run(tour())
 ```
 
-Every method that hits the async machinery is async. Every method that is synchronous (inspecting the already-computed profile object) is synchronous. The rule: if it accesses data or computes something, it is async; if it reads already-computed fields, it is synchronous.
+The four engine methods — `profile`, `compare`, `to_html`, `visualize` — are async: they read and compute over the data, so you `await` them. Everything you read from the returned profile object is a plain attribute, so no `await` is needed. (`await` is only legal inside an `async def`, which is why the tour is wrapped in one.)
 
 ## Worked Example: Profiling Singapore Economic Indicators
 
@@ -3440,7 +3465,30 @@ async def profile_economic_data():
 profile = asyncio.run(profile_economic_data())
 ```
 
-Expected: you see perhaps 5–15 alerts — some high-skew columns (crisis-period CPI spikes), some high-correlation pairs (macro indicators moving together), maybe a high-null column if one of the forward-filled series had edge gaps.
+Expected output (abridged):
+
+```text
+Rows: 300, Columns: 15
+Duplicates: 0 (0.0%)
+
+--- Alerts (18) ---
+[INFO] high_cardinality: date = 1.0
+[INFO] high_cardinality: month_date = 1.0
+[WARNING] high_nulls: usd_sgd = 0.8
+[WARNING] high_nulls: eur_sgd = 0.8
+[WARNING] high_nulls: gbp_sgd = 0.8
+[WARNING] high_nulls: jpy_sgd = 0.8
+[WARNING] high_correlation: ['cpi_all_items', 'cpi_food'] = 0.9951132968970791
+...
+```
+
+Read each group and decide:
+
+- **`high_cardinality` on `date` and `month_date` (info).** Every row has a unique date — that is what a time index is. Expected; no action.
+- **`high_nulls` on the four FX columns (80%).** The FX file starts in January 2020, but the spine runs from 2000. 240 of 300 months have no FX rate. This alert was *created by the merge*, not by the source data — exactly the kind of thing profiling is for. Either restrict FX analysis to 2020 onwards, or accept the nulls knowingly.
+- **12 `high_correlation` pairs (|r| from 0.956 to 0.998).** The four CPI series and median income all rise steadily over 25 years, so they correlate almost perfectly. The two pairs with `gbp_sgd` are computed on only the 60 months where FX exists, and are more likely two trends than a relationship. For modelling, keep one CPI series and treat the rest as redundant.
+
+Notice what did *not* fire. Each CPI column has 15 nulls out of 300 rows — exactly 5% — and the rule is "greater than", so even the default threshold would not flag it. You only find those nulls by reading the column profiles (`col.null_pct`). And no skewness alert fired: the tuned threshold of 3.0 is above every column's skewness (the largest is about −2.2, for `employment_rate`).
 
 ### Step 6: Compare two time periods
 
@@ -3463,11 +3511,23 @@ async def compare_periods():
     for d in deltas[:10]:
         print(f"  {d['column']}: mean Δ={d.get('mean_delta', 0):+,.3g}")
 
+    return comparison
 
-asyncio.run(compare_periods())
+
+comparison = asyncio.run(compare_periods())
 ```
 
-Columns with the largest `abs(mean_delta)` experienced the biggest distributional shift during COVID. Typically this includes CPI (inflation spike), employment variables (job market disruption), and certain FX rates (currency volatility). The comparison is a drift detector: any column that shifted dramatically is a candidate for investigation, model retraining, or alerting downstream consumers.
+Expected output (first five lines):
+
+```text
+Top 10 column mean shifts:
+  median_income: mean Δ=+1.17e+03
+  labour_force: mean Δ=+892
+  cpi_food: mean Δ=+72
+  cpi_housing: mean Δ=+71.5
+```
+
+Read this carefully before concluding "COVID changed income most". The deltas are in each column's own units — dollars for `median_income`, thousands of people for `labour_force`, index points for CPI — so the ranking mostly reflects units and long-run growth (both periods span many years of steadily rising series). The change that matters for a labour market is further down: `employment_rate` fell by 1.8 points and `unemployment_rate` rose by 1.28 points, both in percentage points. Before ranking shifts across columns, scale them (for example, divide each `mean_delta` by the column's standard deviation in period A). The comparison is a drift detector: any column that shifted far relative to its own spread is a candidate for investigation, model retraining, or alerting downstream consumers. Note the `return comparison` — the function hands the result back so `main()` can use it in Step 8.
 
 ### Step 7: Generate an HTML report
 
@@ -3502,7 +3562,7 @@ except Exception as exc:
     raise
 ```
 
-Bundling the three async calls into one `main()` coroutine and running it with a single `asyncio.run` avoids the overhead of creating multiple event loops. The `try` / `except` wrapper catches any unexpected error and prints a readable message before re-raising so the traceback is still shown.
+Bundling the three async calls into one `main()` coroutine and running it with a single `asyncio.run` avoids creating multiple event loops. In Jupyter or Colab, replace the `asyncio.run(...)` calls with the `shared` helpers (`run_profile`, `run_compare`, `run_report`) shown earlier. The `try` / `except` wrapper catches any unexpected error and prints a readable message before re-raising so the traceback is still shown.
 
 ## Try It Yourself
 
@@ -3514,7 +3574,9 @@ Bundling the three async calls into one `main()` coroutine and running it with a
 
 **Drill 4.** Write your own alert interpreter function that takes an alert dict and returns a plain-English sentence describing the issue and a recommended fix. Use it to format the alert output.
 
-**Drill 5.** Profile just the FX rates table (before merging). What alerts fire on the raw FX data that do not fire on the merged economic table? Why?
+**Drill 5.** Profile just the FX rates table (before merging). Compare its alerts with the merged economic table's. Which alerts appear only after the merge, and why?
+
+**Drill 6.** Write a small cleaning step for the economic table that you can justify from the profile (for example, keep one CPI series, or restrict to months where FX exists). Then use `run_compare(economic, economic_clean)` (or `explorer.compare`) to show what changed: rows, columns, and the null fractions.
 
 ## Cross-References
 
@@ -3537,23 +3599,40 @@ You should now be able to:
 
 ### Drill answers
 
-1. Default config typically produces 3–5× more alerts because its correlation threshold (0.80) flags every pair of macro indicators. Null and skewness alerts may also increase.
-2. With threshold 0.80 you will see pairs like CPI vs employment, CPI vs FX rates, etc. These are all structurally expected — the threshold is too tight for macro data.
-3. Typically CPI has the largest pre-2008 vs post-2008 shift because the GFC triggered a regime change in inflation dynamics. Employment rate may also shift.
+1. The default config produces 29 alerts against 18 for the tuned config. The 11 new ones: `high_cardinality` on the four CPI columns (their default threshold is 0.9 and about 94% of CPI values are unique — expected for a continuous index), `high_skewness` on `employment_rate` (−2.25) and `labour_force` (−2.13) because the default skewness threshold is 2.0, and five extra `high_correlation` pairs between 0.90 and 0.95 (for example `employment_rate`/`unemployment_rate` at −0.94). The default correlation threshold is 0.90. The FX `high_nulls` alerts appear in both.
+2. At 0.80 you get 23 correlation alerts (35 alerts in total). The new pairs mostly involve `usd_sgd` (with CPI series, median income and `gbp_sgd`). None is surprising: they are trending series computed over only the 60 months where FX exists. The threshold is too tight for macro data — it flags shared trends, not data problems.
+3. Use `pl.date(2008, 9, 1)` as the cutoff. The largest raw `mean_delta` is `median_income` (about +1,117), then `labour_force` (+642), then the CPI series (+61 to +62). As in Step 6, these are steadily growing series measured in large units, so the raw ranking says "later years are higher", not "the GFC caused this". Scale by each column's standard deviation before you interpret a shift as a regime change.
 4. ```python
    def interpret(alert: dict) -> str:
        t = alert["type"]
-       col = alert.get("column", "N/A")
+       col = alert.get("column", alert.get("columns", "N/A"))
        v = alert.get("value", "N/A")
        templates = {
-           "high_nulls": f"{col} has {v:.1%} missing — impute or drop",
-           "high_skewness": f"{col} skew={v:.2f} — log-transform or winsorise",
-           "constant": f"{col} has no variance — drop column",
-           "high_correlation": f"{col} |r|={v:.2f} — consider dropping one",
+           "high_nulls": lambda: f"{col} has {v:.1%} missing — impute or drop",
+           "high_skewness": lambda: f"{col} skew={v:.2f} — log-transform or winsorise",
+           "constant": lambda: f"{col} has no variance — drop column",
+           "high_correlation": lambda: f"{col} |r|={abs(v):.2f} — consider dropping one",
+           "high_cardinality": lambda: f"{col} is {v:.0%} unique — an ID or date? bin or drop",
        }
-       return templates.get(t, f"{t} on {col}: {v}")
+       return templates[t]() if t in templates else f"{t} on {col}: {v}"
    ```
-5. Raw FX data shows high-cardinality alerts (every date is unique), which are suppressed after aggregation because the month_date column has fewer unique values.
+   The `lambda:` wrappers build each sentence only for the alert type that matched — without them, every f-string would be evaluated on every call, and `{v:.1%}` would fail whenever `v` is not a number.
+5. The raw FX table fires a single alert: `high_cardinality` on `date` (every day is unique). Its nulls are 39 of 1,305 rows (3%), below the threshold. After the merge, the four FX columns fire `high_nulls` at 80%, because daily FX from 2020 onwards was aligned to a monthly spine starting in 2000. The merge, not the source, created those nulls — always profile both the inputs and the joined result.
+6. One defensible answer:
+   ```python
+   from shared import run_compare
+
+   economic_clean = (
+       economic.filter(pl.col("month_date") >= pl.date(2020, 1, 1))
+       .drop("cpi_food", "cpi_transport", "cpi_housing", "date", "quarter")
+   )
+   diff = run_compare(economic, economic_clean)
+   print(diff["shape_comparison"])     # 300 -> 60 rows, 15 -> 10 columns
+   for d in diff["column_deltas"]:
+       if d["column"].endswith("_sgd"):
+           print(d["column"], d["null_pct_delta"])   # about -0.8: the FX nulls are gone
+   ```
+   The justification comes from the profile: the extra CPI series are near-duplicates (r > 0.97) of `cpi_all_items`, and the FX columns are only meaningful from 2020. The comparison is the proof that the fix did what you claimed.
 
 ---
 

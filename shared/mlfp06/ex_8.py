@@ -117,6 +117,75 @@ def load_mmlu_eval(n_rows: int = 100) -> pl.DataFrame:
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRAINED-ADAPTER DISCOVERY — what Ex 2.6 (SFT) and Ex 3.3 (DPO) wrote
+# ════════════════════════════════════════════════════════════════════════
+#
+# kailash-align's AlignmentPipeline saves every trained adapter to
+# ``<experiment_dir>/<adapter_name>/<method>/adapter/`` (PEFT format:
+# adapter_config.json + adapter_model.safetensors). An ``AdapterRegistry()``
+# built without a backing model registry lives in memory only, so a new
+# process cannot see adapters registered by an earlier exercise. The
+# capstone therefore re-discovers the adapters on disk and registers them.
+
+ADAPTER_SEARCH_ROOTS: tuple[Path, ...] = (
+    Path("outputs") / "ex2_finetuning",  # Ex 2.6 SFT experiment_dir
+    Path("dpo_output"),  # Ex 3.3 DPO experiment_dir
+)
+
+
+def discover_trained_adapters(
+    roots: tuple[Path, ...] = ADAPTER_SEARCH_ROOTS,
+) -> list[dict[str, Any]]:
+    """Return one dict per PEFT adapter found under ``roots``.
+
+    Keys: adapter_name, method, adapter_path, base_model_id, rank, alpha,
+    target_modules, trainable_params (counted from the safetensors file).
+    """
+    import json
+
+    found: list[dict[str, Any]] = []
+    for root in roots:
+        for cfg_path in sorted(root.glob("**/adapter/adapter_config.json")):
+            adapter_dir = cfg_path.parent
+            meta = json.loads(cfg_path.read_text())
+            weights = adapter_dir / "adapter_model.safetensors"
+            found.append(
+                {
+                    "adapter_name": adapter_dir.parent.parent.name,
+                    "method": adapter_dir.parent.name,
+                    "adapter_path": str(adapter_dir),
+                    "base_model_id": meta.get("base_model_name_or_path") or "",
+                    "rank": int(meta.get("r") or 0),
+                    "alpha": int(meta.get("lora_alpha") or 0),
+                    "target_modules": tuple(sorted(meta.get("target_modules") or ())),
+                    "trainable_params": (
+                        count_safetensors_params(weights) if weights.exists() else 0
+                    ),
+                }
+            )
+    return found
+
+
+def count_safetensors_params(path: str | Path) -> int:
+    """Count parameters in one ``.safetensors`` file, or every shard in a dir.
+
+    Reads tensor shapes from the file header only — no weights are loaded.
+    """
+    from math import prod
+
+    from safetensors import safe_open
+
+    path = Path(path)
+    files = sorted(path.glob("*.safetensors")) if path.is_dir() else [path]
+    total = 0
+    for f in files:
+        with safe_open(str(f), framework="pt") as handle:
+            for key in handle.keys():
+                total += prod(handle.get_slice(key).get_shape())
+    return total
+
+
+# ════════════════════════════════════════════════════════════════════════
 # SHARED SIGNATURE & BASE AGENT
 # ════════════════════════════════════════════════════════════════════════
 #

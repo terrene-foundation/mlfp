@@ -18,8 +18,8 @@
 #   1. Theory — what examples do to LLM behaviour
 #   2. Build — prompt with curated positive/negative exemplars
 #   3. Train — evaluate on SST-2 eval docs
-#   4. Visualise — few-shot metrics vs zero-shot expectation
-#   5. Apply — MAS supervisory report triage
+#   4. Visualise — few-shot metrics vs your measured zero-shot run
+#   5. Apply — supervisory incident-report triage at a financial regulator
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -32,10 +32,12 @@ from shared.mlfp06.ex_1 import (
     CATEGORIES,
     compute_metrics,
     get_eval_docs,
+    load_technique_metrics,
     normalise_label,
     plot_comparison_bars,
     print_summary,
     run_delegate,
+    save_technique_metrics,
 )
 
 load_dotenv()
@@ -157,64 +159,65 @@ print("\n[ok] Checkpoint passed — few-shot evaluation complete\n")
 # ════════════════════════════════════════════════════════════════════════
 print_summary(few_shot_results, "Few-Shot (4 examples)")
 
-# R9A: visual proof — few-shot vs zero-shot accuracy comparison
-# We use expected zero-shot baselines so this file is independently runnable
-# (R10: no runtime chaining between technique files).
-zero_shot_expected = {
-    "strategy": "Zero-Shot",
-    "accuracy": 0.80,
-    "total_tokens": 1500,
-    "avg_latency_s": 1.0,
-    "n": 20,
-}
+# R9A: visual proof — few-shot vs zero-shot accuracy comparison.
+# The zero-shot bar comes from YOUR run of 01_zero_shot.py (saved to
+# outputs/ex1_prompting/technique_metrics.json). If you have not run it
+# yet, the chart shows only the few-shot bar — no invented baseline.
 few_shot_metrics = compute_metrics(few_shot_results, "Few-Shot")
+save_technique_metrics(few_shot_metrics)
 plot_comparison_bars(
-    [zero_shot_expected, few_shot_metrics],
-    title="Few-Shot vs Zero-Shot — Accuracy / Cost / Latency",
+    load_technique_metrics(["Zero-Shot"]) + [few_shot_metrics],
+    title="Few-Shot vs Zero-Shot — Accuracy / Tokens / Latency",
     filename="ex1_02_few_shot_comparison.png",
 )
 
-# INTERPRETATION: Few-shot typically gains 3-8 percentage points over
-# zero-shot in exchange for ~3x the input tokens. The cost rises; the
-# output format gets more reliable; ambiguous edge cases improve.
-# If your zero-shot baseline was 80% and your accuracy bar is 90%,
-# few-shot is the first thing to try.
-# The bar chart makes the trade-off visible: how many dollars of extra
-# inference cost does each percentage point of accuracy cost you?
+# INTERPRETATION: Few-shot usually buys a few percentage points over
+# zero-shot in exchange for several times the input tokens (the four
+# examples are re-sent on every call). Compare the two bars from YOUR
+# run: did accuracy rise, and by how much did tokens grow? On a 20-doc
+# sample one doc is 5 points, so small differences are within noise.
+# The bar chart makes the trade-off visible: how many extra tokens does
+# each percentage point of accuracy cost you?
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: MAS Supervisory Report Triage
+# TASK 5 — APPLY: Supervisory Incident-Report Triage at a Financial Regulator
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: The Monetary Authority of Singapore (MAS) receives ~800
-# supervisory incident reports per week from regulated financial
-# institutions. Each report needs tagging as "material" or "routine"
-# so senior examiners prioritise the material ones.
+# SCENARIO (illustrative): a financial regulator receives several hundred
+# incident reports per week from the institutions it supervises. Each
+# report needs tagging as "material" or "routine" so senior examiners
+# look at the material ones first.
 #
 # Zero-shot struggles because:
-#   - The domain is specialised (banking operational risk vocabulary)
-#   - The distinction between "material" and "routine" is organisation-
-#     specific — MAS's definition differs from a textbook definition
+#   - The domain is specialised (banking operational-risk vocabulary)
+#   - "Material" is defined by the regulator's own supervisory policy,
+#     not by a textbook — the model's pre-training prior is the wrong one
 #   - Examiner time is expensive; misclassification costs senior time
 #
 # Few-shot fits because:
-#   - MAS can provide 6 examples from their historical log that
-#     encode THEIR definition of "material" (not a generic one)
-#   - The LLM mimics those examples instead of relying on its
-#     pre-training prior
-#   - Cost is still bounded (6 examples ~~ 600 extra input tokens per call;
-#     800 calls/week ~~ S$30/week)
+#   - The supervision team can supply 6 examples from its historical log
+#     that encode ITS definition of "material"
+#   - The LLM mimics those examples instead of relying on its prior
+#   - The extra cost is just the examples' tokens on every call —
+#     measured below from your two runs
+zero_shot_saved = load_technique_metrics(["Zero-Shot"])
+if zero_shot_saved:
+    extra_per_call = (
+        few_shot_metrics["total_tokens"] / max(few_shot_metrics["n"], 1)
+        - zero_shot_saved[0]["total_tokens"] / max(zero_shot_saved[0]["n"], 1)
+    )
+    print(f"\n  Extra tokens per call paid for the examples: {extra_per_call:,.0f}")
 #
-# BUSINESS IMPACT: Senior examiners cost ~S$250/hour. Each avoided
-# misrouting saves ~30 minutes of senior triage time = S$125/incident.
-# At 800 reports/week and a 5% improvement over zero-shot routing
-# (40 incidents/week), that's ~S$5,000/week = S$260,000/year in
-# reclaimed senior capacity, against S$1,560/year in LLM cost.
-# 167x ROI.
+# BUSINESS IMPACT (illustrative figures): suppose a senior examiner's
+# time costs S$250/hour and each mis-routed report wastes 30 minutes
+# (S$125). At 800 reports/week, a 5-point routing improvement is
+# 40 reports/week = S$5,000/week ≈ S$260,000/year of reclaimed
+# capacity. Price the extra example tokens with the reference price
+# from 01 and compare — the examples are almost always the cheaper side.
 #
 # OPERATIONAL NOTE: Store the examples in a version-controlled repo
-# (not in the Python file). When MAS's definition evolves, the examples
-# are updated by the compliance team without touching code.
+# (not in the Python file). When the supervisory definition evolves,
+# the compliance team updates the examples without touching code.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -228,8 +231,8 @@ print(
   [x] Built a few-shot prompt with curated positive/negative examples
   [x] Understood in-context learning — LLMs learn patterns from the prompt
   [x] Traded longer prompts for better accuracy and output consistency
-  [x] Sized the approach against a real MAS supervisory triage use case
-  [x] Computed the ROI of examples vs zero-shot inference cost
+  [x] Sized the approach against a supervisory-report triage use case
+  [x] Compared the extra example tokens against the accuracy they buy
 
   KEY INSIGHT: Examples are the cheapest form of "training" an LLM.
   You don't update weights — you update the prompt. When the

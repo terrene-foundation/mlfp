@@ -13,7 +13,8 @@
 #   - Implement layer-wise freezing for efficient fine-tuning
 #   - Use BERT's WordPiece tokeniser vs our word-level vocabulary
 #   - Track fine-tuning experiments with ExperimentTracker
-#   - Apply BERT fine-tuning to Singapore banking sentiment analysis
+#   - Recognise when a fine-tuned classifier is the WRONG tool: a topic
+#     head run on out-of-distribution bank messages
 #
 # PREREQUISITES: ex_4/02_transformer_encoder.py
 # ESTIMATED TIME: ~30 min
@@ -485,83 +486,70 @@ print("\n--- Checkpoint 4 passed --- per-class analysis complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 6 — Apply: Sentiment Analysis for DBS Bank Customer Reviews
+# TASK 6 — Apply: What a News-Topic Model Does With Bank Messages
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: DBS Bank, Southeast Asia's largest bank by assets (S$739B),
-# processes millions of customer interactions monthly across digital
-# banking, branches, and customer service. The customer experience team
-# needs real-time sentiment analysis to detect emerging service issues
-# before they escalate.
+# SCENARIO: The customer-experience team at a Singapore retail bank wants
+# to triage incoming customer messages — complaints vs praise — and asks
+# whether "the BERT model you just fine-tuned" can do it.
 #
-# BUSINESS VALUE: Fine-tuning BERT on DBS's customer review corpus enables
-# accurate sentiment classification (positive/negative/neutral) that catches
-# nuanced complaints traditional keyword filters miss. A customer writing
-# "I've been waiting 3 weeks for my card replacement -- this is what I
-# get for being a Treasures client?" expresses frustration without using
-# obvious negative keywords.
+# It cannot, and showing WHY is the lesson. You fine-tuned BERT on AG
+# News, whose labels are TOPICS (World, Sports, Business, Sci/Tech). A
+# classifier can only answer the question its labels asked: fed bank
+# messages, it returns a news topic for each one — never "complaint".
+# Its softmax confidence on these out-of-distribution (OOD) messages is
+# NOT evidence that it understood them: neural classifiers are often
+# confidently wrong off-distribution. Below we compare that confidence
+# with the model's confidence on the in-distribution test headlines.
 #
-# DOLLAR IMPACT:
-#   - Early churn detection: Identifying at-risk Treasures/Private Banking
-#     clients (avg S$500K-2M AUM) before they leave. Saving just 50 high-value
-#     clients/year = S$25M-100M in retained AUM, generating S$250K-1M in
-#     annual fee income.
-#   - NPS improvement: Proactive outreach to dissatisfied customers improves
-#     Net Promoter Score. Each 1-point NPS increase correlates with 1-2%
-#     revenue growth for banks (McKinsey, 2023).
-#   - Compliance: MAS requires banks to demonstrate customer outcome monitoring.
-#     Automated sentiment tracking provides auditable evidence.
-print("\n== Application: Sentiment Analysis for DBS Bank ==")
+# THE RIGHT FIX: fine-tune a sentiment head on labelled customer
+# messages — the same recipe as TASK 4, with different labels. Until
+# then the business value is zero, and the cost of deploying the wrong
+# head is complaints silently filed as "Business news".
+print("\n== Application: a topic model meets bank customer messages ==")
 
-# Classify sample banking reviews (using BERT on AG News as proxy).
-# In production, BERT would be fine-tuned on DBS's actual customer review
-# corpus with banking-specific sentiment labels.
-dbs_reviews = [
+bank_messages = [
     "Digital banking app crashes every time I try to transfer funds",
-    "Excellent service from the relationship manager at Marina Bay branch",
+    "Excellent service from the relationship manager at the city branch",
     "Interest rates on savings account lower than competitors",
-    "New PayLah feature makes splitting bills with friends easy",
+    "New bill-splitting feature in the app makes paying friends easy",
     "Three weeks waiting for credit card replacement is unacceptable",
 ]
 
 bert_model.eval()
 with torch.no_grad():
-    dbs_ids, dbs_mask = tokenise_for_bert(dbs_reviews)
-    dbs_ids = dbs_ids.to(DEVICE)
-    dbs_mask = dbs_mask.to(DEVICE)
-    dbs_logits = bert_model(input_ids=dbs_ids, attention_mask=dbs_mask).logits
-    dbs_probs = F.softmax(dbs_logits, dim=-1)
-    dbs_preds = dbs_logits.argmax(dim=-1).cpu().tolist()
+    msg_ids, msg_mask = tokenise_for_bert(bank_messages)
+    msg_ids = msg_ids.to(DEVICE)
+    msg_mask = msg_mask.to(DEVICE)
+    msg_logits = bert_model(input_ids=msg_ids, attention_mask=msg_mask).logits
+    msg_probs = F.softmax(msg_logits, dim=-1)
+    msg_preds = msg_logits.argmax(dim=-1).cpu().tolist()
 
-print(f"\n  DBS customer review classification (fine-tuned BERT):")
-print(f"  {'Review':<55} {'Category':<12} {'Confidence':>10}")
+print(f"\n  Bank messages through the AG News topic head:")
+print(f"  {'Message':<55} {'Topic':<12} {'Confidence':>10}")
 print("  " + "-" * 79)
-for text, pred, probs in zip(dbs_reviews, dbs_preds, dbs_probs.cpu().tolist()):
-    cls_name = CLASS_NAMES[pred]
-    confidence = max(probs)
-    print(f"  {text[:53]:<55} {cls_name:<12} {confidence:>10.1%}")
+for text, pred, probs in zip(bank_messages, msg_preds, msg_probs.cpu().tolist()):
+    print(f"  {text[:53]:<55} {CLASS_NAMES[pred]:<12} {max(probs):>10.1%}")
 
-# Show BERT's confidence distribution -- high confidence indicates the
-# pre-trained model has strong signal for classification even on domain-
-# shifted text (banking vs news headlines).
-avg_confidence = float(dbs_probs.max(dim=-1).values.mean())
-print(f"\n  Average classification confidence: {avg_confidence:.1%}")
-print(f"  (High confidence on banking text shows BERT's transfer learning)")
+# Confidence on OOD messages vs on the test headlines the head was built for
+with torch.no_grad():
+    in_dist = []
+    for b, (ids, mask, _labels) in enumerate(bert_val_loader):
+        logits = bert_model(input_ids=ids, attention_mask=mask).logits
+        in_dist.append(F.softmax(logits, dim=-1).max(dim=-1).values.cpu())
+        if b == 4:
+            break
+in_dist_conf = float(torch.cat(in_dist).mean())
+ood_conf = float(msg_probs.max(dim=-1).values.mean())
+print(f"\n  Mean top-class confidence, AG News test headlines: {in_dist_conf:.1%}")
+print(f"  Mean top-class confidence, bank messages (OOD):   {ood_conf:.1%}")
+print("  However high the second number is, every answer above is a news")
+print("  TOPIC. Confidence measures how peaked the softmax is, not whether")
+print("  the question was the right one.")
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
-assert len(dbs_preds) == len(dbs_reviews), "Should classify all reviews"
-# INTERPRETATION: Even though BERT was fine-tuned on news headlines (not
-# banking reviews), it can still classify banking text with reasonable
-# confidence. This is the power of transfer learning -- BERT's pre-trained
-# language understanding transfers across domains. With domain-specific
-# fine-tuning on actual DBS reviews, accuracy would improve significantly.
-#
-# BUSINESS IMPACT for DBS Bank:
-#   - Early detection of high-value client dissatisfaction
-#   - 50 retained Treasures clients/year = S$25M-100M retained AUM
-#   - Annual fee income preserved: S$250K-1M
-#   - NPS improvement: 1-point increase -> 1-2% revenue growth
-#   - MAS compliance: auditable customer outcome monitoring
-print("\n--- Checkpoint 5 passed --- DBS Bank application complete\n")
+assert len(msg_preds) == len(bank_messages), "Should classify all messages"
+assert all(0 <= p < len(CLASS_NAMES) for p in msg_preds), "Outputs are topic ids"
+print("\n--- Checkpoint 5 passed --- out-of-distribution check complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -577,7 +565,8 @@ print(
   [x] Used BERT's WordPiece tokeniser (subword, not word-level)
   [x] Fine-tuned BERT on AG News, best acc: {max(bert_accs):.1%}
   [x] Analysed per-class accuracy for production deployment decisions
-  [x] Applied to DBS Bank sentiment analysis with business impact
+  [x] Showed why a topic head cannot do sentiment, and why OOD
+      confidence is not evidence
 
   KEY INSIGHT:
     Pre-training is the single biggest lever in NLP. The Transformer

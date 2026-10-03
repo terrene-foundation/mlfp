@@ -11,7 +11,8 @@
 #   - Build a bidirectional LSTM text classifier for fair comparison
 #   - Contrast sequential (LSTM) vs parallel (Transformer) processing
 #   - Train the LSTM on the same data and compare training dynamics
-#   - Apply LSTM classification to a Singapore airline customer feedback use case
+#   - Check whether a trained classifier's LABELS fit a new business task
+#     (airline feedback routing) before deploying it
 #
 # PREREQUISITES: ex_4/01_self_attention_from_scratch.py
 # ESTIMATED TIME: ~20 min
@@ -234,94 +235,75 @@ print("\n--- Checkpoint 3 passed --- LSTM training dynamics visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Apply: Customer Feedback Classification for Singapore Airlines
+# TASK 5 — Apply: Can the Baseline Route Airline Feedback?
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Singapore Airlines (SQ) collects thousands of customer reviews
-# monthly across Skytrax, Google Reviews, social media, and their own
-# feedback portal. The customer experience team needs to classify each
-# review by topic -- service, food, seat comfort, delays -- to route it
-# to the right operational team for action.
+# SCENARIO: A Singapore-based airline collects thousands of customer
+# reviews a month and wants each one routed by topic — service, seat,
+# delay, food, in-flight tech — to the right operations team.
 #
-# BUSINESS VALUE: Manual review classification takes 2-3 minutes per review.
-# With ~5,000 reviews/month, that is 167-250 hours of analyst time. An
-# automated LSTM classifier handles the first-pass routing, letting analysts
-# focus on extracting actionable insights rather than sorting.
+# The LSTM you trained is a baseline for AG News: its four labels are
+# World, Sports, Business and Sci/Tech. A classifier can only answer the
+# question its labels asked, so it cannot output "Delay" or "Food" — it
+# maps every review onto a NEWS topic, however confident it looks. The
+# table below puts the routing label you WANTED next to the label the
+# model CAN give. Real routing needs the same training recipe on
+# reviews labelled with the airline's own topics.
 #
-# WHY LSTM HERE: The LSTM baseline establishes the accuracy floor. If the
-# LSTM achieves 85% routing accuracy, the Transformer needs to beat that
-# to justify its higher computational cost. If the LSTM achieves 95%, the
-# Transformer's marginal improvement may not justify the infrastructure
-# investment. This is the fundamental question baselines answer.
-#
-# SPEED COMPARISON: On a single GPU, the LSTM processes ~2,000 reviews/second
-# (sequential processing). The Transformer processes ~5,000 reviews/second
-# (parallel attention). For 5,000 reviews/month, both are fast enough --
-# the speed difference matters at scale (millions of reviews).
-print("\n== Application: Customer Feedback at Singapore Airlines ==")
+# WHY THE BASELINE STILL MATTERS: once routing labels exist, an LSTM
+# baseline sets the accuracy floor a Transformer must beat to justify
+# its extra compute — the comparison ex_4/05 makes on AG News.
+print("\n== Application: airline feedback vs a news-topic baseline ==")
 
-sq_reviews = [
+airline_reviews = [
     "World class service from cabin crew on long haul flight",
     "New business class seat design wins innovation award",
-    "Flight delayed three hours due to technical issues at Changi",
+    "Flight delayed three hours due to technical issues at the airport",
     "Award winning food menu designed by celebrity chef",
     "Technology upgrade to in-flight entertainment system completed",
 ]
-review_topics = ["Service", "Seat", "Delay", "Food", "Tech"]
+wanted_topics = ["Service", "Seat", "Delay", "Food", "Tech"]
 
-# TODO: Classify reviews with the trained LSTM model
-# Step 1: lstm_model.eval()
-# Step 2: sq_idx = torch.tensor([text_to_indices(t, vocab, MAX_LEN) for t in sq_reviews], dtype=torch.long, device=DEVICE)
-# Step 3: with torch.no_grad(): get logits, probs, preds
-#   sq_logits = lstm_model(sq_idx)
-#   sq_probs = F.softmax(sq_logits, dim=-1)
-#   sq_preds = sq_logits.argmax(dim=-1).cpu().tolist()
 lstm_model.eval()
+# TODO: Classify airline_reviews with the trained LSTM: token-id tensor
+#   (text_to_indices for each review, on DEVICE), logits, softmax
+#   probabilities, and argmax class ids as a Python list.
 with torch.no_grad():
-    sq_idx = ...  # YOUR CODE HERE
-    sq_logits = ...  # YOUR CODE HERE
-    sq_probs = ...  # YOUR CODE HERE
-    sq_preds = ...  # YOUR CODE HERE
+    review_idx = ...  # YOUR CODE HERE
+    review_logits = ...  # YOUR CODE HERE
+    review_probs = ...  # YOUR CODE HERE
+    review_preds = ...  # YOUR CODE HERE
 
-print(f"\n  Singapore Airlines review classification (LSTM baseline):")
-print(f"  {'Review':<55} {'Topic':<8} {'AG News Class':<12} {'Confidence':>10}")
+print(f"\n  Airline reviews through the AG News LSTM:")
+print(f"  {'Review':<55} {'Wanted':<8} {'Model says':<12} {'Confidence':>10}")
 print("  " + "-" * 87)
 for text, topic, pred, probs in zip(
-    sq_reviews, review_topics, sq_preds, sq_probs.cpu().tolist()
+    airline_reviews, wanted_topics, review_preds, review_probs.cpu().tolist()
 ):
-    cls_name = CLASS_NAMES[pred]
-    confidence = max(probs)
-    print(f"  {text[:53]:<55} {topic:<8} {cls_name:<12} {confidence:>10.1%}")
+    print(f"  {text[:53]:<55} {topic:<8} {CLASS_NAMES[pred]:<12} {max(probs):>10.1%}")
+print("  None of the 'Model says' labels is a routing team: the label spaces differ.")
 
-# TODO: Measure throughput
-# Hint: import time
-# Hint: batch_input = torch.randint(0, len(vocab), (128, MAX_LEN), device=DEVICE)
-# Hint: with torch.no_grad(): run 10 batches, measure time, compute throughput
+# Measure throughput on a batch of 128 sequences of random token ids
 import time
 
+lstm_model.eval()
 batch_input = torch.randint(0, len(vocab), (128, MAX_LEN), device=DEVICE)
 with torch.no_grad():
     t0 = time.perf_counter()
     for _ in range(10):
         _ = lstm_model(batch_input)
     t1 = time.perf_counter()
-    throughput = ...  # YOUR CODE HERE — (128 * 10) / (t1 - t0)
-    print(f"\n  LSTM throughput: {throughput:,.0f} reviews/second")
+    # TODO: sequences processed per second across the 10 timed batches
+    throughput = ...  # YOUR CODE HERE
+    print(f"\n  LSTM throughput: {throughput:,.0f} sequences/second")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
-assert len(sq_preds) == len(sq_reviews), "Should classify all reviews"
-# INTERPRETATION: The LSTM provides a solid baseline for customer feedback
-# classification. Even without domain-specific training, it captures
-# topic-relevant patterns in text. The Transformer (next exercise) will
-# typically match or exceed this accuracy while processing reviews faster.
-#
-# BUSINESS IMPACT for Singapore Airlines:
-#   - 5,000 customer reviews/month
-#   - 2-3 min manual classification per review -> seconds with LSTM
-#   - Annual saving: 2,000-3,000 analyst hours
-#   - Faster issue escalation: delay complaints reach operations within minutes
-#   - The Transformer comparison (next) determines if the accuracy uplift
-#     justifies the additional compute cost
-print("\n--- Checkpoint 4 passed --- Singapore Airlines application complete\n")
+assert len(review_preds) == len(airline_reviews), "Should classify all reviews"
+assert all(0 <= p < len(CLASS_NAMES) for p in review_preds), "Outputs are AG News ids"
+# BUSINESS IMPACT (illustrative assumptions): at ~5,000 reviews/month and
+# 2-3 minutes of manual sorting each, routing costs 167-250 analyst hours
+# a month. That saving only materialises after a classifier is trained
+# on the airline's own routing labels; this news-topic model saves none.
+print("\n--- Checkpoint 4 passed --- airline feedback check complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -337,7 +319,7 @@ print(
   [x] Contrasted sequential (LSTM) vs parallel (Transformer) processing
   [x] Trained on full AG News (120K headlines), best acc: {max(lstm_accs):.1%}
   [x] Measured inference throughput for production sizing
-  [x] Applied to Singapore Airlines customer feedback classification
+  [x] Checked a routing use case against the model's label space
 
   KEY INSIGHT:
     The LSTM is a strong baseline, not a strawman. On short sequences

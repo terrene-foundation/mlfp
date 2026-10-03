@@ -126,98 +126,6 @@ standard_model = ____
 #       tracker, exp_name, standard_model, "standard_ae", flat_loader, standard_ae_loss
 standard_losses = ____
 
-# TODO: Visualise reconstructions using show_reconstruction
-#       Pass: standard_model, X_test_flat, title="Standard AE (Overcomplete)"
-____
-
-# ── Checkpoint ──────────────────────────────────────────────────────
-assert len(standard_losses) == EPOCHS, f"Expected {EPOCHS} losses"
-assert standard_losses[-1] < standard_losses[0], "Loss should decrease"
-print("\n--- Checkpoint passed --- standard AE trained\n")
-
-if has_registry:
-    register_model(registry, "standard_ae", standard_model, standard_losses[-1])
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 4 — Apply: The Cautionary Tale
-# ════════════════════════════════════════════════════════════════════════
-# The application of the Standard AE IS the risk demonstration itself.
-# This is not a technique you deploy — it is a mistake you learn from.
-#
-# SCENARIO: A junior data scientist at a Singapore bank builds an
-# anomaly detector using this overcomplete architecture. The model
-# achieves 0.001 MSE on validation data — "incredible performance!"
-# The model goes to production. Fraud losses INCREASE because the
-# model reconstructs fraudulent transactions just as well as normal
-# ones. Every transaction looks "normal" to the model because it
-# learned to copy, not to understand.
-#
-# Visual proof: Look at the reconstruction grid above. The outputs
-# are nearly pixel-perfect copies of the inputs. A model that can
-# perfectly reconstruct ANYTHING has learned nothing about the
-# structure of the data.
-#
-# The FIX: Every subsequent variant in this exercise addresses the
-# identity risk through a different mechanism:
-#   - Undercomplete AE: smaller bottleneck (forced compression)
-#   - Denoising AE: noise injection (can't memorise noisy pixels)
-#   - Sparse AE: L1 penalty (most neurons forced to zero)
-#   - Contractive AE: Jacobian penalty (smooth latent space)
-#   - VAE: KL divergence (regularised latent distribution)
-
-# INTERPRETATION: The near-perfect reconstruction is DECEPTIVE. This
-# model learned to copy, not to compress. In production, it would fail
-# to detect anomalies because it reconstructs EVERYTHING well — even
-# fraudulent transactions it should flag as unusual.
-#
-# BUSINESS IMPACT: At a bank processing 500K transactions/day, an
-# identity-risk model in production means ZERO additional fraud
-# detection versus the baseline — months of development wasted, and
-# fraud losses continue unchecked. The cost is not just the lost
-# engineering time; it is the false confidence that "we have an ML
-# fraud detector" when in fact we have an expensive photocopier.
-
-print("\n" + "=" * 70)
-print("  KEY TAKEAWAY: Near-Perfect Reconstruction = Warning Sign")
-print("=" * 70)
-print(f"  Final loss: {standard_losses[-1]:.6f}")
-print("  This loss is suspiciously low. The model has enough capacity")
-print("  to memorise rather than generalise.")
-print()
-print("  In production, this model would:")
-print("  - Reconstruct fraudulent transactions perfectly (no anomaly signal)")
-print("  - Reconstruct novel patterns perfectly (no novelty detection)")
-print("  - Waste compute on copying instead of learning structure")
-print()
-print("  SOLUTION: Read the next 9 variants to see how each one")
-print("  solves this fundamental problem.")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# REFLECTION
-# ════════════════════════════════════════════════════════════════════════
-print("\n" + "=" * 70)
-print("  WHAT YOU'VE MASTERED")
-print("=" * 70)
-print(
-    """
-  [x] Built an overcomplete autoencoder (hidden=1024 > input=784)
-  [x] Observed the identity-function risk: near-zero loss, no learning
-  [x] Understood why perfect reconstruction is a RED FLAG, not success
-  [x] Identified the production failure mode: anomaly detection that
-      detects nothing because the model copies everything
-  [x] Tracked training with ExperimentTracker
-
-  KEY INSIGHT: Loss alone does not prove a model is useful. A model
-  that achieves 0.001 MSE by memorising is worse than one that
-  achieves 0.05 MSE by learning structure. The reconstruction grid
-  is your proof — look at the images, not just the numbers.
-
-  Next: 02_undercomplete_ae.py fixes this with a bottleneck...
-"""
-)
-
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — read the five instruments before Visualise
 # ══════════════════════════════════════════════════════════════════
@@ -313,7 +221,9 @@ diag, findings = run_diagnostic_checkpoint(
 #  Stethoscope's over/underfit detection.
 # ════════════════════════════════════════════════════════════════════
 
-show_reconstruction(standard_model, X_test_flat, "Standard AE (Overcomplete)")
+# TODO: Visualise reconstructions using show_reconstruction
+#       Pass: standard_model, X_test_flat, title="Standard AE (Overcomplete)"
+____
 
 # ── Checkpoint ──────────────────────────────────────────────────────
 assert len(standard_losses) == EPOCHS, f"Expected {EPOCHS} losses"
@@ -402,4 +312,3 @@ print(
   Next: 02_undercomplete_ae.py fixes this with a bottleneck...
 """
 )
-

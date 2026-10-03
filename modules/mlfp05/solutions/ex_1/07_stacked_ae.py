@@ -379,9 +379,9 @@ print(
     f"Latent dimension: {LATENT_DIM} (vs 784 raw pixels = {784/LATENT_DIM:.0f}x smaller)"
 )
 print(f"\nFor a catalogue of 1M products:")
-print(f"  Raw pixel search:     784 dims x 1M = 3.0 GB index")
+print(f"  Raw pixel search:     784 dims x 1M = 3.1 GB index (float32)")
 print(
-    f"  Latent space search:  {LATENT_DIM} dims x 1M = {LATENT_DIM * 4 / 1e6:.1f} MB index"
+    f"  Latent space search:  {LATENT_DIM} dims x 1M = {LATENT_DIM * 4 * 1_000_000 / 1e6:.0f} MB index"
 )
 print(f"  Index size reduction: {784 / LATENT_DIM:.0f}x smaller")
 print(

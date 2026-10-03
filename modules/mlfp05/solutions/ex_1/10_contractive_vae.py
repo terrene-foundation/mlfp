@@ -375,15 +375,15 @@ if has_registry:
 # APPLY — Drug Molecule Similarity Search
 # ════════════════════════════════════════════════════════════════════════
 # BUSINESS SCENARIO: You are an ML engineer at a Singapore biotech
-# company (A*STAR spinoff). Drug discovery involves exploring vast
+# company. Drug discovery involves exploring vast
 # molecular spaces. Given a lead compound that shows promise, you
 # want to find structurally similar molecules that might have improved
 # properties. The CVAE's smooth latent space means "nearby in latent
 # space" = "structurally similar as molecules."
 #
-# We simulate this with Fashion-MNIST: each image class represents
-# a "molecular family." Smooth interpolation between families suggests
-# the latent space can guide molecular optimisation.
+# We simulate this with SYNTHETIC descriptor vectors: 5 clustered
+# "drug families" in a 50-dimensional descriptor space. Real work would
+# use measured descriptors (LogP, MW, TPSA, ...) for real compounds.
 
 print("\n" + "=" * 70)
 print("  APPLICATION: Molecular Similarity Search")
@@ -532,15 +532,13 @@ print("=" * 64)
 print(f"\nMolecular library: {N_MOLECULES:,} compounds, {N_DESCRIPTORS} descriptors")
 print(f"CVAE latent dimension: {MOL_LATENT}")
 print(f"Same-family retrieval rate: {same_family_pct:.0f}% (top-{top_k})")
-print(f"\nDrug discovery impact:")
+print(f"Random-pick baseline:       {100 / N_FAMILIES:.0f}% (1 in {N_FAMILIES} families)")
+print(f"\nDrug discovery impact (ILLUSTRATIVE assumptions, not measured here):")
 print(f"  Traditional screening: test 10,000 compounds at S$100 each = S$1M")
-print(f"  CVAE-guided search: prioritise top-100 neighbours first")
-print(f"  Expected hit rate improvement: ~3-5x (from random screening)")
-print(f"  Cost savings per drug programme: S$200K-400K in early screening")
-print(f"\nSmooth latent space advantage:")
-print(f"  Interpolation between a hit and a miss suggests optimisation direction")
-print(f"  'Move 20% toward molecule X in latent space' = specific structural changes")
-print(f"  This is medicinal chemistry guidance from the model itself")
+print(f"  CVAE-guided search: test the top-100 latent neighbours of a lead first")
+print(f"  This run only shows that latent neighbours share a family far more")
+print(f"  often than random picks; real hit-rate gains must be measured in")
+print(f"  the lab on real compounds.")
 print("=" * 64)
 
 

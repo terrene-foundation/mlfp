@@ -1,11 +1,13 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 #
-# Note: kailash-ml's RLTrainer is planned but not yet released. This exercise
-# implements DQN from scratch as an interim approach. Once RLTrainer ships,
-# this exercise should be updated to wrap the from-scratch implementation
-# with the Kailash engine for the actual training loop, keeping the manual
-# implementation for theory/pedagogy.
+# Note on the Kailash RL engine: this exercise hand-writes DQN on purpose,
+# so you see every moving part (replay buffer, target network, epsilon).
+# The library path for production RL is `km.rl_train(env, algo="dqn", ...)`
+# (also `kailash_ml.rl.RLTrainer` + `RLTrainingConfig`; there is no top-level
+# `kailash_ml.RLTrainer`). Its backend is Stable-Baselines3, an optional
+# extra (`pip install kailash-ml[rl]`) that the course environment does NOT
+# install — without it `km.rl_train` raises ImportError.
 #
 """
 # ════════════════════════════════════════════════════════════════════════

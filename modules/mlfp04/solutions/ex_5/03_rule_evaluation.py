@@ -23,7 +23,7 @@
 #   2. Build — implement `generate_rules()` and the three-threshold filter
 #   3. Train — mine + score rules on the Singapore retail basket
 #   4. Visualise — top rules table + support/confidence/lift scatter
-#   5. Apply — Watsons "buy-together" personalisation engine
+#   5. Apply — health & beauty retailer "buy-together" recommender
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -276,10 +276,56 @@ print("\n=== Category Breakdown ===")
 print(f"  Cross-category rules: {cross}")
 print(f"  Within-category rules: {within}")
 
-# Polars scatter-ready frame (for ModelVisualizer or plotly in notebooks)
-scatter_df = rules_to_polars(rules).sort("lift", descending=True).head(100)
+# Polars frame of every rule (also saved for later lessons)
+scatter_df = rules_to_polars(rules).sort("lift", descending=True)
 scatter_df.write_csv(OUTPUT_DIR / "top_rules_scatter.csv")
 print(f"\n  Saved: {OUTPUT_DIR / 'top_rules_scatter.csv'}")
+
+# ── Visualisation ─────────────────────────────────────────────────────
+# Support (x) vs confidence (y), coloured by lift. The dashed lines are
+# the actionable thresholds: every rule in the top-right box AND with
+# lift > 1.5 survives the three-threshold filter. Rules high on the y-axis
+# but with lift ~1 are the "popularity" trap from the theory section.
+import plotly.graph_objects as go  # noqa: E402
+
+rule_labels = [
+    f"{a} -> {c}"
+    for a, c in zip(
+        scatter_df["antecedent"].to_list(), scatter_df["consequent"].to_list()
+    )
+]
+fig_rules = go.Figure(
+    go.Scatter(
+        x=scatter_df["support"].to_list(),
+        y=scatter_df["confidence"].to_list(),
+        mode="markers",
+        text=rule_labels,
+        marker=dict(
+            color=scatter_df["lift"].to_list(),
+            colorscale="Viridis",
+            colorbar=dict(title="Lift"),
+            size=8,
+            line=dict(width=0.5, color="white"),
+        ),
+        hovertemplate="%{text}<br>support=%{x:.3f}<br>confidence=%{y:.3f}"
+        "<br>lift=%{marker.color:.2f}<extra></extra>",
+    )
+)
+fig_rules.add_vline(x=0.03, line_dash="dash", line_color="grey")
+fig_rules.add_hline(y=0.4, line_dash="dash", line_color="grey")
+fig_rules.update_layout(
+    title=(
+        f"All {len(rules)} rules: support vs confidence, colour = lift "
+        f"({len(actionable)} actionable)"
+    ),
+    xaxis_title="Support",
+    yaxis_title="Confidence",
+    height=550,
+    width=900,
+)
+rules_path = OUTPUT_DIR / "03_rule_scatter.html"
+fig_rules.write_html(str(rules_path))
+print(f"[viz] Rule quality scatter: {rules_path}")
 
 # INTERPRETATION: Cross-category rules are the commercially interesting
 # ones. Within-category rules (shampoo + soap) mostly restate what a
@@ -290,10 +336,10 @@ print(f"\n  Saved: {OUTPUT_DIR / 'top_rules_scatter.csv'}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Watsons personalisation engine
+# TASK 5 — APPLY: health & beauty cart-page recommender
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Watsons operates ~110 stores across Singapore plus an online
-# channel. The CRM team wants a "buy-together" recommender that shows
+# SCENARIO: A Singapore health & beauty retailer runs ~100 stores plus
+# an online channel. The CRM team wants a "buy-together" recommender that shows
 # a shopper exactly ONE extra product on the cart page, chosen to
 # maximise incremental basket value. The recommendation MUST be:
 #   - Reliable  (high confidence — doesn't annoy shoppers with misses)
@@ -304,12 +350,12 @@ print(f"\n  Saved: {OUTPUT_DIR / 'top_rules_scatter.csv'}")
 # this recommender: support gates inventory, confidence gates annoyance,
 # lift gates relevance.
 #
-# BUSINESS IMPACT: Industry A/B tests on cart-page recommenders typically
-# show 2-4% conversion lift and 5-9% AOV lift when the recommendation is
-# driven by high-lift association rules rather than "most popular."
-# Watsons SG's reported online GMV is on the order of S$200M/year; a
-# 6% AOV lift on the recommended items alone is ~S$3-6M/year in pure
-# margin — on top of brand uplift from "the app knows what I need."
+# BUSINESS IMPACT (illustrative assumptions, not measured figures): take
+# an online channel with S$200M/year GMV. If 10% of orders see a
+# recommendation and those orders' value rises 3%, that is ~S$600K/year
+# of extra sales (S$200M x 10% x 3%); margin is a fraction of that.
+# Measure the real conversion and order-value lift with an A/B test
+# against a "most popular item" control before scaling.
 #
 # LIMITATIONS:
 #   - Association rules are backward-looking; seasonal or new-launch items
@@ -429,7 +475,8 @@ print(
   [x] Computed support, confidence, lift, and conviction for every rule
   [x] Applied the three-threshold filter (support + confidence + lift)
   [x] Separated cross-category rules from within-category rules
-  [x] Identified a production scenario (Watsons cart-page recommender)
+  [x] Plotted every rule's support vs confidence coloured by lift
+  [x] Identified a production scenario (cart-page recommender)
       where the three-threshold filter IS the product spec
   [x] Reproduced the entire pipeline via two mlxtend calls — fpgrowth +
       association_rules — confirming the production destination

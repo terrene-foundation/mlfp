@@ -22,7 +22,7 @@
 #   2. Build — wrap mlxtend FP-Growth in a polars-friendly call
 #   3. Train — run FP-Growth on 2,500 SG retail baskets
 #   4. Visualise — compare Apriori vs FP-Growth itemset counts + overlap
-#   5. Apply — Grab GrabFood order-bundle mining at city scale
+#   5. Apply — food-delivery order-bundle mining at city scale
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -43,10 +43,10 @@ from shared.mlfp04.ex_5 import (
 # ── Kailash-ML ExperimentTracker — every association-rules run logs here ─
 tracker, exp_name = setup_engines()
 
-# mlxtend is the only pandas-touching library used in this exercise. The
-# `rules/two-format.md` carve-out permits this because FP-Growth accepts
-# a pandas DataFrame and no polars equivalent exists. We stay polars-native
-# everywhere else; pandas is contained to the mlxtend call site.
+# mlxtend's FP-Growth only accepts a pandas DataFrame and no polars
+# equivalent exists, so we convert with polars' .to_pandas() at the
+# mlxtend call site only. We never import pandas ourselves and stay
+# polars-native everywhere else.
 from mlxtend.frequent_patterns import association_rules as mlx_association_rules
 from mlxtend.frequent_patterns import fpgrowth as mlx_fpgrowth
 
@@ -310,14 +310,16 @@ print(f"[viz] Speed comparison: {speed_path}")
 # (modulo floating-point edge cases right at the threshold). The choice
 # between them is an engineering decision about speed and memory, not
 # correctness. On this small 2,500-row basket, Apriori is fine; at 10M+
-# rows, FP-Growth's single-pass tree construction dominates.
+# rows, FP-Growth wins because it reads the data only twice (two-pass
+# tree construction) instead of once per itemset level.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: GrabFood order-bundle mining at city scale
+# TASK 5 — APPLY: food-delivery order-bundle mining at city scale
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: GrabFood Singapore processes ~800,000 orders per day across
-# 12,000+ merchants. The merchant-growth team wants to find high-lift
+# SCENARIO: Consider a Singapore food-delivery platform handling, for
+# illustration, ~800,000 orders per day across 12,000+ merchants (assumed
+# figures). The merchant-growth team wants to find high-lift
 # menu-item pairings (e.g., "chicken rice + iced milo") so merchants can
 # publish bundle deals that raise average order value.
 #
@@ -326,16 +328,18 @@ print(f"[viz] Speed comparison: {speed_path}")
 #   - Typical basket has 2-4 items, item universe ~100K SKUs across all
 #     merchants — too large for level-wise Apriori to scan repeatedly
 #   - Batch job runs overnight on a single worker; minutes matter
-#   - FP-Growth builds the tree in memory in one pass, then mines it
-#     without further DB scans — on this shape of data it is typically
-#     30-60x faster than Apriori
+#   - FP-Growth builds the tree in memory in two passes, then mines it
+#     without further DB scans — on large, sparse data like this it is
+#     typically many times faster than Apriori (measure it: see the
+#     speed sweep above)
 #
-# BUSINESS IMPACT: A 2024 internal experiment on a SEA food-delivery
-# platform showed that merchants who adopted the top-3 data-driven
-# bundles lifted AOV by 9-14% over the control cohort. At a platform
-# average order value of S$18 and 800K orders/day, a 10% AOV lift is
-# worth ~S$1.4M/day in GMV — roughly S$45M/month. The FP-Growth mining
-# job is ~S$50 of compute per run.
+# BUSINESS IMPACT (illustrative assumptions, not measured figures): if
+# bundles adopted by 10% of merchants lifted those merchants' average
+# order value by 5%, then at an assumed S$18 average order and 800K
+# orders/day the platform would gain ~S$72K/day in GMV (800K x 10% x
+# S$18 x 5%), roughly S$2.2M/month, for a mining job that costs a few
+# dollars of compute per run. Confirm the AOV lift with a merchant-level
+# A/B test before rolling out.
 #
 # LIMITATIONS:
 #   - FP-tree must fit in memory; for datasets with 100M+ rows and dense
@@ -422,8 +426,9 @@ print(
   [x] Wrapped mlxtend FP-Growth in a polars-friendly call boundary
   [x] Converted basket-sets into the one-hot format FP-Growth expects
   [x] Verified that FP-Growth and Apriori agree on frequent itemsets
-  [x] Identified a city-scale workload (GrabFood) where FP-Growth's
-      single-pass tree construction is the economic difference-maker
+  [x] Identified a city-scale workload (food-delivery bundles) where
+      FP-Growth's two-pass tree construction is the economic
+      difference-maker
   [x] Locked in the production destination: two mlxtend calls
       (fpgrowth + association_rules) feed every downstream lesson
 

@@ -10,9 +10,10 @@
 #   - Convert polars transactions into the one-hot format FP-Growth expects
 #   - Compare Apriori and FP-Growth on the same min_support
 #   - Verify that both algorithms produce the same frequent itemsets
+#   - Understand why FP-Growth is preferred on large transaction logs
 #
 # PREREQUISITES:
-#   - 01_apriori_from_scratch.py
+#   - 01_apriori_from_scratch.py (understand what frequent itemset mining does)
 #
 # ESTIMATED TIME: ~25 min
 #
@@ -20,13 +21,11 @@
 #   1. Theory — FP-tree construction and recursive mining
 #   2. Build — wrap mlxtend FP-Growth in a polars-friendly call
 #   3. Train — run FP-Growth on 2,500 SG retail baskets
-#   4. Visualise — Apriori vs FP-Growth itemset overlap
-#   5. Apply — GrabFood order-bundle mining at city scale
+#   4. Visualise — compare Apriori vs FP-Growth itemset counts + overlap
+#   5. Apply — food-delivery order-bundle mining at city scale
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
-
-from collections import defaultdict
 
 import polars as pl
 
@@ -41,26 +40,46 @@ from shared.mlfp04.ex_5 import (
     transactions_to_onehot,
 )
 
-# ── Kailash-ML ExperimentTracker — association-rules zoo shared store ────
+# ── Kailash-ML ExperimentTracker — every association-rules run logs here ─
 tracker, exp_name = setup_engines()
 
-# mlxtend requires pandas internally. Use at the boundary only — keep
-# the rest of this file polars-native.
+# mlxtend's FP-Growth only accepts a pandas DataFrame and no polars
+# equivalent exists, so we convert with polars' .to_pandas() at the
+# mlxtend call site only. We never import pandas ourselves and stay
+# polars-native everywhere else.
 from mlxtend.frequent_patterns import association_rules as mlx_association_rules
 from mlxtend.frequent_patterns import fpgrowth as mlx_fpgrowth
+
+# Apriori is re-declared below (small, in-file) so this script stands
+# alone without cross-file imports from a sibling starting with a digit.
 
 
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — FP-Tree and Recursive Mining
 # ════════════════════════════════════════════════════════════════════════
-# FP-Growth builds a prefix tree (FP-tree) in TWO passes over the data,
-# then mines frequent itemsets recursively from conditional pattern
-# bases in the tree — no more DB scans after tree construction, and no
-# candidate generation at all.
+# Apriori is level-wise: it scans the full database once per itemset size.
+# For a transaction log with tens of millions of rows, that is the cost
+# bottleneck. FP-Growth sidesteps it completely.
 #
-# Guarantees: same frequent itemsets as Apriori given the same
-# min_support, typically 2-10x faster on dense data, 10-100x faster on
-# large data. Downside: the FP-tree has to fit in memory.
+#   FP-TREE CONSTRUCTION (two passes over the data)
+#   Pass 1: count single-item support; drop infrequent items.
+#   Pass 2: for each transaction, sort its items by global frequency (most
+#           frequent first) and insert them into a prefix tree where each
+#           path represents a transaction. Shared prefixes compress.
+#
+#   RECURSIVE MINING (no more DB scans)
+#   For each frequent item (least-frequent first), build a "conditional
+#   pattern base" from the tree, then recursively mine that smaller tree.
+#   No candidate generation. No extra DB passes.
+#
+# GUARANTEES:
+#   - Same frequent itemsets as Apriori given the same min_support
+#   - Typically 2-10x faster on dense data, 10-100x faster on large data
+#   - Higher memory cost (the FP-tree has to fit in RAM)
+#
+# We use the mlxtend implementation so we can focus on the USE of the
+# algorithm rather than re-implement the tree — Apriori gave us the
+# mechanics in 5.1, FP-Growth gives us the speed story here.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -76,9 +95,11 @@ def run_fp_growth(
     """Run mlxtend FP-Growth on a list of basket-sets.
 
     Returns ``(frequent_itemsets_df, rules_df)`` as polars DataFrames.
+    The mlxtend call requires pandas internally; we convert at the
+    boundary so the rest of the exercise stays polars-native.
     """
-    # TODO: build the one-hot transaction matrix using
-    # transactions_to_onehot() and then convert to pandas for mlxtend.
+    # TODO: build the one-hot transaction matrix with
+    # transactions_to_onehot(), then convert it for mlxtend.
     # Hint: polars DataFrames have a .to_pandas() method.
     onehot_pl = ____
     onehot_pd = ____
@@ -86,8 +107,7 @@ def run_fp_growth(
     # TODO: call mlx_fpgrowth() with use_colnames=True so the returned
     # frame uses product names (not column indices).
     fp_frequent = ____
-
-    # TODO: derive association rules from `fp_frequent`. Filter on
+    # TODO: derive association rules from `fp_frequent`, filtering on
     # confidence with min_threshold=min_confidence.
     # Hint: mlx_association_rules(fp_frequent, metric="confidence", ...)
     fp_rules = ____
@@ -101,6 +121,7 @@ def run_fp_growth(
             "support": fp_frequent["support"].astype(float).tolist(),
         }
     )
+
     rules_pl = pl.DataFrame(
         {
             "antecedent": [
@@ -136,8 +157,12 @@ print(f"  Association rules: {fp_rules_df.height}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE: compare Apriori and FP-Growth
+# TASK 4 — VISUALISE: compare Apriori and FP-Growth on the same data
 # ════════════════════════════════════════════════════════════════════════
+# We re-run Apriori here so that the comparison is self-contained. In a
+# real codebase you would import the function from 01_apriori_from_scratch.
+
+from collections import defaultdict
 
 
 def _apriori(
@@ -191,10 +216,11 @@ print("\n=== Apriori vs FP-Growth ===")
 print(f"  Apriori   itemsets: {len(apriori_set)}")
 print(f"  FP-Growth itemsets: {len(fp_set)}")
 print(f"  Intersection:       {len(apriori_set & fp_set)}")
+print(f"  Apriori only:       {len(apriori_set - fp_set)}")
+print(f"  FP-Growth only:     {len(fp_set - apriori_set)}")
 
-# TODO: compute the Jaccard agreement between the two sets. Remember to
-# guard against divide-by-zero on an empty union.
-# Hint: |A ∩ B| / |A ∪ B|
+# TODO: Jaccard agreement between the two itemset sets, guarding against
+# divide-by-zero on an empty union. Hint: |A ∩ B| / max(|A ∪ B|, 1)
 agreement = ____
 print(f"  Jaccard agreement:  {agreement:.2%}")
 
@@ -202,42 +228,149 @@ print(f"  Jaccard agreement:  {agreement:.2%}")
 # ── Checkpoint ──────────────────────────────────────────────────────────
 assert fp_frequent_df.height > 0, "FP-Growth should find at least one itemset"
 assert fp_rules_df.height > 0, "FP-Growth should generate at least one rule"
-assert (
-    agreement >= 0.90
-), f"Apriori and FP-Growth should agree on >=90% of itemsets; got {agreement:.2%}"
+assert agreement >= 0.90, (
+    f"Apriori and FP-Growth should agree on >=90% of itemsets "
+    f"at min_support={MIN_SUPPORT}; got {agreement:.2%}"
+)
 print("\n[ok] Checkpoint passed — FP-Growth matches Apriori on frequent itemsets\n")
 
 fp_frequent_df.write_csv(OUTPUT_DIR / "fp_growth_itemsets.csv")
 fp_rules_df.write_csv(OUTPUT_DIR / "fp_growth_rules.csv")
+print(f"  Saved: {OUTPUT_DIR / 'fp_growth_itemsets.csv'}")
+print(f"  Saved: {OUTPUT_DIR / 'fp_growth_rules.csv'}")
+
+# ── Visualisation ─────────────────────────────────────────────────────
+import time
+
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# (A) Itemset frequency bar chart — top 15 by support
+top_itemsets = fp_frequent_df.sort("support", descending=True).head(15)
+fig_freq = go.Figure(
+    go.Bar(
+        x=top_itemsets["support"].to_list(),
+        y=top_itemsets["itemset"].to_list(),
+        orientation="h",
+        marker_color="#636EFA",
+        text=[f"{s:.1%}" for s in top_itemsets["support"].to_list()],
+        textposition="outside",
+    )
+)
+fig_freq.update_layout(
+    title="Top 15 Frequent Itemsets by Support (FP-Growth)",
+    xaxis_title="Support",
+    yaxis_title="Itemset",
+    yaxis=dict(autorange="reversed"),
+    margin=dict(l=200),
+)
+freq_path = OUTPUT_DIR / "02_itemset_frequency.html"
+fig_freq.write_html(str(freq_path))
+print(f"[viz] Itemset frequency: {freq_path}")
+
+# (B) Apriori vs FP-Growth speed comparison across data sizes
+sizes = [500, 1000, 1500, 2000, 2500]
+apriori_times: list[float] = []
+fp_times: list[float] = []
+for sz in sizes:
+    txns = generate_transactions(n=sz, seed=42)
+    oh_pl = transactions_to_onehot(txns)
+    oh_pd = oh_pl.to_pandas()
+
+    t0 = time.perf_counter()
+    _apriori(txns, min_support=MIN_SUPPORT)
+    apriori_times.append(time.perf_counter() - t0)
+
+    t0 = time.perf_counter()
+    mlx_fpgrowth(oh_pd, min_support=MIN_SUPPORT, use_colnames=True)
+    fp_times.append(time.perf_counter() - t0)
+
+fig_speed = go.Figure()
+fig_speed.add_trace(
+    go.Scatter(
+        x=sizes,
+        y=apriori_times,
+        mode="lines+markers",
+        name="Apriori (from scratch)",
+        marker_color="#EF553B",
+    )
+)
+fig_speed.add_trace(
+    go.Scatter(
+        x=sizes,
+        y=fp_times,
+        mode="lines+markers",
+        name="FP-Growth (mlxtend)",
+        marker_color="#00CC96",
+    )
+)
+fig_speed.update_layout(
+    title="Apriori vs FP-Growth: Runtime by Transaction Count",
+    xaxis_title="Number of Transactions",
+    yaxis_title="Time (seconds)",
+)
+speed_path = OUTPUT_DIR / "02_speed_comparison.html"
+fig_speed.write_html(str(speed_path))
+print(f"[viz] Speed comparison: {speed_path}")
+
+# INTERPRETATION: Both algorithms are level-complete — they find ALL
+# frequent itemsets at the given min_support, and the sets should agree
+# (modulo floating-point edge cases right at the threshold). The choice
+# between them is an engineering decision about speed and memory, not
+# correctness. On this small 2,500-row basket, Apriori is fine; at 10M+
+# rows, FP-Growth wins because it reads the data only twice (two-pass
+# tree construction) instead of once per itemset level.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: GrabFood order-bundle mining
+# TASK 5 — APPLY: food-delivery order-bundle mining at city scale
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: GrabFood SG processes ~800K orders/day across 12K+ merchants.
-# Weekly mining run (~5.6M transactions) to surface high-lift menu pairs
-# for merchant bundle promotions. FP-Growth's single-pass tree is 30-60x
-# faster than Apriori on this shape of data.
+# SCENARIO: Consider a Singapore food-delivery platform handling, for
+# illustration, ~800,000 orders per day across 12,000+ merchants (assumed
+# figures). The merchant-growth team wants to find high-lift
+# menu-item pairings (e.g., "chicken rice + iced milo") so merchants can
+# publish bundle deals that raise average order value.
 #
-# BUSINESS IMPACT: 10% AOV lift on S$18 average order with 800K orders/day
-# is ~S$1.4M/day GMV — S$45M/month for ~S$50 of compute per weekly run.
+# Why FP-Growth is the right tool here:
+#   - 800K orders/day * 7 days = ~5.6M transactions per weekly mining job
+#   - Typical basket has 2-4 items, item universe ~100K SKUs across all
+#     merchants — too large for level-wise Apriori to scan repeatedly
+#   - Batch job runs overnight on a single worker; minutes matter
+#   - FP-Growth builds the tree in memory in two passes, then mines it
+#     without further DB scans — on large, sparse data like this it is
+#     typically many times faster than Apriori (measure it: see the
+#     speed sweep above)
+#
+# BUSINESS IMPACT (illustrative assumptions, not measured figures): if
+# bundles adopted by 10% of merchants lifted those merchants' average
+# order value by 5%, then at an assumed S$18 average order and 800K
+# orders/day the platform would gain ~S$72K/day in GMV (800K x 10% x
+# S$18 x 5%), roughly S$2.2M/month, for a mining job that costs a few
+# dollars of compute per run. Confirm the AOV lift with a merchant-level
+# A/B test before rolling out.
+#
+# LIMITATIONS:
+#   - FP-tree must fit in memory; for datasets with 100M+ rows and dense
+#     baskets, partitioning by merchant category is required
+#   - Frequent itemsets alone do not tell you which bundles are
+#     profitable — you still need to multiply by margin and demand
+#     elasticity (out of scope for this exercise)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TRACK — Log FP-Growth + the Apriori-vs-FP-Growth speed sweep
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
 # ════════════════════════════════════════════════════════════════════════
-# Same shared experiment as lesson 01. Series = per-size runtimes for
-# Apriori vs FP-Growth so you can see the speed crossover; scalars =
-# Jaccard agreement on the frequent-itemset sets + headline counts.
+# Logs FP-Growth's headline counts + the per-size runtime sweep against
+# Apriori. Series = runtimes at each transaction-count tested; scalars =
+# itemset / rule counts + Jaccard agreement vs the hand-rolled Apriori.
 
-speedup = apriori_times[-1] / fp_times[-1] if fp_times[-1] > 0 else 0.0
-
-# TODO: pick run_name="fp_growth_mlxtend" and fill in the agreement +
-# speedup scalars. Hint: agreement is the Jaccard you already computed.
+# TODO: speedup at the largest size = Apriori time / FP-Growth time
+# (return 0.0 if the FP-Growth time is zero).
+speedup = ____
 track_run(
     tracker,
     exp_name,
-    run_name=____,
+    run_name=____,  # TODO: a stable name, e.g. "fp_growth_mlxtend"
     params={
         "algorithm": "fp_growth",
         "implementation": "mlxtend",
@@ -249,8 +382,12 @@ track_run(
     scalar_metrics={
         "n_frequent_itemsets": float(fp_frequent_df.height),
         "n_rules": float(fp_rules_df.height),
-        "jaccard_apriori_vs_fp": ____,
-        "speedup_at_max_size": ____,
+        "jaccard_apriori_vs_fp": float(agreement),
+        "apriori_only_count": float(len(apriori_set - fp_set)),
+        "fp_only_count": float(len(fp_set - apriori_set)),
+        "speedup_at_max_size": float(speedup),
+        "apriori_runtime_at_max": float(apriori_times[-1]),
+        "fp_runtime_at_max": float(fp_times[-1]),
     },
     series_metrics={
         "apriori_runtime_seconds": [float(t) for t in apriori_times],
@@ -261,21 +398,31 @@ print(f"  [tracked] FP-Growth + speed sweep logged to {exp_name}\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# DESTINATION-FIRST CLOSE — the two mlxtend calls every downstream lesson uses
+# DESTINATION-FIRST CLOSE — the mlxtend.frequent_patterns one-liner
 # ════════════════════════════════════════════════════════════════════════
-# The polars wrapper exists for ergonomics, not for FP-Growth's
-# correctness. The destination contract is two pandas-frame calls:
-#   fpgrowth(onehot_df, min_support, use_colnames=True)  -> itemsets
-#   association_rules(itemsets, metric, min_threshold)   -> rules
-# Lessons 03 and 04 consume that same rule table.
+# This lesson built a polars wrapper around mlxtend FP-Growth, ran the
+# Apriori-vs-FP-Growth speed sweep, and verified itemset agreement —
+# ~270 lines of structure to internalise WHY FP-Growth is the production
+# choice on dense, city-scale data. The destination is exactly the two
+# library calls you saw inside ``run_fp_growth``:
+#
+#   from mlxtend.frequent_patterns import fpgrowth, association_rules
+#   itemsets = fpgrowth(onehot_df, min_support=0.03, use_colnames=True)
+#   rules    = association_rules(itemsets, metric='confidence', min_threshold=0.3)
+#
+# Two calls, one pandas frame in, two pandas frames out. The polars
+# wrapper exists for ergonomics, not for FP-Growth's correctness — every
+# downstream lesson (03 evaluation, 04 features) consumes that same rule
+# table.
 
 print("  Destination contract:")
-print("    fpgrowth(onehot, min_support, use_colnames=True)  -> itemsets")
-print("    association_rules(itemsets, metric, min_threshold) -> rules")
+print("    fpgrowth(onehot_df, min_support, use_colnames=True)  -> itemsets")
+print("    association_rules(itemsets, metric, min_threshold)   -> rules")
 print(
     f"  Today's run: {fp_frequent_df.height} itemsets, "
     f"{fp_rules_df.height} rules — both shape: pandas DataFrame"
 )
+print()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -287,13 +434,22 @@ print("=" * 70)
 print(
     """
   [x] Wrapped mlxtend FP-Growth in a polars-friendly call boundary
-  [x] Converted basket-sets to one-hot for FP-Growth input
-  [x] Verified Apriori and FP-Growth agree on frequent itemsets
-  [x] Locked in the production destination: two mlxtend calls feed
-      every downstream lesson (rules + features)
+  [x] Converted basket-sets into the one-hot format FP-Growth expects
+  [x] Verified that FP-Growth and Apriori agree on frequent itemsets
+  [x] Identified a city-scale workload (food-delivery bundles) where
+      FP-Growth's two-pass tree construction is the economic
+      difference-maker
+  [x] Locked in the production destination: two mlxtend calls
+      (fpgrowth + association_rules) feed every downstream lesson
+
+  KEY INSIGHT: Both algorithms are correct. The choice between them is
+  about the SHAPE of your data (size, density, access cost) and never
+  about which one "finds more patterns." When someone tells you
+  FP-Growth "discovered" rules Apriori missed, the real difference is
+  almost always a different min_support.
 
   Next: 03_rule_evaluation.py — turn frequent itemsets into association
-  rules with support, confidence, lift, and conviction.
+  rules and score them with support, confidence, lift, and conviction.
 """
 )
 

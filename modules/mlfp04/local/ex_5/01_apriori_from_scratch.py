@@ -13,7 +13,7 @@
 #   - Understand why Apriori scales beyond brute-force enumeration
 #
 # PREREQUISITES:
-#   - MLFP04 Exercise 1 (clustering)
+#   - MLFP04 Exercise 1 (clustering — pattern discovery without labels)
 #   - Basic set theory (subset, superset, intersection)
 #
 # ESTIMATED TIME: ~35 min
@@ -23,7 +23,7 @@
 #   2. Build — implement `apriori()` and `_generate_candidates()`
 #   3. Train — run it on 2,500 Singapore retail transactions
 #   4. Visualise — L1 -> L2 -> L3 ladder and top frequent itemsets
-#   5. Apply — FairPrice/Sheng Siong shelf layout optimisation
+#   5. Apply — supermarket shelf layout optimisation
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -41,23 +41,36 @@ from shared.mlfp04.ex_5 import (
     setup_engines,
     teardown_engines,
     track_run,
-    transactions_to_onehot,
 )
 
-# ── Kailash-ML ExperimentTracker — association-rules zoo shared store ────
+# ── Kailash-ML ExperimentTracker — every association-rules run logs here ─
 tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Why Apriori Works
 # ════════════════════════════════════════════════════════════════════════
-# ANTI-MONOTONE PRINCIPLE:
-#   If an itemset X is INFREQUENT, every superset of X is ALSO infrequent.
+# With 25 products there are 2^25 ~= 33 million possible itemsets. A naive
+# algorithm would test every one of them against every transaction. Apriori
+# avoids that with a single observation:
 #
-# Consequence: once L_k (frequent k-itemsets) is known, form candidates
-# for L_{k+1} by joining L_k with itself AND requiring every (k)-subset
-# of the new candidate to already be in L_k. Any itemset with an
-# infrequent subset is pruned before it is ever counted.
+#   ANTI-MONOTONE PRINCIPLE
+#   If an itemset X is INFREQUENT, then every superset of X is ALSO
+#   infrequent. Reason: if fewer than min_count baskets contain X, then
+#   even fewer baskets contain X plus any extra item.
+#
+# Consequence: once L_k (frequent k-itemsets) is known, we only need to
+# form candidates for L_{k+1} by joining L_k with itself AND requiring
+# every (k)-subset of the new candidate to already be in L_k. Any itemset
+# with an infrequent subset is pruned before it is ever counted.
+#
+# COST:
+#   Level 1: scan once, count single items.  O(N * |I|)
+#   Level k: generate C_k from L_{k-1}, scan to count, filter.
+#   Terminates when L_k is empty.
+#
+# On a 2,500-transaction basket with 25 products, Apriori evaluates on
+# the order of ~1,000 candidates — a 30,000x reduction from brute force.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -71,8 +84,9 @@ def _generate_candidates(
 ) -> list[frozenset[str]]:
     """Generate candidate k-itemsets from frequent (k-1)-itemsets.
 
-    Apply the anti-monotone pruning rule: every (k-1)-subset of a
-    candidate MUST already be in `prev_level`.
+    Applies the anti-monotone pruning rule: every (k-1)-subset of a
+    candidate MUST already be in `prev_level`, otherwise drop the
+    candidate without ever counting it.
     """
     prev_set = set(prev_level)
     candidates: set[frozenset[str]] = set()
@@ -81,17 +95,13 @@ def _generate_candidates(
         for b in prev_level[i + 1 :]:
             # TODO: union the two itemsets. Hint: use the | operator.
             union = ____
-
-            # Only keep unions that grew to exactly k items.
             if len(union) != k:
                 continue
-
             # TODO: anti-monotone check — every (k-1)-subset of `union`
-            # must already be frequent (i.e. in prev_set). Build the
-            # subsets by removing one item at a time and test with `in`.
-            # Hint: `all((union - frozenset([item])) in prev_set for item in union)`
+            # must already be frequent (i.e. in prev_set). Build each
+            # subset by removing one item (union - frozenset([item])) and
+            # test membership with `in`; combine the tests with all(...).
             all_subsets_frequent = ____
-
             if all_subsets_frequent:
                 candidates.add(union)
 
@@ -103,7 +113,12 @@ def apriori(
     min_support: float,
     verbose: bool = True,
 ) -> dict[frozenset[str], float]:
-    """Mine frequent itemsets with the Apriori algorithm."""
+    """Mine frequent itemsets with the Apriori algorithm.
+
+    Returns ``{itemset: support}`` for every itemset whose support meets
+    ``min_support``. Support is the fraction of baskets containing the
+    itemset.
+    """
     n = len(transactions)
     min_count = min_support * n
 
@@ -118,22 +133,23 @@ def apriori(
     for item, count in item_counts.items():
         if count >= min_count:
             fs = frozenset([item])
-            # TODO: record the support (count/n) in freq_itemsets and
-            # add `fs` to current_level so the next iteration can join.
+            # TODO: record the support (count / n) in freq_itemsets and
+            # append `fs` to current_level so the next level can join it.
+            ____
             ____
 
     if verbose:
         print(f"  L1: {len(current_level)} frequent items (min_support={min_support})")
 
-    # ── L2, L3, ... Lk ──────────────────────────────────────────────
+    # ── L2, L3, ... Lk: joined + pruned candidates ───────────────────
     k = 2
     while current_level:
-        # TODO: generate candidates for level k using _generate_candidates().
+        # TODO: generate candidates for level k from the current level.
+        # Hint: the helper you completed above.
         candidates = ____
         if not candidates:
             break
 
-        # Single pass to count support for every candidate.
         candidate_counts: dict[frozenset[str], int] = defaultdict(int)
         for txn in transactions:
             txn_frozen = frozenset(txn)
@@ -141,12 +157,12 @@ def apriori(
                 if candidate.issubset(txn_frozen):
                     candidate_counts[candidate] += 1
 
-        # TODO: retain only candidates whose count >= min_count; store
-        # their support in freq_itemsets and seed `current_level` for
-        # the next iteration.
         current_level = []
         for candidate, count in candidate_counts.items():
             if count >= min_count:
+                # TODO: keep this candidate — store its support and seed
+                # current_level for the next iteration (same as L1).
+                ____
                 ____
 
         if verbose:
@@ -196,6 +212,7 @@ print("  " + "-" * 55)
 for itemset, support in sorted_itemsets[:15]:
     print(f"  {format_itemset(itemset):<45} {support:>8.4f}")
 
+# Export to polars for any downstream visualisation
 top_df = pl.DataFrame(
     {
         "itemset": [format_itemset(s) for s, _ in sorted_itemsets[:30]],
@@ -206,31 +223,111 @@ top_df = pl.DataFrame(
 top_df.write_csv(OUTPUT_DIR / "apriori_top_itemsets.csv")
 print(f"\n  Saved: {OUTPUT_DIR / 'apriori_top_itemsets.csv'}")
 
+# ── Visualisation ─────────────────────────────────────────────────────
+import plotly.graph_objects as go  # noqa: E402
+from plotly.subplots import make_subplots  # noqa: E402
+
+# (A) The Apriori ladder: how many itemsets survive at each level k, and
+# (B) the top 15 itemsets coloured by size so the L2/L3 co-purchase
+# structure stands out from the single-item staples.
+level_counts: defaultdict[int, int] = defaultdict(int)
+for itemset in frequent_itemsets:
+    level_counts[len(itemset)] += 1
+levels = sorted(level_counts)
+size_colours = {1: "#636EFA", 2: "#EF553B", 3: "#00CC96", 4: "#AB63FA"}
+
+fig_apriori = make_subplots(
+    rows=1,
+    cols=2,
+    column_widths=[0.35, 0.65],
+    subplot_titles=[
+        "Frequent itemsets per level (L1 -> Lk)",
+        "Top 15 itemsets by support (colour = itemset size)",
+    ],
+)
+fig_apriori.add_trace(
+    go.Bar(
+        x=[f"L{k}" for k in levels],
+        y=[level_counts[k] for k in levels],
+        marker_color=[size_colours.get(k, "#7F7F7F") for k in levels],
+        text=[level_counts[k] for k in levels],
+        textposition="outside",
+        showlegend=False,
+    ),
+    row=1,
+    col=1,
+)
+top15 = sorted_itemsets[:15]
+fig_apriori.add_trace(
+    go.Bar(
+        x=[float(v) for _, v in top15],
+        y=[format_itemset(s) for s, _ in top15],
+        orientation="h",
+        marker_color=[size_colours.get(len(s), "#7F7F7F") for s, _ in top15],
+        showlegend=False,
+    ),
+    row=1,
+    col=2,
+)
+fig_apriori.update_yaxes(autorange="reversed", row=1, col=2)
+fig_apriori.update_layout(
+    title=f"Apriori at min_support={MIN_SUPPORT}: the pruned ladder",
+    height=500,
+    width=1100,
+)
+apriori_path = OUTPUT_DIR / "01_apriori_ladder.html"
+fig_apriori.write_html(str(apriori_path))
+print(f"[viz] Apriori ladder + top itemsets: {apriori_path}")
+
+# INTERPRETATION: The L1 level is dense (most of the 25 products appear in
+# >= 3% of baskets) because Singapore mini-marts stock fast-moving staples.
+# The interesting content is at L2 and L3 — that's where co-purchase
+# structure (coffee + condensed milk + sugar) appears. If Apriori stops
+# early at L2 for your dataset, your min_support is probably too high.
+
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: FairPrice/Sheng Siong shelf layout optimisation
+# TASK 5 — APPLY: supermarket shelf layout optimisation
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: A Singapore supermarket chain operates ~200 neighbourhood
-# outlets, each stocking ~8,000 SKUs in 1,200 sqft of HDB floor space.
-# The merchandising analyst wants frequent 2- and 3-itemsets so that
-# adjacent shelving can be re-planned.
+# outlets, each stocking roughly 8,000 SKUs in 1,200 sqft of HDB floor
+# space. Shelf real estate is the single largest cost driver after payroll.
 #
-# WHY APRIORI FITS: large item universe, monthly batch run, anti-monotone
-# pruning removes ~99.9% of candidates, output is directly interpretable.
+# A merchandising analyst wants to find frequent 2- and 3-itemsets so that
+# physically adjacent shelving can be re-planned: items that appear together
+# in >= 3% of baskets are candidates for cross-category co-location (e.g.,
+# moving condensed milk next to the kopi aisle, rather than in the dairy
+# fridge on the far wall).
 #
-# BUSINESS IMPACT: Internal A/B tests at tier-1 SG grocers show that
-# re-locating the top 50 cross-category pairs into adjacent shelving
-# lifts basket size 4-7%. On S$250M GMV that is S$10-17M uplift per year
-# for a weekend of merchandising work.
+# WHY APRIORI FITS:
+#   - The item universe (~8K SKUs) is too large for brute-force enumeration
+#   - Store managers need the frequent-itemset list monthly, not live
+#   - The anti-monotone pruning removes ~99.9% of candidate itemsets
+#   - Output is directly interpretable — each row is a physical product set
+#
+# BUSINESS IMPACT (illustrative assumptions, not measured figures): if
+# co-locating the top 50 cross-category frequent pairs lifted basket
+# size by 2%, a chain with S$250M annual GMV would gain ~S$5M of sales
+# for zero marginal inventory cost. Validate the lift with a store-level
+# A/B test before re-planning every outlet. The Apriori run takes
+# seconds; the merchandising re-plan takes a weekend.
+#
+# LIMITATIONS:
+#   - Apriori re-scans the transaction log at every level; for 100K+ txns
+#     with thousands of SKUs, FP-Growth (Exercise 5.2) is much faster
+#   - Support alone is not actionable — you also need confidence + lift
+#     (Exercise 5.3) before deciding which pairings are worth the shelf move
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
 # ════════════════════════════════════════════════════════════════════════
-# All M4 ex_5 lessons share one experiment ('m4_assoc_rules_zoo') so you
-# can compare Apriori / FP-Growth / rules / rule-features in one store.
+# Every M4 ex_5 lesson logs into the SAME experiment ('m4_assoc_rules_zoo')
+# so Apriori / FP-Growth / rule-evaluation / rule-features can be compared
+# from one SQLite store after the lesson group ends. Series = per-level
+# itemset counts (the L1->Lk ladder); scalars = headline counts + supports.
 
-# Per-level itemset count series — the visible "ladder" Apriori climbs.
+# Per-level size series — the visible "ladder" Apriori climbs.
 size_to_count: defaultdict[int, int] = defaultdict(int)
 for itemset in frequent_itemsets:
     size_to_count[len(itemset)] += 1
@@ -238,13 +335,10 @@ max_k = max(size_to_count) if size_to_count else 0
 ladder = [size_to_count[k] for k in range(1, max_k + 1)]
 support_values = [float(s) for s in frequent_itemsets.values()]
 
-# TODO: pick a stable run_name (e.g. "apriori_from_scratch") and fill in
-# the two blank scalars: how many singletons (size 1) and how many pairs
-# (size 2) Apriori found at min_support={MIN_SUPPORT}.
 track_run(
     tracker,
     exp_name,
-    run_name=____,
+    run_name=____,  # TODO: a stable name, e.g. "apriori_from_scratch"
     params={
         "algorithm": "apriori",
         "implementation": "from_scratch",
@@ -255,10 +349,17 @@ track_run(
     },
     scalar_metrics={
         "n_frequent_itemsets": float(len(frequent_itemsets)),
+        # TODO: how many singletons (size 1) and pairs (size 2) were found.
+        # Hint: size_to_count maps itemset size -> count; use .get(k, 0).
         "n_singletons_L1": ____,
         "n_pairs_L2": ____,
+        "n_triples_L3": float(size_to_count.get(3, 0)),
         "max_k_reached": float(max_k),
         "max_support": float(max(support_values) if support_values else 0.0),
+        "min_support_observed": float(min(support_values) if support_values else 0.0),
+        "mean_support": float(
+            sum(support_values) / len(support_values) if support_values else 0.0
+        ),
     },
     series_metrics={"frequent_count_by_level": [float(c) for c in ladder]},
 )
@@ -266,23 +367,38 @@ print(f"  [tracked] Apriori ladder + headline counts logged to {exp_name}\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# DESTINATION-FIRST CLOSE — mlxtend.frequent_patterns.apriori
+# DESTINATION-FIRST CLOSE — the mlxtend.frequent_patterns.apriori one-liner
 # ════════════════════════════════════════════════════════════════════════
-# The hand-rolled walk-through internalised the algorithm; the production
-# destination is one library call:
-#   from mlxtend.frequent_patterns import apriori as mlx_apriori
-#   onehot = transactions_to_onehot(transactions).to_pandas().astype(bool)
-#   mlx_apriori(onehot, min_support=MIN_SUPPORT, use_colnames=True)
+# This lesson hand-rolled the level-wise scan, the candidate joiner, and
+# the anti-monotone pruner — ~75 lines of structure to internalise WHY
+# Apriori scales beyond brute force. The production destination is one
+# function call. ``mlxtend.frequent_patterns.apriori`` runs the same
+# algorithm on a one-hot pandas DataFrame and returns a pandas table
+# (mlxtend needs pandas, so we convert only at this call site).
+# Lesson 02 (FP-Growth) then swaps the algorithm without changing the
+# call shape — both speak the same itemset-table contract.
 
-# TODO: import mlxtend's apriori and call it on the one-hot frame; print
-# how many frequent itemsets it returns. Confirm it matches your hand-
-# rolled count.
 from mlxtend.frequent_patterns import apriori as mlx_apriori  # noqa: E402
 
+from shared.mlfp04.ex_5 import transactions_to_onehot  # noqa: E402
+
 onehot_pd = transactions_to_onehot(transactions).to_pandas().astype(bool)
+# TODO: call mlxtend's apriori with the SAME support threshold you used
+# above so the two results are comparable.
 mlx_frequent = mlx_apriori(onehot_pd, min_support=____, use_colnames=True)
-print(f"  mlxtend.apriori → {len(mlx_frequent)} frequent itemsets in 1 call")
-print(f"  Hand-rolled    → {len(frequent_itemsets)}")
+print(
+    f"  mlxtend.apriori(min_support={MIN_SUPPORT}): "
+    f"{len(mlx_frequent)} frequent itemsets in 1 call"
+)
+hand_set = {frozenset(items) for items in frequent_itemsets}
+mlx_set = {frozenset(items) for items in mlx_frequent["itemsets"].tolist()}
+print(f"  Hand-rolled: {len(hand_set)}  mlxtend: {len(mlx_set)}")
+print(
+    f"  Intersection: {len(hand_set & mlx_set)}  symmetric diff: {len(hand_set ^ mlx_set)}"
+)
+print()
+print("  Same algorithm, same result — the hand-rolled walk-through was")
+print("  the WHY; mlxtend.apriori is the destination you ship to prod.\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -295,12 +411,21 @@ print(
     """
   [x] Implemented the Apriori algorithm from scratch
   [x] Applied the anti-monotone pruning principle in _generate_candidates()
-  [x] Counted support with one pass per level
-  [x] Identified a production scenario where Apriori is the right tool
-  [x] Confirmed mlxtend.apriori produces the same frequent itemsets
+  [x] Counted support with one pass per level against 2,500 baskets
+  [x] Visualised the pruned L1 -> Lk ladder and the top itemsets
+  [x] Identified a production scenario (SG grocery shelf layout) where
+      Apriori is the economically optimal choice
+  [x] Compared the hand-rolled implementation against mlxtend.apriori —
+      one call, same itemsets, ready for production
 
-  Next: 02_fp_growth.py — mlxtend's FP-Growth with no candidate generation,
-  compared head-to-head against your Apriori output from this file.
+  KEY INSIGHT: Pruning > optimisation. The reason Apriori scales is not
+  clever data structures — it is the mathematical observation that
+  infrequent sets cannot become frequent when you add items. Every
+  frequent-itemset miner you'll meet later (FP-Growth, ECLAT) uses the
+  same principle, just with different data layouts.
+
+  Next: 02_fp_growth.py — use mlxtend's FP-Growth (no candidate
+  generation) and compare it against the Apriori output from this file.
 """
 )
 

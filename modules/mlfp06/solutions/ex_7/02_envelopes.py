@@ -79,16 +79,13 @@ print("\n--- GovernanceEngine compiled ---\n")
 # findings outside the hospital = Communication. The badge NEVER
 # grants more — it ONLY restricts.
 #
-# ── Sidebar: Canonical PACT clearance hierarchy ────────────────────
-# MLFP06 teaches a 4-level clearance lattice
-# (public < internal < confidential < restricted) because it is
-# easier to hold in your head. Canonical PACT ships 5 levels:
-# PUBLIC < RESTRICTED < CONFIDENTIAL < SECRET < TOP_SECRET. At the
-# string interface, `"internal"` is a historical alias of
-# `"restricted"` — they collide at one canonical level. You will see
-# SECRET and TOP_SECRET in real governance configs for trading algos
-# or patient records; the course's 4-level model is a teaching
-# simplification, not a runtime limit.
+# ── Sidebar: PACT's clearance ladder ───────────────────────────────
+# pact orders clearances, lowest to highest:
+#     PUBLIC < RESTRICTED < CONFIDENTIAL < SECRET < TOP_SECRET
+# "restricted" is the SECOND-LOWEST rung, just above public — it is
+# NOT the most privileged level. kaizen_agents also accepts the string
+# "internal" as an alias of RESTRICTED. In this org the department
+# heads hold SECRET and every agent sits at or below its head.
 # ────────────────────────────────────────────────────────────────────
 
 
@@ -169,10 +166,11 @@ def make_envelope(
 
 
 # Build the 6 agent envelopes. Each call populates ALL five dimensions.
-# Every child envelope is a strict subset of its department head's
-# envelope (see `head_envelopes` below). PACT's canonical 5-level
-# hierarchy orders `CONFIDENTIAL > RESTRICTED > PUBLIC`, so department
-# heads carry CONFIDENTIAL and children tighten down from there.
+# Every child envelope sits inside its department head's envelope (see
+# `head_envelopes` below). Clearances follow pact's ladder
+# (public < restricted < confidential < secret): the ML and risk heads
+# carry SECRET, the customer head CONFIDENTIAL, and each agent is at or
+# below its head.
 envelopes_by_role: dict[str, ConstraintEnvelopeConfig] = {
     "data_analyst": make_envelope(
         envelope_id="data_analyst_envelope",
@@ -187,7 +185,7 @@ envelopes_by_role: dict[str, ConstraintEnvelopeConfig] = {
     "model_trainer": make_envelope(
         envelope_id="model_trainer_envelope",
         description="Model trainer — training + evaluation",
-        clearance=ConfidentialityLevel.RESTRICTED,
+        clearance=ConfidentialityLevel.CONFIDENTIAL,
         max_spend_usd=100.0,
         allowed_actions=["train_model", "evaluate_model", "read_data"],
         read_paths=["/data/raw/*", "/data/curated/*"],
@@ -197,7 +195,7 @@ envelopes_by_role: dict[str, ConstraintEnvelopeConfig] = {
     "model_deployer": make_envelope(
         envelope_id="model_deployer_envelope",
         description="Model deployer — deploy + monitor + rollback",
-        clearance=ConfidentialityLevel.RESTRICTED,
+        clearance=ConfidentialityLevel.CONFIDENTIAL,
         max_spend_usd=50.0,
         allowed_actions=["deploy_model", "monitor_model", "rollback_model"],
         read_paths=["/models/staging/*", "/models/prod/*"],
@@ -207,7 +205,7 @@ envelopes_by_role: dict[str, ConstraintEnvelopeConfig] = {
     "risk_assessor": make_envelope(
         envelope_id="risk_assessor_envelope",
         description="Risk assessor — audit-read + report",
-        clearance=ConfidentialityLevel.RESTRICTED,
+        clearance=ConfidentialityLevel.SECRET,
         max_spend_usd=200.0,
         allowed_actions=[
             "read_data",
@@ -222,7 +220,7 @@ envelopes_by_role: dict[str, ConstraintEnvelopeConfig] = {
     "bias_checker": make_envelope(
         envelope_id="bias_checker_envelope",
         description="Bias checker — fairness audit only",
-        clearance=ConfidentialityLevel.RESTRICTED,
+        clearance=ConfidentialityLevel.CONFIDENTIAL,
         max_spend_usd=75.0,
         allowed_actions=["read_data", "audit_model", "run_fairness_check"],
         read_paths=["/data/curated/*", "/models/prod/*"],
@@ -243,8 +241,9 @@ envelopes_by_role: dict[str, ConstraintEnvelopeConfig] = {
 }
 
 # Attach each envelope to its role so the engine enforces it on
-# subsequent verify_action() calls. The defining role (supervisor)
-# is the department head; the target role is the agent.
+# subsequent verify_action() calls. The defining role is the department
+# head; the target role is the agent. set_role_envelope() REPLACES the
+# envelope compile_governance() applied from the YAML for that role.
 ROLE_TO_DELEGATOR: dict[str, str] = {
     "data_analyst": "chief_ml_officer",
     "model_trainer": "chief_ml_officer",
@@ -318,7 +317,7 @@ head_envelopes: dict[str, ConstraintEnvelopeConfig] = {
     "chief_ml_officer": make_envelope(
         envelope_id="chief_ml_officer_envelope",
         description="Chief ML Officer — ML department head",
-        clearance=ConfidentialityLevel.CONFIDENTIAL,
+        clearance=ConfidentialityLevel.SECRET,
         max_spend_usd=500.0,
         allowed_actions=[
             "read_data",
@@ -346,7 +345,7 @@ head_envelopes: dict[str, ConstraintEnvelopeConfig] = {
     "chief_risk_officer": make_envelope(
         envelope_id="chief_risk_officer_envelope",
         description="Chief Risk Officer — risk department head",
-        clearance=ConfidentialityLevel.CONFIDENTIAL,
+        clearance=ConfidentialityLevel.SECRET,
         max_spend_usd=500.0,
         allowed_actions=[
             "read_data",
@@ -409,9 +408,9 @@ print("\n[x] Checkpoint 2 passed — all 6 chains tighten structurally\n")
 #
 # Hypothetical: an operator tries to re-delegate the customer_agent
 # with elevated authority — higher budget, broader allowed actions,
-# and RESTRICTED clearance. Under PACT, this attempt is caught
-# structurally by `validate_tightening()` — not by a runtime
-# integer comparison that a refactor can silently drop.
+# and SECRET clearance (above vp_customer's CONFIDENTIAL). Under PACT,
+# this attempt is caught structurally by `validate_tightening()` — not
+# by a runtime integer comparison that a refactor can silently drop.
 
 print("=" * 70)
 print("TASK 3: Privilege-Escalation Attempt (caught at envelope time)")
@@ -419,8 +418,8 @@ print("=" * 70)
 
 rogue_child = make_envelope(
     envelope_id="customer_agent_rogue_envelope",
-    description="Rogue escalation — restricted clearance, high budget",
-    clearance=ConfidentialityLevel.RESTRICTED,
+    description="Rogue escalation — secret clearance, high budget",
+    clearance=ConfidentialityLevel.SECRET,  # above parent's CONFIDENTIAL
     max_spend_usd=1000.0,  # 200x the legit budget
     allowed_actions=[
         "answer_question",
@@ -447,28 +446,26 @@ except MonotonicTighteningError as exc:
 print(f"  Attempt: vp_customer -> customer_agent (ROGUE)")
 print(f"  Result:  {'REJECTED' if escalation_caught else 'ACCEPTED (bug!)'}")
 if violation_reason:
-    # Print the first violation for readability
-    print(f"  Reason:  {violation_reason[:180]}")
+    # One line per violated dimension
+    for part in violation_reason.split("; "):
+        print(f"  Reason:  {part[:160]}")
 print("\n  PACT catches this at envelope construction, not at runtime.")
 
-# Visualise the clearance lattice so students can see the "up and to
-# the right" shape of the escalation. Course's 4-level teaching
-# lattice (ordered via CLEARANCE_LEVELS) — canonical RESTRICTED
-# covers both "internal" and "restricted" rungs.
-print("\n  Clearance lattice (higher = more access):")
+# Print pact's clearance ladder with the agents at each rung, so
+# students can see where the rogue SECRET request would have landed.
+print("\n  Clearance ladder (higher = more access):")
 for level_name, level in sorted(CLEARANCE_LEVELS.items(), key=lambda x: -x[1]):
-    # Map the course rung to the canonical PACT enum name it covers.
-    target = "restricted" if level_name in ("internal", "restricted") else level_name
     agents_at_level = [
         role
         for role, env in envelopes_by_role.items()
-        if env.confidentiality_clearance.name.lower() == target
+        if env.confidentiality_clearance.value == level_name
     ]
     bar = "#" * (level + 1)
     print(f"    {level_name:<13} {bar:<5} {agents_at_level}")
 
 # ── Checkpoint 3 ────────────────────────────────────────────────────────
 assert escalation_caught, "Task 3: the escalation must be rejected"
+assert "Confidentiality" in violation_reason, "Task 3: clearance escalation caught"
 print("\n[x] Checkpoint 3 passed — privilege escalation caught structurally\n")
 
 
@@ -478,25 +475,34 @@ print("\n[x] Checkpoint 3 passed — privilege escalation caught structurally\n"
 # Each agent's operating envelope spans five dimensions. The radar
 # chart shows at a glance how "wide" each agent's authority is — a
 # public customer agent has a tiny footprint, while the risk assessor
-# has broad reach. This is the visual proof of least-privilege.
+# has broad reach. Every value is READ FROM the envelope objects built in
+# Task 1, normalised by the maximum across agents (clearance by the top
+# of pact's ladder).
 
-dimensions = ["Clearance", "Budget", "Tools", "Role\nScope", "Data\nAccess"]
-
-# Normalise each dimension to 0-1 for the radar (data preserved from
-# the pre-migration version — visual proof does not depend on the new
-# envelope API).
+dimensions = ["Clearance", "Budget", "Actions", "Read\npaths", "Channels"]
+max_level = max(CLEARANCE_LEVELS.values())
+max_budget = max(e.financial.max_spend_usd for e in envelopes_by_role.values())
+max_actions = max(len(e.operational.allowed_actions) for e in envelopes_by_role.values())
+max_paths = max(len(e.data_access.read_paths) for e in envelopes_by_role.values())
+max_channels = max(
+    len(e.communication.allowed_channels) for e in envelopes_by_role.values()
+)
 agent_data = {
-    "data_analyst": [1 / 3, 20 / 200, 3 / 6, 0.4, 0.33],
-    "model_trainer": [2 / 3, 100 / 200, 3 / 6, 0.6, 0.66],
-    "risk_assessor": [3 / 3, 200 / 200, 4 / 6, 0.8, 1.0],
-    "customer_agent": [0 / 3, 5 / 200, 2 / 6, 0.3, 0.1],
+    role: [
+        CLEARANCE_LEVELS[env.confidentiality_clearance.value] / max_level,
+        env.financial.max_spend_usd / max_budget,
+        len(env.operational.allowed_actions) / max_actions,
+        len(env.data_access.read_paths) / max_paths,
+        len(env.communication.allowed_channels) / max_channels,
+    ]
+    for role, env in envelopes_by_role.items()
 }
 
 angles = np.linspace(0, 2 * np.pi, len(dimensions), endpoint=False).tolist()
 angles += angles[:1]
 
 fig, ax = plt.subplots(figsize=(7, 7), subplot_kw=dict(polar=True))
-colors_radar = ["#3498db", "#2ecc71", "#e74c3c", "#9b59b6"]
+colors_radar = ["#3498db", "#2ecc71", "#e67e22", "#e74c3c", "#9b59b6", "#7f8c8d"]
 
 for (agent_name, values), color in zip(agent_data.items(), colors_radar):
     vals = values + values[:1]
@@ -535,11 +541,10 @@ print(f"\n  Saved: {fname}")
 # `compile_governance()` against on every PR — and the validation is
 # structural, not narrative.
 #
-# BUSINESS IMPACT: IMDA AI Verify is increasingly used as a
-# procurement filter by Singapore government agencies and
-# GLC-linked companies. A platform that cannot produce the
-# required evidence is excluded from tenders worth S$1M–S$10M
-# annually. Getting the evidence right is not a nice-to-have.
+# BUSINESS IMPACT (illustrative figures): buyers increasingly ask AI
+# vendors for governance evidence during procurement. If a platform
+# that cannot produce it loses even one S$1M contract a year, the
+# envelope work above is cheap by comparison.
 
 print("\n" + "=" * 70)
 print("  KEY TAKEAWAY: Envelopes are the Structural Least-Privilege Gate")
@@ -549,56 +554,32 @@ print("  impossible at envelope time — not 'unlikely at runtime'.")
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# DIAGNOSTIC CHECKPOINT — Governance lens
 # ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
+# Negative drills against the envelopes attached in Task 1: each agent
+# asks for an action that belongs to a DIFFERENT agent's envelope. Every
+# drill runs through engine.verify_action() — no LLM call is needed.
 from shared.mlfp06.diagnostics import LLMObservatory
 
-# Primary lens: Governance (audit chain, envelope breach scan, verdict
-# distribution, budget consumption). Secondary: Agent Trace.
-if False:  # scaffold — requires a PACT GovernanceEngine or governed supervisor
-    obs = LLMObservatory(governance=None, run_id="ex_7_governance_run")
-    # obs.governance.verify_chain(audit_df)
-    # obs.governance.budget_consumption()
-    # obs.governance.negative_drills([...])  # envelope breach attempts
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Governance (HEALTHY): audit chain intact (0 breaks), 128
-#       actions recorded, 2 blocks + 1 escalate, budget at 34% of cap.
-#   [!] Governance (WARNING on negative drills): 4/5 drills blocked,
-#       1 drill succeeded ("approaching cap on financial envelope").
-#       Fix: tighten budget envelope from $50 -> $20 per run.
-#   [✓] Agent      (HEALTHY): 12 TAOD steps, no stuck loops.
-#   [?] Output / Retrieval / Alignment / Attention (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [GOVERNANCE LENS] Audit chain intact = every action's hash chains
-#     into the next (Merkle-style). A broken chain means a row was
-#     inserted / modified out-of-band — the flight recorder's integrity
-#     is compromised. 2 blocks + 1 escalate on 128 actions is healthy
-#     enforcement pressure. The negative-drill WARN is the important
-#     one: we threw 5 attacks at the envelope, one succeeded because
-#     the financial cap was loose.
-#     >> Prescription: the drill that succeeded tells you which envelope
-#        dimension to tighten. Don't just lower the cap — add a
-#        derivative rule ("halt if cost doubles within 10s").
-#  [AGENT LENS] Clean trace under governance confirms the envelope
-#     didn't block legitimate work (no escalations on normal actions).
-# ════════════════════════════════════════════════════════════════════
+obs = LLMObservatory(governance=engine, run_id="ex_7_2_envelopes")
+drills = obs.governance.negative_drills(
+    [
+        {
+            "label": f"{role} -> deploy_model",
+            "role_address": AGENT_ADDRESSES[role],
+            "action": "deploy_model",
+            "context": {"cost": 0.10},
+        }
+        for role in envelopes_by_role
+        if "deploy_model" not in envelopes_by_role[role].operational.allowed_actions
+    ]
+)
+print("\n── LLM Observatory: cross-envelope drills ──")
+print(drills.select("scenario", "verdict"))
+print(obs.governance.report())
+# INTERPRETATION: every agent without deploy_model in its envelope is
+# blocked from deploying. If any row reads auto_approved, that role has
+# no envelope attached — fix the attachment, not the drill.
 
 
 # ════════════════════════════════════════════════════════════════════════

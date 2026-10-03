@@ -197,13 +197,26 @@ class GovernanceDiagnostics:
         # Canonicalise the key names we care about. Accept several aliases.
         canonical: list[dict[str, Any]] = []
         for r in rows:
+            # Kaizen GovernedSupervisor audit records carry record_type /
+            # agent_id / details instead of verdict / subject / reason.
+            details = r.get("details") if isinstance(r.get("details"), dict) else {}
+            verdict = r.get("verdict") or r.get("decision") or r.get("level")
+            if verdict is None and "record_type" in r:
+                verdict = "blocked" if details.get("blocked") else r["record_type"]
             canonical.append(
                 {
                     "timestamp": r.get("timestamp") or r.get("ts") or r.get("time"),
-                    "subject": r.get("subject") or r.get("director") or r.get("actor"),
+                    "subject": r.get("subject")
+                    or r.get("director")
+                    or r.get("actor")
+                    or r.get("agent_id"),
                     "action": r.get("action") or r.get("operation"),
-                    "verdict": (r.get("verdict") or r.get("decision") or "unknown"),
-                    "reason": r.get("reason") or r.get("rationale") or "",
+                    "verdict": verdict or "unknown",
+                    "reason": r.get("reason")
+                    or r.get("rationale")
+                    or details.get("reason")
+                    or details.get("error")
+                    or "",
                     "hash": r.get("hash"),
                     "prev_hash": r.get("prev_hash"),
                 }

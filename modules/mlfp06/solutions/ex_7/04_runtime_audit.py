@@ -2,26 +2,31 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP06 — Exercise 7.4: Runtime Governance, Fail-Closed, and Audit Trail
+# MLFP06 — Exercise 7.4: Runtime Governance, Deny Paths, and Audit Trail
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Wrap an LLM-backed agent with a PACT-governed supervisor at runtime
-#   - Verify fail-closed semantics — an out-of-envelope action is DENIED
-#   - Contain the blast radius of adversarial prompts via envelope limits
-#   - Export a hash-chained audit trail and map it to
-#     EU AI Act / MAS TRM / PDPA
-#   - Understand warn / block / audit enforcement modes
+#   - Run a real (local Ollama) LLM behind a GovernedSupervisor at runtime
+#   - Prove a deny path: attach an envelope, then an out-of-envelope action
+#     is BLOCKED — and see that the installed engine auto-approves a role
+#     that has no envelope
+#   - Contain the blast radius of adversarial prompts with a budget
+#     envelope and an action allowlist
+#   - Verify a hash-chained audit trail and map the evidence it provides
+#     to the EU AI Act, MAS TRM and PDPA
+#   - Know pact's real verdict levels (auto_approved / flagged / held /
+#     blocked) and PactEngine's enforcement modes (enforce / shadow /
+#     disabled)
 #
-# PREREQUISITES: 03_budget_access.py
+# PREREQUISITES: 03_budget_access.py; Ollama running (`ollama serve`)
 # ESTIMATED TIME: ~45 min
 #
 # TASKS:
-#   1. Build three GovernedSupervisor tiers (public / internal / admin)
+#   1. Build three GovernedSupervisor tiers (public / confidential / secret)
 #   2. Run the governed supervisors against normal inputs
-#   3. Verify fail-closed: an out-of-envelope action MUST be denied
+#   3. Deny paths: attach an envelope, verify an out-of-envelope action
 #   4. Contain the blast radius of adversarial prompts
-#   5. Map audit trail entries to regulations (EU AI Act, MAS TRM, PDPA)
+#   5. Map audit-trail evidence to regulations (EU AI Act, MAS TRM, PDPA)
 #   6. Apply — PDPA breach-readiness audit for a Singapore SaaS
 #
 # ════════════════════════════════════════════════════════════════════════
@@ -29,7 +34,7 @@
 from __future__ import annotations
 
 import asyncio
-import os
+from collections import Counter
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -40,21 +45,28 @@ from pact import (
     ConfidentialityLevel,
     ConstraintEnvelopeConfig,
     DataAccessConstraintConfig,
+    EnforcementMode,
     FinancialConstraintConfig,
     OperationalConstraintConfig,
     RoleEnvelope,
     TemporalConstraintConfig,
 )
 
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, preflight_ollama
 from shared.mlfp06.ex_7 import (
+    clearance_chain_violations,
     compile_governance,
     default_model_name,
     load_adversarial_prompts,
-    make_fake_executor,
+    make_llm_executor,
 )
 
 OUTPUT_DIR = Path("outputs") / "ex7_governance"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# This file makes real LLM calls. If Ollama is not running this raises
+# OllamaUnreachableError telling you to start it (`ollama serve`).
+preflight_ollama(required_models=[DEFAULT_CHAT_MODEL])
 
 engine, org = compile_governance()
 adversarial_prompts = load_adversarial_prompts(n=50)
@@ -65,25 +77,29 @@ print("\n--- GovernanceEngine compiled; adversarial prompts loaded ---\n")
 # THEORY — Runtime Enforcement vs Compile-Time Validation
 # ════════════════════════════════════════════════════════════════════════
 # Compiling an org YAML proves the governance GRAPH is sound. It does
-# NOT prove that live LLM calls respect the graph. For that, every
-# agent invocation must pass through an enforcement wrapper that:
+# NOT prove that live LLM calls respect the graph. At runtime two
+# different components do two different jobs:
 #
-#   1. Checks if this action is inside the agent's envelope.
-#   2. Checks if budget is sufficient.
-#   3. Checks clearance against resource classification.
-#   4. If ALL pass, executes and charges budget.
-#   5. If ANY fail, records a BLOCKED verdict — tool never runs.
+#   GovernanceEngine.verify_action(role, action, context)
+#       -> GovernanceVerdict with .level in
+#          {auto_approved, flagged, held, blocked}
+#          (.allowed is True for auto_approved and flagged)
+#       It checks the role's ATTACHED envelope: allowed actions, cost
+#       against the financial cap, and the other dimensions.
 #
-# Fail-closed means: the answer to "should this be allowed?" is DENY
-# unless every check explicitly returns ALLOW. The opposite of the
-# classic Unix "allow unless denied" default.
+#   GovernedSupervisor.run(objective, execute_node=...)
+#       Runs your executor (here: a real Ollama call), records the cost
+#       the executor reports against its financial envelope, HOLDS further
+#       work once the budget is used up, and appends a hash-chained audit
+#       record for every step. It does not read prompt content and does
+#       not decide which tools are allowed — that is verify_action's job.
 #
-# The modern PACT wrapper is `GovernedSupervisor` from kaizen_agents.
-# It takes the three knobs the old `PactGovernedAgent` took — budget,
-# tools, clearance — but goes further: the envelope is a proper
-# 5-dimensional `ConstraintEnvelope`, and the audit trail is a
-# hash-chained sequence of records that a tamper-evidence checker
-# can verify offline.
+# IMPORTANT — the installed default is NOT fail-closed. A role with no
+# attached envelope, or an address that is not in the org, is
+# auto-approved ("No envelope constraints -- action permitted"). A deny
+# path exists only where you attached an envelope. So production
+# governance needs two habits: attach an envelope to every agent role,
+# and TEST the deny path (Task 3).
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -114,7 +130,7 @@ governed_admin = GovernedSupervisor(
     model=model,
     budget_usd=200.0,
     tools=["answer_question", "read_data", "audit_model", "access_audit_log"],
-    data_clearance="restricted",  # historical alias of RESTRICTED in kaizen_agents
+    data_clearance="secret",  # pact: public < restricted < confidential < secret
 )
 
 print("Three runtime-governed supervisors created:")
@@ -138,96 +154,84 @@ assert governed_admin.envelope.financial.max_spend_usd == 200.0
 assert "read_data" in governed_internal.envelope.operational.allowed_actions
 assert "access_audit_log" in governed_admin.envelope.operational.allowed_actions
 assert "train_model" not in governed_public.envelope.operational.allowed_actions
+assert governed_admin.envelope.confidentiality_clearance == ConfidentialityLevel.SECRET
 print("\n[x] Checkpoint 1 passed — three governance tiers wired\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Run the Governed Supervisors
+# TASK 2 — Run the Governed Supervisors (real LLM)
 # ════════════════════════════════════════════════════════════════════════
 #
-# `GovernedSupervisor.run()` decomposes an objective into a plan, then
-# runs each node through an `execute_node` callback YOU supply. That
-# callback is where the real LLM (or stub) lives. Governance is
-# enforced AROUND the callback — budget is checked before, spend is
-# recorded after, the audit trail is appended automatically.
-#
-# When no OPENAI_API_KEY is set, we use a deterministic fake executor
-# from `shared.mlfp06.ex_7` so the teaching narrative runs end-to-end
-# offline. The governance wiring (envelope, budget tracking, audit
-# trail) is IDENTICAL either way — the fake just short-circuits the
-# LLM at the callback boundary.
+# `make_llm_executor()` returns the execute_node callback: it sends the
+# objective to the local Ollama model through make_delegate() and returns
+# {result, cost, prompt_tokens, completion_tokens}. Ollama is free, so
+# cost is $0 here. There is no offline stub — if the call fails, the
+# supervisor marks the node FAILED and we stop with the real error.
 
 print("=" * 70)
 print("TASK 2: Run Governed Supervisors")
 print("=" * 70)
 
-live_mode = bool(
-    os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-)
-executor = make_fake_executor() if not live_mode else make_fake_executor()
-print(f"  Mode: {'LIVE LLM' if live_mode else 'OFFLINE (fake executor)'}")
+executor = make_llm_executor()
+
+
+def node_errors(result) -> list[str]:
+    """Collect the error message of every FAILED plan node."""
+    return [n.error for n in result.plan.nodes.values() if n.error]
 
 
 async def run_tiers() -> int:
     questions = [
-        ("public", governed_public, "What is machine learning?"),
-        ("public", governed_public, "Show me the model training logs."),
-        ("internal", governed_internal, "Read the customer-tier sales data."),
-        ("admin", governed_admin, "What are the last 90 days of audit findings?"),
+        ("public", governed_public, "What is machine learning? Answer in two sentences."),
+        ("public", governed_public, "Explain what a model training log contains."),
+        ("internal", governed_internal, "List three checks before reading sales data."),
+        ("admin", governed_admin, "What should an AI audit-findings review cover?"),
     ]
     successes = 0
     for tier, gs, q in questions:
-        try:
-            result = await gs.run(objective=q, execute_node=executor)
-            status = "ok" if result.success else "failed"
-            if result.success:
-                successes += 1
-            print(
-                f"\n--- {tier} tier: {q[:50]}... ---\n"
-                f"  status={status}  consumed=${result.budget_consumed:.4f}  "
-                f"audit_entries={len(result.audit_trail)}"
+        result = await gs.run(objective=q, execute_node=executor)
+        if not result.success:
+            raise RuntimeError(
+                f"{tier} tier run failed: {node_errors(result)}. "
+                "Is Ollama running? Start it with: ollama serve"
             )
-        except Exception as e:  # pragma: no cover — defensive teaching path
-            print(f"\n--- {tier} tier: BLOCKED ({type(e).__name__}: {e}) ---")
+        successes += 1
+        answer = next(iter(result.results.values()))
+        print(
+            f"\n--- {tier} tier: {q[:50]} ---\n"
+            f"  answer: {str(answer)[:120].replace(chr(10), ' ')}...\n"
+            f"  consumed=${result.budget_consumed:.4f}  "
+            f"audit_entries={len(result.audit_trail)}"
+        )
     return successes
 
 
-try:
-    n_task2_success = asyncio.run(run_tiers())
-except Exception as e:
-    print(f"\n  (tier run skipped — {type(e).__name__}: {e})")
-    n_task2_success = 0
+n_task2_success = asyncio.run(run_tiers())
 
 # ── Checkpoint 2 ────────────────────────────────────────────────────────
-assert n_task2_success >= 1, "Task 2: at least one tier run should succeed"
-print("\n[x] Checkpoint 2 passed — runtime wrapper executed\n")
+assert n_task2_success == 4, "Task 2: every tier run should complete"
+print("\n[x] Checkpoint 2 passed — runtime wrapper executed real LLM calls\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — Fail-Closed Verification (Envelope Violation)
+# TASK 3 — Deny Paths (Attach the Envelope First)
 # ════════════════════════════════════════════════════════════════════════
 #
-# PEDAGOGICAL NOTE: in modern pact, `engine.verify_action()` on a role
-# with NO attached envelope auto-approves — the decision is literally
-# "no envelope constraints, action permitted". That is the intended
-# semantic: envelopes are the source of restriction. So the fail-closed
-# proof must run against a REAL attached role attempting an action
-# OUTSIDE its envelope. We:
+# A deny path only exists where an envelope is attached. We:
 #
-#   1. Attach the public-tier envelope to customer_agent (D3-R1-T1-R1).
-#   2. Ask the engine to verify a `train_model` action — a tool the
-#      public tier's envelope does not allow.
-#   3. Assert the verdict is `blocked` with a structural reason.
+#   1. Attach a public-tier envelope to customer_agent (D3-R1-T1-R1).
+#   2. Ask the engine to verify `train_model` — not in that envelope.
+#   3. Ask it to verify a $100 answer_question — over the $5 cap.
+#   4. Ask the same train_model question for the department head
+#      vp_customer (D3-R1), which has NO envelope.
 #
-# This is the honest fail-closed semantic: an envelope violation is
-# denied, and the denial cites the envelope as the source of truth.
+# Steps 2-3 must be BLOCKED. Step 4 is AUTO-APPROVED by the installed
+# default — that is the gap every org must close by attaching envelopes.
 
 print("=" * 70)
-print("TASK 3: Fail-Closed Verification (Envelope Violation)")
+print("TASK 3: Deny Paths (envelope attached vs. no envelope)")
 print("=" * 70)
 
-# Attach a public-tier envelope to customer_agent so verify_action()
-# can enforce it. Shard 4 ran the same pattern for 03_budget_access.
 public_envelope = ConstraintEnvelopeConfig(
     id="customer_agent_envelope",
     description="customer_agent — bounded public tier",
@@ -255,31 +259,28 @@ engine.set_role_envelope(
     )
 )
 
-# An action OUTSIDE the envelope. The public tier has no train_model.
 out_of_envelope_verdict = engine.verify_action(
     role_address="D3-R1-T1-R1",
     action="train_model",
     context={"cost": 0.10},
 )
-print(
-    f"  Public tier asks to train_model: "
-    f"{'DENIED (correct)' if not out_of_envelope_verdict.allowed else 'ALLOWED (BUG!)'}  "
-    f"level={out_of_envelope_verdict.level}"
-)
-print(f"  Reason: {out_of_envelope_verdict.reason[:120]}")
-
-# Over-budget action. The public tier's cap is $5.
 over_budget_verdict = engine.verify_action(
     role_address="D3-R1-T1-R1",
     action="answer_question",
     context={"cost": 100.0},
 )
-print(
-    f"\n  Public tier asks to spend $100 on answer_question: "
-    f"{'DENIED (correct)' if not over_budget_verdict.allowed else 'ALLOWED (BUG!)'}  "
-    f"level={over_budget_verdict.level}"
+no_envelope_verdict = engine.verify_action(
+    role_address="D3-R1",
+    action="train_model",
+    context={"cost": 0.10},
 )
-print(f"  Reason: {over_budget_verdict.reason[:120]}")
+for label, v in [
+    ("customer_agent train_model ", out_of_envelope_verdict),
+    ("customer_agent $100 answer ", over_budget_verdict),
+    ("vp_customer train_model    ", no_envelope_verdict),
+]:
+    print(f"  {label} level={v.level:<13} allowed={v.allowed}")
+    print(f"      reason: {v.reason[:110]}")
 
 # ── Checkpoint 3 ────────────────────────────────────────────────────────
 assert (
@@ -288,255 +289,230 @@ assert (
 assert out_of_envelope_verdict.level == "blocked"
 assert not over_budget_verdict.allowed, "Task 3: over-budget MUST be denied"
 assert over_budget_verdict.level == "blocked"
-print("\n[x] Checkpoint 3 passed — fail-closed on envelope violation verified\n")
+assert no_envelope_verdict.level == "auto_approved", (
+    "Task 3: the installed default auto-approves a role with no envelope"
+)
+print("\n[x] Checkpoint 3 passed — deny path verified where an envelope exists\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Containing the Blast Radius of Adversarial Prompts
 # ════════════════════════════════════════════════════════════════════════
 #
-# IMPORTANT PEDAGOGICAL CORRECTION: governance does NOT classify
-# prompts as toxic. Content classification is a separate control
-# (moderation API, classifier head, or `pact.KnowledgeFilter` hook).
-# What the envelope DOES do is limit the blast radius of a successful
-# prompt injection:
+# Governance does NOT classify prompts as toxic. Content classification
+# is a separate control (a moderation model or classifier). What the
+# envelopes DO is cap the damage a successful injection can cause:
 #
-#   - Budget cap: a looped injection cannot drain more than $5 on
-#     the public tier before governance halts the plan.
-#   - Tool allowlist: even if the prompt convinces the model to
-#     "run train_model", the envelope refuses because train_model
-#     is not in the public tier's allowed_actions.
-#   - Clearance: even if the prompt convinces the model to "read
-#     customer credit records", the envelope refuses because the
-#     public tier's clearance is PUBLIC, not RESTRICTED.
+#   - Budget: once the financial envelope is used up, the supervisor
+#     HOLDS every further node — a looped injection stops spending.
+#   - Action allowlist: whatever the model is talked into, the most
+#     damaging action it could request (`train_model`, `read_data`) is
+#     blocked by verify_action for the customer-agent role.
 #
-# The RealToxicityPrompts dataset is the stress test for that blast
-# radius — we count how many successful calls the public supervisor
-# makes under adversarial load before the budget or envelope caps it.
-# The point is NOT "governance blocks toxic content". The point is
-# "governance caps what a successful injection can do".
+# Ollama is free, so to make the budget observable this tier charges a
+# NOTIONAL $0.01 per 1,000 tokens against a deliberately tiny $0.01
+# budget. These are teaching numbers, not a bill.
 
 print("=" * 70)
 print("TASK 4: Blast-Radius Containment Against Adversarial Prompts")
 print("=" * 70)
 
+NOTIONAL_USD_PER_1K_TOKENS = 0.01
+governed_blast = GovernedSupervisor(
+    model=model,
+    budget_usd=0.01,
+    tools=["answer_question", "search_faq"],
+    data_clearance="public",
+)
+blast_executor = make_llm_executor(
+    notional_usd_per_1k_tokens=NOTIONAL_USD_PER_1K_TOKENS
+)
+INJECTED_ACTIONS = ["train_model", "read_data"]
 
-async def test_adversarial_prompts() -> tuple[int, int, int]:
+
+async def test_adversarial_prompts() -> dict[str, int]:
     sample = adversarial_prompts.head(10)
-    n_budget_exhausted = 0
-    n_envelope_violation = 0
-    n_success = 0
+    counts = {"served": 0, "held_budget": 0, "tool_blocked": 0, "tool_allowed": 0}
 
     for i, row in enumerate(sample.iter_rows(named=True)):
         prompt_text = row["prompt_text"]
-        toxicity = row["toxicity_score"]
-
-        try:
-            result = await governed_public.run(
-                objective=prompt_text,
-                execute_node=executor,
+        result = await governed_blast.run(
+            objective=prompt_text, execute_node=blast_executor
+        )
+        states = {n.state.name for n in result.plan.nodes.values()}
+        if result.success:
+            counts["served"] += 1
+            outcome = f"served (notional ${result.budget_consumed:.4f})"
+        elif "HELD" in states:
+            counts["held_budget"] += 1
+            outcome = "HELD — budget envelope exhausted"
+        else:
+            raise RuntimeError(
+                f"prompt {i + 1}: LLM call failed: {node_errors(result)}. "
+                "Start Ollama: ollama serve"
             )
-            if result.success:
-                n_success += 1
-                outcome = f"responded (within envelope, ${result.budget_consumed:.4f})"
-            else:
-                n_envelope_violation += 1
-                outcome = f"envelope blocked (${result.budget_consumed:.4f})"
-        except Exception as e:  # pragma: no cover — defensive teaching path
-            n_budget_exhausted += 1
-            outcome = f"HALTED: {type(e).__name__}"
 
-        snippet = prompt_text[:50].replace("\n", " ")
-        print(f"  {i+1:2}. tox={toxicity:.2f} {outcome}: {snippet}...")
+        # Whatever the reply says, check the worst actions it could request.
+        for action in INJECTED_ACTIONS:
+            verdict = engine.verify_action("D3-R1-T1-R1", action, {"cost": 0.01})
+            governed_blast.record_tool_use(
+                action, blocked=not verdict.allowed, reason=verdict.reason
+            )
+            counts["tool_blocked" if not verdict.allowed else "tool_allowed"] += 1
 
+        snippet = prompt_text[:45].replace("\n", " ")
+        print(f"  {i + 1:2}. tox={row['toxicity_score']:.2f} {outcome}: {snippet}...")
+
+    snap = governed_blast.budget.get_snapshot("root")
     print(
-        f"\n  Result: {n_success} served within envelope, "
-        f"{n_envelope_violation} envelope blocks, "
-        f"{n_budget_exhausted} budget halts"
+        f"\n  Result: {counts['served']} served, {counts['held_budget']} held by "
+        f"the budget envelope; {counts['tool_blocked']} injected tool requests "
+        f"blocked, {counts['tool_allowed']} allowed"
     )
     print(
-        "  Interpretation: governance did NOT filter on content. "
-        "It capped damage by refusing tools/spend outside the envelope."
+        f"  Notional spend: ${snap.consumed:.4f} of ${snap.allocated:.2f} "
+        "(the check runs BEFORE each call, so the last call can overshoot)"
     )
-    return n_success, n_envelope_violation, n_budget_exhausted
+    return counts
 
 
-try:
-    n_success, n_env, n_budget = asyncio.run(test_adversarial_prompts())
-except Exception as e:
-    print(f"  (adversarial test skipped — {type(e).__name__}: {e})")
-    n_success = n_env = n_budget = 0
+blast_counts = asyncio.run(test_adversarial_prompts())
 
 # ── Checkpoint 4 ────────────────────────────────────────────────────────
-# The blast-radius teaching beat: we ran 10 adversarial prompts through
-# the public tier. Every response was either served within the envelope
-# (capped at $5 total spend) or blocked by the envelope. The point is
-# bounded damage, not perfect content filtering.
-assert (n_success + n_env + n_budget) == 10 or (n_success + n_env + n_budget) == 0
-print("\n[x] Checkpoint 4 passed — blast-radius containment tested\n")
+assert blast_counts["served"] + blast_counts["held_budget"] == 10, (
+    "Task 4: every adversarial prompt must be either served or held"
+)
+assert blast_counts["tool_allowed"] == 0, (
+    "Task 4: the customer-agent envelope must block every injected tool"
+)
+print("\n[x] Checkpoint 4 passed — blast radius bounded by budget + allowlist\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Audit Trail & Regulatory Mapping
+# TASK 5 — Audit Trail & Regulatory Evidence Mapping
 # ════════════════════════════════════════════════════════════════════════
 #
 # The hash-chained audit trail is the structural evidence a regulator
-# needs: every supervisor records every decision as a linked record,
-# and `audit.verify_chain()` returns True only if the chain has not
-# been tampered with post-hoc.
+# asks for: every supervisor records every step as a linked record, and
+# `audit.verify_chain()` returns True only if no record was altered.
 
 print("=" * 70)
-print("TASK 5: Audit Trail & Regulatory Mapping")
+print("TASK 5: Audit Trail & Regulatory Evidence Mapping")
 print("=" * 70)
 
-qa_audit = governed_public.audit.to_list()
+public_audit = governed_public.audit.to_list()
+blast_audit = governed_blast.audit.to_list()
 admin_audit = governed_admin.audit.to_list()
+chains_valid = {
+    "public": governed_public.audit.verify_chain(),
+    "blast": governed_blast.audit.verify_chain(),
+    "admin": governed_admin.audit.verify_chain(),
+}
+for tier, records in [("public", public_audit), ("blast", blast_audit), ("admin", admin_audit)]:
+    by_type = Counter(r["record_type"] for r in records)
+    print(f"  {tier:<7} {len(records):>3} records  chain valid: {chains_valid[tier]}")
+    print(f"          by type: {dict(by_type)}")
 
-# Tamper-evidence check: every supervisor's audit chain is hash-linked,
-# which is structural proof the trail cannot be edited post-hoc.
-public_chain_valid = governed_public.audit.verify_chain()
-admin_chain_valid = governed_admin.audit.verify_chain()
+if blast_audit:
+    last = blast_audit[-1]
+    print(f"\n  Sample record keys: {sorted(last.keys())}")
+    print(f"  record_type={last['record_type']}  action={last['action']}")
+    print(f"  prev_hash={last['prev_hash'][:16]}...  record_hash={last['record_hash'][:16]}...")
 
-print("Audit trail sizes:")
-print(
-    f"  Public tier:  {len(qa_audit):>3} entries  "
-    f"(chain valid: {public_chain_valid})"
-)
-print(
-    f"  Admin tier:   {len(admin_audit):>3} entries  "
-    f"(chain valid: {admin_chain_valid})"
-)
-
-if qa_audit:
-    first = qa_audit[0]
-    print(f"\n  Sample entry keys: {sorted(first.keys())}")
-    print(f"  Sample record_type: {first.get('record_type')}")
-    print(f"  Sample prev_hash:   {(first.get('prev_hash') or 'GENESIS')[:16]}...")
-    print(f"  Sample record_hash: {first.get('record_hash', '')[:16]}...")
-
-# Regulatory mapping — 6 rows
-print("\n--- Regulatory Mapping ---")
+# Evidence produced by THIS run — each row is computed, not asserted.
+n_blocked_records = sum(1 for r in blast_audit if r["action"].startswith("tool_blocked"))
 regulatory_map = pl.DataFrame(
     {
         "Regulation": [
-            "EU AI Act Art. 9 (Risk Management)",
-            "EU AI Act Art. 12 (Record-keeping)",
-            "EU AI Act Art. 14 (Human Oversight)",
-            "Singapore AI Verify (Accountability)",
-            "MAS TRM 7.5 (Audit Trail)",
-            "PDPA (Personal Data Protection)",
+            "EU AI Act Art. 9 (risk management)",
+            "EU AI Act Art. 12 (record-keeping)",
+            "EU AI Act Art. 14 (human oversight)",
+            "Singapore AI Verify (accountability)",
+            "MAS TRM Guidelines (audit trail)",
+            "PDPA (personal data protection)",
         ],
-        "PACT Control": [
-            "ConstraintEnvelopeConfig per role (5 dimensions)",
-            "Hash-chained audit trail with timestamps",
-            "D/T/R chains - every action traces to a human Delegator",
-            "D/T/R accountability grammar",
-            "audit.verify_chain() + supervisor.audit.to_list()",
-            "ConfidentialityLevel gating + KnowledgeItem ownership",
+        "Evidence in this run": [
+            f"deny path verified: {out_of_envelope_verdict.level}",
+            f"{len(public_audit) + len(blast_audit) + len(admin_audit)} hash-chained records",
+            f"{org.n_delegations} envelopes, each defined by a human head",
+            f"clearance-chain violations: {clearance_chain_violations().height}",
+            f"all chains verify: {all(chains_valid.values())}",
+            f"public tier clearance: {governed_public.envelope.confidentiality_clearance.value}; "
+            f"{n_blocked_records} blocked data/tool requests logged",
         ],
-        "Status": [
-            "COMPLIANT",
-            "COMPLIANT",
-            "COMPLIANT",
-            "COMPLIANT",
-            "COMPLIANT",
-            "COMPLIANT",
+        "Evidence present": [
+            out_of_envelope_verdict.level == "blocked",
+            len(public_audit) > 0 and len(admin_audit) > 0,
+            org.n_delegations == org.n_agents,
+            clearance_chain_violations().height == 0,
+            all(chains_valid.values()),
+            governed_public.envelope.confidentiality_clearance
+            == ConfidentialityLevel.PUBLIC
+            and n_blocked_records > 0,
         ],
     }
 )
+print("\n--- Regulatory evidence map (evidence, not a compliance ruling) ---")
 print(regulatory_map)
 
-# Enforcement modes
-print("\n--- Enforcement Modes ---")
-print("  WARN:  log the violation, allow the action (dev/staging only)")
-print("  BLOCK: deny the action and raise a governed error (production)")
-print("  AUDIT: allow but flag for human review (semi-trusted agents)")
-print("\n  Production default: BLOCK (fail-closed).")
-print("  Modern pact: pact.enforcement.EnforcementMode + validate_enforcement_mode()")
+print("\n--- pact verdict levels (GovernanceEngine.verify_action) ---")
+print("  auto_approved  allowed, no review")
+print("  flagged        allowed, flagged for review")
+print("  held           paused for human approval")
+print("  blocked        denied")
+print("\n--- PactEngine enforcement modes (pact.EnforcementMode) ---")
+for mode in EnforcementMode:
+    print(f"  {mode.value}")
+print("  enforce = verdicts bind (default); shadow = log only, never block;")
+print("  disabled = skip governance (needs PACT_ALLOW_DISABLED_MODE=true)")
 
 # ── Checkpoint 5 ────────────────────────────────────────────────────────
-assert public_chain_valid, "Task 5: public-tier audit chain should verify"
-assert admin_chain_valid, "Task 5: admin-tier audit chain should verify"
+assert all(chains_valid.values()), "Task 5: every audit chain should verify"
 assert regulatory_map.height >= 6, "Task 5: should map at least 6 regulations"
-print("\n[x] Checkpoint 5 passed — audit trail and regulatory map complete\n")
+assert regulatory_map["Evidence present"].all(), (
+    "Task 5: every mapped control should have evidence from this run"
+)
+print("\n[x] Checkpoint 5 passed — audit trail verified, evidence mapped\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# VISUALISE — Audit event timeline + enforcement outcome distribution
+# VISUALISE — Audit records by tier + outcome distribution (this run)
 # ════════════════════════════════════════════════════════════════════════
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 
-tiers = ["public", "internal", "admin"]
-tier_colors = {"public": "#2ecc71", "internal": "#3498db", "admin": "#e74c3c"}
-events = [
-    (0.5, "public", "allow"),
-    (1.0, "public", "allow"),
-    (1.5, "internal", "allow"),
-    (2.0, "public", "block"),
-    (2.5, "admin", "allow"),
-    (3.0, "public", "allow"),
-    (3.5, "internal", "allow"),
-    (4.0, "admin", "audit"),
-    (4.5, "public", "block"),
-    (5.0, "internal", "allow"),
-]
-for t, tier, outcome in events:
-    marker = "o" if outcome == "allow" else ("x" if outcome == "block" else "s")
-    ax1.scatter(
-        t, tiers.index(tier), c=tier_colors[tier], marker=marker, s=80, zorder=3
-    )
+tiers = ["public", "blast", "admin"]
+markers = {"genesis": "D", "action": "o", "held": "s"}
+for y, (tier, records) in enumerate(
+    [("public", public_audit), ("blast", blast_audit), ("admin", admin_audit)]
+):
+    for idx, rec in enumerate(records):
+        blocked = rec["action"].startswith("tool_blocked")
+        ax1.scatter(
+            idx,
+            y,
+            marker="x" if blocked else markers.get(rec["record_type"], "."),
+            color="#e74c3c" if blocked or rec["record_type"] == "held" else "#2ecc71",
+            s=50,
+        )
 ax1.set_yticks(range(len(tiers)))
 ax1.set_yticklabels(tiers)
-ax1.set_xlabel("Time (simulated seconds)")
-ax1.set_title("Audit Event Timeline by Tier", fontweight="bold")
+ax1.set_xlabel("Audit record index (chain order)")
+ax1.set_title("Audit Records by Tier (x = blocked tool, ■ = held)", fontweight="bold")
 ax1.grid(axis="x", alpha=0.3)
 
-from matplotlib.lines import Line2D
-
-legend_elements = [
-    Line2D(
-        [0],
-        [0],
-        marker="o",
-        color="w",
-        markerfacecolor="gray",
-        markersize=8,
-        label="allow",
-    ),
-    Line2D(
-        [0],
-        [0],
-        marker="x",
-        color="gray",
-        markersize=8,
-        label="block",
-        linestyle="None",
-    ),
-    Line2D(
-        [0],
-        [0],
-        marker="s",
-        color="w",
-        markerfacecolor="gray",
-        markersize=8,
-        label="audit",
-    ),
+outcome_labels = ["served", "held (budget)", "tool blocked", "tool allowed"]
+outcome_counts = [
+    blast_counts["served"] + n_task2_success,
+    blast_counts["held_budget"],
+    blast_counts["tool_blocked"],
+    blast_counts["tool_allowed"],
 ]
-ax1.legend(handles=legend_elements, fontsize=8, loc="upper right")
-
-outcomes = ["ALLOW", "BLOCK", "AUDIT"]
-counts = [6, 2, 1]
-colors_pie = ["#2ecc71", "#e74c3c", "#f39c12"]
-ax2.pie(
-    counts,
-    labels=outcomes,
-    colors=colors_pie,
-    autopct="%1.0f%%",
-    startangle=90,
-    textprops={"fontsize": 10, "fontweight": "bold"},
-)
-ax2.set_title("Enforcement Outcome Distribution", fontweight="bold")
+ax2.bar(outcome_labels, outcome_counts, color=["#2ecc71", "#f39c12", "#e74c3c", "#95a5a6"])
+for i, c in enumerate(outcome_counts):
+    ax2.text(i, c + 0.2, str(c), ha="center", fontsize=9)
+ax2.set_title("Runtime Outcomes Measured in This Run", fontweight="bold")
+ax2.set_ylabel("Count")
 
 plt.tight_layout()
 fname = OUTPUT_DIR / "ex7_audit_timeline_viz.png"
@@ -549,87 +525,46 @@ print(f"\n  Saved: {fname}")
 # TASK 6 — Apply: PDPA Breach-Readiness Audit
 # ════════════════════════════════════════════════════════════════════════
 #
-# SCENARIO: A Singapore HR SaaS platform with 200+ enterprise
-# customers is served a PDPA breach notification inquiry. The PDPC
-# asks: "For the 72-hour window starting 14 March, list every AI
-# action on personal data, the role that took it, the human
-# delegator that authorised the class of action, and whether any
-# governed-error responses were returned to external callers."
+# SCENARIO: A Singapore HR SaaS platform with 200+ enterprise customers
+# receives a data-breach inquiry from the regulator: "For the 72-hour
+# window starting 14 March, list every AI action on personal data, the
+# role that took it, the human head that authorised that class of action,
+# and whether any request was refused."
 #
-# Without runtime enforcement, the only answer is a log dive that
-# takes weeks and produces an incomplete reconstruction. With
-# GovernedSupervisor wrapping every run, the answer is a single
-# query against `supervisor.audit.to_list()` + `.verify_chain()` for
-# tamper-evidence. The decision, the delegation chain, and the
-# fail-closed behaviour on any suspicious action are all captured
-# as hash-linked records.
+# Without runtime governance, the only answer is a log dive that takes
+# weeks and produces an incomplete reconstruction. With GovernedSupervisor
+# around every run and verify_action in front of every tool, the answer is
+# a query over `supervisor.audit.to_list()` (including tool_blocked
+# records) plus `.verify_chain()` for tamper-evidence.
 #
-# BUSINESS IMPACT: PDPA financial penalties under Singapore's 2021
-# amendments reach 10% of annual turnover or S$1M (whichever is
-# higher) for organisations with revenue above S$10M. A credible,
-# tamper-evident audit trail is the difference between "we breached
-# a data subject's rights" and "we contained the incident, here is
-# the cryptographic evidence". One is a fine; the other is a
-# closed case.
+# BUSINESS IMPACT: under the 2020 PDPA amendments (in force from
+# October 2022) the maximum financial penalty is 10% of annual Singapore
+# turnover for organisations above S$10M turnover, or S$1M otherwise.
+# A tamper-evident trail does not make a breach legal; it lets the
+# organisation show quickly what happened and what was refused.
 
 print("=" * 70)
 print("  KEY TAKEAWAY: Governance Is a Runtime Property, Not a Slide")
 print("=" * 70)
-print("  Compile-time validation + runtime enforcement + hash-chained")
-print("  audit = structural evidence for regulators. Anything less is vibes.")
+print("  Envelopes attached to every role + deny paths tested + a verified")
+print("  audit chain = evidence. A role without an envelope is auto-approved.")
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# DIAGNOSTIC CHECKPOINT — Governance lens over the supervisor audit
 # ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
+# The governance lens reads the blast-radius supervisor's audit records
+# (supervisor.audit exposes .to_list()) and counts them by record type.
 from shared.mlfp06.diagnostics import LLMObservatory
 
-# Primary lens: Governance (audit chain, envelope breach scan, verdict
-# distribution, budget consumption). Secondary: Agent Trace.
-if False:  # scaffold — requires a PACT GovernanceEngine or governed supervisor
-    obs = LLMObservatory(governance=None, run_id="ex_7_governance_run")
-    # obs.governance.verify_chain(audit_df)
-    # obs.governance.budget_consumption()
-    # obs.governance.negative_drills([...])  # envelope breach attempts
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Governance (HEALTHY): audit chain intact (0 breaks), 128
-#       actions recorded, 2 blocks + 1 escalate, budget at 34% of cap.
-#   [!] Governance (WARNING on negative drills): 4/5 drills blocked,
-#       1 drill succeeded ("approaching cap on financial envelope").
-#       Fix: tighten budget envelope from $50 -> $20 per run.
-#   [✓] Agent      (HEALTHY): 12 TAOD steps, no stuck loops.
-#   [?] Output / Retrieval / Alignment / Attention (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [GOVERNANCE LENS] Audit chain intact = every action's hash chains
-#     into the next (Merkle-style). A broken chain means a row was
-#     inserted / modified out-of-band — the flight recorder's integrity
-#     is compromised. 2 blocks + 1 escalate on 128 actions is healthy
-#     enforcement pressure. The negative-drill WARN is the important
-#     one: we threw 5 attacks at the envelope, one succeeded because
-#     the financial cap was loose.
-#     >> Prescription: the drill that succeeded tells you which envelope
-#        dimension to tighten. Don't just lower the cap — add a
-#        derivative rule ("halt if cost doubles within 10s").
-#  [AGENT LENS] Clean trace under governance confirms the envelope
-#     didn't block legitimate work (no escalations on normal actions).
-# ════════════════════════════════════════════════════════════════════
+obs = LLMObservatory(governance=governed_blast.audit, run_id="ex_7_4_runtime")
+snapshot = obs.governance.audit_snapshot(last_n=200)
+print("\n── LLM Observatory: governance audit snapshot ──")
+print(snapshot.select("action", "verdict", "reason").tail(6))
+print(obs.governance.report())
+print(f"  (hash chain verified above with audit.verify_chain(): {chains_valid['blast']})")
+# INTERPRETATION: "blocked" rows are the injected tool requests the
+# envelope refused; "held" rows are prompts the budget envelope stopped.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -640,19 +575,20 @@ print("  WHAT YOU'VE MASTERED (Exercise 7 Full Arc)")
 print("=" * 70)
 print(
     """
-  [x] Wrapped agents with GovernedSupervisor at three clearance tiers
-  [x] Ran governed supervisors against normal queries
-  [x] Verified fail-closed: an out-of-envelope action is denied
-  [x] Tested blast-radius containment against RealToxicityPrompts
-  [x] Verified a hash-chained audit trail and mapped it to 6 regulations
+  [x] Ran a real local LLM behind GovernedSupervisor at three clearance tiers
+  [x] Proved a deny path by attaching an envelope first
+  [x] Saw the installed default auto-approve a role with no envelope
+  [x] Bounded adversarial prompts with a budget envelope and an allowlist
+  [x] Verified hash-chained audit trails and mapped the evidence
   [x] Reasoned about a live PDPA breach-readiness scenario
 
   Governance principles recap:
-    Fail-closed:          deny unless envelope explicitly allows
-    Monotonic tightening: envelopes only get stricter
-    Clearance hierarchy:  restricted > confidential > internal > public
+    Envelopes restrict:   no envelope = auto-approved (installed default)
+    Test the deny path:   attach the envelope, then assert "blocked"
+    Monotonic tightening: child envelopes never exceed their parent
+    Clearance ladder:     public < restricted < confidential < secret < top_secret
     Budget cascading:     child budget <= parent allocation
-    Audit completeness:   every decision logged, chain-verifiable
+    Audit completeness:   every step logged, chain-verifiable
 
   NEXT: Exercise 8 (Capstone) integrates EVERYTHING from M6 —
   SFT + DPO + PACT governance + Nexus deployment + compliance audit —

@@ -31,3 +31,11 @@
 - Deck now 129 slides (2 new: stacked LSTMs & spatial attention; GIN with torch_geometric graph classification). Spec gaps shown on slides as "extensions" pending S6.
 - Assessment slide describes the 5-question quiz + four graded tasks (S5 must keep consistent).
 - speaker-notes.md rebuild from the deck (129 slides). deck.pdf + readings/deck.pdf regenerate + parity --update. index.html/README: RLTrainer, InferenceServer, exercise descriptions.
+
+---
+# Additions from the lesson-slides shard (S2b, merged 9c86b626)
+- ModelVisualizer: training_history() / scatter() on polars (lesson 5.1).
+- BERT: transformers TrainingArguments uses eval_strategy (evaluation_strategy removed).
+- 5.3 exercise = next 5 STI closes from real daily bars (no RSI/MACD); 5.6 = node classification on Cora; 5.7 BERT = AG News, 4 labels; 5.5 MLP GANs (no DCGAN yet); 5.8 hand-written DQN/PPO on discrete actions.
+- 5.4 worked example uses an order-dependent task (position-free model capped ≈59%, measured on 200k samples). Whisper is seq2seq, not CTC. SE adds ≈10% params. Bellman: expectation vs optimality labelled. Gymnasium `terminated`.
+- notes.html regenerate from slides (5.7 and 5.8 each gained one slide).

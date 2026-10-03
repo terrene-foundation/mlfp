@@ -91,13 +91,15 @@ Total: roughly 20 hours of focused work. Spread it across two weeks at two hours
 
 ## Why This Matters
 
-In 2023 a small anomaly appeared in the public HDB resale price dataset published by Singapore's Housing and Development Board. Prices in three mature estates — Queenstown, Toa Payoh, and Ang Mo Kio — showed a brief and puzzling dip. The monthly median, which is what every property dashboard in the country displays, barely moved. The distribution, which is what almost nobody displayed, had shifted from a single bell curve into two distinct humps: one at the usual price and one roughly thirty percent below it.
+Consider a scenario. (It is an illustrative scenario, not a reported incident — but every ingredient of it happens in real data teams.) An analytics team publishes a monthly dashboard of the *median* HDB resale price per town. Hidden in the raw transactions is a batch of records with impossible prices: a few hundred sales keyed in at S$10, a few hundred at S$9,000,000 — mis-keyed figures, test rows that leaked into production, a unit error somewhere upstream. The median, which is what the dashboard displays, barely moves. The distribution, which is what almost nobody displays, has two absurd spikes at either end.
 
-Nobody noticed for three weeks. Dashboards looked fine. The median was fine. Average prices were fine. The anomaly was only caught when a junior analyst opened the raw CSV, loaded it into a DataFrame, and plotted a histogram — one line of code. The dip turned out to be a batch of subsidised intra-family transfers that had been accidentally classified as open-market resales. For three weeks, anyone valuing a Queenstown flat using the public data — which includes banks, property agents, and homebuyers — was working with a number that was quietly wrong.
+Nobody notices. The dashboard looks fine, because a median is *designed* to ignore extremes. Meanwhile every average computed from the same table, and every model later trained on it, quietly learns from the errors. The problem is caught only when somebody opens the raw file, loads it into a DataFrame, and plots a histogram — one line of code.
 
-You will hear this story referred to in this chapter as the HDB Flash Crash. It is the reason the word *mastery* is in the module title. Mastery does not mean that you can write fancy code. It means that you can look at a file of raw data and find things that nobody asked you to look for. It means you do not trust an aggregated number you did not personally plot. It means you know the difference between the mean and the median well enough to explain, unprompted, why the Singapore property reports use one and not the other.
+This is not hypothetical for you. The course's HDB resale dataset (about 50,000 transactions; a synthetic dataset modelled on the public HDB resale data, with data-quality problems planted on purpose) contains exactly this kind of dirt: 107 sales at S$10 and 144 sales at S$9,000,000, while the median sits at about S$849,000. By Lesson 1.2 you will find them yourself.
 
-In this lesson you will learn the single skill that would have caught the flash crash on day one: load a CSV file into memory, look at the raw data, and compute summary statistics. We will do this on a smaller, friendlier dataset — Singapore monthly weather — so the stakes are low while you are learning the syntax. But by the end of Lesson 1.8, the tools in your hands will be the same tools that caught the real anomaly.
+We will refer to this scenario in this chapter as "the dashboard that said everything was fine". It is the reason the word *mastery* is in the module title. Mastery does not mean that you can write fancy code. It means that you can look at a file of raw data and find things that nobody asked you to look for. It means you do not trust an aggregated number you did not personally plot. It means you know the difference between the mean and the median well enough to explain, unprompted, why property reports use one and not the other — and why that same choice can hide a data error.
+
+In this lesson you will learn the single skill that catches this kind of problem on day one: load a data file into memory, look at the raw data, and compute summary statistics. We will do this on a smaller, friendlier dataset — Singapore monthly weather — so the stakes are low while you are learning the syntax. By the end of Lesson 1.8, the tools in your hands will be the ones that find the planted errors in every course dataset.
 
 ## Core Concepts
 
@@ -205,11 +207,11 @@ You will build every output line in this chapter with f-strings. Get comfortable
 
 ### FOUNDATIONS: What is a DataFrame?
 
-Up to this point, everything has been a single value. A variable holds one number or one string. Real data does not look like that. A dataset of Singapore weather has one row for each month and multiple columns — month name, mean temperature, rainfall, humidity. A dataset of HDB resale transactions has one row for each sale and dozens of columns — town, flat type, floor area, lease commencement, resale price. To work with data like this you need a structure that holds a two-dimensional table, and that structure is called a *DataFrame*.
+Up to this point, everything has been a single value. A variable holds one number or one string. Real data does not look like that. A dataset of Singapore weather has one row for each month and multiple columns — month name, mean temperature, total rainfall. A dataset of HDB resale transactions has one row for each sale and dozens of columns — town, flat type, floor area, lease commencement, resale price. To work with data like this you need a structure that holds a two-dimensional table, and that structure is called a *DataFrame*.
 
 A DataFrame is a rectangular table of data with named columns and rows. Each column has a type (string, integer, float, boolean, date). Each row is an observation. Think of it as a spreadsheet you can manipulate with code instead of a mouse. The DataFrame is the single most important object you will meet in this course. Every piece of data you work with will arrive as one, live inside one, or leave as one.
 
-There are many DataFrame libraries in Python. You may have heard of pandas, the oldest and most widely used. In this course we use *Polars*. Polars is newer, written in Rust, uses less memory, and is considerably faster on large datasets — the 500,000-row HDB dataset loads in under a second. More importantly for a learner, Polars has a cleaner, more consistent API than pandas, which means you will make fewer mistakes while you are still new to the vocabulary. Every exercise in MLFP uses Polars.
+There are many DataFrame libraries in Python. You may have heard of pandas, the oldest and most widely used. In this course we use *Polars*. Polars is newer, written in Rust, uses less memory, and is considerably faster on large datasets — the course's 50,000-row HDB dataset loads in a fraction of a second, and Polars stays fast well into the tens of millions of rows. More importantly for a learner, Polars has a cleaner, more consistent API than pandas, which means you will make fewer mistakes while you are still new to the vocabulary. Every exercise in MLFP uses Polars.
 
 > **If you have used pandas before:** the mental translation table is short. `pd.read_csv` becomes `pl.read_csv`. `df.loc[df["town"] == "BISHAN"]` becomes `df.filter(pl.col("town") == "BISHAN")`. `df["price"].mean()` is the same in both. The notable differences are that Polars uses `pl.col("name")` to refer to a column inside an expression (you do not slice rows with bracket syntax), and Polars operations like `with_columns` return a new DataFrame rather than modifying in place. There is no `.iloc`, no `inplace=True`, and — blessedly — no `SettingWithCopyWarning`.
 
@@ -276,9 +278,9 @@ The variance is in squared units. If prices are in dollars, variance is in dolla
 
 $$\sigma = \sqrt{\sigma^2}$$
 
-Rough rule of thumb: for roughly bell-shaped data, about 68% of values fall within one standard deviation of the mean, about 95% within two, and about 99.7% within three. Singapore temperatures across the year have a standard deviation of about 1°C — which means any month with a mean temperature more than 2°C from the annual average is a statistically unusual month. For HDB resale prices the standard deviation is around $150,000 — which tells you that prices are much more spread out than temperatures are, as you'd expect.
+Rough rule of thumb: for roughly bell-shaped data, about 68% of values fall within one standard deviation of the mean, about 95% within two, and about 99.7% within three. In the course weather file, Singapore's monthly mean temperatures have a standard deviation of about 0.6°C — so a month more than about 1.2°C from the annual average would be statistically unusual. For the course HDB resale prices the standard deviation is about S$512,000 — inflated by the planted S$9,000,000 records you will meet in Lesson 1.2, which is itself a lesson: the standard deviation, like the mean, is dragged around by extreme values.
 
-> **Pedantic footnote on $n$ vs $n-1$:** the formula above divides by $n$. Many statistics textbooks and libraries divide by $n-1$ instead. The $n-1$ version is the *sample variance*, which is an unbiased estimator of the *population variance* when you are treating your data as a sample from a larger population. The $n$ version is the *maximum likelihood estimator* of the variance under a normal model. For a dataset with 500,000 HDB transactions, the difference is completely negligible — $n - 1$ and $n$ are within 0.0002% of each other. For a dataset with 12 weather records, the difference is about 9%, which matters. Polars' `.var()` and `.std()` use $n-1$ by default (Bessel's correction); `numpy.var` defaults to $n$. Know which one your library uses. We return to this in Module 2.
+> **Pedantic footnote on $n$ vs $n-1$:** the formula above divides by $n$. Many statistics textbooks and libraries divide by $n-1$ instead. The $n-1$ version is the *sample variance*, which is an unbiased estimator of the *population variance* when you are treating your data as a sample from a larger population. The $n$ version is the *maximum likelihood estimator* of the variance under a normal model. For a dataset with 50,000 HDB transactions, the difference is completely negligible — the two standard deviations differ by about 0.001%. For a dataset with 12 weather records, the variances differ by a factor of 12/11 (about 9%) and the standard deviations by about 4% (0.62 vs 0.60 °C for temperature), which matters. Polars' `.var()` and `.std()` use $n-1$ by default (Bessel's correction); `numpy.var` defaults to $n$. Know which one your library uses. We return to this in Module 2.
 
 ### ADVANCED: Robust alternatives to the mean and variance
 
@@ -296,7 +298,7 @@ This is the engine you will meet formally in Lesson 1.7. In Lesson 1.1 we use it
 
 DataExplorer is the Kailash ML engine for automated dataset profiling. It wraps a battery of column-level statistics and quality checks behind a single API. Its full capabilities include:
 
-- Per-column type inference (numeric, categorical, temporal, text).
+- Per-column type inference (numeric, categorical, boolean, constant, id, text).
 - Summary statistics (count, mean, std, min, max, quartiles, skewness, kurtosis).
 - Missing-value counts and percentages.
 - Duplicate-row detection.
@@ -309,7 +311,7 @@ You will use all of these in Lesson 1.7. For now, just know that the `describe` 
 
 ## Worked Example: Singapore Monthly Weather
 
-We will work through a complete first exploration of a Singapore weather dataset. This dataset has roughly twelve rows (one per month) and three columns: `month`, `mean_temperature_c`, and `total_rainfall_mm`. It is small on purpose — every output fits on one screen, so you can see everything the code produces. Later lessons will use datasets with 500,000+ rows and you will be ready for them.
+We will work through a complete first exploration of a Singapore weather dataset. This dataset has exactly twelve rows (one per month) and three columns: `month`, `mean_temperature_c`, and `total_rainfall_mm`. The values are monthly climate averages prepared for this course — illustrative, not official station records. It is small on purpose — every output fits on one screen, so you can see everything the code produces. Later lessons use a 50,000-row dataset and you will be ready for it.
 
 If you are running this locally, make sure you have run `uv sync` in the `mlfp` repository once. If you are running on Colab, open the Lesson 1 notebook. Either way, the code below should run as-is; the MLFPDataLoader knows how to find the CSV file in both environments.
 
@@ -349,21 +351,19 @@ shape: (5, 3)
 ┌───────────┬─────────────────────┬───────────────────┐
 │ month     ┆ mean_temperature_c  ┆ total_rainfall_mm │
 │ ---       ┆ ---                 ┆ ---               │
-│ str       ┆ f64                 ┆ f64               │
+│ str       ┆ f64                 ┆ i64               │
 ╞═══════════╪═════════════════════╪═══════════════════╡
-│ January   ┆ 26.5                ┆ 242.4             │
-│ February  ┆ 27.1                ┆ 161.3             │
-│ March     ┆ 27.8                ┆ 185.8             │
-│ April     ┆ 28.3                ┆ 179.5             │
-│ May       ┆ 28.5                ┆ 171.0             │
+│ January   ┆ 26.5                ┆ 167               │
+│ February  ┆ 27.1                ┆ 108               │
+│ March     ┆ 27.5                ┆ 170               │
+│ April     ┆ 28.0                ┆ 165               │
+│ May       ┆ 28.3                ┆ 171               │
 └───────────┴─────────────────────┴───────────────────┘
 ```
 
-(The exact numbers may differ slightly depending on the dataset version; that is fine.)
+Read the output carefully. At the top, `shape: (5, 3)` tells you that the snippet you printed has 5 rows and 3 columns — that's `head(5)` at work, not the whole dataset. Below that, Polars prints the column names, then the column types on a separate row (`str` for text, `f64` for 64-bit floating-point, `i64` for 64-bit integer — rainfall is recorded in whole millimetres), then the first five rows of data. The Unicode box-drawing characters are Polars' way of making the table readable; they have no meaning beyond that.
 
-Read the output carefully. At the top, `shape: (5, 3)` tells you that the snippet you printed has 5 rows and 3 columns — that's `head(5)` at work, not the whole dataset. Below that, Polars prints the column names, then the column types on a separate row (`str` for text, `f64` for 64-bit floating-point), then the first five rows of data. The Unicode box-drawing characters are Polars' way of making the table readable; they have no meaning beyond that.
-
-The data tells a story already. Mean temperatures in Singapore hover between 26 and 29°C — the equatorial climate that makes people who grew up elsewhere sweat through their first week. Rainfall is in the 150–250 mm range, with January showing the highest value in this snippet (we only looked at five months, so we can't yet say January is the wettest overall).
+The data tells a story already. Mean temperatures in Singapore hover between 26 and 29°C — the equatorial climate that makes people who grew up elsewhere sweat through their first week. Rainfall in these five months sits between about 110 and 170 mm, with February clearly the driest of the five and May the wettest of the five (we only looked at five months, so we can't yet say anything about the whole year).
 
 ### Step 2: Inspect the full shape
 
@@ -401,10 +401,10 @@ Column names:
 Column types:
   month: String
   mean_temperature_c: Float64
-  total_rainfall_mm: Float64
+  total_rainfall_mm: Int64
 ```
 
-Twelve rows, exactly one per calendar month. Good: this is what you would expect from a monthly weather dataset. If you saw 11 rows you would immediately know something was missing. The types are as expected — month is text, temperature and rainfall are decimal numbers.
+Twelve rows, exactly one per calendar month. Good: this is what you would expect from a monthly weather dataset. If you saw 11 rows you would immediately know something was missing. The types are as expected — month is text, temperature is a decimal number, and rainfall is a whole number of millimetres.
 
 ### Step 3: Summary statistics via describe
 
@@ -412,7 +412,7 @@ Twelve rows, exactly one per calendar month. Good: this is what you would expect
 print(df.describe())
 ```
 
-Polars' `.describe()` computes count, null count, mean, standard deviation, min, 25th percentile, 50th percentile (median), 75th percentile, and max for every column. For string columns it computes count, nulls, and nothing else (because mean of strings is meaningless). The output looks like this:
+Polars' `.describe()` computes count, null count, mean, standard deviation, min, 25th percentile, 50th percentile (median), 75th percentile, and max for every column. For string columns it computes count, nulls, and nothing else (because mean of strings is meaningless) — except min and max, which for text are alphabetical. Numeric columns are reported as `f64` in the summary, even the integer rainfall column. The output looks like this:
 
 ```
 shape: (9, 4)
@@ -423,23 +423,23 @@ shape: (9, 4)
 ╞════════════╪══════════╪═════════════════════╪═══════════════════╡
 │ count      ┆ 12       ┆ 12.0                ┆ 12.0              │
 │ null_count ┆ 0        ┆ 0.0                 ┆ 0.0               │
-│ mean       ┆ null     ┆ 27.575              ┆ 178.483           │
-│ std        ┆ null     ┆ 0.843               ┆ 43.27             │
-│ min        ┆ January  ┆ 26.2                ┆ 112.5             │
-│ 25%        ┆ null     ┆ 26.95               ┆ 147.3             │
-│ 50%        ┆ null     ┆ 27.65               ┆ 175.0             │
-│ 75%        ┆ null     ┆ 28.3                ┆ 204.2             │
-│ max        ┆ September┆ 28.7                ┆ 258.8             │
+│ mean       ┆ null     ┆ 27.466667           ┆ 171.75            │
+│ std        ┆ null     ┆ 0.624257            ┆ 40.104693         │
+│ min        ┆ April    ┆ 26.5                ┆ 108.0             │
+│ 25%        ┆ null     ┆ 27.1                ┆ 155.0             │
+│ 50%        ┆ null     ┆ 27.6                ┆ 167.0             │
+│ 75%        ┆ null     ┆ 27.9                ┆ 171.0             │
+│ max        ┆ September┆ 28.3                ┆ 254.0             │
 └────────────┴──────────┴─────────────────────┴───────────────────┘
 ```
 
 This is a staggering amount of information in one call. Let's read it.
 
-Look at `mean_temperature_c` first. Mean 27.58°C, standard deviation 0.84°C, min 26.2°C, max 28.7°C. A standard deviation of less than 1°C over the whole year tells you Singapore's climate is extraordinarily stable compared to temperate zones. For comparison, London's monthly mean temperatures range from about 5 to 19°C — a standard deviation closer to 5°C. Singapore is six times more stable month-to-month.
+Look at `mean_temperature_c` first. Mean 27.47°C, standard deviation 0.62°C, min 26.5°C, max 28.3°C. A standard deviation well under 1°C over the whole year tells you Singapore's climate is extraordinarily stable compared to temperate zones. For comparison, London's monthly mean temperatures range from about 5 to 19°C — a standard deviation closer to 5°C. Singapore is roughly eight times more stable month-to-month.
 
-Look at `total_rainfall_mm`. Mean 178 mm per month, standard deviation 43 mm, min 113 mm, max 259 mm. The range is more than twice the minimum — monthly rainfall varies a lot. Singapore has a wet season and a dry season even though the temperature barely changes.
+Look at `total_rainfall_mm`. Mean 172 mm per month, standard deviation 40 mm, min 108 mm, max 254 mm. The wettest month gets well over twice the rain of the driest — monthly rainfall varies a lot, even though the temperature barely changes.
 
-Note that the `min` and `max` rows for the `month` column show `"January"` and `"September"`. Polars sorts strings alphabetically by default, so these are simply the alphabetically-first and alphabetically-last month names, not the months with minimum or maximum values of anything. This is a minor trap: `.describe()` applies its aggregations column-by-column without considering that you probably wanted "which month was coldest", not "which month comes first in the alphabet". We will compute the actually-hottest month in Step 4.
+Note that the `min` and `max` rows for the `month` column show `"April"` and `"September"`. For a string column, `describe()` min and max are alphabetical, so these are simply the alphabetically-first and alphabetically-last month names — not the coolest or hottest month, and unrelated to any other column. This is a minor trap: `.describe()` applies its aggregations column-by-column without considering that you probably wanted "which month was coldest", not "which month comes first in the alphabet". We will compute the actually-hottest month in Step 4.
 
 ### Step 4: Find the hottest, coldest, and wettest months
 
@@ -466,7 +466,7 @@ print(f"Hottest month: {hottest_month} at {hottest_temp:.1f}°C")
 Expected output:
 
 ```
-Hottest month: May at 28.7°C
+Hottest month: May at 28.3°C
 ```
 
 The `[0]` is an index into the single-row DataFrame, returning the first (and in this case only) element. Polars Series support Python-style indexing; `series[0]` gives you the first value, `series[-1]` gives you the last.
@@ -487,14 +487,14 @@ wettest_rain = wettest_row["total_rainfall_mm"][0]
 print(f"Wettest month: {wettest_month} with {wettest_rain:.1f} mm of rain")
 ```
 
-Expected output (actual values may vary slightly with the version of the dataset):
+Expected output:
 
 ```
-Coldest month: December at 26.2°C
-Wettest month: December with 258.8 mm of rain
+Coldest month: January at 26.5°C
+Wettest month: November with 254.0 mm of rain
 ```
 
-December is both the coldest and the wettest month. Anyone who has spent a Christmas in Singapore will recognise this immediately — the northeast monsoon brings heavy rain and ever-so-slightly cooler weather from November to January.
+Look closely at the coldest month. January and December are *tied* at 26.5°C, so `coldest_row` actually contains two rows, and `[0]` silently picks the first one. Always check `coldest_row.height` before reading `[0]` — an extreme value is not always unique. The coolest months (December–January) and the wettest (November–December) cluster at the year's end, which is the northeast monsoon season.
 
 ### Step 5: A formatted summary report
 
@@ -535,20 +535,20 @@ Output:
   Columns:              3
 
   Temperature (°C)
-    Mean:    27.58
-    Std:      0.84
-    Min:     26.20  (December)
-    Max:     28.70  (May)
+    Mean:    27.47
+    Std:      0.62
+    Min:     26.50  (January)
+    Max:     28.30  (May)
 
   Rainfall (mm/month)
-    Mean:   178.48
-    Max:    258.80  (December)
+    Mean:    171.8
+    Max:     254.0  (November)
 ══════════════════════════════════════════════════════════
 ```
 
 Two details worth noting. `"═" * 58` is Python string multiplication — it produces a string of 58 copies of the `═` character, giving you a horizontal separator line without having to type it out. You will use this trick for every report you print.
 
-The `:>8.2f` format specifier is what aligns the numbers. `>8` means "right-align in a field eight characters wide", and `.2f` means "two decimal places, float". Right-alignment with a fixed width is what makes numeric columns line up cleanly. Without it, `26.20` and `258.80` would start at different horizontal positions and the report would look messy.
+The `:>8.2f` format specifier is what aligns the numbers. `>8` means "right-align in a field eight characters wide", and `.2f` means "two decimal places, float". Right-alignment with a fixed width is what makes numeric columns line up cleanly. Without it, `26.50` and `171.8` would start at different horizontal positions and the report would look messy.
 
 And that is Lesson 1.1 worked end to end. You loaded a real dataset, inspected its shape and schema, computed summary statistics both through `.describe()` and through individual column aggregations, filtered to find extreme values, and built a formatted report. Every pattern you just learned will be used again in every subsequent lesson in this chapter.
 
@@ -560,7 +560,7 @@ Before moving to Lesson 1.2, try these five drills. Attempt each one before look
 
 **Drill 2.** Using the weather DataFrame loaded in Step 1, compute and print the *range* of monthly rainfall — that is, the difference between the maximum and the minimum. Use f-string formatting to display the result to one decimal place with units.
 
-**Drill 3.** Modify the extreme-finding pattern from Step 4 to find and print the month with the *lowest* rainfall in a formatted line that looks like `Driest month: February with 112.5 mm`.
+**Drill 3.** Modify the extreme-finding pattern from Step 4 to find and print the month with the *lowest* rainfall in a formatted line that looks like `Driest month: February with 108.0 mm`.
 
 **Drill 4.** What is the coefficient of variation (CV) of monthly rainfall? Recall that CV is defined as $\sigma / \mu$, where $\sigma$ is the standard deviation and $\mu$ is the mean. Report the result as a percentage with one decimal place. Is the CV higher or lower than that of temperature? What does that tell you about the relative variability of rainfall and temperature?
 
@@ -614,7 +614,7 @@ If any of those feels shaky, re-read the corresponding section before moving on.
    print(f"Rainfall CV: {cv_rain:.1%}")
    print(f"Temperature CV: {cv_temp:.1%}")
    ```
-   You should see rainfall CV near 24% and temperature CV near 3%. Rainfall is far more variable than temperature in Singapore — about 8× more variable on a relative basis. This matches intuition: the thermometer barely moves all year but the sky goes from clear to monsoon within days.
+   You should see rainfall CV of 23.4% and temperature CV of 2.3%. Rainfall is far more variable than temperature in Singapore — about 10× more variable on a relative basis. This matches intuition: the thermometer barely moves all year but the sky goes from clear to monsoon within days.
 
 5. ```python
    first_half = df["mean_temperature_c"][:6].mean()
@@ -622,7 +622,7 @@ If any of those feels shaky, re-read the corresponding section before moving on.
    print(f"Jan-Jun mean: {first_half:.2f}°C")
    print(f"Jul-Dec mean: {second_half:.2f}°C")
    ```
-   The first half is slightly warmer, because Singapore's pre-monsoon months (April–June) are the hottest of the year and the northeast monsoon (November–January) is the coolest.
+   You should see 27.60°C for January–June and 27.33°C for July–December. The first half is slightly warmer because April–June are the hottest months in the file, while the year-end monsoon months (November–December) are among the coolest.
 
 ---
 

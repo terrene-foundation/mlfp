@@ -99,7 +99,7 @@ print("=" * 70)
 
 # Address map (Shard 3 convention — dash-delimited D/T/R positions).
 # Department heads: "D<n>-R<n>" (2 segments).
-# Agents (Responsibles): "D<n>-R<n>-T<n>-R<n>" (4 segments).
+# Agent roles (team heads): "D<n>-R<n>-T<n>-R<n>" (4 segments).
 AGENT_ADDRESSES: dict[str, str] = {
     "data_analyst": "D1-R1-T1-R1",
     "model_trainer": "D1-R1-T2-R1",

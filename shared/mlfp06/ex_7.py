@@ -371,7 +371,7 @@ class CompiledOrgAdapter:
             if node.is_vacant:
                 continue
             # Department-head addresses are "D<n>-R<n>" — two segments.
-            # Agent (Responsible) addresses sit under a team and have
+            # Agent-role addresses sit under a team and have
             # the "-T<n>-R<n>" suffix, giving four or more segments.
             if "-T" in addr:
                 count += 1

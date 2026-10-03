@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
+import plotly.graph_objects as go
 from scipy import stats
 
 from shared.mlfp02.ex_5 import (
@@ -47,6 +48,7 @@ from shared.mlfp02.ex_5 import (
     load_hdb_clean,
     build_design_matrix,
     fit_ols,
+    format_p_value,
     print_coef_table,
     save_actual_vs_predicted,
 )
@@ -251,7 +253,7 @@ print(
 )
 print(f"\nR-squared:          {fit['R2']:.6f} ({fit['R2']:.2%} of variance explained)")
 print(f"Adjusted R-squared: {fit['adj_R2']:.6f}")
-print(f"F-statistic:        {fit['f_stat']:.2f} (p < {fit['f_p_value']:.2e})")
+print(f"F-statistic:        {fit['f_stat']:.2f} (p {format_p_value(fit['f_p_value'])})")
 print(f"RMSE:               ${fit['sigma_hat']:,.0f}")
 print(f"MAE:                ${np.mean(np.abs(fit['residuals'])):,.0f}")
 
@@ -264,7 +266,9 @@ print(f"MAE:                ${np.mean(np.abs(fit['residuals'])):,.0f}")
 assert 0 < fit["R2"] < 1, "R-squared must be between 0 and 1"
 assert fit["adj_R2"] <= fit["R2"], "Adjusted R-squared must be <= R-squared"
 assert fit["f_stat"] > 0, "F-statistic must be positive"
-assert abs(fit["SST"] - fit["SSR"] - fit["SSE"]) < 1, "SST = SSR + SSE must hold"
+assert (
+    abs(fit["SST"] - fit["SSR"] - fit["SSE"]) < 1e-6 * fit["SST"]
+), "SST = SSR + SSE must hold (within floating-point tolerance)"
 print("\n--- Checkpoint 5 passed --- model evaluation completed\n")
 
 
@@ -280,6 +284,60 @@ path = save_actual_vs_predicted(
 )
 print(f"Saved: {path}")
 
+# --- Residual plot: do residuals fan out with predicted value? ---
+sample = min(3000, len(residuals))
+fig_resid = go.Figure()
+fig_resid.add_trace(
+    go.Scatter(
+        x=y_hat[:sample].tolist(),
+        y=residuals[:sample].tolist(),
+        mode="markers",
+        marker={"size": 3, "opacity": 0.3, "color": "steelblue"},
+        name="Residuals",
+    )
+)
+# TODO: Draw the zero-residual reference line.
+# Hint: fig_resid.add_hline(y=..., line_dash="dash", line_color="red")
+____
+fig_resid.update_layout(
+    title="OLS Residuals vs Predicted — Do Errors Fan Out?",
+    xaxis_title="Predicted Price (SGD)",
+    yaxis_title="Residual (SGD)",
+    height=450,
+)
+path_resid = OUTPUT_DIR / "01_ols_residuals.html"
+fig_resid.write_html(str(path_resid))
+print(f"Saved: {path_resid}")
+
+# --- Coefficient bar chart with 95% confidence interval error bars ---
+coef_names = feature_names[1:]  # skip intercept for readability
+coef_vals = fit["beta"][1:]
+coef_se = fit["se_beta"][1:]
+# TODO: Half-width of each coefficient's 95% confidence interval.
+# Hint: 1.96 standard errors
+ci_95 = ____
+
+fig_coef = go.Figure()
+fig_coef.add_trace(
+    go.Bar(
+        x=coef_names,
+        y=coef_vals.tolist(),
+        error_y={"type": "data", "array": ci_95.tolist(), "visible": True},
+        marker_color=["#2563EB", "#059669", "#D97706"],
+        name="Coefficient",
+    )
+)
+fig_coef.update_layout(
+    title="OLS Coefficients with 95% CIs — Which Features Drive Price?",
+    xaxis_title="Feature",
+    yaxis_title="Coefficient (SGD per unit)",
+    height=450,
+)
+path_coef = OUTPUT_DIR / "01_ols_coefficients.html"
+fig_coef.write_html(str(path_coef))
+print(f"Saved: {path_coef}")
+
+
 
 # ════════════════════════════════════════════════════════════════════════
 # APPLY — HDB Valuation in Practice
@@ -289,14 +347,17 @@ print(f"Saved: {path}")
 # with 75 years of lease remaining. The agent uses this OLS model.
 #
 # The model predicts a price, but the agent must consider:
-# - R-squared shows how much price variation is explained
-# - RMSE shows how far off individual predictions can be
-# - The intercept is NOT the price of a "zero-area" flat
+# - R-squared shows how much price variation is explained — location,
+#   renovation and MRT proximity are not in the model.
+# - RMSE shows how far off individual predictions typically are.
+# - The intercept is NOT the price of a "zero-area, ground-floor,
+#   expired-lease flat" — it is an extrapolation artefact.
 #
 # BUSINESS IMPACT: Overpricing a listing by $50K means it sits on the
 # market for months. Underpricing means the client loses $50K. The
-# confidence interval from the SE tells the agent: "I am 95% confident
-# the contribution of each additional sqm is between $X and $Y."
+# coefficient's 95% confidence interval (beta +/- 1.96 * SE) tells the
+# agent the range of per-sqm effects consistent with the data — a
+# statement about the average effect, not about any single flat.
 
 r2_pct = fit["R2"] * 100
 unexplained_pct = 100 - r2_pct
@@ -308,6 +369,11 @@ print(f"  {unexplained_pct:.1f}% is driven by location, renovation, market timin
 print(f"  RMSE = ${rmse:,.0f} — individual predictions can be off by this much")
 print(f"  A property agent using this model should always disclose the uncertainty")
 print(f"  A $50K mispricing either leaves money on the table or stalls the sale")
+# TODO: 95% CI for the floor-area coefficient (index 1).
+# Hint: fit["beta"][1] -/+ 1.96 * fit["se_beta"][1]
+area_lo = ____
+area_hi = ____
+print(f"  95% CI for the per-sqm effect: ${area_lo:,.0f} to ${area_hi:,.0f}")
 
 
 # ════════════════════════════════════════════════════════════════════════

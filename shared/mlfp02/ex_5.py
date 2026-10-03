@@ -119,12 +119,14 @@ def fit_ols(X: np.ndarray, y: np.ndarray) -> dict[str, Any]:
     sigma_hat = float(np.sqrt(sigma_sq))
     se_beta = np.sqrt(sigma_sq * np.diag(XtX_inv))
     t_stats = beta / se_beta
-    p_values = 2 * (1 - stats.t.cdf(np.abs(t_stats), df=n - k))
+    # sf (survival function) keeps precision in the far tail; 1 - cdf
+    # rounds to exactly 0 once the tail drops below ~1e-16.
+    p_values = 2 * stats.t.sf(np.abs(t_stats), df=n - k)
 
     r2 = 1 - SSR / SST
     adj_r2 = 1 - (1 - r2) * (n - 1) / (n - k)
     f_stat = (SSE / (k - 1)) / (SSR / (n - k))
-    f_p = 1 - stats.f.cdf(f_stat, dfn=k - 1, dfd=n - k)
+    f_p = stats.f.sf(f_stat, dfn=k - 1, dfd=n - k)
 
     return {
         "beta": beta,
@@ -147,6 +149,15 @@ def fit_ols(X: np.ndarray, y: np.ndarray) -> dict[str, Any]:
     }
 
 
+def format_p_value(p: float) -> str:
+    """Render a p-value for printing, including the underflow case.
+
+    Returns e.g. "= 3.20e-05", or "< 1e-300" when the tail probability is
+    smaller than the smallest representable double and evaluates to 0.
+    """
+    return f"= {p:.2e}" if p > 0 else "< 1e-300"
+
+
 def print_coef_table(names: list[str], fit: dict[str, Any]) -> None:
     """Print coefficient / SE / t / p table for an OLS fit."""
     beta = fit["beta"]
@@ -166,7 +177,7 @@ def print_coef_table(names: list[str], fit: dict[str, Any]) -> None:
             sig = "ns"
         print(
             f"{name:<25} {beta[i]:>14,.2f} {se[i]:>12,.2f} "
-            f"{t[i]:>8.2f} {p[i]:>10.2e} {sig:>4}"
+            f"{t[i]:>8.2f} {(f'{p[i]:.2e}' if p[i] > 0 else '<1e-300'):>10} {sig:>4}"
         )
 
 
@@ -205,7 +216,7 @@ def breusch_pagan(residuals: np.ndarray, X_raw: np.ndarray) -> tuple[float, floa
     sst = np.sum((e_sq - e_sq.mean()) ** 2)
     r2 = 1 - sse / sst
     bp_stat = n * r2
-    p = 1 - stats.chi2.cdf(bp_stat, df=X_raw.shape[1])
+    p = stats.chi2.sf(bp_stat, df=X_raw.shape[1])
     return float(bp_stat), float(p)
 
 

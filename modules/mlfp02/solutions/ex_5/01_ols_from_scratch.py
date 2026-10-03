@@ -39,7 +39,6 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from scipy import stats
 
 from shared.mlfp02.ex_5 import (
@@ -49,6 +48,7 @@ from shared.mlfp02.ex_5 import (
     load_hdb_clean,
     build_design_matrix,
     fit_ols,
+    format_p_value,
     print_coef_table,
     save_actual_vs_predicted,
 )
@@ -242,7 +242,7 @@ print(
 )
 print(f"\nR-squared:          {fit['R2']:.6f} ({fit['R2']:.2%} of variance explained)")
 print(f"Adjusted R-squared: {fit['adj_R2']:.6f}")
-print(f"F-statistic:        {fit['f_stat']:.2f} (p < {fit['f_p_value']:.2e})")
+print(f"F-statistic:        {fit['f_stat']:.2f} (p {format_p_value(fit['f_p_value'])})")
 print(f"RMSE:               ${fit['sigma_hat']:,.0f}")
 print(f"MAE:                ${np.mean(np.abs(fit['residuals'])):,.0f}")
 
@@ -330,18 +330,18 @@ print(f"Saved: {path_coef}")
 # advise a client selling a 4-room flat in Tampines, 92 sqm, floor 8,
 # with 75 years of lease remaining. The agent uses this OLS model.
 #
-# The model predicts ${predicted:,.0f}. But the agent knows:
-# - R-squared of {r2:.0%} means {unexplained:.0%} of price variation is
-#   unexplained — location, renovation, MRT proximity all matter.
-# - The RMSE of ${rmse:,.0f} means individual predictions can be off
-#   by that much in either direction.
+# The model predicts a price, but the agent must consider:
+# - R-squared shows how much price variation is explained — location,
+#   renovation and MRT proximity are not in the model.
+# - RMSE shows how far off individual predictions typically are.
 # - The intercept is NOT the price of a "zero-area, ground-floor,
 #   expired-lease flat" — it is an extrapolation artefact.
 #
 # BUSINESS IMPACT: Overpricing a listing by $50K means it sits on the
 # market for months. Underpricing means the client loses $50K. The
-# confidence interval from the SE tells the agent: "I am 95% confident
-# the contribution of each additional sqm is between $X and $Y."
+# coefficient's 95% confidence interval (beta +/- 1.96 * SE) tells the
+# agent the range of per-sqm effects consistent with the data — a
+# statement about the average effect, not about any single flat.
 
 r2_pct = fit["R2"] * 100
 unexplained_pct = 100 - r2_pct
@@ -353,6 +353,9 @@ print(f"  {unexplained_pct:.1f}% is driven by location, renovation, market timin
 print(f"  RMSE = ${rmse:,.0f} — individual predictions can be off by this much")
 print(f"  A property agent using this model should always disclose the uncertainty")
 print(f"  A $50K mispricing either leaves money on the table or stalls the sale")
+area_lo = fit["beta"][1] - 1.96 * fit["se_beta"][1]
+area_hi = fit["beta"][1] + 1.96 * fit["se_beta"][1]
+print(f"  95% CI for the per-sqm effect: ${area_lo:,.0f} to ${area_hi:,.0f}")
 
 
 # ════════════════════════════════════════════════════════════════════════

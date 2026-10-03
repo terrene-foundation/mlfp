@@ -930,7 +930,8 @@ statistic) infinitely many times. The distribution of the resulting
 statistics is the **sampling distribution**. It is the engine behind
 every confidence interval and every p-value.
 
-Example. Suppose the true mean 4-room HDB price is `μ = 540_000` with
+Example (round hypothetical numbers, chosen for easy arithmetic).
+Suppose the true mean flat price in some market is `μ = 540_000` with
 population standard deviation `σ = 80_000`. If you repeatedly draw
 samples of size `n = 100` and compute `x̄`, how are those `x̄` values
 distributed?
@@ -1721,8 +1722,9 @@ where `δ` is the minimum detectable effect, `σ` is the pooled
 standard deviation, and `z_p` is the standard normal `p`-th
 percentile.
 
-**Numerical example.** You want to detect a SGD 10,000 increase in
-4-room HDB price (`δ = 10_000`) with `σ = 80_000`, `α = 0.05`,
+**Numerical example** (hypothetical market). You want to detect a
+SGD 10,000 increase in mean flat price (`δ = 10_000`) when prices have
+`σ = 80_000`, with `α = 0.05`,
 power 0.80 (`β = 0.20`). Then `z_(0.975) ≈ 1.96` and `z_(0.80) ≈
 0.84`. So:
 
@@ -4489,6 +4491,7 @@ MAP estimator:           θ̂_MAP = argmax_θ (ℓ(θ) + log P(θ))
 Normal-Normal posterior: 1/σₙ² = 1/σ₀² + n/σ²
                          μₙ = σₙ² × (μ₀/σ₀² + n×x̄/σ²)
 95% CI (Normal):         x̄ ± 1.96 × (s / √n)
+95% prediction interval: x̄ ± t_(0.975, n−1) × s × √(1 + 1/n)   (one new observation)
 ```
 
 ## Hypothesis Testing (Lesson 2.3)
@@ -4536,6 +4539,7 @@ F-statistic:             F = (SS_reg / p) / (SS_res / (n − p − 1))
 ```
 Sigmoid:                 σ(z) = 1 / (1 + e^(−z))
 Sigmoid derivative:      σ'(z) = σ(z) × (1 − σ(z))
+Odds:                    odds = p / (1 − p)
 Logit (log-odds):        logit(p) = log(p / (1 − p))
 Model:                   logit(P(y=1 | x)) = xᵀβ
 Log-likelihood:          ℓ(β) = Σᵢ [yᵢ × xᵢᵀβ − log(1 + e^(xᵢᵀβ))]
@@ -4555,7 +4559,7 @@ SS_within:               Σ_g Σ_i (xᵢ_g − x̄_g)²
 ```
 CUPED adjustment:        Y_adj = Y − θ × (X_pre − E[X_pre])
 Optimal theta:           θ* = Cov(Y, X_pre) / Var(X_pre)
-CUPED variance:          Var(Y_adj) = Var(Y) × (1 − ρ²)
+CUPED variance:          Var(Y_adj) = Var(Y) × (1 − ρ²)     (reduction = ρ²)
 Sample size ratio:       n_CUPED / n_raw = 1 − ρ²
 
 Potential outcomes:      τᵢ = Yᵢ(1) − Yᵢ(0)

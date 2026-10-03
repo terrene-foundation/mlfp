@@ -164,7 +164,7 @@ environment. There is no offline fallback that produces fake results
   - Implementation: training loop with preference pairs (chosen, rejected)
   - Hyperparameter beta controls deviation from reference policy
 - **GRPO (Group Relative Policy Optimization)** (new, from completeness audit):
-  - Used in DeepSeek-R1 (2025)
+  - Introduced in DeepSeekMath (Shao et al., 2024); later used to train DeepSeek-R1 (2025)
   - Sample multiple completions, score relative to group mean
   - No reward model needed (like DPO), but maintains policy gradient framework
   - Comparison with DPO: when to use each
@@ -178,12 +178,16 @@ environment. There is no offline fallback that produces fake results
   - HumanEval: code generation
   - MT-Bench: multi-turn conversation quality
   - lm-eval-harness: unified evaluation framework
-- **kailash-align**: AlignmentPipeline (method="dpo"), evaluator
+- **kailash-align**: `AlignmentConfig(method="dpo", base_model_id=..., lora=LoRAConfig(...), dpo=DPOConfig(beta=...))`
+  + `await AlignmentPipeline(config).train(None, adapter_name=..., preference_dataset=...)`;
+  losses come from `result.training_metrics`. The pipeline does not evaluate —
+  win rate (LLM-as-judge) and benchmark deltas are a separate evaluation step
 
 **Key Formulas**:
 
 - DPO loss: L_DPO = -E[log sigma(beta * log(pi(y_w|x)/pi_ref(y_w|x)) - beta * log(pi(y_l|x)/pi_ref(y_l|x)))]
-- GRPO: advantage estimated relative to group mean reward
+- GRPO: std-normalised group-relative advantage A_i = (r_i - mean(r)) / (std(r) + eps),
+  optimised with a PPO-style clipped surrogate plus a KL penalty to pi_ref
 
 **Learning Objectives**: Students can:
 
@@ -333,9 +337,14 @@ environment. There is no offline fallback that produces fake results
     Students parse addresses with `Address.parse("D1-R1-T1-R1")`.
   - GovernanceEngine construction: `load_org_yaml("org.yaml")` to load the
     org definition, then `GovernanceEngine(loaded.org_definition)` to
-    build the compiled, thread-safe engine.
+    build the compiled, thread-safe engine. That call compiles the
+    structure only; the YAML clearances and envelopes take effect after
+    `apply_governance_specs(engine, loaded)`
+    (`kailash.trust.pact.yaml_resolvers`).
   - Access verification: `engine.verify_action(role_address, action, context)`
     returns a `GovernanceVerdict` with `.allowed`, `.level`, and `.reason`.
+    `.level` is one of `auto_approved`, `flagged`, `held`, `blocked`;
+    `.allowed` is True for `auto_approved` and `flagged`.
     This is the single decision method — no `check_access` / `can_access` /
     `explain_access` split.
   - Operating envelopes: `RoleEnvelope` wraps a `ConstraintEnvelopeConfig`
@@ -344,11 +353,18 @@ environment. There is no offline fallback that produces fake results
     roles via `engine.set_role_envelope(RoleEnvelope(...))`.
     - Monotonic tightening: child envelopes can only be equal or more
       restrictive. The framework enforces this structurally via
-      `RoleEnvelope.validate_tightening()` — privilege escalation is
-      caught at configuration time, not runtime.
-  - Fail-closed: if any step of the 5-step access enforcement algorithm
-    cannot find a permitting path, `verify_action` returns
-    `verdict.level == "blocked"`.
+      `RoleEnvelope.validate_tightening(parent_envelope=..., child_envelope=...)`
+      (keyword-only) — privilege escalation is caught at configuration
+      time, not runtime.
+  - Default behaviour (installed kailash-pact 0.14.1): `verify_action` is
+    fail-OPEN for a role with no attached envelope and for an address
+    that is not in the org — it returns `allowed == True`,
+    `level == "auto_approved"` ("No envelope constraints -- action
+    permitted"). Deny paths exist only where an envelope is attached:
+    an action outside the role's envelope returns
+    `verdict.level == "blocked"`. Students are taught this real default
+    and attach envelopes (`engine.set_role_envelope(...)`) before every
+    deny-path demo or test.
 - **Budget caps and cascading**:
   - Per-agent cap: `BaseAgentConfig.budget_limit_usd` bounds a single
     agent's cumulative spend — budget is a config field on the agent,
@@ -358,22 +374,30 @@ environment. There is no offline fallback that produces fake results
     children; monotonic tightening guarantees children never exceed it.
   - When the budget is exhausted: the agent degrades gracefully —
     produces a partial answer and logs the overspend attempt.
-- **GovernedSupervisor**: the canonical agent wrapper that enforces
-  governance at run time. Takes the three knobs `budget_usd`, `tools`,
-  and `data_clearance`, and exposes `.envelope`, `.audit.to_list()`,
-  and `.audit.verify_chain()` for inspection. Wraps any Kaizen
-  `BaseAgent` so that the agent's logic is governance-orthogonal.
+- **GovernedSupervisor**: the canonical governed agent that enforces
+  governance at run time. Takes `model` plus the three knobs `budget_usd`,
+  `tools`, and `data_clearance`, and exposes `.envelope`,
+  `.audit.to_list()`, and `.audit.verify_chain()` for inspection. It does
+  not wrap a `BaseAgent` instance: `await supervisor.run(objective,
+  execute_node=...)` plans and governs each step, and the `execute_node`
+  callback runs the model call, so the model logic stays
+  governance-orthogonal.
 - **Audit trails**: `GovernedSupervisor.audit` is a hash-chained append-
   only log. `verify_chain()` returns `True` iff no entry has been
   tampered with — the tamper-evidence is structural, not procedural.
-- **Clearance levels**: graduated confidentiality access. The course
-  teaches a 4-level hierarchy (`public < internal < confidential <
-restricted`) that maps onto the canonical 5-level
-  `ConfidentialityLevel` enum via `kaizen_agents._CLEARANCE_MAP`.
+- **Clearance levels**: graduated confidentiality access, using PACT's
+  canonical 5-level `ConfidentialityLevel` order
+  `public < restricted < confidential < secret < top_secret`
+  ("restricted" is the second-lowest tier, not the top; the supervisor's
+  `data_clearance="internal"` is an alias for `restricted`). Department
+  heads in the course org carry `secret`.
 - **Governance testing**: test that governance WORKS — negative tests
-  that verify `engine.verify_action("D99-R99-T99-R99", ...)` returns
-  `.allowed == False` (unknown role), and positive tests that verify
-  legitimate role addresses are permitted.
+  that verify an action outside an attached envelope returns
+  `.allowed == False` (`level == "blocked"`), positive tests that verify
+  legitimate actions are permitted, and a test that pins the installed
+  default for an unknown address (`engine.verify_action("D99-R99-T99-R99",
+  ...)` is auto-approved in pact 0.14.1), so that production code
+  rejecting unknown addresses itself is a deliberate design choice.
 
 **Design Note**: This is ENGINEERING. Students implement access controls, test them, and verify they work. No philosophical discussion of AI ethics frameworks. The code IS the governance.
 

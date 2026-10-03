@@ -146,33 +146,67 @@ optimizer = torch.optim.Adam(
 </section>
 
 <section>
+  <h2>Adapters: train ~1% inside a frozen backbone</h2>
+  <ul style="font-size: 0.85em;">
+    <li>Bottleneck adapter: \( x + W_{\text{up}}\,\mathrm{ReLU}(W_{\text{down}}\, x) \), with \(W_{\text{up}}\) zero-initialised → starts as the identity.</li>
+    <li>Exercise 5.7 file 04 inserts one after ResNet-18's layer3 (256 ch) and layer4 (512 ch); the block adds only the adapter's <em>change</em>, so training starts from the exact ImageNet features.</li>
+    <li>Trainable: 99,200 adapter + 5,130 head ≈ 104K of ~11.3M parameters (≈ 1%).</li>
+  </ul>
+  <div class="callout-slide theory"><strong>🔵 Theory:</strong> same idea as LoRA in Module 6 — a small trainable delta on a frozen model.</div>
+</section>
+
+<section>
   <h2>BERT fine-tuning</h2>
   <pre><code class="language-python" data-trim>
-from transformers import BertForSequenceClassification
+from transformers import (BertForSequenceClassification,
+                          Trainer, TrainingArguments)
 
+# AG News: 4 topic classes (Exercise 5.4 file 04)
 model = BertForSequenceClassification.from_pretrained(
-    "bert-base-uncased", num_labels=6)
+    "bert-base-uncased", num_labels=4)
 
-trainer = Trainer(
-    model=model, args=training_args,
-    train_dataset=train_ds, eval_dataset=eval_ds)
+args = TrainingArguments(output_dir="bert_agnews", num_train_epochs=2,
+                         learning_rate=2e-5, eval_strategy="epoch")
+trainer = Trainer(model=model, args=args,
+                  train_dataset=train_ds, eval_dataset=eval_ds)
 trainer.train()
   </code></pre>
+  <p style="font-size: 0.8em;">Same recipe as the ResNet: pretrained body, new 4-way head, low LR. Exercise 5.4 file 04 writes the loop by hand.</p>
 </section>
 
 <section>
   <h2>ONNX export + InferenceServer</h2>
-  <pre><code class="language-python" data-trim>
+  <pre style="font-size: 0.46em;"><code class="language-python" data-trim>
+import asyncio
+from pathlib import Path
 from kailash_ml import OnnxBridge, InferenceServer
+from shared.mlfp05.ex_7 import (FlatImageAdapter, N_PIXELS,
+    attach_onnx_artifact, images_to_records, register_model)
 
-bridge = OnnxBridge()
-bridge.export(model, "model.onnx", sample_input=dummy)
+# 1. Export behind a flat-row adapter (2-row trace)
+serving = FlatImageAdapter(model).eval()
+path = Path("transfer_resnet18.onnx")
+res = OnnxBridge().export(serving, "torch", output_path=path,
+                          sample_input=torch.randn(2, N_PIXELS))
+assert res.success, res.error_message
 
-server = InferenceServer("model.onnx")
-server.warm_cache()
-result = server.predict(new_data)
+# 2. Register the model, attach model.onnx to that version
+v = register_model(registry, "cifar10_transfer", model, acc, loss)
+attach_onnx_artifact("cifar10_transfer", v.version, path)
+
+# 3. Serve from the registry (all async)
+async def serve(images):
+    server = await InferenceServer.from_registry(
+        "cifar10_transfer", registry=registry,
+        version=v.version, runtime="onnx")
+    await server.start()
+    out = await server.predict({"records": images_to_records(images)})
+    await server.stop()
+    return out["predictions"]   # plain mapping: one logit row per image
+
+logits = asyncio.run(serve(images))
   </code></pre>
-  <div class="callout-slide kailash"><strong>⚙ Kailash:</strong> OnnxBridge exports. InferenceServer serves. Three lines from notebook to production.</div>
+  <div class="callout-slide kailash"><strong>⚙ Kailash:</strong> export → register → serve. <code>predict</code> returns a plain mapping; there is no <code>predict_batch</code>, <code>warm_cache</code> or result object. Exercise 5.7 file 05.</div>
 </section>
 
 <section>
@@ -204,8 +238,9 @@ result = server.predict(new_data)
   <ul>
     <li>✓ Fine-tune ResNet for image classification.</li>
     <li>✓ Fine-tune BERT for text classification.</li>
+    <li>✓ Add zero-initialised adapters to train ~1% of a frozen model.</li>
     <li>✓ Export to ONNX with OnnxBridge.</li>
-    <li>✓ Serve predictions with InferenceServer.</li>
+    <li>✓ Register the ONNX model and serve it with InferenceServer.</li>
     <li>✓ Select architecture + transfer strategy per data type.</li>
   </ul>
   <div class="callout-slide foundations"><strong>Next:</strong> 5.8 — Reinforcement Learning. Learning from interaction, not static data.</div>

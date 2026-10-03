@@ -49,7 +49,7 @@
     <li><strong>Dimensionality reduction</strong> — compress 784 pixels into 16 numbers</li>
     <li><strong>Denoising</strong> — cleaner HDB listing photos without sliders</li>
     <li><strong>Anomaly detection</strong> — fraud scores itself as reconstruction error</li>
-    <li><strong>Generation</strong> — synthetic patient records (VAE)</li>
+    <li><strong>Generation</strong> — new samples from the learned distribution (VAE); synthetic ≠ private without formal guarantees</li>
   </ul>
   <p>All from "compress then reconstruct". Unsupervised — no labels needed.</p>
 </section>
@@ -353,13 +353,22 @@ nn.Sequential(
 <section>
   <h2>ModelVisualizer for training curves</h2>
   <pre><code class="language-python" data-trim>
+import polars as pl
 from kailash_ml import ModelVisualizer
+
 viz = ModelVisualizer()
-viz.plot_training_curve(losses=history, title="VAE training loss")
-viz.plot_latent_scatter(z_vectors=mu.cpu(), labels=y,
-                        title="VAE latent space")
+# history: list of per-epoch losses
+fig = viz.training_history({"VAE loss": history}, y_label="loss")
+
+# first two latent dims of the encoder means, coloured by class
+latent = pl.DataFrame({
+    "z1": mu[:, 0].tolist(), "z2": mu[:, 1].tolist(),
+    "label": [str(c) for c in y.tolist()],
+})
+fig = viz.scatter(latent, x="z1", y="z2", color="label",
+                  title="VAE latent space")
   </code></pre>
-  <p>No matplotlib, no layout fiddling — Kailash engines handle the plumbing.</p>
+  <p>Both return an interactive Plotly figure — no matplotlib, no layout fiddling.</p>
 </section>
 
 <!-- 17: Common mistakes -->

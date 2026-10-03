@@ -582,28 +582,37 @@ asyncio.run(conn.close())
 
 
 # ════════════════════════════════════════════════════════════════════════
-# DESTINATION-FIRST CLOSE — km.diagnose
+# DESTINATION-FIRST CLOSE — one-call diagnostics
 # ════════════════════════════════════════════════════════════════════════
-# This lesson walked the journey of the autoencoder family — 10 variants,
-# 10 hand-rolled training loops, 10 reconstruction grids. The kailash-ml
-# SDK ships a single-call diagnostic primitive that closes the production
-# loop: km.diagnose inspects a trained model and emits an auto-dashboard
-# (loss curves, gradient flow, dead neurons, activation stats, weight
-# distributions). One cell. Every diagnostic students would otherwise
-# hand-roll, ready to surface in a Plotly dashboard.
+# This lesson trained 10 autoencoder variants by hand. kailash-ml's
+# run_diagnostic_checkpoint instruments any trained model in one call:
+# it hooks every layer, runs a few forward/backward probe batches (no
+# weight updates), replays the loss history you pass in, and returns
+# the Prescription Pad findings plus a DLDiagnostics session whose
+# plot_training_dashboard() draws the loss, gradient and activation
+# panels. (km.diagnose(model, kind="dl") on its own only builds an
+# un-instrumented session — no hooks, no probe passes — so it has
+# nothing to report; use run_diagnostic_checkpoint.)
+#
+# What it does NOT replace: the reconstruction grids, latent plots and
+# comparison table above. The instruments read optimisation health;
+# they cannot tell you whether a model learned the right thing.
 
-from kailash_ml import diagnose
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
-# Pick the VAE (the lesson's most expressive variant) for the close.
-# `kind='auto'` dispatches by model type — DLDiagnostics for torch.nn.Module.
-# `data=` accepts any iterable yielding tensors; we reuse the flat_loader
-# the lesson already constructed.
-report = diagnose(all_models["vae"], kind="auto", data=flat_loader, show=False)
-report.plot_training_dashboard()
-print()
-print("km.diagnose: 1 line of code -> the same observability the lesson")
-print("body hand-rolled in 200+ lines. This is what 'destination-first'")
-print("means — when the journey is internalised, the SDK is one call.")
+# The VAE is the lesson's most expressive variant. flat_loader yields
+# (xb,) tuples, and vae_loss returns (loss, extras).
+diag, findings = run_diagnostic_checkpoint(
+    all_models["vae"],
+    flat_loader,
+    lambda m, batch: vae_loss(m, batch[0]),
+    title="VAE (grand comparison)",
+    train_losses=all_losses["vae"],
+    show=False,
+)
+print_prescription_pad(findings, "VAE (grand comparison)")
+dashboard = diag.plot_training_dashboard()  # Plotly figure: dashboard.show()
 
 
 # ════════════════════════════════════════════════════════════════════════

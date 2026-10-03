@@ -138,6 +138,7 @@ conv_losses = train_variant(
 # fractions. Healthy Conv nets typically have far FEWER dead
 # channels than dense nets at equal depth thanks to weight sharing.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -156,62 +157,13 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=conv_losses,
     show=False,
 )
+print_prescription_pad(findings, "Convolutional AE")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): min RMS = 8.7e-04 at
-#       'encoder.4.weight' (Conv2d). Convolutional weight sharing
-#       keeps gradients uniform — spread < 10x across 6 Conv layers.
-#   [!] Dead neurons  (WARNING): 'encoder.1' (relu): 14% dead
-#       channels. Each dead channel is an unused FILTER — worse
-#       than a dead Linear neuron because it wastes spatial capacity.
-#   [✓] Loss trend    (HEALTHY): train slope -3.4e-03/epoch.
-#       Final loss ~0.0048 — lower than dense AEs at matched
-#       latent size because spatial priors make the task easier.
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.0048 after 10 epochs, bottleneck=64 channels.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — CONV-SPECIFIC] Gradient spread <10x across all
-#     Conv layers is the CNN health signature. Slide 5J shows
-#     why: weight sharing means each filter receives gradient
-#     from every spatial position, so vanishing is intrinsically
-#     harder than in dense nets. Contrast 07_stacked where a
-#     5-layer DENSE net routinely spans 1000x in RMS.
-#     >> Prescription: If you see a >100x spread, check the
-#        pooling/stride layout. A stride-2 Conv followed by a
-#        stride-2 Conv halves spatial dims twice, starving deep
-#        filters of gradient contributors. Replace with one
-#        stride-2 + one stride-1.
-#
-#  [X-RAY — CONV-SPECIFIC] 14% dead channels means 14% of
-#     filters are permanently off. Each dead filter is an
-#     unused 3x3 kernel (9 parameters + activations) — wasted
-#     both in FLOPs and in representation. Worse than dead
-#     Linear neurons because a CNN's whole premise is that
-#     each filter specialises in one feature.
-#     >> Prescription: GELU or LeakyReLU for the encoder stack.
-#        Or: reduce bottleneck_channels if capacity is excess
-#        (fewer filters, fewer dead ones). You'll see this
-#        fix applied in ex_2's ResNet-SE (variant 02).
-#
-#  [STETHOSCOPE] Final loss ~0.0048 is LOWER than 02 undercomplete
-#     (~0.025) and LOWER than 07 stacked (~0.018). Why? The 2D
-#     convolutional prior (translation invariance, local
-#     connectivity) matches the spatial structure of Fashion-MNIST.
-#     Lesson: architecture encodes assumptions — Conv says "pixels
-#     near each other are correlated".
-#     >> Prescription: No fix. This is the reward for matching
-#        inductive bias to data geometry.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: Conv-AEs show what "healthy deep
-#  network" looks like when the architecture matches the data —
-#  uniform gradients, low dead%, low loss. You will use this
-#  reference when comparing to the pathological patterns in
-#  ex_3 (RNN gradient collapse) and ex_6 (GNN over-smoothing).
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# First convolutional model: readings are per Conv2d/ConvTranspose2d
+# parameter tensor, and the dead-neuron check covers each ReLU's
+# channels. Compare the dead-unit shares with the dense AEs (01-05) —
+# does weight sharing keep more units active?
 # ════════════════════════════════════════════════════════════════════
 
 # ════════════════════════════════════════════════════════════════════════

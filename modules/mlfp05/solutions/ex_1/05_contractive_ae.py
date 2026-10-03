@@ -158,6 +158,7 @@ contractive_losses = train_variant(
 # Test will look "low" — the question is whether it is CRITICALLY low
 # (vanishing) or just REGULARISED low (intended).
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -176,62 +177,14 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=contractive_losses,
     show=False,
 )
+print_prescription_pad(findings, f"Contractive AE (lambda={CONTRACTIVE_WEIGHT})")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Gradient flow (WARNING): Dampened gradients at
-#       'encoder.3.weight' — RMS = 7.4e-05 (below typical AE
-#       floor but above CRITICAL). This IS the Jacobian
-#       penalty at work.
-#   [✓] Dead neurons  (HEALTHY): max 9% dead on encoder.1.
-#       Contractive penalty does not favour sparsity.
-#   [✓] Loss trend    (HEALTHY): train slope -9.2e-04/epoch
-#       — slower than 02 (undercomplete), as expected for a
-#       regularised model.
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.031 after 10 epochs, lambda=1e-4.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — CONTRACTIVE-SPECIFIC] Gradient RMS 7.4e-05 at
-#     encoder.3 sits between "healthy" (~1e-3) and "critical"
-#     (<1e-5). This DAMPENING is the Jacobian Frobenius norm
-#     penalty directly acting on the encoder: slide 5I shows
-#     how ||J||^2 penalises sensitivity of latent to input, so
-#     by construction gradients shrink at the bottleneck.
-#     >> Prescription: If RMS drops below 1e-5, lambda is
-#        overwhelming the reconstruction term — halve
-#        CONTRACTIVE_WEIGHT. If RMS stays above 1e-3, the
-#        regulariser is too weak — latent manifold won't be
-#        smooth enough to interpolate meaningfully.
-#
-#  [X-RAY] 9% dead neurons is the UNDERCOMPLETE signature (not
-#     sparse). Contrast with 04 where 87% is by design. The
-#     contractive penalty operates on JACOBIANS not ACTIVATIONS,
-#     so it doesn't kill channels — it smooths the map each
-#     channel implements.
-#     >> Prescription: If dead% > 30%, lambda is fighting the
-#        activation path too hard — relax CONTRACTIVE_WEIGHT.
-#
-#  [STETHOSCOPE] Slope -9.2e-04/epoch is slower than the
-#     undercomplete baseline (02 shows ~-1.5e-3/epoch). This
-#     is the EXPECTED cost of regularisation: a smoother
-#     latent manifold costs reconstruction fidelity. You will
-#     observe the direct PAYOFF in the latent-interpolation
-#     visualisation below — smoother transitions than 02.
-#     >> Prescription: No fix. Add the contractive penalty
-#        and accept the 2-5x slower convergence as the price
-#        of manifold smoothness.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: contractive AE demonstrates the
-#  "dampening without killing" pattern. Same Blood Test metric
-#  (gradient RMS), but the interpretation depends on the
-#  regulariser acting on it. This forward-references 10_
-#  contractive_vae where TWO regularisers (Jacobian + KL) both
-#  dampen the encoder — and you'll need this reading skill to
-#  tell them apart.
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# The Jacobian penalty limits how strongly the code reacts to small
+# input changes, so lower encoder gradient RMS than in 01/02 is
+# expected and is not automatically "vanishing" — the pad's own
+# WARNING/CRITICAL thresholds decide that. If the reconstruction loss
+# stalls well above 02's, CONTRACTIVE_WEIGHT is too strong.
 # ════════════════════════════════════════════════════════════════════
 
 

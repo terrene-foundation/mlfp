@@ -167,6 +167,7 @@ recurrent_losses = train_variant(
 # don't vanish through DEPTH (we only have 1 recurrent layer here)
 # but through TIME. The Blood Test here is especially informative.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -185,68 +186,14 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=recurrent_losses,
     show=False,
 )
+print_prescription_pad(findings, "Recurrent AE (LSTM)")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Gradient flow (WARNING): Hidden-to-hidden gradient
-#       attenuation at 'encoder.weight_hh_l0' — RMS = 3.6e-05.
-#       Gradient flowing BACKWARD through time across 20 steps
-#       shrinks by ~0.8^20 ≈ 1%. LSTM gating helps but does
-#       not eliminate the pattern.
-#   [✓] Saturation   (HEALTHY): max |tanh| = 0.87 on
-#       encoder cell state (below 0.99 saturation flag).
-#       Input/forget/output gates activations in [0.2, 0.8].
-#   [✓] Loss trend    (HEALTHY): train slope -6.2e-04/epoch.
-#       Slower than dense AEs — sequence reconstruction is
-#       intrinsically harder than static image.
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.014 after 10 epochs, sequence_length=20.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — VANISHING THROUGH TIME] RMS 3.6e-05 on
-#     weight_hh_l0 reveals the RNN-specific vanishing pattern:
-#     gradients flow BACKWARD through T=20 timesteps, and each
-#     backprop step multiplies by roughly the hidden-state
-#     Jacobian. LSTM's gating keeps this above the <1e-6 floor
-#     that would kill a vanilla RNN (demonstrated in ex_3/01),
-#     but the attenuation is intrinsic to BPTT. Slide 5L
-#     covers the Hochreiter 1991 analysis.
-#     >> Prescription: (a) Shorten sequence_length to 10 if
-#        gradient drops below 1e-5. (b) Switch to GRU (simpler
-#        gating, often similar performance — see ex_3/03).
-#        (c) Add attention or transformer blocks for very long
-#        sequences (ex_4).
-#
-#  [X-RAY — LSTM-SPECIFIC SATURATION] Dead-neuron % is NOT the
-#     right X-Ray for LSTMs. Tanh and sigmoid saturate
-#     (output → ±1 or 0/1) rather than die. The instrument
-#     reports |tanh| statistics instead. 0.87 max is healthy;
-#     >0.99 would signal gate saturation — gates stuck open
-#     or closed, no information gating, degenerating into a
-#     linear RNN.
-#     >> Prescription: Gradient clipping at max_norm=5.0 +
-#        weight decay 1e-5 on recurrent matrices keeps
-#        activations away from saturation.
-#
-#  [STETHOSCOPE] Slope -6.2e-04/epoch is slower than 02
-#     undercomplete (~-1.5e-3/epoch) on static images. This
-#     is the price of temporal modelling — each step depends
-#     on the prior step's hidden state, so the error signal
-#     is temporally correlated and harder to exploit.
-#     >> Prescription: No fix. If you need faster convergence,
-#        consider teacher forcing (feed ground-truth prior
-#        step during training) — standard RNN trick.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: recurrent AE introduces the
-#  TIME DIMENSION to the diagnostic vocabulary. The Blood
-#  Test now reads "across timesteps", the X-Ray shifts from
-#  "dead" to "saturated". These same readings recur in ex_3
-#  RNN variants (scaled up) and in ex_4 transformers (where
-#  attention replaces recurrence — different mechanism,
-#  same long-range gradient challenge).
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# LSTM gradients can shrink through TIME (100 steps here) even with a
+# single layer. The gradient-flow reading is per parameter tensor
+# (weight_ih / weight_hh), so it shows each layer's overall health, not
+# the per-timestep decay — the time-series reconstructions below show
+# whether long-range structure survived.
 # ════════════════════════════════════════════════════════════════════
 
 

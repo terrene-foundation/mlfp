@@ -126,6 +126,7 @@ sparse_losses = ____
 # dead-ReLU failure, here dead-neuron-ness is the DESIGN GOAL.
 # Students must learn to read intent from the report, not just icons.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -144,59 +145,13 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=sparse_losses,
     show=False,
 )
+print_prescription_pad(findings, f"Sparse AE (L1={SPARSITY_WEIGHT})")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Dead neurons  (WARNING): 'encoder.3' (relu): 87% dead
-#       neurons.  (BY DESIGN — L1 penalty active)
-#       Fix: WARNING suppressable — see interpretation guide.
-#   [✓] Gradient flow (HEALTHY): min RMS = 2.1e-04 at
-#       'encoder.3.weight'. The 13% of channels that are ACTIVE
-#       carry the reconstruction — exactly the sparse-coding goal.
-#   [✓] Loss trend    (HEALTHY): train slope -1.6e-03/epoch.
-#       Final loss = reconstruction (~0.013) + L1 penalty (~0.003).
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.016 after 10 epochs, L1 weight=1e-3.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [X-RAY — CRITICAL REFRAMING] 87% dead neurons is the TARGET,
-#     not the bug. L1 regularisation drives most neurons to zero
-#     FOR EACH INPUT so that the remaining 13% encode a specific
-#     concept. This is precisely the sparse-coding objective from
-#     Olshausen & Field (1996) that slide 5H walks through —
-#     unlike 01's 59% which was ACCIDENTAL (ReLU dying), here
-#     87% is DESIGNED (L1 winning per-sample).
-#     >> Prescription: IGNORE the WARNING. Verify instead via
-#        `diag.activations_df()` that the INACTIVE FRACTION per
-#        BATCH matches your target (~90% here). If it exceeds
-#        95%, L1 is too strong — halve SPARSITY_WEIGHT.
-#
-#  [BLOOD TEST] Gradient RMS 2.1e-04 at encoder.3 is healthy.
-#     Contrast with 01's 9.46e-06 at decoder.2. Even though most
-#     neurons are dead, the ACTIVE ones receive strong, focused
-#     gradients — concentrated learning.
-#     >> Prescription: If RMS drops below 1e-5, L1 is killing
-#        every neuron PERMANENTLY (not per-sample). Lower
-#        SPARSITY_WEIGHT to 5e-4 and retrain.
-#
-#  [STETHOSCOPE] Loss trend healthy with a two-term composition:
-#     reconstruction MSE + L1 penalty. A rising L1 curve while
-#     MSE falls signals the regulariser hasn't converged yet —
-#     train longer. A rising L1 AND MSE signals overshoot of
-#     the regulariser.
-#     >> Prescription: Plot `diag.epochs_df()` split into
-#        `recon_loss` vs `l1_loss` columns. Both should decay.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: this file teaches the CLINICAL
-#  READING SKILL. Same X-Ray finding (high % dead), opposite
-#  diagnosis (01: kill the model / 04: ship the model). You
-#  will revisit this skill in 05_contractive (different
-#  regulariser, same "context determines pathology" principle)
-#  and again in ex_6 GNN over-smoothing (where "similar
-#  embeddings" is bug in shallow nets, feature in deep nets).
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# The L1 term acts on the 64-unit code z, which has NO ReLU — so
+# sparsity does not show up as "dead neurons". That reading covers the
+# hidden ReLU layers; a high dead share there is still a problem. Judge
+# the code's sparsity from the activation histogram below instead.
 # ════════════════════════════════════════════════════════════════════
 
 

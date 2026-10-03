@@ -131,6 +131,7 @@ dae_losses = ____
 # noise acts as implicit regularisation, keeping ReLUs "alive"
 # across the batch (dead-neuron % should drop vs 01/02).
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -149,64 +150,15 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=dae_losses,
     show=False,
 )
+print_prescription_pad(findings, f"Denoising AE (sigma={NOISE_SIGMA})")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Dead neurons  (WARNING): 'encoder.1' (relu): 18% dead
-#       neurons — much lower than the 59% seen in 01 because
-#       noise injection keeps gradients flowing across channels.
-#   [✓] Gradient flow (HEALTHY): min RMS = 3.8e-04 at
-#       'decoder.2.weight' (two orders of magnitude above the
-#       vanishing threshold). Noise forces the encoder to reuse
-#       every channel.
-#   [✓] Loss trend    (HEALTHY): Loss converging to a HIGHER
-#       floor than 01 (~0.024 vs ~0.007) — the desired signal.
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.024 after 10 epochs, sigma=0.3.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [STETHOSCOPE] The HIGHER loss floor is the SUCCESS signal
-#     for a denoising AE, not a failure. You are measuring
-#     reconstruction of CLEAN targets from NOISY inputs — the
-#     irreducible noise (sigma^2 per pixel) sets a floor below
-#     which no model can go. Slide 5G covers this: "the DAE's
-#     loss floor is a measurement of its robustness budget."
-#     >> Prescription: No fix needed. A loss that drops to ~0
-#        would mean the model is memorising noise patterns —
-#        worse than ours.
-#
-#  [X-RAY] 18% dead neurons at encoder.1 — far below the 59%
-#     observed in 01_standard_ae.py. Every batch shows the
-#     encoder a DIFFERENT noisy version of the same image, so
-#     dead-ReLU channels get re-activated by the next batch's
-#     noise pattern. Noise injection acts as an implicit
-#     activation regulariser.
-#     >> Prescription: No switch to GELU needed here — the
-#        noise is already doing the job. You'll see this
-#        contrast again in ex_2 CNN augmentation (same principle,
-#        different domain).
-#
-#  [BLOOD TEST] Gradient RMS ~3.8e-04 is healthy. Contrast with
-#     01's 9.46e-06 (three orders of magnitude worse). This is
-#     why DAEs are the default in fraud/anomaly pipelines: they
-#     self-regularise without needing architectural tricks.
-#     >> Prescription: If RMS drops below 1e-5, sigma is too
-#        large (SNR too low for the encoder to extract signal).
-#        Halve NOISE_SIGMA and retrain.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: noise IS the regulariser. A clean-
-#  input baseline would show the identity-risk of 01; injecting
-#  noise flips every red instrument to green while RAISING the
-#  loss. This forward-references 04_sparse (different regulariser,
-#  same clinical-reading skill: context determines pathology).
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# The loss compares reconstructions of NOISY inputs with CLEAN targets,
+# so it cannot reach the copy-level losses of 01. Compare the
+# dead-neuron reading with 01/02: does input noise keep more ReLU units
+# active? The 3-row denoising grid below is the real test of whether
+# the model learned to remove noise.
 # ════════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — above block maps each finding to
-# the 5-instrument rubric (Slide 5A-5F) so you can replicate the
-# reading on any DAE you build.
 
 
 # ════════════════════════════════════════════════════════════════════════

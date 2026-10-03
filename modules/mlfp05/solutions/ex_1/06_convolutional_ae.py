@@ -9,8 +9,9 @@
 #   - Build a Conv AE that preserves spatial locality with Conv2d/ConvTranspose2d
 #   - Understand WHY conv layers beat flat MLPs for image data
 #   - Observe sharper reconstructions than any flat variant
-#   - Apply to e-commerce image compression at Shopee (Conv AE vs JPEG)
-#   - Quantify bandwidth cost savings for 50M images/day
+#   - Apply to e-commerce image compression (Conv AE vs JPEG)
+#   - Read a quality-at-equal-size comparison correctly before
+#     promising bandwidth savings
 #
 # PREREQUISITES: 05_contractive_ae.py
 # ESTIMATED TIME: ~20 min
@@ -186,15 +187,15 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — E-Commerce Image Compression (Shopee)
+# APPLY — E-Commerce Image Compression
 # ════════════════════════════════════════════════════════════════════════
 # BUSINESS SCENARIO: You are an ML engineer at a Singapore e-commerce
-# platform (Shopee/Lazada). The platform serves 50M product images per
-# day. Bandwidth costs are S$300K/month. Your VP asks: "Can ML-based
+# platform that serves ~50M product images a day with bandwidth costs
+# of ~S$300K/month (illustrative scenario figures). Your VP asks: "Can ML-based
 # compression reduce bandwidth costs while maintaining image quality?"
 
 print("\n" + "=" * 70)
-print("  APPLICATION: Image Compression vs JPEG (Shopee)")
+print("  APPLICATION: Image Compression vs JPEG")
 print("=" * 70)
 
 IMG_SIZE = 28
@@ -421,9 +422,6 @@ DAILY_IMAGES = 50_000_000
 MONTHLY_BANDWIDTH_COST = 300_000
 ae_4ch_ssim = [r[1] for r in ae_results if r[4] == 4][0]
 jpeg_matched_ssim = jpeg_results[jpeg_idx][1]
-savings_pct = 0.15
-monthly_savings = MONTHLY_BANDWIDTH_COST * savings_pct
-annual_savings = monthly_savings * 12
 
 print("\n" + "=" * 64)
 print("BUSINESS IMPACT SUMMARY — E-Commerce Image Compression")
@@ -433,9 +431,12 @@ print(f"Monthly bandwidth cost:          {'S$' + f'{MONTHLY_BANDWIDTH_COST:,}':>
 print(f"\nAt ~{target_ratio:.0f}x compression:")
 print(f"  JPEG SSIM:  {jpeg_matched_ssim:.4f}")
 print(f"  AE SSIM:    {ae_4ch_ssim:.4f}  (+{ae_4ch_ssim - jpeg_matched_ssim:.4f})")
-print(f"\nBandwidth savings/year:          {'S$' + f'{annual_savings:,.0f}':>12}")
-print(f"  AE: smoother blur artifacts (preserves edges)")
-print(f"  JPEG: blocky 8x8 grid artifacts")
+print(f"  AE: smoother blur artifacts; JPEG: blocky 8x8 grid artifacts")
+print("\nReading this correctly: both codecs were compared at the SAME size,")
+print("so this comparison saves no bandwidth by itself. If the AE's SSIM is")
+print("higher, the saving would come from running it at a HIGHER ratio until")
+print("its SSIM drops to JPEG's — measure that before quoting a number, and")
+print("count the decoder's compute cost on every page view.")
 print("=" * 64)
 
 
@@ -451,7 +452,7 @@ print(
   [x] Observed sharper reconstructions than flat MLPs (spatial locality)
   [x] Applied to image compression: Conv AE vs JPEG rate-distortion
   [x] Compared artifact types: AE blur vs JPEG blockiness
-  [x] Quantified bandwidth savings for 50M images/day platform
+  [x] Compared AE and JPEG quality at equal size, without inventing savings
 
   KEY INSIGHT: Conv2d filters share parameters across spatial positions,
   learning translation-invariant features. A button pattern detected

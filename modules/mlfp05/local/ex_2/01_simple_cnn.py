@@ -489,9 +489,9 @@ print("\n--- Checkpoint 4 passed --- visual proof of model behaviour saved\n")
 # PHASE 5 — APPLY: Singapore E-Commerce Product Categorisation
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: You are an ML engineer at a Singapore e-commerce platform
-# (think Shopee, Lazada, or Carousell). The platform receives 500,000+
+# (illustrative figures). The platform receives 500,000+
 # new product listings per day. Sellers often mis-categorise products
-# (a "Nike Air Max" listed under "Electronics" instead of "Shoes"),
+# (a pair of running shoes listed under "Electronics" instead of "Shoes"),
 # leading to:
 #   - Poor search results (customers can't find what they want)
 #   - Incorrect commission rates (different categories have different fees)

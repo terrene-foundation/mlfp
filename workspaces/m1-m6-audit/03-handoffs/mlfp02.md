@@ -39,3 +39,9 @@
 - Textbook/notes pages 2.4–2.8 still carry old APIs, missing datasets, 51% CUPED, ~5,800/arm → S3/S4 must fix. speaker-notes.md regenerate (D4). index.html: old ICU card for 2.6 and wrong dataset table → integration.
 - Owner question: spec says "End of Module Assessment: Quiz + mini-project" but the real assessment is auto-graded coding tasks (S5 will redesign; reconcile spec then).
 - Lesson 2.4 slides use a "BOGO" case while the deck opens with the hawker-centre case (numbers now correct; framing differs).
+
+---
+# Additions from the lesson-textbook shard (S3b, merged 8add0d7f)
+- BUG (integration): shared/mlfp02/ex_8.py FEATURE_STORE_URL = "sqlite:///mlfp02_ex8_features.db" (relative) → FeatureStore.materialize fails "unable to open database file" (reproduced twice). Exercise 8 + lesson 2.8 slides call create_feature_store() with that default → make the default an ABSOLUTE path (e.g. under OUTPUT_DIR resolved), then re-verify.
+- HDB file has impossible leases (negative remaining-lease age); lesson 2.5 keeps them to match the slides (textbook says so) — S6/owner may decide to clean.
+- Shared numbers (all match merged slides): 11,554/arm; 19.1% vs 24.8%; SRM p = 0.624; ρ = 0.21 → 4.4% CUPED reduction; ATT −23,208; area OR 54; acc 0.81; AUC 0.92; R² 0.828; +9,096/sqm; 3,536 rows removed.

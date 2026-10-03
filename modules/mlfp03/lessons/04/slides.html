@@ -243,7 +243,7 @@
   <h2>LightGBM — speed tricks</h2>
   <ul style="font-size: 0.9em;">
     <li><strong>Histogram splits:</strong> bin features into ~256 buckets, evaluate splits at bucket boundaries — $O(n + 256)$ instead of $O(n \log n)$</li>
-    <li><strong>GOSS:</strong> keep top $a\%$ of rows by $|g_i|$, randomly sample $b\%$ from the rest — ~30% of data per tree</li>
+    <li><strong>GOSS:</strong> keep the top $a$ of rows by $|g_i|$, randomly sample $b \cdot n$ rows from the rest — ~30% of data per tree</li>
     <li><strong>Leaf-wise growth:</strong> always split the leaf with largest gain, regardless of depth. Unbalanced trees, faster convergence, <code>num_leaves</code> is the main dial</li>
   </ul>
 </section>
@@ -253,8 +253,8 @@
   <p style="font-size: 0.85em;">Small-gradient rows are already well-predicted. Large-gradient rows carry most of the signal. Subsample the small ones, keep all the large ones.</p>
   <ol style="font-size: 0.82em;">
     <li>Sort by $|g_i|$ descending</li>
-    <li>Keep top $a\%$ (default $a=20$)</li>
-    <li>Random sample $b\%$ from the rest (default $b=10$)</li>
+    <li>Keep the top $a \cdot n$ rows (default $a=0.2$)</li>
+    <li>Randomly sample $b \cdot n$ rows from the rest — $b$ is a fraction of the <em>full</em> data (default $b=0.1$)</li>
     <li>Train on those $a + b \approx 30\%$ of rows</li>
     <li>Up-weight the sampled low-gradient rows by $(1 - a)/b$</li>
   </ol>
@@ -406,6 +406,8 @@
 <section>
   <h2>Train all three on credit scoring</h2>
   <pre><code class="language-python" data-trim>
+# prepare_credit_split() drops customer_id and the leaky
+# future_default_indicator: 33 features remain
 models = {
   "XGBoost":  xgb.XGBClassifier(n_estimators=400, learning_rate=0.05,
               max_depth=6, reg_lambda=1, gamma=0.1, eval_metric="aucpr"),
@@ -431,10 +433,13 @@ xgb_model = xgb.XGBClassifier(
     early_stopping_rounds=25,
     eval_metric="aucpr",
 )
-xgb_model.fit(X_tr, y_tr, eval_set=[(X_te, y_te)])
+# validation split carved from TRAIN — the test set stays untouched
+X_fit, X_val, y_fit, y_val = train_test_split(
+    X_tr, y_tr, test_size=0.2, stratify=y_tr, random_state=42)
+xgb_model.fit(X_fit, y_fit, eval_set=[(X_val, y_val)])
 print("Stopped at round", xgb_model.best_iteration)
   </code></pre>
-  <p style="font-size: 0.85em;">Halt when the validation metric hasn't improved for 25 rounds. Standard way to pick <code>n_estimators</code> without grid search.</p>
+  <p style="font-size: 0.85em;">Halt when the validation metric hasn't improved for 25 rounds. Stopping on the test set would tune on it — its score would no longer be honest.</p>
 </section>
 
 <section>
@@ -455,7 +460,7 @@ print("Stopped at round", xgb_model.best_iteration)
     <strong>1.</strong> ROC-AUC on imbalanced data — use AUC-PR (average precision) instead. More in 3.5.
   </div>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
-    <strong>2.</strong> No early stopping — you under- or overfit. Always use <code>eval_set</code>.
+    <strong>2.</strong> No early stopping — you under- or overfit. Always use <code>eval_set</code> on a validation split, never the test set.
   </div>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
     <strong>3.</strong> Tuning lr and n_estimators independently — they interact. Fix small lr, let early stopping pick n_estimators.

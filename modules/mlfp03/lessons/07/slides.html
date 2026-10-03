@@ -100,8 +100,8 @@
         <text x="555" y="130" text-anchor="middle" font-weight="600" font-size="9" fill="#0D9488">Train</text>
         <!-- Retry arc -->
         <path d="M 604 120 C 640 120, 640 136, 604 136" fill="none" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#a37s)"/>
-        <text x="650" y="132" font-size="8" fill="#B45309">retry x3</text>
-        <text x="650" y="142" font-size="7" fill="#B45309">(smaller batch)</text>
+        <text x="650" y="132" font-size="8" fill="#B45309">fails loudly:</text>
+        <text x="650" y="142" font-size="7" fill="#B45309">execute() raises</text>
 
         <line x1="555" y1="140" x2="555" y2="154" stroke="#0D9488" stroke-width="1.2" marker-end="url(#a37s)"/>
 
@@ -112,26 +112,26 @@
         <!-- Conditional branch -->
         <line x1="555" y1="186" x2="555" y2="198" stroke="#0D9488" stroke-width="1.2" marker-end="url(#a37s)"/>
         <polygon points="555,202 575,216 555,230 535,216" fill="#FEF9C3" stroke="#EAB308" stroke-width="1.5"/>
-        <text x="555" y="220" text-anchor="middle" font-size="7" font-weight="600" fill="#92400E">AUC</text>
-        <text x="555" y="228" text-anchor="middle" font-size="7" font-weight="600" fill="#92400E">&gt;0.85?</text>
+        <text x="555" y="220" text-anchor="middle" font-size="7" font-weight="600" fill="#92400E">AUC/AP</text>
+        <text x="555" y="228" text-anchor="middle" font-size="7" font-weight="600" fill="#92400E">pass?</text>
 
         <!-- Yes branch -->
         <line x1="575" y1="216" x2="630" y2="216" stroke="#22C55E" stroke-width="1.5"/>
         <line x1="630" y1="216" x2="630" y2="240" stroke="#22C55E" stroke-width="1.5" marker-end="url(#a37g)"/>
         <text x="600" y="210" font-size="8" fill="#22C55E" font-weight="600">yes</text>
         <rect x="590" y="244" width="80" height="28" rx="5" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
-        <text x="630" y="262" text-anchor="middle" font-weight="600" font-size="9" fill="#166534">Register</text>
+        <text x="630" y="262" text-anchor="middle" font-weight="600" font-size="9" fill="#166534">Promote</text>
 
         <!-- No branch -->
         <line x1="535" y1="216" x2="480" y2="216" stroke="#F43F5E" stroke-width="1.5"/>
         <line x1="480" y1="216" x2="480" y2="240" stroke="#F43F5E" stroke-width="1.5" marker-end="url(#a37r)"/>
         <text x="510" y="210" font-size="8" fill="#F43F5E" font-weight="600">no</text>
         <rect x="440" y="244" width="80" height="28" rx="5" fill="#FEF2F2" stroke="#F43F5E" stroke-width="1.5"/>
-        <text x="480" y="262" text-anchor="middle" font-size="9" fill="#B91C1C">Log + alert</text>
+        <text x="480" y="262" text-anchor="middle" font-size="9" fill="#B91C1C">Hold in staging</text>
 
         <!-- Bottom summary -->
         <rect x="370" y="282" width="350" height="18" rx="3" fill="#F0FDFA"/>
-        <text x="545" y="294" text-anchor="middle" font-size="9" fill="#0D9488">Retry on failure, branch on metrics, nothing silently lost</text>
+        <text x="545" y="294" text-anchor="middle" font-size="9" fill="#0D9488">Explicit dependencies, branch on metrics, failures raise — nothing silently lost</text>
       </g>
     </svg>
   </figure>
@@ -155,10 +155,10 @@
       <text x="525" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Evaluate</text>
       <line x1="525" y1="100" x2="525" y2="140" stroke="#0D9488" stroke-width="2" marker-end="url(#a37g)"/>
       <rect x="470" y="145" width="110" height="40" rx="6" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
-      <text x="525" y="170" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#92400E">Promote?</text>
+      <text x="525" y="170" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#92400E">Gate?</text>
       <line x1="470" y1="165" x2="410" y2="165" stroke="#22C55E" stroke-width="2" marker-end="url(#a37g)"/>
       <rect x="290" y="145" width="115" height="40" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
-      <text x="347" y="170" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#22C55E">Register</text>
+      <text x="347" y="170" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#22C55E">Promote</text>
     </svg>
   </figure>
 </section>
@@ -166,26 +166,31 @@
 <section>
   <h2>WorkflowBuilder code</h2>
   <pre><code class="language-python" data-trim>
-from kailash import WorkflowBuilder, PythonCodeNode
-from kailash import ConditionalNode, Runtime
+from kailash.runtime import LocalRuntime
+from kailash.workflow.builder import WorkflowBuilder
 
-workflow = WorkflowBuilder("credit_pipeline")
-load = PythonCodeNode("load", code=load_fn)
-prep = PythonCodeNode("prep", code=prep_fn)
-train = PythonCodeNode("train", code=train_fn)
-evl = PythonCodeNode("eval", code=eval_fn)
-gate = ConditionalNode("gate",
-    condition=lambda ctx: ctx["auc"] > 0.85)
-reg = PythonCodeNode("register", code=reg_fn)
+wf = WorkflowBuilder()
+# custom @register_node() classes wrap load / prep / train / eval
+wf.add_node("CreditLoadNode", "load", {})
+wf.add_node("CreditPreprocessNode", "preprocess", {"seed": 42})
+wf.add_node("TrainingPipelineNode", "train", {"hyperparameters": HP,
+            "experiment_name": "credit_default_workflow"})
+wf.add_node("EvaluateNode", "evaluate", {})
+wf.add_node("PythonCodeNode", "gate_check", {"code": GATE_CODE})
+wf.add_node("SwitchNode", "gate", {"condition_field": "promote",
+            "operator": "==", "value": True})
+wf.add_node("PromoteNode", "promote", {})
 
-workflow.connect(load, prep)
-workflow.connect(prep, train)
-workflow.connect(train, evl)
-workflow.connect(evl, gate)
-workflow.connect(gate, reg, branch="yes")
+# add_connection(from_node, from_output, to_node, to_input)
+wf.add_connection("load", "raw_path", "preprocess", "raw_path")
+# ... preprocess -> train -> evaluate -> gate_check (Exercise 7.1)
+wf.add_connection("gate_check", "result", "gate", "input_data")
+wf.add_connection("gate", "true_output", "promote", "payload")
 
-result = Runtime().execute(workflow.build())
+with LocalRuntime(conditional_execution="skip_branches") as rt:
+    results, run_id = rt.execute(wf.build())
   </code></pre>
+  <p style="font-size: 0.7em; color: #64748B;"><code>GATE_CODE</code>: promote only if test AUC ≥ 0.75 and AP ≥ 2 × default rate. A failing node makes <code>execute()</code> raise.</p>
 </section>
 
 <section>
@@ -204,29 +209,32 @@ result = Runtime().execute(workflow.build())
       <text x="500" y="45" text-anchor="middle" font-family="Inter" font-size="9" fill="#F59E0B">next</text>
     </svg>
   </figure>
-  <p style="font-size: 0.85em;">Bayesian optimisation: surrogate model + acquisition function. Finds good params in ~50 trials, not 3000.</p>
+  <p style="font-size: 0.85em;">Bayesian optimisation: surrogate model + acquisition function. kailash-ml's <code>strategy="bayesian"</code> runs Optuna's TPE sampler — good params in tens of trials, not thousands.</p>
 </section>
 
 <section>
   <h2>HyperparameterSearch code</h2>
   <pre><code class="language-python" data-trim>
-from kailash_ml import HyperparameterSearch
-from kailash_ml import SearchSpace, SearchConfig
+from kailash_ml import HyperparameterSearch, TrainingPipeline
+from kailash_ml.engines.hyperparameter_search import (
+    ParamDistribution, SearchConfig, SearchSpace)
+from kailash_ml.engines.training_pipeline import EvalSpec
 
-space = SearchSpace({
-    "n_estimators": (100, 1000),
-    "max_depth": (3, 10),
-    "learning_rate": (0.01, 0.3, "log"),
-})
-config = SearchConfig(
-    method="bayesian", n_trials=50,
-    metric="auc", cv_folds=5,
-)
+space = SearchSpace(params=[
+    ParamDistribution("n_estimators", "int_uniform", low=100, high=800),
+    ParamDistribution("max_depth", "int_uniform", low=3, high=10),
+    ParamDistribution("learning_rate", "log_uniform", low=0.01, high=0.3),
+])
+config = SearchConfig(strategy="bayesian", n_trials=20,
+                      metric_to_optimize="auc", direction="maximize")
 
-search = HyperparameterSearch(model_class="xgboost")
-best = search.run(X_train, y_train,
-                  space=space, config=config)
-print(f"Best AUC: {best.score:.4f}")
+pipeline = TrainingPipeline(feature_store=None, registry=registry)
+search = HyperparameterSearch(pipeline=pipeline)
+result = await search.search(data=dev, schema=schema,
+    base_model_spec=lgbm_spec, search_space=space, config=config,
+    eval_spec=EvalSpec(metrics=["auc"], test_size=0.2),
+    experiment_name="credit_hp_search")  # trials score a dev holdout
+print(result.best_params, result.best_metrics["auc"])
   </code></pre>
 </section>
 
@@ -351,20 +359,20 @@ print(f"Best AUC: {best.score:.4f}")
 <section>
   <h2>ModelRegistry</h2>
   <pre><code class="language-python" data-trim>
-from kailash_ml import ModelRegistry, MetricSpec
-from kailash_ml import ModelSignature
+from kailash_ml import ModelRegistry
+from kailash_ml.types import MetricSpec, ModelSignature
 
-registry = ModelRegistry()
-registry.register(
-    name="credit_scorer", model=best.model,
-    metrics=MetricSpec(auc=best.score),
-    signature=ModelSignature(
-        input_schema=X_train.schema,
-        output_schema={"probability": "Float64"},
-    ),
-)
-registry.promote("credit_scorer", version=1,
-                 stage="production")
+registry = ModelRegistry(conn)  # conn: initialised ConnectionManager
+mv = await registry.register_model(
+    "credit_scorer", artifact_bytes,  # new versions start in "staging"
+    metrics=[MetricSpec(name="auc_roc", value=test_auc, split="test")],
+    signature=ModelSignature(input_schema=schema,
+        output_columns=["default_probability"],
+        output_dtypes=["float64"], model_type="classifier"))
+
+if gate["promote"]:  # computed from test metrics, never assumed
+    await registry.promote_model("credit_scorer", mv.version,
+        "production", reason="AUC/AP gate passed on test")
   </code></pre>
 </section>
 
@@ -380,13 +388,13 @@ registry.promote("credit_scorer", version=1,
         <!-- Circle positions: top=Experiment, right=Staging, bottom=Production, left=Retired -->
         <!-- Experiment (top) -->
         <rect x="280" y="16" width="160" height="50" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2.5"/>
-        <text x="360" y="38" text-anchor="middle" font-weight="700" font-size="13" fill="#3B82F6">Experiment</text>
-        <text x="360" y="54" text-anchor="middle" font-size="9" fill="#64748B">dev, iterate, evaluate</text>
+        <text x="360" y="38" text-anchor="middle" font-weight="700" font-size="13" fill="#3B82F6">Staging</text>
+        <text x="360" y="54" text-anchor="middle" font-size="9" fill="#64748B">register_model() lands here</text>
 
         <!-- Staging (right) -->
         <rect x="530" y="118" width="160" height="50" rx="8" fill="#FEF9C3" stroke="#EAB308" stroke-width="2.5"/>
-        <text x="610" y="140" text-anchor="middle" font-weight="700" font-size="13" fill="#92400E">Staging</text>
-        <text x="610" y="156" text-anchor="middle" font-size="9" fill="#64748B">shadow traffic, A/B test</text>
+        <text x="610" y="140" text-anchor="middle" font-weight="700" font-size="13" fill="#92400E">Shadow</text>
+        <text x="610" y="156" text-anchor="middle" font-size="9" fill="#64748B">scores live traffic, not served</text>
 
         <!-- Production (bottom) -->
         <rect x="280" y="220" width="160" height="50" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2.5"/>
@@ -395,32 +403,32 @@ registry.promote("credit_scorer", version=1,
 
         <!-- Retired (left) -->
         <rect x="30" y="118" width="160" height="50" rx="8" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2.5"/>
-        <text x="110" y="140" text-anchor="middle" font-weight="700" font-size="13" fill="#64748B">Retired</text>
-        <text x="110" y="156" text-anchor="middle" font-size="9" fill="#94A3B8">archived, not served</text>
+        <text x="110" y="140" text-anchor="middle" font-weight="700" font-size="13" fill="#64748B">Archived</text>
+        <text x="110" y="156" text-anchor="middle" font-size="9" fill="#94A3B8">kept for audit / rollback</text>
 
         <!-- Arrow: Experiment → Staging (top-right) -->
         <path d="M 440 50 C 490 60, 530 90, 540 118" fill="none" stroke="#0D9488" stroke-width="2" marker-end="url(#a37l)"/>
         <rect x="470" y="66" width="84" height="24" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="1"/>
-        <text x="512" y="82" text-anchor="middle" font-size="8" font-weight="600" fill="#0D9488">metrics pass</text>
+        <text x="512" y="82" text-anchor="middle" font-size="8" font-weight="600" fill="#0D9488">gate passes</text>
 
         <!-- Arrow: Staging → Production (right-bottom) -->
         <path d="M 600 168 C 580 196, 500 226, 440 236" fill="none" stroke="#0D9488" stroke-width="2" marker-end="url(#a37l)"/>
         <rect x="496" y="194" width="88" height="24" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="1"/>
-        <text x="540" y="210" text-anchor="middle" font-size="8" font-weight="600" fill="#0D9488">team approves</text>
+        <text x="540" y="210" text-anchor="middle" font-size="8" font-weight="600" fill="#0D9488">shadow OK + sign-off</text>
 
         <!-- Arrow: Production → Retired (bottom-left) -->
         <path d="M 280 252 C 230 260, 180 210, 170 168" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#a37l)"/>
         <rect x="180" y="218" width="90" height="24" rx="4" fill="#FEF2F2" stroke="#F43F5E" stroke-width="1"/>
-        <text x="225" y="234" text-anchor="middle" font-size="8" font-weight="600" fill="#B91C1C">drift detected</text>
+        <text x="225" y="234" text-anchor="middle" font-size="8" font-weight="600" fill="#B91C1C">replaced / drift</text>
 
         <!-- Arrow: Retired → Experiment (left-top) (feedback loop) -->
         <path d="M 120 118 C 140 86, 220 46, 280 36" fill="none" stroke="#3B82F6" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#a37lb)"/>
         <rect x="148" y="56" width="80" height="24" rx="4" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1"/>
-        <text x="188" y="72" text-anchor="middle" font-size="8" font-weight="600" fill="#3B82F6">retrain cycle</text>
+        <text x="188" y="72" text-anchor="middle" font-size="8" font-weight="600" fill="#3B82F6">re-stage (rollback)</text>
 
         <!-- Center label -->
-        <text x="360" y="146" text-anchor="middle" font-size="10" fill="#94A3B8" font-style="italic">Each transition</text>
-        <text x="360" y="158" text-anchor="middle" font-size="10" fill="#94A3B8" font-style="italic">requires a gate</text>
+        <text x="360" y="146" text-anchor="middle" font-size="10" fill="#94A3B8" font-style="italic">promote_model()</text>
+        <text x="360" y="158" text-anchor="middle" font-size="10" fill="#94A3B8" font-style="italic">records a reason</text>
       </g>
     </svg>
   </figure>

@@ -1,115 +1,120 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP01 — Assessment Task 4: Profile, Clean & Integrate with DataExplorer
+MLFP01 — Assessment Task 4: Profile, Clean and Justify with DataExplorer
 (Reference Solution)
 
-Reference implementation. Withheld from students. Verified to pass grader.py.
+Withheld from students. Verified to pass grader.py.
+
+What profiling the raw quarterly slice reveals (run_profile(raw_q).alerts):
+  - duplicates: quarter 2019-2 appears twice as an identical row
+  - high_nulls: inflation_rate (8 of 101 = 7.9%) and trade_balance_sgd_bn
+    (6 of 101 = 5.9%)
+  - constant: period_type (it is "quarterly" on every row of the slice)
+  - high_cardinality: period, gdp_growth_pct, property_price_index and
+    tourist_arrivals (info level). tourist_arrivals is text, with thousands
+    separators on some rows, so it is profiled as a string
+What describe()/value_counts() add: period is written three ways
+("Q1 2000", "2001-Q1", "2001-2").
+
+Imputation choice: these are quarterly time series with trends, so a gap is
+filled by linear interpolation between the neighbouring quarters. One median
+over 25 years would put a 2000-era value into a 2020 gap.
 """
 from __future__ import annotations
 
-import asyncio
-
 import polars as pl
 
-from kailash_ml import DataExplorer
-from shared import MLFPDataLoader
+from kailash_ml import AlertConfig
+from shared import MLFPDataLoader, run_profile
+
+NUMERIC = [
+    "gdp_growth_pct",
+    "unemployment_rate",
+    "inflation_rate",
+    "trade_balance_sgd_bn",
+    "property_price_index",
+]
+ACCEPTED_REASONS = {
+    "high_cardinality": (
+        "a continuous measurement: almost every quarter has a distinct value, "
+        "which is expected and not an identifier problem"
+    ),
+    "high_correlation": (
+        "a trend over time: the property index rises steadily with the year, "
+        "so the two move together. Both are kept because the trend is the "
+        "signal; a model would choose one of them later"
+    ),
+}
 
 
-async def _alert_count(df: pl.DataFrame) -> int:
-    """Number of data-quality alerts DataExplorer raises for a frame."""
-    explorer = DataExplorer()
-    profile = await explorer.profile(df)
-    return len(profile.alerts)
+def alert_key(alert: dict) -> str:
+    """Encode a DataExplorer alert as 'type', 'type:column' or 'type:a,b'."""
+    if alert.get("columns"):
+        return f"{alert['type']}:{','.join(sorted(alert['columns']))}"
+    if alert.get("column"):
+        return f"{alert['type']}:{alert['column']}"
+    return alert["type"]
 
 
-def _clean(raw: pl.DataFrame) -> pl.DataFrame:
-    """Deterministic cleaning of the quarterly economic indicators."""
-    q = raw.filter(pl.col("period_type") == "quarterly")
-
-    # period appears in THREE formats: "Q1 2000", "2001-Q1", "2001-2".
-    # Year is the 4-digit run; quarter is the digit after "Q" OR the trailing
-    # single digit after "-". Coalesce both rules. Drop unparseable.
-    q = q.with_columns(
-        [
-            pl.coalesce(
-                [
-                    pl.col("period").str.extract(r"Q(\d)", 1),
-                    pl.col("period").str.extract(r"-(\d)\s*$", 1),
-                ]
-            )
-            .cast(pl.Int64)
-            .alias("period_quarter"),
-            pl.col("period")
-            .str.extract(r"(\d{4})", 1)
-            .cast(pl.Int64)
-            .alias("period_year"),
-        ]
-    ).filter(
-        pl.col("period_quarter").is_not_null() & pl.col("period_year").is_not_null()
+def _clean(raw_q: pl.DataFrame) -> tuple[pl.DataFrame, int]:
+    quarter = pl.coalesce(
+        pl.col("period").str.extract(r"Q(\d)", 1),
+        pl.col("period").str.extract(r"^\d{4}-(\d)$", 1),
+    ).cast(pl.Int64)
+    df = raw_q.with_columns(
+        pl.col("period").str.extract(r"(\d{4})", 1).cast(pl.Int64).alias("period_year"),
+        quarter.alias("period_quarter"),
+        pl.col("tourist_arrivals").str.replace_all(",", "").str.strip_chars().cast(pl.Int64),
     )
-
-    # tourist_arrivals: strip thousands separators -> Int64.
-    q = q.with_columns(
-        pl.col("tourist_arrivals")
-        .str.replace_all(",", "")
-        .str.strip_chars()
-        .cast(pl.Int64)
-        .alias("tourist_arrivals")
+    # One row per quarter: the same quarter can be recorded twice, possibly
+    # under different period spellings, so deduplicate on the parsed key.
+    df = (
+        df.unique(subset=["period_year", "period_quarter"], keep="first", maintain_order=True)
+        .sort("period_year", "period_quarter")
     )
-
-    # Impute the two sparse numerics with the quarterly median (deterministic).
-    q = q.with_columns(
-        [
-            pl.col("inflation_rate").fill_null(pl.col("inflation_rate").median()),
-            pl.col("trade_balance_sgd_bn").fill_null(
-                pl.col("trade_balance_sgd_bn").median()
-            ),
-        ]
+    nulls_filled = int(df.select(pl.col("inflation_rate", "trade_balance_sgd_bn").null_count()).sum_horizontal().item())
+    df = df.with_columns(
+        pl.col("inflation_rate").interpolate(),
+        pl.col("trade_balance_sgd_bn").interpolate(),
     )
-
-    cols = [
-        "period_year",
-        "period_quarter",
-        "gdp_growth_pct",
-        "unemployment_rate",
-        "inflation_rate",
-        "trade_balance_sgd_bn",
-        "property_price_index",
-        "tourist_arrivals",
-    ]
-    return q.select(cols).sort(["period_year", "period_quarter"])
+    cleaned = df.select("period_year", "period_quarter", *NUMERIC, "tourist_arrivals")
+    return cleaned, nulls_filled
 
 
-def solve() -> dict:
-    """Profile the raw indicators, clean them, and confirm quality improved.
+def audit_indicators(raw: pl.DataFrame) -> dict:
+    """Profile, clean and justify the quarterly economic indicators.
 
-    Returns a dict with:
-      - ``cleaned``: the cleaned quarterly DataFrame (8 columns)
-      - ``raw_alert_count``: DataExplorer alerts on the raw quarterly slice
-      - ``clean_alert_count``: DataExplorer alerts on the cleaned frame
+    Imputation choice: linear interpolation between neighbouring quarters.
+    Inflation and the trade balance drift over 25 years, so the quarters on
+    either side of a gap are far better estimates than one median over the
+    whole period, which would put a 2000-era value into a 2020 gap.
     """
-    raw = MLFPDataLoader().load("mlfp01", "economic_indicators.csv")
     raw_q = raw.filter(pl.col("period_type") == "quarterly")
-    cleaned = _clean(raw)
+    raw_alerts = [alert_key(a) for a in run_profile(raw_q).alerts]
 
-    raw_alerts, clean_alerts = asyncio.run(_profile_both(raw_q, cleaned))
+    cleaned, nulls_filled = _clean(raw_q)
+
+    remaining = [alert_key(a) for a in run_profile(cleaned).alerts]
+    accepted = {key: ACCEPTED_REASONS[key.split(":")[0]] for key in remaining}
     return {
+        "raw_alerts": raw_alerts,
         "cleaned": cleaned,
-        "raw_alert_count": raw_alerts,
-        "clean_alert_count": clean_alerts,
+        "imputation": "interpolate",
+        # null_pct > threshold fires, so only 0.0 catches a single missing value.
+        "null_alert_config": AlertConfig(high_null_pct_threshold=0.0),
+        "accepted_alerts": accepted,
+        "quality_delta": {
+            "rows_removed": raw_q.height - cleaned.height,
+            "nulls_filled": nulls_filled,
+        },
     }
 
 
-async def _profile_both(raw_q: pl.DataFrame, cleaned: pl.DataFrame):
-    return await _alert_count(raw_q), await _alert_count(cleaned)
-
-
 if __name__ == "__main__":
-    out = solve()
+    out = audit_indicators(MLFPDataLoader().load("mlfp01", "economic_indicators.csv"))
+    print("Raw alerts:", out["raw_alerts"])
     print(out["cleaned"].head())
-    print(f"\nCleaned shape: {out['cleaned'].shape}")
-    print(f"tourist_arrivals dtype: {out['cleaned']['tourist_arrivals'].dtype}")
-    print(
-        f"Raw alerts: {out['raw_alert_count']} -> Clean alerts: {out['clean_alert_count']}"
-    )
+    print("Cleaned shape:", out["cleaned"].shape)
+    print("Accepted alerts:", out["accepted_alerts"])
+    print("Quality delta:", out["quality_delta"])

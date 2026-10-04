@@ -1,46 +1,49 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP01 — Assessment Task 4: Profile, Clean & Integrate with DataExplorer
+MLFP01 — Assessment Task 4: Profile, Clean and Justify with DataExplorer
 
-Complete the `solve()` function. Read problem.md for the full specification.
-This task uses the kailash-ml DataExplorer engine to PROVE your cleaning
-improved data quality.
+Implement `audit_indicators()`. problem.md defines the dict it returns and
+the acceptance criteria for the cleaned table. Use DataExplorer to find the
+problems; problem.md does not list them.
 
-    python grader.py starter.py
+run_profile / run_compare are synchronous wrappers around DataExplorer that
+work in a script, Jupyter and Colab alike.
+
+    python starter.py               # run your function on the real file
 """
 from __future__ import annotations
 
-import asyncio
-
 import polars as pl
 
-from kailash_ml import DataExplorer
-from shared import MLFPDataLoader
+from kailash_ml import AlertConfig
+from shared import MLFPDataLoader, run_compare, run_profile
 
 
-def solve() -> dict:
-    """Return {"cleaned": pl.DataFrame, "raw_alert_count": int, "clean_alert_count": int}.
+def audit_indicators(raw: pl.DataFrame) -> dict:
+    """Profile, clean and justify the quarterly economic indicators.
 
-    See problem.md for the exact 8-column cleaned schema, the THREE period
-    formats you must parse, the comma-stripped integer cast, the median
-    imputation rule, and the DataExplorer alert-count requirement.
+    Imputation choice (two or three sentences, read at review):
+        ...
+
+    Args:
+        raw: the full indicators file (monthly and quarterly rows).
+
+    Returns:
+        dict with keys raw_alerts, cleaned, imputation, null_alert_config,
+        accepted_alerts and quality_delta (see problem.md).
     """
-    raw = MLFPDataLoader().load("mlfp01", "economic_indicators.csv")
-
-    # TODO 1: keep only period_type == "quarterly".
-    # TODO 2: parse period into period_year (Int) + period_quarter (Int, 1-4).
-    #         It appears in THREE formats: "Q1 2000", "2001-Q1", and "2001-2".
-    # TODO 3: tourist_arrivals -> Int64 (strip thousands separators like "5,246,242").
-    # TODO 4: impute inflation_rate and trade_balance_sgd_bn nulls with the
-    #         quarterly median of each column.
-    # TODO 5: select the 8 columns (see problem.md) sorted by [period_year, period_quarter].
-    # TODO 6: profile the RAW quarterly slice AND your cleaned frame with
-    #         DataExplorer; count alerts on each (await explorer.profile(df);
-    #         use len(profile.alerts)). Cleaning must REDUCE the alert count.
-
-    raise NotImplementedError("Implement solve() — see problem.md")
+    raise NotImplementedError("Implement audit_indicators() — see problem.md")
 
 
 if __name__ == "__main__":
-    print(solve())
+    raw = MLFPDataLoader().load("mlfp01", "economic_indicators.csv")
+    result = audit_indicators(raw)
+    print("Raw alerts:", result["raw_alerts"])
+    print(result["cleaned"].head())
+    print("Accepted alerts:", result["accepted_alerts"])
+    print("Quality delta:", result["quality_delta"])
+    # Optional: before/after comparison while you work
+    raw_q = raw.filter(pl.col("period_type") == "quarterly")
+    print(run_compare(raw_q, result["cleaned"])["shape_comparison"])
+    _ = (AlertConfig, run_profile)  # imported for your use

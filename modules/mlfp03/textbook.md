@@ -2819,7 +2819,7 @@ for band in ["21-34", "65+"]:
     print(band, [(feature_names[j], round(float(mean_phi[j]), 3)) for j in top])
 ```
 
-Group-level SHAP shows *how* the model reaches its age-band differences — whether through `age` itself or through correlated features such as `months_employed` and `credit_age_years`, which a young applicant cannot have much of. That is the proxy problem: dropping the `age` column would not remove the effect.
+Group-level SHAP shows *how* the model reaches its age-band differences. Here the largest average contributions for both the youngest and the oldest band come from `months_employed`, `credit_age_years` and `employment_years` (pushing the young band up by about +0.58, +0.30 and +0.22 log-odds, the oldest band down) — not from `age` itself. A young applicant simply cannot have a long employment or credit history. That is the proxy problem: dropping the `age` column would barely change the outcome.
 
 ### ALE: Accumulated Local Effects
 
@@ -2857,7 +2857,7 @@ for z, a in zip(edges, ale):
     print(f"  debt_to_income = {z:5.2f}   ALE = {a:+.3f} log-odds")
 ```
 
-The curve rises with `debt_to_income`: moving from the lowest to the highest decile adds roughly the amount printed between the first and last rows to the log-odds of default, *holding the applicant's other attributes at realistic values*. Compare it with `sklearn.inspection.partial_dependence` on the same feature; where the two disagree, correlation between `debt_to_income` and other features is distorting the PDP.
+The curve rises steadily with `debt_to_income`, from about −0.70 log-odds at the bottom of the range to about +0.60 at the top: moving an applicant from the lowest to the highest debt-to-income levels adds roughly 1.3 to the log-odds of default, *with the applicant's other attributes held at realistic values*. Compare it with `sklearn.inspection.partial_dependence` on the same feature; where the two disagree, correlation between `debt_to_income` and other features is distorting the PDP.
 
 **Drill.** Compute the ALE curve for `age`. Then compute the PDP for `age` with `sklearn.inspection.partial_dependence(model, X_test[:5_000], [feature_names.index("age")], kind="average")`. Which one shows the larger effect of age, and why?
 

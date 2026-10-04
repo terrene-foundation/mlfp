@@ -232,9 +232,10 @@
 
 <p>
   The <strong>loadings</strong> — the entries of $V$ — tell you <em>which
-  original features</em> each principal component weights. A PC where
-  "n_transactions" has loading 0.7 and "total_spend" has loading 0.6
-  roughly means "overall activity level". Interpreting loadings is how
+  original features</em> each principal component weights. In the worked
+  example below, PC1 has loading +0.71 on <code>avg_order_value</code> and
+  +0.65 on <code>total_revenue</code>, so it roughly means "how much this
+  customer spends". Interpreting loadings is how
   you turn PCA from a black box into a feature-engineering conversation.
 </p>
 
@@ -249,7 +250,12 @@
   kernel function $k(\mathbf{x}, \mathbf{y}) = \phi(\mathbf{x})^\top
   \phi(\mathbf{y})$. Common kernels are RBF (Gaussian) and polynomial.
   The cost is that you must store and eigendecompose an $N \times N$
-  kernel matrix, so kernel PCA only scales to a few thousand points.
+  kernel matrix, so kernel PCA only scales to a few thousand points. And
+  unlike linear PCA it has <em>no exact inverse</em>: a point in the implicit
+  feature space generally has no exact pre-image in the input space, so
+  reconstruction needs an approximation such as scikit-learn's
+  <code>KernelPCA(fit_inverse_transform=True)</code>, which learns an
+  approximate inverse map by kernel ridge regression.
 </p>
 
 <h3>t-SNE and UMAP — for visualisation</h3>
@@ -269,34 +275,74 @@
 
 <p>
   t-SNE preserves local structure well — points that were close stay
-  close — but it distorts global structure, and distances in the t-SNE
-  plot are not meaningful. It also has no inverse mapping, so it cannot
-  be used to project new points, and it is non-deterministic (different
-  random seeds give different layouts). Use it for visualisation, never
-  for feature extraction.
+  close — but it distorts global structure: cluster sizes and the distances
+  between clusters in a t-SNE plot are not meaningful. It has no way to
+  embed a new point without refitting (scikit-learn's <code>TSNE</code> has
+  <code>fit_transform</code> but no <code>transform</code>), no inverse
+  mapping, and different random seeds give different layouts. Use it for
+  visualisation, never for feature extraction.
 </p>
 
 <p>
   <strong>UMAP</strong> (Uniform Manifold Approximation and Projection)
-  is newer and generally better. It is faster, preserves more global
-  structure, and has an approximate inverse transform. It also scales to
-  millions of points. In practice, try UMAP first for any visualisation
-  task; fall back to t-SNE only when you need its specific behaviour.
+  is newer and usually faster. It builds a weighted $k$-nearest-neighbour
+  graph and lays it out in low dimension; <code>n_neighbors</code> trades
+  local against global structure and <code>min_dist</code> controls how
+  tightly points pack. Its global layout is usually better than t-SNE's,
+  but cluster sizes and inter-cluster distances in a UMAP plot are
+  <em>still</em> not quantitatively meaningful. Unlike t-SNE it can embed
+  new points with <code>.transform()</code> (Exercise 3.4 fits on a subsample
+  and transforms held-out rows), which is what makes it usable in a
+  production pipeline; it also offers an approximate
+  <code>inverse_transform</code>. In practice, try UMAP first for
+  visualisation; fall back to t-SNE when you want its particular emphasis on
+  local neighbourhoods.
 </p>
+
+<h3>Other manifold learners — a reference table</h3>
+
+<p>
+  PCA, kernel PCA, t-SNE and UMAP are the methods you will use most. Three
+  classical manifold learners are worth recognising; all are in
+  <code>sklearn.manifold</code> and all scale poorly beyond tens of thousands
+  of points.
+</p>
+
+<table>
+  <thead><tr><th>Method</th><th>What it preserves</th><th>When to reach for it</th><th>Main limitation</th></tr></thead>
+  <tbody>
+    <tr><td>MDS (multidimensional scaling)</td><td>All pairwise distances, as well as possible</td><td>Visualising a given distance or dissimilarity matrix (e.g. survey similarity ratings)</td><td>$O(n^2)$ memory; with Euclidean distances, classical MDS equals PCA</td></tr>
+    <tr><td>Isomap</td><td>Geodesic distances — shortest paths along a $k$-nearest-neighbour graph</td><td>Data on one smooth, "unrolled" manifold (the classic Swiss roll)</td><td>Breaks if the neighbour graph short-circuits across folds or is disconnected; sensitive to noise</td></tr>
+    <tr><td>LLE (locally linear embedding)</td><td>Each point's reconstruction from its neighbours by linear weights</td><td>Smooth manifolds whose local patches are nearly flat</td><td>Sensitive to $k$ and noise; can collapse points; no reliable global layout</td></tr>
+  </tbody>
+</table>
 
 <h3>Intrinsic dimension</h3>
 
 <p>
-  Your data might live in a 500-feature space but truly only vary along
-  10 dimensions — the other 490 are noise or redundancy. The
-  <strong>intrinsic dimension</strong> is the number of components
-  needed to capture most of the variance. The scree plot's elbow gives
-  a visual estimate; the participation ratio
-  $\bigl(\sum_i \lambda_i\bigr)^2 / \sum_i \lambda_i^2$ gives a scalar
-  one. Knowing the intrinsic dimension tells you whether feature
-  selection will help at all: if your data has intrinsic dimension 200,
-  reducing to 10 will lose too much information.
+  Data can live in $p$ ambient dimensions but vary along only $d \ll p$
+  independent directions; $d$ is its <strong>intrinsic dimension</strong>.
+  Knowing $d$ tells you how far you can reduce without losing real
+  structure. Two estimates are common:
 </p>
+
+<ul>
+  <li><strong>PCA thresholds</strong> — the number of components needed to
+    reach 90% or 95% of the variance. This counts <em>linear</em> dimensions,
+    so it overestimates $d$ for curved manifolds (a Swiss roll needs all
+    three principal components but is intrinsically two-dimensional).</li>
+  <li><strong>The nearest-neighbour MLE of Levina and Bickel (2004).</strong>
+    Let $T_j(\mathbf{x})$ be the distance from $\mathbf{x}$ to its $j$-th
+    nearest neighbour (excluding $\mathbf{x}$ itself). If the data are
+    locally uniform on a $d$-dimensional manifold, the number of neighbours
+    within radius $r$ grows like $r^d$, and the maximum-likelihood estimate
+    at $\mathbf{x}$ is
+    $$ \hat{m}_k(\mathbf{x}) \;=\; \left[\frac{1}{k-1}\sum_{j=1}^{k-1}\log\frac{T_k(\mathbf{x})}{T_j(\mathbf{x})}\right]^{-1}, $$
+    averaged over the points (and, for stability, over several $k$). It is
+    non-linear: it reports about 2 for a Swiss roll and about 8 for an
+    8-dimensional Gaussian cloud. Exact duplicate rows give $T_j = 0$ and
+    must be removed first.</li>
+</ul>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Mathematical Foundations</h2>
@@ -315,10 +361,13 @@
 
 <p>
   and the minimum is achieved by $\hat{X} = U_k \Sigma_k V_k^\top$ where
-  the subscript $k$ means "first $k$ columns". In English: PCA is
-  provably the best linear dimensionality reduction method, and the
-  reconstruction error equals the sum of the dropped singular values
-  squared.
+  the subscript $k$ means "first $k$ columns". In English: among all
+  rank-$k$ linear reconstructions, PCA has the smallest squared
+  reconstruction error, and that error equals the sum of the dropped
+  singular values squared. Since $\lambda_i = \sigma_i^2/(N-1)$, the same
+  error is $(N-1)\sum_{i>k}\lambda_i$, i.e. a mean squared error per
+  matrix entry of $\frac{N-1}{N}\cdot\frac{1}{D}\sum_{i>k}\lambda_i$ —
+  the worked example checks this number.
 </p>
 
 <h3>Reconstruction error and variance explained</h3>
@@ -331,67 +380,176 @@
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>The Kailash Engine: ModelVisualizer for PCA</h2>
+<h2>The Kailash Engine: DimReductionEngine</h2>
 
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    Kailash's <code>ModelVisualizer</code> includes a
-    <code>scree_plot()</code> helper that takes a fitted PCA object and
-    returns a ready-to-render Plotly figure. It also computes the loading
-    matrix and annotates the top three contributors to each component.
-    This is the tool we use in production when we need to share PCA
-    results with non-technical stakeholders — the loadings are the
-    most interpretable layer of a PCA analysis.
+    <code>DimReductionEngine.reduce()</code> runs PCA, NMF (Lesson 4.6), t-SNE
+    or UMAP behind one call and returns the embedding
+    (<code>transformed</code>), the explained-variance ratio and a
+    reconstruction error. <code>variance_analysis()</code> gives the numbers
+    for a scree plot without choosing $k$ first. Kernel PCA, Isomap and LLE
+    are not in the engine — use scikit-learn for those (Exercises 3.2 and
+    3.5). <code>ModelVisualizer</code> has no scree-plot helper; plot the
+    cumulative variance with plotly directly.
   </p>
 </div>
+
+<pre><code class="language-python">import plotly.graph_objects as go
+import polars as pl
+from shared import MLFPDataLoader
+from kailash_ml.engines.dim_reduction import DimReductionEngine
+
+FEATURES = ["total_revenue", "order_count", "avg_order_value",
+            "days_since_last_order", "customer_tenure_days",
+            "satisfaction_score", "num_returns"]  # churned = outcome, excluded
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X = customers.select(FEATURES).drop_nulls().sample(3000, seed=42)
+X = X.select((pl.all() - pl.all().mean()) / pl.all().std())
+
+reducer = DimReductionEngine()  # algorithms: pca | nmf | tsne | umap
+pca_res = reducer.reduce(X, algorithm="pca", n_components=5)
+print([round(v, 3) for v in pca_res.explained_variance_ratio])
+print(f"variance lost with 5 components: {pca_res.reconstruction_error:.3f}")
+
+scree = reducer.variance_analysis(X)
+fig = go.Figure(go.Scatter(y=scree["cumulative_variance"], mode="lines+markers"))
+fig.update_layout(title="PCA scree (cumulative variance)",
+                  xaxis_title="component", yaxis_title="cumulative variance")</code></pre>
+
+<p>
+  Note what the engine calls <code>reconstruction_error</code>: the
+  <em>fraction of variance discarded</em>, $1 - \text{VE}(k)$ (about 0.08
+  here), not a squared error in the units of the data.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Worked Example: Compressing the Customer Feature Set</h2>
 
+<p>
+  The same seven behaviour features as Lesson 4.1 (<code>churned</code> is an
+  outcome and stays out). PCA is cheap, so it runs on all 50,000 customers;
+  the neighbour-based steps use samples.
+</p>
+
 <pre><code class="language-python">import numpy as np
 import polars as pl
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 
 from shared import MLFPDataLoader
 
-loader = MLFPDataLoader()
-customers = loader.load("mlfp03", "ecommerce_customers.parquet")
-
-num_cols = [c for c, d in zip(customers.columns, customers.dtypes)
-            if d in (pl.Float64, pl.Float32, pl.Int64, pl.Int32) and c != "customer_id"]
-X = customers.drop_nulls(subset=num_cols).select(num_cols).to_numpy()
-X = StandardScaler().fit_transform(X)
+FEATURES = ["total_revenue", "order_count", "avg_order_value",
+            "days_since_last_order", "customer_tenure_days",
+            "satisfaction_score", "num_returns"]
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X = customers.select(FEATURES).drop_nulls().to_numpy().astype(np.float64)
+X = (X - X.mean(axis=0)) / X.std(axis=0)          # centre AND standardise
 
 pca = PCA().fit(X)
 cum = np.cumsum(pca.explained_variance_ratio_)
+for i, (ev, cv) in enumerate(zip(pca.explained_variance_, cum)):
+    print(f"PC{i + 1}: eigenvalue={ev:.2f}  cumulative={cv:.3f}")
 k90 = int(np.searchsorted(cum, 0.90)) + 1
-print(f"Need {k90} components to reach 90% variance "
-      f"(down from {X.shape[1]} features)")
+print(f"Need {k90} components to reach 90% variance (down from {X.shape[1]} features)")
 
 # Interpret the first 3 components
 for i in range(3):
     top = np.argsort(-np.abs(pca.components_[i]))[:3]
-    print(f"PC{i+1} (var={pca.explained_variance_ratio_[i]:.3f}):")
-    for j in top:
-        print(f"  {num_cols[j]:&lt;25}  loading={pca.components_[i][j]:+.3f}")</code></pre>
+    print(f"PC{i+1}: " + ", ".join(f"{FEATURES[j]} ({pca.components_[i][j]:+.2f})" for j in top))</code></pre>
+
+<table>
+  <thead><tr><th>Component</th><th>Eigenvalue</th><th>Cumulative variance</th></tr></thead>
+  <tbody>
+    <tr><td>PC1</td><td>1.86</td><td>26.5%</td></tr>
+    <tr><td>PC2</td><td>1.59</td><td>49.3%</td></tr>
+    <tr><td>PC3</td><td>1.01</td><td>63.7%</td></tr>
+    <tr><td>PC4</td><td>1.00</td><td>78.0%</td></tr>
+    <tr><td>PC5</td><td>0.99</td><td>92.2%</td></tr>
+    <tr><td>PC6</td><td>0.41</td><td>98.0%</td></tr>
+    <tr><td>PC7</td><td>0.14</td><td>100%</td></tr>
+  </tbody>
+</table>
 
 <p>
-  A typical result: 15 original features collapse to 6 – 8 principal
-  components at the 90% threshold. PC1 is usually an "overall activity"
-  axis (all positive loadings on spend, frequency, page views). PC2 is
-  often a "tenure vs novelty" axis (positive on account age, negative on
-  recent activity). PC3 varies by dataset. After PCA, downstream models
-  train faster, overfit less, and often perform slightly better.
+  Five components pass 90% of the variance and six pass 95%. The loadings
+  say why. PC1 loads on <code>avg_order_value</code> (+0.71) and
+  <code>total_revenue</code> (+0.65): a <strong>spend</strong> axis. PC2 loads
+  equally on <code>days_since_last_order</code> and
+  <code>customer_tenure_days</code>: a <strong>customer-age</strong> axis —
+  long-standing customers are also the ones who last ordered long ago. Those
+  two correlated pairs are the only real redundancy. PC3–PC5 have
+  eigenvalues of almost exactly 1.0: for standardised data that is the
+  signature of features essentially uncorrelated with everything else
+  (order count, satisfaction, returns), each needing a component of its own.
+  There is no sharp scree elbow: this dataset is genuinely about
+  five-dimensional.
+</p>
+
+<pre><code class="language-python">from sklearn.neighbors import NearestNeighbors
+
+# Reconstruction error with 4 components vs the eigenvalue formula
+pca_4 = PCA(n_components=4)
+X_recon = pca_4.inverse_transform(pca_4.fit_transform(X))
+n, p = X.shape
+mse = np.mean((X - X_recon) ** 2)
+predicted = (n - 1) / n * pca.explained_variance_[4:].sum() / p
+print(f"Reconstruction MSE (4 components): {mse:.4f}   predicted: {predicted:.4f}")
+
+# Intrinsic dimension: Levina-Bickel MLE on a 2,000-row sample
+rng = np.random.default_rng(42)
+X_id = X[rng.choice(n, 2000, replace=False)]
+
+def levina_bickel(X, k=20):
+    dist, _ = NearestNeighbors(n_neighbors=k + 1).fit(X).kneighbors(X)
+    T = dist[:, 1:]                      # drop each point's distance to itself
+    ok = np.all(T &gt; 0, axis=1)           # duplicates would give log(0)
+    return float((1.0 / np.log(T[ok, k - 1][:, None] / T[ok, : k - 1]).mean(axis=1)).mean())
+
+print("Intrinsic dimension:", {k: round(levina_bickel(X_id, k), 1) for k in (10, 20, 30)})</code></pre>
+
+<p>
+  The measured error with four components is 0.2204, matching
+  $\frac{n-1}{n}\cdot\frac{1}{p}\sum_{i&gt;4}\lambda_i$ to four decimals —
+  four components lose 22% of each standardised feature's variance on
+  average, the same as $1 - 0.780$. The Levina–Bickel estimate is about 5
+  (5.2, 4.9 and 4.8 for $k = 10, 20, 30$), agreeing with the five components
+  PCA needed for 90%.
+</p>
+
+<pre><code class="language-python">from sklearn.manifold import TSNE, trustworthiness
+import umap
+
+# t-SNE and UMAP on a 3,000-customer sample, judged by trustworthiness
+X_s = X[rng.choice(n, 3000, replace=False)]
+emb = {
+    "PCA (2D)": PCA(n_components=2).fit_transform(X_s),
+    "t-SNE": TSNE(n_components=2, perplexity=30, random_state=42).fit_transform(X_s),
+    "UMAP": umap.UMAP(n_components=2, random_state=42).fit_transform(X_s),
+}
+for name, Z in emb.items():
+    print(f"{name:&lt;9} trustworthiness = {trustworthiness(X_s, Z, n_neighbors=10):.3f}")</code></pre>
+
+<p>
+  Trustworthiness asks whether a point's neighbours <em>in the 2-D
+  picture</em> were also its neighbours in the original 7-D space (1.0 = no
+  false neighbours). PCA squeezed into two dimensions scores about 0.79 — it
+  keeps only 49% of the variance, so many points that look close in the plot
+  are not. t-SNE (about 0.99) and UMAP (about 0.97) are far more faithful
+  <em>locally</em> — that is their job. It does not make their global layout
+  trustworthy, and it does not make t-SNE a feature extractor: it cannot
+  embed a new customer without refitting. This is also why Exercise 3 ranks
+  reducers by trustworthiness rather than by K-means silhouette inside each
+  embedding — t-SNE and UMAP pull points into blobs by construction, so
+  silhouette would reward the picture, not the faithfulness.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Common Mistakes</h2>
 
 <ol>
-  <li><strong>Not centring the data.</strong> PCA requires zero mean. If you skip standardisation, the first PC will align with the direction of the mean rather than the direction of maximum variance.</li>
-  <li><strong>Using t-SNE as a feature extractor.</strong> t-SNE has no inverse transform and is non-deterministic. Always UMAP if you need embeddings; t-SNE is visualisation-only.</li>
+  <li><strong>Not centring the data.</strong> PCA requires zero mean. If you skip centring, the first PC will point towards the mean of the data rather than along the direction of maximum variance. (Scikit-learn's <code>PCA</code> centres for you; a hand-rolled SVD does not.) <strong>Not standardising</strong> is a separate mistake: the components are then dominated by whichever features have the largest units, such as revenue in dollars.</li>
+  <li><strong>Using t-SNE as a feature extractor.</strong> t-SNE cannot embed new points without refitting and gives different layouts for different seeds. If you need a non-linear embedding inside a pipeline, use UMAP, which has <code>.transform()</code>; keep t-SNE for visualisation.</li>
   <li><strong>Keeping too few components.</strong> If your scree plot does not have a sharp elbow, your data's variance is diffuse. Trust the 90% threshold rather than forcing a dramatic number.</li>
   <li><strong>Ignoring the loadings.</strong> PCA results without loadings are a black box. The loadings are what let you explain the analysis to a stakeholder.</li>
 </ol>
@@ -400,15 +558,28 @@ for i in range(3):
 <h2>Try It Yourself</h2>
 
 <div class="try-it">
-  <p><strong>Exercise 3.</strong></p>
+  <p><strong>Exercise 3</strong> (<code>modules/mlfp04/solutions/ex_3/</code>, five
+  scripts on the e-commerce customers, <code>churned</code> excluded):</p>
   <ol>
-    <li>Load the e-commerce customer feature table.</li>
-    <li>Standardise, fit full PCA, plot the scree plot and cumulative variance.</li>
-    <li>Find $k$ for 90% and 95% variance thresholds.</li>
-    <li>Interpret the top 3 components by their loadings.</li>
-    <li>Compare UMAP and t-SNE 2D embeddings — can you see the clusters from Exercise 1?</li>
-    <li>Train a logistic regression on the raw features vs the PCA features. Which generalises better on a held-out set?</li>
+    <li><code>01_pca.py</code> — PCA from the SVD of the centred matrix, checked
+      against sklearn; scree plot, three ways to choose $k$, a loadings heatmap
+      and the reconstruction-error curve.</li>
+    <li><code>02_kernel_pca.py</code> — linear, RBF and polynomial kernels and a
+      sweep over the RBF <code>gamma</code>, scored by trustworthiness; the
+      $O(n^2)$ memory wall.</li>
+    <li><code>03_tsne.py</code> — PCA pre-reduction, then t-SNE at four
+      perplexities, with the embedding plots and the classic pitfalls.</li>
+    <li><code>04_umap.py</code> — four <code>n_neighbors</code>/<code>min_dist</code>
+      configurations; fit on a subsample and <code>.transform()</code> held-out
+      rows.</li>
+    <li><code>05_comparison.py</code> — PCA, kernel PCA, t-SNE, UMAP and Isomap
+      ranked by trustworthiness on the same rows, plus intrinsic-dimension
+      estimates (variance thresholds, Kaiser, broken-stick, Levina–Bickel).</li>
   </ol>
+  <p>Stretch: train a logistic regression to predict <code>churned</code> from
+  the raw features and from the first five principal components (fit the
+  scaler and the PCA on the training split only). Which generalises better on
+  the held-out set?</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -417,7 +588,7 @@ for i in range(3):
 <ul>
   <li><strong>Back to M3:</strong> In M3 you engineered features by hand. PCA is the first time the data tells you what features matter — the components are learned, not hand-designed.</li>
   <li><strong>Forward to Lesson 4.6:</strong> Non-negative matrix factorisation (NMF) is PCA's cousin for non-negative data — widely used in topic modelling.</li>
-  <li><strong>Forward to Lesson 4.7 (THE PIVOT):</strong> Matrix factorisation for recommender systems is the same math as SVD, applied to sparse user-item matrices. The connection will be made explicit in 4.7.</li>
+  <li><strong>Forward to Lesson 4.7 (THE PIVOT):</strong> Matrix factorisation for recommender systems is a close cousin of truncated SVD — a low-rank approximation of the user–item matrix. But most of that matrix is missing, so there is no closed-form SVD answer; the factors are fitted iteratively (ALS) on the observed entries only. The connection is made explicit in 4.7.</li>
 </ul>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -426,7 +597,8 @@ for i in range(3):
 <p>
   PCA is the quiet workhorse of machine learning. It is not glamorous —
   there are no LLMs involved, no deep networks, just eigenvectors — but
-  it shows up in almost every production pipeline. It is also the
+  it turns up across many production pipelines, for compression,
+  de-correlation and visualisation. It is also the
   cleanest example in the curriculum of <em>optimisation with a closed
   form</em>: you write down the objective, take a derivative, and read
   off the answer. Most ML optimisation is not this kind — but when you

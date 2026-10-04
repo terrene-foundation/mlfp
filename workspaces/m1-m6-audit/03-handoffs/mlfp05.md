@@ -39,3 +39,18 @@
 - 5.3 exercise = next 5 STI closes from real daily bars (no RSI/MACD); 5.6 = node classification on Cora; 5.7 BERT = AG News, 4 labels; 5.5 MLP GANs (no DCGAN yet); 5.8 hand-written DQN/PPO on discrete actions.
 - 5.4 worked example uses an order-dependent task (position-free model capped ≈59%, measured on 200k samples). Whisper is seq2seq, not CTC. SE adds ≈10% params. Bellman: expectation vs optimality labelled. Gymnasium `terminated`.
 - notes.html regenerate from slides (5.7 and 5.8 each gained one slide).
+
+---
+# Additions from the textbook shard (S3a, merged e74bc748)
+- BUG: OnnxBridge writes weights to a separate `.onnx.data` file; shared/mlfp05/ex_7.attach_onnx_artifact stores only the
+  `.onnx` → ONNX Runtime "external data path does not exist" at serve time (reproduced). Fix: re-save with
+  `onnx.save_model(onnx.load(p), p, save_as_external_data=False)` before attaching (or attach both files). Spec §5.7 note.
+  Upstream kailash-ml note.
+- OnnxBridge puts a wrapper left in train mode back into training mode after export → parity checks break (max diff 2.4).
+  Always `.eval()` wrappers (ex_7 does; check others).
+- ex_3: STI.parquet Volume = 0 on 29% of days; price-LEVEL targets extrapolate badly (val err 0.66 vs 0.031 persistence)
+  → use percentage-change targets + persistence baseline (S6).
+- ex_8 ChurnPreventionEnv: random starting tenure + elapsed-time bonus → not Markov; textbook uses fraction-of-month
+  elapsed (S6 fix in exercise).
+- Lesson pages: 5.2 small residual CNN on CIFAR-10; 5.4 BERT on bundled AG News slice (TF-IDF 0.855, majority 0.274);
+  5.5 conv DCGAN on MNIST in [-1, 1]; 5.6 epochs on validation (GCN 0.804 vs 0.540 graph-free).

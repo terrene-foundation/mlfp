@@ -1865,171 +1865,341 @@ The GAN training objective is a minimax game:
 
 $$\min_G \max_D \left[ \mathbb{E}_{\mathbf{x} \sim p_{\text{data}}}[\log D(\mathbf{x})] + \mathbb{E}_{\mathbf{z} \sim p_z}[\log(1 - D(G(\mathbf{z})))] \right]$$
 
-The discriminator $D$ maximises the objective by correctly classifying real data as real ($D(\mathbf{x}) \to 1$) and generated data as fake ($D(G(\mathbf{z})) \to 0$). The generator $G$ minimises the objective by producing data that the discriminator classifies as real ($D(G(\mathbf{z})) \to 1$).
+The discriminator $D$ maximises the objective by correctly classifying real data as real ($D(\mathbf{x}) \to 1$) and generated data as fake ($D(G(\mathbf{z})) \to 0$). The generator $G$ minimises the objective by producing data that the discriminator classifies as real ($D(G(\mathbf{z})) \to 1$). Both terms are binary cross-entropy, which is how the losses are implemented.
 
-At the Nash equilibrium, the generator produces data indistinguishable from real data, and the discriminator outputs 0.5 for everything. In practice, training oscillates and rarely reaches the true equilibrium.
+For a fixed $G$ the best discriminator is $D^*(\mathbf{x}) = p_{\text{data}}(\mathbf{x}) / (p_{\text{data}}(\mathbf{x}) + p_g(\mathbf{x}))$, and substituting it back gives $2\,\text{JS}(p_{\text{data}} \| p_g) - \log 4$: training $G$ against an optimal $D$ minimises the Jensen–Shannon divergence. At the equilibrium $p_g = p_{\text{data}}$ and $D$ outputs 0.5 everywhere. In practice, training oscillates and rarely reaches it.
+
+**The non-saturating generator loss.** Early in training $D$ rejects fakes easily, $D(G(\mathbf{z})) \approx 0$, and the minimax term $\log(1 - D(G(\mathbf{z})))$ is flat there — its gradient with respect to the generator vanishes. So in practice $G$ minimises $-\log D(G(\mathbf{z}))$ instead (implemented as BCE against the label "real"). It has the same fixed point but a strong gradient exactly when $G$ is losing. All the code in this lesson and in Exercise 5 uses this non-saturating loss. It fixes the *saturation* problem; it does not fix the deeper problem below.
 
 ### FOUNDATIONS: Mode collapse
 
-Mode collapse occurs when the generator learns to produce only a few types of outputs that fool the discriminator, ignoring the full diversity of the training data. For instance, a GAN trained on MNIST might generate only the digit 1 — the discriminator cannot tell these apart from real 1s, but the generator has stopped producing any other digit.
+Mode collapse occurs when the generator learns to produce only a few types of outputs that fool the discriminator, ignoring the full diversity of the training data. For instance, a GAN trained on MNIST might generate only the digit 1 — the discriminator cannot tell these apart from real 1s, but the generator has stopped producing any other digit. Exercise 5 measures it directly: a classifier labels the generated digits, and the spread of predicted classes shows how many of the ten modes the generator covers.
 
 ### THEORY: WGAN and gradient penalty
 
-The Wasserstein GAN (WGAN) replaces the JS divergence (implicit in the original GAN) with the Wasserstein (Earth Mover's) distance:
+Real images occupy a thin, low-dimensional set inside pixel space, and early in training the generator's samples occupy a different thin set. When the two supports do not overlap, the JS divergence is stuck at its maximum, the constant $\log 2$, whatever the distance between them — so it gives the generator no signal about which direction to move. That, not saturation, is why vanilla GAN training is unstable. The Wasserstein GAN (WGAN) replaces JS with the Wasserstein-1 (Earth Mover's) distance, which keeps growing smoothly with how far apart the distributions are:
 
 $$\min_G \max_{D \in \text{1-Lip}} \left[ \mathbb{E}_{\mathbf{x} \sim p_{\text{data}}}[D(\mathbf{x})] - \mathbb{E}_{\mathbf{z} \sim p_z}[D(G(\mathbf{z}))] \right]$$
 
-where the discriminator (now called a critic) must be 1-Lipschitz. The Wasserstein distance provides a meaningful gradient even when the distributions do not overlap, which is why WGAN training is more stable.
+The discriminator, now called a **critic**, outputs an unbounded score (no sigmoid) and must be 1-Lipschitz. **Gradient penalty** (WGAN-GP) enforces that softly by penalising the critic's input-gradient norm at random interpolates $\hat{\mathbf{x}}$ between real and generated samples:
 
-**Gradient penalty** enforces the Lipschitz constraint by penalising the gradient norm of the critic:
+$$\mathcal{L}_{\text{critic}} = \mathbb{E}[D(G(\mathbf{z}))] - \mathbb{E}[D(\mathbf{x})] + \lambda \, \mathbb{E}_{\hat{\mathbf{x}}}\left[(\|\nabla_{\hat{\mathbf{x}}} D(\hat{\mathbf{x}})\|_2 - 1)^2\right], \qquad \mathcal{L}_G = -\mathbb{E}[D(G(\mathbf{z}))]$$
 
-$$\mathcal{L}_{\text{GP}} = \lambda \, \mathbb{E}_{\hat{\mathbf{x}}}[(\|\nabla_{\hat{\mathbf{x}}} D(\hat{\mathbf{x}})\|_2 - 1)^2]$$
+with $\lambda = 10$ as standard. The norm is taken over the *whole* input (flatten each sample first) — a per-pixel or per-channel norm is a different, wrong constraint. Batch normalisation should not be used in the critic, because the penalty is defined per sample.
 
-where $\hat{\mathbf{x}}$ is a random interpolation between a real and a generated sample.
+**Reading the critic loss.** Without the penalty term, $-\mathcal{L}_{\text{critic}}$ is the critic's estimate of the Wasserstein distance. As the generator improves the distance shrinks, so the critic loss is negative and **rises towards 0** as quality improves. A critic loss that becomes more negative means the distributions are moving apart.
 
 ```python
-class WGAN_GP(nn.Module):
-    def gradient_penalty(self, real, fake, critic):
-        alpha = torch.rand(real.size(0), 1, 1, 1, device=real.device)
-        interp = (alpha * real + (1 - alpha) * fake).requires_grad_(True)
-        d_interp = critic(interp)
-        gradients = torch.autograd.grad(
-            outputs=d_interp, inputs=interp,
-            grad_outputs=torch.ones_like(d_interp),
-            create_graph=True,
-        )[0]
-        grad_norm = gradients.view(gradients.size(0), -1).norm(2, dim=1)
-        return ((grad_norm - 1) ** 2).mean()
+import torch
+
+def gradient_penalty(critic, real, fake):
+    alpha = torch.rand(real.size(0), 1, 1, 1, device=real.device)
+    interp = (alpha * real + (1 - alpha) * fake).requires_grad_(True)
+    d_interp = critic(interp)
+    gradients = torch.autograd.grad(
+        outputs=d_interp, inputs=interp,
+        grad_outputs=torch.ones_like(d_interp),
+        create_graph=True,                       # the penalty itself is trained through
+    )[0]
+    grad_norm = gradients.view(gradients.size(0), -1).norm(2, dim=1)   # one norm per sample
+    return ((grad_norm - 1) ** 2).mean()
 ```
 
-### FOUNDATIONS: FID (Frechet Inception Distance)
+### FOUNDATIONS: GAN variants
 
-FID measures the quality and diversity of generated images by comparing the distribution of real and generated image features (extracted by a pre-trained InceptionV3 network):
+- **DCGAN** (Radford et al., 2016): the recipe that made convolutional GANs train reliably — strided convolutions instead of pooling, transposed convolutions to upsample in the generator, batch norm, no fully connected hidden layers, ReLU in $G$ and LeakyReLU in $D$, Tanh output. The worked example builds one.
+- **Conditional GAN (cGAN):** feed a class label to both $G$ and $D$, so you can ask for "a 7". (Drill 4.)
+- **CycleGAN** (Zhu et al., 2017): *unpaired* image-to-image translation (photos ↔ paintings, summer ↔ winter) with no matched pairs. Two generators $G: X \to Y$ and $F: Y \to X$ each have an adversarial loss, plus a **cycle-consistency loss** $\|F(G(x)) - x\|_1 + \|G(F(y)) - y\|_1$: translating there and back must return the original, which stops $G$ from mapping every input to one convincing output.
+- **StyleGAN** (Karras et al., 2019): a mapping network turns $\mathbf{z}$ into an intermediate latent $\mathbf{w}$ that controls each resolution of the generator through adaptive instance normalisation ("styles"), with per-layer noise for fine detail. Coarse layers set pose and shape, fine layers set texture and colour — and mixing styles from two latents mixes those attributes. It inherited progressive growing (train at low resolution, then add higher-resolution layers) from ProGAN; StyleGAN2 later replaced that with skip and residual connections. It produces high-resolution, photo-realistic faces.
+
+### FOUNDATIONS: Evaluating generators — FID and Inception Score
+
+Generated images have no ground-truth labels, so evaluation compares *distributions* of features from a pre-trained network.
+
+**FID (Fréchet Inception Distance).** Fit a Gaussian to the features of real images ($\boldsymbol{\mu}_r, \boldsymbol{\Sigma}_r$) and of generated images ($\boldsymbol{\mu}_g, \boldsymbol{\Sigma}_g$) and compute the Fréchet distance between them:
 
 $$\text{FID} = \|\boldsymbol{\mu}_r - \boldsymbol{\mu}_g\|^2 + \text{Tr}(\boldsymbol{\Sigma}_r + \boldsymbol{\Sigma}_g - 2(\boldsymbol{\Sigma}_r \boldsymbol{\Sigma}_g)^{1/2})$$
 
-Lower FID means the generated distribution is closer to the real distribution. FID captures both quality (mean) and diversity (covariance).
+Lower is better. FID is a **distribution-level** score: the mean term catches samples that look wrong on average (fidelity) and the covariance term catches missing variety (diversity, e.g. mode collapse). It says nothing about any single image. The standard version uses 2,048-dimensional InceptionV3 features of $299 \times 299$ RGB images, and published thresholds ("FID below 10") refer to that extractor. For $28 \times 28$ digits, Exercise 5 uses a small LeNet classifier trained on MNIST (64-dimensional features); those FIDs are comparable only with other FIDs from the same extractor.
+
+**Inception Score (IS).** Classify each generated image with a pre-trained classifier and compute
+
+$$\text{IS} = \exp\Big(\mathbb{E}_{\mathbf{x} \sim p_g}\, \text{KL}\big(p(y \mid \mathbf{x}) \,\|\, p(y)\big)\Big)$$
+
+High when each image is classified confidently (sharp $p(y \mid \mathbf{x})$) *and* the predicted classes are spread out (broad marginal $p(y)$). Its maximum is the number of classes. IS never looks at real images, so it cannot tell whether the samples resemble the training data, and it rewards one perfect image per class; FID is generally preferred, with IS reported alongside. Drill 3 computes both with the course's LeNet classifier.
 
 ### ADVANCED: Diffusion models
 
-Diffusion models (DDPM — Denoising Diffusion Probabilistic Models) add noise to data progressively over $T$ steps, then learn to reverse the process:
+Diffusion models (DDPM — Denoising Diffusion Probabilistic Models, Ho et al., 2020) define a **forward process** that adds a little Gaussian noise at each of $T$ steps (typically 1,000) until the data is pure noise. It has a closed form for any step, $\mathbf{x}_t = \sqrt{\bar\alpha_t}\,\mathbf{x}_0 + \sqrt{1 - \bar\alpha_t}\,\boldsymbol{\epsilon}$, so training is simple: pick a random $t$, noise a real image to $\mathbf{x}_t$, and train a network (usually a U-Net) to predict the noise $\boldsymbol{\epsilon}$ with an MSE loss. The **reverse process** starts from pure noise and removes the predicted noise step by step. The training objective is a simplified form of the ELBO from Lesson 5.1.
 
-- **Forward process:** gradually add Gaussian noise until the data is pure noise.
-- **Reverse process:** a neural network learns to denoise step by step.
+Diffusion models train stably (an MSE regression, no adversary) and cover the data distribution well (good diversity, little mode collapse), at the cost of slow sampling — many network evaluations per image, although modern samplers cut this to tens of steps. Stable Diffusion runs the process in the latent space of an autoencoder ("latent diffusion") to make it affordable. DALL-E 2 and DALL-E 3 use diffusion; the original DALL-E (2021) was an autoregressive transformer over discrete image tokens.
 
-Diffusion models produce higher-quality and more diverse samples than GANs, at the cost of slower generation (requires many denoising steps). Stable Diffusion and DALL-E are based on diffusion models.
+**Which generator for which job?**
 
-## Worked Example: DCGAN and WGAN on Fashion-MNIST
+| Data / need | First choice | Why |
+|---|---|---|
+| Images, highest quality and diversity | Diffusion | Stable training, excellent coverage; slow sampling is acceptable offline |
+| Images, fast sampling or real-time | GAN (StyleGAN-type) | One forward pass per image |
+| Unpaired image translation | CycleGAN | Cycle consistency needs no paired data |
+| Text | Transformers (autoregressive) | Discrete tokens; Lesson 5.4 |
+| Time series, smooth latent space, anomaly scores | VAE / LSTM | Explicit likelihood and a smooth latent space |
+
+### FOUNDATIONS: Synthetic data — augmentation, simulation and privacy
+
+Generative models produce **augmentation** data for rare classes (extra examples of an uncommon defect), **simulation** data for testing systems before real data exists, and candidate **privacy-preserving** releases. The last needs care. Synthetic data is **not private by default**: GANs and diffusion models can memorise training examples and reproduce them almost exactly — Carlini et al. (2023) extracted recognisable training images from deployed diffusion models. And FID cannot detect this: a model that copies its training set gets an *excellent* FID, because FID measures fidelity and diversity, not privacy. Sharing a generator or its samples in place of sensitive records (medical scans, customer data) requires formal guarantees such as differentially private training (DP-SGD) plus memorisation and membership-inference testing — and a legal review under the applicable data-protection law.
+
+## Worked Example: DCGAN and WGAN-GP on MNIST (the Exercise 5 data)
+
+Exercise 5 trains GANs on MNIST in `data/mlfp05/mnist`, scaled to $[-1, 1]$ to match the generator's Tanh output, with a 64-dimensional latent space. Its generators are fully connected; this example builds the convolutional DCGAN the spec calls for, on the same data. Scaling matters: if real images were in $[0, 1]$ while fakes were in $[-1, 1]$, the discriminator could separate them by value range alone.
 
 ```python
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+from shared.kailash_helpers import get_device
+
+device = get_device()
+LATENT_DIM = 64
+to_pm1 = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])  # [-1, 1]
+mnist = datasets.MNIST("data/mlfp05/mnist", train=True, download=True, transform=to_pm1)
+loader = DataLoader(mnist, batch_size=128, shuffle=True, drop_last=True)
+
 class Generator(nn.Module):
-    def __init__(self, latent_dim=100):
+    """z (64) -> project to 128x7x7 -> upsample 14x14 -> 28x28, Tanh output in [-1, 1]."""
+    def __init__(self, latent_dim=LATENT_DIM):
         super().__init__()
+        self.project = nn.Sequential(nn.Linear(latent_dim, 128 * 7 * 7), nn.BatchNorm1d(128 * 7 * 7), nn.ReLU())
         self.net = nn.Sequential(
-            nn.Linear(latent_dim, 256), nn.BatchNorm1d(256), nn.ReLU(),
-            nn.Linear(256, 512), nn.BatchNorm1d(512), nn.ReLU(),
-            nn.Linear(512, 784), nn.Tanh(),
+            nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1), nn.BatchNorm2d(64), nn.ReLU(),  # 14x14
+            nn.ConvTranspose2d(64, 1, 4, stride=2, padding=1), nn.Tanh(),                        # 28x28
         )
 
     def forward(self, z):
-        return self.net(z).view(-1, 1, 28, 28)
+        return self.net(self.project(z).view(-1, 128, 7, 7))
 
 class Discriminator(nn.Module):
-    def __init__(self):
+    """Strided convolutions, no pooling; outputs a LOGIT (no sigmoid)."""
+    def __init__(self, batch_norm=True):
         super().__init__()
+        norm = nn.BatchNorm2d(128) if batch_norm else nn.Identity()   # critics must not use BN
         self.net = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(784, 512), nn.LeakyReLU(0.2),
-            nn.Linear(512, 256), nn.LeakyReLU(0.2),
-            nn.Linear(256, 1), nn.Sigmoid(),
+            nn.Conv2d(1, 64, 4, stride=2, padding=1), nn.LeakyReLU(0.2),             # 14x14
+            nn.Conv2d(64, 128, 4, stride=2, padding=1), norm, nn.LeakyReLU(0.2),     # 7x7
+            nn.Flatten(), nn.Linear(128 * 7 * 7, 1),
         )
 
     def forward(self, x):
         return self.net(x)
+
+G, D = Generator().to(device), Discriminator().to(device)
+opt_G = torch.optim.Adam(G.parameters(), lr=2e-4, betas=(0.5, 0.999))
+opt_D = torch.optim.Adam(D.parameters(), lr=2e-4, betas=(0.5, 0.999))
+bce = nn.BCEWithLogitsLoss()             # sigmoid + BCE in one numerically stable step
+fixed_z = torch.randn(64, LATENT_DIM, device=device)
+losses = {"D": [], "G": []}
+snapshots = []                           # samples from fixed_z after each epoch
+
+for epoch in range(5):
+    for real, _ in loader:
+        real = real.to(device)
+        ones = torch.ones(real.size(0), 1, device=device)
+        zeros = torch.zeros(real.size(0), 1, device=device)
+        # Discriminator: real -> 1, fake -> 0
+        fake = G(torch.randn(real.size(0), LATENT_DIM, device=device))
+        loss_D = bce(D(real), ones) + bce(D(fake.detach()), zeros)
+        opt_D.zero_grad()
+        loss_D.backward()
+        opt_D.step()
+        # Generator, non-saturating: minimise -log D(G(z)), i.e. BCE against "real"
+        loss_G = bce(D(fake), ones)
+        opt_G.zero_grad()
+        loss_G.backward()
+        opt_G.step()
+        losses["D"].append(loss_D.item())
+        losses["G"].append(loss_G.item())
+    with torch.no_grad():
+        G.eval()
+        snapshots.append(G(fixed_z).cpu())   # the same 64 latent points every epoch
+        G.train()
+    print(f"epoch {epoch + 1}: D loss {sum(losses['D'][-100:]) / 100:.3f}, "
+          f"G loss {sum(losses['G'][-100:]) / 100:.3f}")
 ```
+
+Unlike a supervised loss, neither GAN loss should go to zero: a D loss near 0 means the discriminator has won and $G$ gets little useful signal; a healthy run keeps both losses moving within a band. Judge progress by the samples (`snapshots`, from fixed latent points, so you can watch the same "digit" sharpen across epochs) and by FID, not by the loss curves. After a few full epochs (468 batches each) the samples should be recognisable digits; if they are still grey blobs, check the $[-1, 1]$ scaling first. In a short check (300 batches) the discriminator briefly won outright (D loss 0.03 in the second epoch, G loss 4.5) and then the two losses settled into a band — normal GAN behaviour, not a bug.
 
 ## Try It Yourself
 
-**Drill 1.** Implement the full DCGAN training loop with alternating generator and discriminator updates. Train for 50 epochs and visualise generated images at epochs 1, 10, 25, and 50.
+The drills reuse `device`, `loader`, `mnist`, `LATENT_DIM`, `Generator`, `Discriminator`, `gradient_penalty`, `G`, `losses` and `snapshots` from above.
+
+**Drill 1.** Plot the generated images from the fixed latent points after epochs 1, 3 and 5 of the DCGAN loop, side by side with real digits. What changes between epochs?
 
 **Solution:**
 
 ```python
-G = Generator(); D = Discriminator()
-opt_G = torch.optim.Adam(G.parameters(), lr=2e-4, betas=(0.5, 0.999))
-opt_D = torch.optim.Adam(D.parameters(), lr=2e-4, betas=(0.5, 0.999))
-criterion = nn.BCELoss()
+import matplotlib.pyplot as plt
+from torchvision.utils import make_grid
 
-for epoch in range(50):
-    for real, _ in train_loader:
-        # Train D
-        z = torch.randn(real.size(0), 100)
-        fake = G(z).detach()
-        loss_D = criterion(D(real), torch.ones(real.size(0), 1)) + \
-                 criterion(D(fake), torch.zeros(real.size(0), 1))
-        opt_D.zero_grad(); loss_D.backward(); opt_D.step()
+def show_grid(images, title):
+    grid = make_grid(images[:64], nrow=8, normalize=True, value_range=(-1, 1))
+    plt.figure(figsize=(4, 4))
+    plt.imshow(grid.permute(1, 2, 0))
+    plt.axis("off")
+    plt.title(title)
+    plt.show()
 
-        # Train G
-        z = torch.randn(real.size(0), 100)
-        fake = G(z)
-        loss_G = criterion(D(fake), torch.ones(real.size(0), 1))
-        opt_G.zero_grad(); loss_G.backward(); opt_G.step()
+real_batch, _ = next(iter(loader))
+show_grid(real_batch, "real MNIST")
+for epoch in [1, 3, 5]:
+    show_grid(snapshots[epoch - 1], f"DCGAN samples after epoch {epoch}")
 ```
 
-**Drill 2.** Implement WGAN with gradient penalty. Compare training stability with the original DCGAN (plot discriminator and generator losses over epochs).
+Early snapshots are blurry blobs with the right overall brightness; by the middle epochs strokes appear, and by the last epoch most samples are recognisable digits with occasional broken or merged strokes. Because the latent points are fixed, you can see each sample refine rather than jump between unrelated images.
+
+**Drill 2.** Implement WGAN-GP with the same generator. Compare training stability with the DCGAN (plot the critic and generator losses).
 
 **Solution:**
 
 ```python
-# WGAN critic loss: D(real).mean() - D(fake).mean() + gp
-# WGAN generator loss: -D(fake).mean()
+G_w = Generator().to(device)
+critic = Discriminator(batch_norm=False).to(device)        # unbounded score, no BN
+opt_Gw = torch.optim.Adam(G_w.parameters(), lr=1e-4, betas=(0.0, 0.9))
+opt_C = torch.optim.Adam(critic.parameters(), lr=1e-4, betas=(0.0, 0.9))
+N_CRITIC, LAMBDA = 5, 10.0
+w_losses = {"critic": [], "W estimate": []}
+
+for epoch in range(5):
+    for i, (real, _) in enumerate(loader):
+        real = real.to(device)
+        fake = G_w(torch.randn(real.size(0), LATENT_DIM, device=device)).detach()
+        w_est = critic(real).mean() - critic(fake).mean()                # Wasserstein estimate
+        loss_C = -w_est + LAMBDA * gradient_penalty(critic, real, fake)
+        opt_C.zero_grad()
+        loss_C.backward()
+        opt_C.step()
+        w_losses["critic"].append(loss_C.item())
+        w_losses["W estimate"].append(w_est.item())
+        if i % N_CRITIC == 0:                                            # G steps less often
+            loss_Gw = -critic(G_w(torch.randn(real.size(0), LATENT_DIM, device=device))).mean()
+            opt_Gw.zero_grad()
+            loss_Gw.backward()
+            opt_Gw.step()
+
+fig, ax = plt.subplots(1, 2, figsize=(10, 3))
+ax[0].plot(losses["D"], label="D (BCE)")
+ax[0].plot(losses["G"], label="G (non-saturating)")
+ax[0].set_title("DCGAN")
+ax[0].legend()
+ax[1].plot(w_losses["W estimate"])
+ax[1].set_title("WGAN-GP: critic's Wasserstein estimate")
+plt.show()
 ```
 
-**Drill 3.** Compute FID between generated and real Fashion-MNIST images. How does FID change over training epochs?
+The DCGAN losses oscillate and their level says little about image quality. The WGAN-GP critic's Wasserstein estimate is a usable progress signal. Early on it climbs while the critic learns to separate real from fake — in our short check (300 critic steps, 60 generator steps) it rose from about 3 to 19 and was still rising. Over a full run it should level off and then trend down as the generator closes the gap — equivalently, the critic loss rises towards 0. An estimate that keeps climbing for many epochs means the generator is falling behind the critic. The critic is updated five times per generator step, with Adam's $\beta_1 = 0$, the settings from the WGAN-GP paper.
+
+**Drill 3.** Compute FID and Inception Score for the DCGAN with the course's feature extractor. Sanity-check FID by comparing two halves of the real data.
 
 **Solution:**
 
 ```python
-from pytorch_fid import fid_score
-# Save real and generated images to directories
-# fid = fid_score.calculate_fid_given_paths([real_dir, gen_dir], batch_size=64, device="cpu", dims=2048)
+from shared.mlfp05.ex_5 import train_feature_extractor, compute_fid
+
+X_real = torch.stack([mnist[i][0] for i in range(10000)]).to(device)        # in [-1, 1]
+y_real = torch.tensor([mnist[i][1] for i in range(10000)], device=device)
+extractor = train_feature_extractor(X_real, y_real, device, epochs=3)      # LeNet, 64-d features
+
+with torch.no_grad():
+    G.eval()
+    fake = torch.cat([G(torch.randn(500, LATENT_DIM, device=device)) for _ in range(10)])
+real01, fake01 = (X_real + 1) / 2, (fake + 1) / 2     # the extractor was trained on [0, 1] pixels
+
+print(f"FID real-vs-real (two halves): {compute_fid(extractor, real01[:5000], real01[5000:]):.2f}")
+print(f"FID real-vs-DCGAN:             {compute_fid(extractor, real01, fake01):.2f}")
+
+def inception_score(classifier, images01):
+    with torch.no_grad():
+        p_yx = torch.softmax(classifier(images01), dim=1)              # p(y | x) per image
+    p_y = p_yx.mean(dim=0, keepdim=True)                               # marginal p(y)
+    kl = (p_yx * (torch.log(p_yx + 1e-12) - torch.log(p_y + 1e-12))).sum(dim=1)
+    return torch.exp(kl.mean()).item()
+
+print(f"IS real: {inception_score(extractor, real01):.2f} | "
+      f"IS DCGAN: {inception_score(extractor, fake01):.2f} (maximum 10)")
 ```
 
-**Drill 4.** Implement conditional generation: given a class label, generate an image of that class. Modify the generator to take both $z$ and a one-hot class label as input.
+The real-vs-real FID is the floor for this extractor and sample size — small but not zero, because two finite samples never have identical statistics. In a short check it was 1.06, against 40.2 for a DCGAN trained for only 300 batches. Read a generator's FID against that floor and against other generators scored with the same extractor; Inception-scale thresholds do not apply to 64-dimensional LeNet features. IS behaves as the formula predicts: real digits scored 7.2 (this quickly trained extractor is only 91% accurate, so even real digits are not classified with full confidence; a better classifier pushes the score towards 10), the undertrained DCGAN 4.0. A mode-collapsed generator would score low even if each image were sharp, because its predicted classes would not be spread out.
+
+**Drill 4.** Implement conditional generation: given a class label, generate an image of that class.
 
 **Solution:**
 
 ```python
-class ConditionalGenerator(nn.Module):
-    def __init__(self, latent_dim=100, n_classes=10):
+class ConditionalGenerator(Generator):
+    def __init__(self, n_classes=10):
+        super().__init__(latent_dim=LATENT_DIM + n_classes)
+        self.n_classes = n_classes
+
+    def forward(self, z, labels):
+        onehot = nn.functional.one_hot(labels, self.n_classes).float()
+        return super().forward(torch.cat([z, onehot], dim=1))
+
+class ConditionalDiscriminator(Discriminator):
+    def __init__(self, n_classes=10):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(latent_dim + n_classes, 256), nn.ReLU(),
-            nn.Linear(256, 784), nn.Tanh(),
-        )
+        self.net[0] = nn.Conv2d(1 + n_classes, 64, 4, stride=2, padding=1)   # label as extra channels
+        self.n_classes = n_classes
 
-    def forward(self, z, label_onehot):
-        return self.net(torch.cat([z, label_onehot], dim=1)).view(-1, 1, 28, 28)
+    def forward(self, x, labels):
+        maps = nn.functional.one_hot(labels, self.n_classes).float()[:, :, None, None]
+        return super().forward(torch.cat([x, maps.expand(-1, -1, 28, 28)], dim=1))
+
+cG, cD = ConditionalGenerator().to(device), ConditionalDiscriminator().to(device)
+opt_cG = torch.optim.Adam(cG.parameters(), lr=2e-4, betas=(0.5, 0.999))
+opt_cD = torch.optim.Adam(cD.parameters(), lr=2e-4, betas=(0.5, 0.999))
+bce = nn.BCEWithLogitsLoss()
+for epoch in range(5):
+    for real, labels in loader:
+        real, labels = real.to(device), labels.to(device)
+        ones = torch.ones(len(real), 1, device=device)
+        zeros = torch.zeros(len(real), 1, device=device)
+        fake = cG(torch.randn(len(real), LATENT_DIM, device=device), labels)
+        loss_D = bce(cD(real, labels), ones) + bce(cD(fake.detach(), labels), zeros)
+        opt_cD.zero_grad()
+        loss_D.backward()
+        opt_cD.step()
+        loss_G = bce(cD(fake, labels), ones)
+        opt_cG.zero_grad()
+        loss_G.backward()
+        opt_cG.step()
+
+with torch.no_grad():
+    cG.eval()
+    sevens = cG(torch.randn(16, LATENT_DIM, device=device),
+                torch.full((16,), 7, device=device, dtype=torch.long))
+print(sevens.shape)   # torch.Size([16, 1, 28, 28]): sixteen different 7s
 ```
 
-**Drill 5.** Create a comparison table: VAE vs DCGAN vs WGAN. For each, report training stability, sample quality (FID), sample diversity, and training time. Which would you use for synthetic data generation in a production setting?
+Both networks see the label: the generator so it can produce the requested class, the discriminator so it can reject "a good-looking 3 labelled 7". Varying $\mathbf{z}$ with a fixed label changes the style (slant, thickness) while the class stays fixed.
 
-**Solution:** WGAN-GP offers the best balance of stability and quality. VAE produces more diverse but blurrier samples. DCGAN is fast but prone to mode collapse. For production synthetic data, WGAN-GP or diffusion models are preferred.
+**Drill 5.** Create a comparison table: VAE vs DCGAN vs WGAN-GP vs diffusion. For each, report training stability, sample quality (FID), sample diversity, and training time. Which would you use to generate extra training images for a rare class — and what would you check before sharing a generator trained on sensitive data?
+
+**Solution:** Fill the table from your own runs (Lesson 5.1's VAE, this lesson's DCGAN and WGAN-GP, all scored with the same LeNet-feature FID). Typical pattern: the VAE is the most stable and fastest but blurriest (worse FID); the DCGAN gives sharp samples quickly but its losses oscillate and it can drop modes; WGAN-GP trains more steadily with a meaningful loss curve at a higher cost per step (five critic updates per generator update); diffusion gives the best quality and diversity but samples slowly. For augmenting a rare class, a conditional GAN or a diffusion model conditioned on the class is the natural choice — and the augmented model must be validated on *real* held-out examples, never on synthetic ones. Before sharing a generator trained on sensitive records, test for memorisation (nearest-neighbour distance from each generated sample to the training set, membership-inference attacks) and use differentially private training if the data is personal; a good FID is not evidence of privacy.
 
 ## Cross-References
 
-- **Lesson 5.1** introduced VAEs for generation. GANs produce sharper samples; VAEs produce more diverse samples.
+- **Lesson 5.1** introduced VAEs for generation. GANs produce sharper samples; VAEs train more stably and cover the data more evenly. The diffusion training objective is a simplified ELBO.
+- **Lesson 5.2** provided the strided and transposed convolutions the DCGAN is built from.
 - **Module 6, Lesson 6.3** uses preference alignment (DPO) — a different approach to steering generative models.
 
 ## Reflection
 
 You should now be able to:
 
-- Write the GAN minimax objective and explain the generator-discriminator dynamic.
-- Implement DCGAN and WGAN with gradient penalty.
-- Explain mode collapse and how Wasserstein distance addresses it.
-- Evaluate generative quality with FID.
-- Compare VAE, GAN, and diffusion models for different generation tasks.
+- Write the GAN minimax objective, explain why the non-saturating generator loss is used, and why JS divergence gives no signal when supports do not overlap.
+- Implement a convolutional DCGAN and a WGAN-GP critic, and read the critic loss in the right direction.
+- Explain mode collapse and how Wasserstein distance addresses it; describe cGAN, CycleGAN and StyleGAN in one sentence each.
+- Evaluate generative quality with FID and Inception Score, and say what each cannot measure.
+- Compare VAE, GAN, and diffusion models for different generation tasks, and explain why synthetic data is not private by default.
 
 ---
 

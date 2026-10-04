@@ -50,3 +50,8 @@ Verified in dataflow/core/engine.py (~l.9272): `file_path = db_url.replace("sqli
   shared cleaner) or ship a clean variant for M2+.
 - M4 4.4 table: equal-blend "clustered" AUC is 0.97 (code 0.9748); textbook.md says 0.98 → reconcile.
 - M4 4.8 worked example writes hdb_price_net.onnx into cwd; data loader only works from repo root.
+- M5 numbers to reconcile (pages vs textbook.md vs slides): MUTAG test acc GCN 68.4% / GAT 71.1% / GIN 73.7%; 5.4 position task
+  100% with PE vs 60.8% without (slides say "~59%"); GAN mode-coverage table; continuous PPO; churn DQN 11.0 / 8.0
+  (textbook says 6.7 vs 8.7 "always call") — recompute once and align.
+- torch 2.12 on Apple MPS: 2-layer nn.LSTM with dropout=0.1 trains badly (val MSE 0.15 vs 0.011 CPU / 0.012 MPS no-dropout)
+  → check ex_4/03 and ex_4/05 LSTM configs on MPS (S7); upstream torch note.

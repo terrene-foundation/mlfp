@@ -45,6 +45,7 @@ from sklearn.model_selection import (
 from shared.mlfp03.ex_2 import (
     ALPHAS,
     SEED,
+    cross_val_auc_split_first,
     load_credit_data,
     load_credit_default_sample,
     load_icu_admissions_for_cv,
@@ -209,8 +210,11 @@ plain_rates = [float(y_def[te].mean()) for _, te in plain_cv.split(X_def, y_def)
 # TODO: default rate of each stratified test fold (mirror plain_rates).
 strat_rates = ____
 logit = LogisticRegression(max_iter=2000)
-plain_auc = cross_val_score(logit, X_def, y_def, cv=plain_cv, scoring="roc_auc")
-strat_auc = cross_val_score(logit, X_def, y_def, cv=strat_cv, scoring="roc_auc")
+# X_def is RAW: each fold re-fits the imputer and scaler on its own
+# training rows. Fitting them once on all 600 rows would let every test
+# fold's statistics into its training fold.
+plain_auc = cross_val_auc_split_first(logit, X_def, y_def, cv=plain_cv)
+strat_auc = cross_val_auc_split_first(logit, X_def, y_def, cv=strat_cv)
 print(
     f"""
                      default rate per fold          AUC (mean ± sd)

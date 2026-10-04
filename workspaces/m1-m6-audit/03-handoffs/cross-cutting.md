@@ -48,3 +48,5 @@ Verified in dataflow/core/engine.py (~l.9272): `file_path = db_url.replace("sqli
   letter-O typos in storey_range ("O4 TO 06"). M1 teaches them as planted defects; M2/M4 clean them ad hoc.
   Decide: keep as deliberate teaching defects (and make every downstream module clean them the same way via one
   shared cleaner) or ship a clean variant for M2+.
+- M4 4.4 table: equal-blend "clustered" AUC is 0.97 (code 0.9748); textbook.md says 0.98 → reconcile.
+- M4 4.8 worked example writes hdb_price_net.onnx into cwd; data loader only works from repo root.

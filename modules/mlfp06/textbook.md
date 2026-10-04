@@ -20,7 +20,7 @@ By the end of this chapter you will be able to:
 - Implement LoRA from scratch, understanding the low-rank factorisation mathematics, and implement adapter layers from scratch. Survey all 10+ fine-tuning techniques and select the right one for a given scenario.
 - Derive the DPO loss function from the Bradley-Terry preference model and the RLHF objective. Implement DPO training with preference pairs. Explain GRPO and when to prefer it over DPO. Evaluate aligned models with LLM-as-judge and standard benchmarks.
 - Build complete RAG pipelines with chunking, dense retrieval, sparse retrieval (BM25), hybrid retrieval, re-ranking, and HyDE. Evaluate RAG quality with RAGAS metrics.
-- Build ReAct agents with custom tools, implement function calling with structured schemas, and enforce cost budgets to prevent runaway spending.
+- Build ReAct agents with custom tools, implement function calling with structured schemas, and bound agents with turn ceilings and cost budgets to prevent runaway loops and spending.
 - Implement multi-agent patterns (supervisor-worker, sequential, parallel, handoff), build MCP servers, and configure agent memory.
 - Implement PACT governance with D/T/R addressing, operating envelopes, budget cascading, and governance testing.
 - Deploy a complete AI system with Nexus (API + CLI + MCP), implement authentication, integrate drift monitoring, and verify governance at the deployment level.
@@ -85,11 +85,15 @@ This lesson focuses on the first capability: prompt engineering. The difference 
 
 An LLM like GPT is trained in two stages:
 
-**Pre-training.** The model learns to predict the next token in a sequence. Given "The capital of Singapore is", the model learns to assign high probability to "Singapore" (or rather, to the token that represents "Singapore"). The training corpus is a large fraction of the internet — books, Wikipedia, code, web pages. Pre-training on trillions of tokens gives the model a broad understanding of language, facts, reasoning patterns, and code.
+**Pre-training.** A GPT-style (decoder-only) model learns to predict the next token in a sequence. Given "The capital of Singapore is", the model learns to assign high probability to "Singapore" (or rather, to the token that represents "Singapore"). The training corpus is a large fraction of the internet — books, Wikipedia, code, web pages. Pre-training on trillions of tokens gives the model a broad understanding of language, facts, reasoning patterns, and code. BERT-style (encoder-only) models are pre-trained differently, with **masked language modelling**: about 15% of the input tokens are hidden and the model predicts them from context on both sides. That makes BERT a strong text encoder (you fine-tune one in Lesson 6.2) but not a text generator.
 
 **Alignment.** The pre-trained model is a next-token predictor, not a helpful assistant. It will happily complete a harmful prompt or generate nonsense that looks authoritative. Alignment tunes the model to be helpful, harmless, and honest. This is done through RLHF (Reinforcement Learning from Human Feedback) or DPO (Direct Preference Optimization, Lesson 6.3): human annotators rank model outputs, and the model is trained to prefer the higher-ranked outputs.
 
-**Scaling laws.** Model performance scales predictably with three factors: the number of parameters, the amount of training data, and the amount of compute. Doubling any one of these produces a predictable improvement in loss. This is why LLMs have grown from millions of parameters (GPT-1, 2018) to hundreds of billions (GPT-4, 2023).
+**Scaling laws.** Pre-training loss falls predictably as you scale three factors: the number of parameters $N$, the number of training tokens $D$, and the compute spent (roughly $6ND$ floating-point operations). Hoffmann et al. (2022, the "Chinchilla" paper) fitted
+
+$$L(N, D) = E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}}$$
+
+where $E$ is the irreducible loss — the entropy of natural text, which no model can beat — and the two power-law terms shrink as the model and the data grow. Two consequences matter in practice: loss improves by a roughly constant amount each time you multiply $N$ or $D$ by a constant factor (diminishing returns, never zero loss), and for a fixed compute budget the loss is lowest when parameters and tokens grow together (Chinchilla's rule of thumb is about 20 training tokens per parameter). This is why LLMs grew from about 117 million parameters (GPT-1, 2018) to 175 billion (GPT-3, 2020) and beyond. The largest commercial models do not publish their parameter counts.
 
 ### FOUNDATIONS: Prompt engineering techniques
 
@@ -112,7 +116,7 @@ Review: "The laksa at this hawker stall is the best I've had in Katong." ->
 **Chain-of-thought (CoT).** Prompt the model to reason step by step:
 
 ```
-Q: A Singapore taxi charges S$3.90 flag-down + S$0.25 per 400m.
+Q: Suppose a taxi charges S$3.90 flag-down + S$0.25 per 400m.
    What is the fare for a 12km trip?
 
 Let's think step by step:
@@ -122,19 +126,20 @@ Let's think step by step:
 4. Total fare: S$3.90 + S$7.50 = S$11.40
 ```
 
-**Zero-shot CoT.** Append "Let's think step by step" without providing examples. Surprisingly effective — it activates the model's reasoning capabilities without requiring hand-crafted chain-of-thought examples.
+**Zero-shot CoT.** Append "Let's think step by step" without providing examples. Surprisingly effective — it elicits step-by-step reasoning without hand-crafted chain-of-thought examples. Kojima et al. (2022) reported that these five words lifted a 175B-parameter model (text-davinci-002) from 17.7% to 78.7% accuracy on the MultiArith arithmetic benchmark, and from 10.4% to 40.7% on GSM8K. Gains are largest on multi-step arithmetic and logic; on simple classification the extra tokens often buy little.
 
-**Self-consistency.** Sample multiple chain-of-thought paths and take the majority vote. This reduces the variance of CoT prompting by aggregating diverse reasoning paths.
+**Self-consistency.** Sample multiple chain-of-thought paths at a non-zero temperature and take the majority vote over their final answers (Wang et al., 2023). This reduces the variance of CoT prompting by aggregating diverse reasoning paths. It costs $N\times$ the tokens of a single call.
+
+**Structured prompting.** Specify the output format explicitly — "reply with JSON containing `sentiment` and `confidence`", or a table with named columns. A stated format makes the output machine-checkable, which is the bridge to the typed Signatures below.
 
 ### FOUNDATIONS: Kaizen structured output
 
 Free-form text is unreliable for production systems — the output format varies between calls. Kaizen provides structured output through Signatures:
 
 ```python
-import os
-from dataclasses import dataclass
 from kaizen import Signature, InputField, OutputField
 from kaizen.core.base_agent import BaseAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
 
 class SentimentSignature(Signature):
     """Classify the sentiment of a product review."""
@@ -142,28 +147,29 @@ class SentimentSignature(Signature):
     sentiment: str = OutputField(description="One of: positive, negative, neutral")
     confidence: float = OutputField(description="Confidence score 0-1")
 
-@dataclass
-class SentimentConfig:
-    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
-    model: str = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-    temperature: float = 0.2
-    budget_limit_usd: float = 1.0
+# Local Ollama model; the model name comes from OLLAMA_CHAT_MODEL
+# (default llama3.2:3b). No API key, no paid provider.
+config = {
+    "llm_provider": "ollama",
+    "model": DEFAULT_CHAT_MODEL,
+    "base_url": OLLAMA_BASE_URL,
+    "use_async_llm": True,              # required for run_async
+    "temperature": 0.2,
+    "response_format": {"type": "json_object"},
+    "structured_output_mode": "explicit",
+}
+agent = BaseAgent(config=config, signature=SentimentSignature())
 
-class SentimentAgent(BaseAgent):
-    def __init__(self, config: SentimentConfig):
-        super().__init__(config=config, signature=SentimentSignature())
-
-agent = SentimentAgent(SentimentConfig())
 result = await agent.run_async(review="Best laksa in Katong!")
-print(result["sentiment"])    # "positive"
-print(result["confidence"])   # 0.95
+print(result["sentiment"])    # e.g. "positive"
+print(result["confidence"])   # e.g. 0.9 (the model's self-reported score)
 ```
 
-The Signature defines the input and output schema. The BaseAgent handles the LLM call, streaming, budget enforcement, and structured parsing. This is type-safe — you get a typed dict keyed by OutputField names, not an unparsed string.
+The Signature defines the input and output schema. The BaseAgent renders that schema into the prompt, makes the LLM call, and parses the reply into a dict keyed by the OutputField names, not an unparsed string. Parsing can still fail — a small local model sometimes omits a field — so production code checks that every expected key is present rather than filling a placeholder. The `confidence` value is whatever number the model writes; it is not a calibrated probability.
 
 ### ADVANCED: Inference considerations
 
-**KV-cache.** During autoregressive generation, the model recomputes attention over all previous tokens at each step. The KV-cache stores the key and value matrices from previous steps, avoiding redundant computation. This is why LLM inference is memory-bound, not compute-bound.
+**KV-cache.** During autoregressive generation, each new token attends to every previous token. Without a cache, the model would recompute the keys and values of the whole prefix at every step. The KV-cache stores them once and appends one new key/value pair per layer per step, trading memory for compute. The cache grows linearly with sequence length and batch size, and every decoding step must read the model weights plus the cache from GPU memory to produce a single token — which is why token-by-token decoding is limited by memory bandwidth rather than arithmetic.
 
 **Speculative decoding.** A small, fast "draft" model generates candidate tokens, which a larger model verifies in parallel. This can speed up generation by 2–3× without changing the output distribution.
 
@@ -184,147 +190,225 @@ At $T = 1$ (default), the distribution is as trained. At $T < 1$, the distributi
 M6 routes every LLM call through `shared.mlfp06._ollama_bootstrap.make_delegate`, which constructs a Kaizen `Delegate` backed by a locally-running **Ollama** daemon. There are no API keys to manage, and the `OllamaUnreachableError` raised when the daemon is down points the student straight at the fix command (`ollama serve` / `ollama pull <model>`). See `specs/redlines.md` Redline 14 for the full mandate.
 
 ```python
-from shared.mlfp06._ollama_bootstrap import make_delegate
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
 
-delegate = make_delegate(
-    model="llama3.2:3b",       # default; override via OLLAMA_CHAT_MODEL
-    signature=SentimentSignature,
-    temperature=0.4,
-)
+# No model= argument: the model comes from OLLAMA_CHAT_MODEL (default
+# llama3.2:3b). Passing model= explicitly would bypass that setting.
+delegate = make_delegate(temperature=0.4)
 
-# Real LLM calls, no API budget — Ollama is free.
+reviews = [
+    "The laksa at this hawker stall is the best I've had in Katong.",
+    "Too salty, overpriced for hawker standards.",
+]
+
+# run_sync returns the complete response as a plain string
 for review in reviews:
-    result = delegate.run_sync(f"Classify this review: {review}")
-    print(f"Result: {result}")
+    text = delegate.run_sync(
+        f"Classify this review as positive or negative. Reply with one word.\n\n{review}"
+    )
+    print(f"{review[:40]!r} -> {text.strip()}")
+
+# run_delegate_text streams the same call and also reports token usage
+text, usage, seconds = await run_delegate_text(delegate, f"Classify: {reviews[0]}")
+print(usage["total_tokens"], f"{seconds:.1f}s")
 ```
 
-Cost note: the bootstrap forces `budget_usd=None` because Kaizen's cost estimator mis-prices Ollama at OpenAI rates (~$3/$15 per million tokens). The honest comparison signal across techniques is **token throughput**, surfaced via `run_delegate_text(...) -> (text, usage_dict, elapsed_s)`.
+Cost note: the bootstrap forces `budget_usd=None` because Kaizen's cost estimator mis-prices Ollama at hosted-API rates even though local inference is free. The honest comparison signal across techniques is **token count and latency**, surfaced via `run_delegate_text(...) -> (text, usage_dict, elapsed_s)`. Exercise 6.1 converts tokens into an illustrative hosted price only for comparison.
+
+A `Delegate` is the streaming, free-text interface; a `BaseAgent` with a `Signature` (above) is the structured interface. Exercise 6.1 uses the Delegate for files 01–05 (zero-shot, few-shot, CoT, zero-shot CoT, self-consistency on SST-2 movie-review sentences) and the BaseAgent + Signature for file 06 (structured output).
 
 ## Worked Example: Prompt Engineering Comparison
 
 ```python
-import os
-from dataclasses import dataclass
 from kaizen import Signature, InputField, OutputField
 from kaizen.core.base_agent import BaseAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
 
 class MathSolver(Signature):
     """Solve a math word problem step by step."""
-    problem: str = InputField()
+    problem: str = InputField(description="The word problem")
     reasoning: str = OutputField(description="Step-by-step reasoning")
-    answer: float = OutputField(description="Numerical answer")
+    answer: float = OutputField(description="Final numerical answer")
 
-@dataclass
-class MathSolverConfig:
-    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
-    model: str = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-    temperature: float = 0.2
-    budget_limit_usd: float = 1.0
+config = {
+    "llm_provider": "ollama",
+    "model": DEFAULT_CHAT_MODEL,
+    "base_url": OLLAMA_BASE_URL,
+    "use_async_llm": True,
+    "temperature": 0.2,
+    "response_format": {"type": "json_object"},
+    "structured_output_mode": "explicit",
+}
+agent = BaseAgent(config=config, signature=MathSolver())
 
-class MathSolverAgent(BaseAgent):
-    def __init__(self, config: MathSolverConfig):
-        super().__init__(config=config, signature=MathSolver())
-
-agent = MathSolverAgent(MathSolverConfig())
-
+# (problem, correct answer) — the answers are computed exactly below
 problems = [
-    "A Singapore HDB flat costs S$485,000. The buyer pays 25% down and finances the rest at 2.6% annual interest over 25 years. What is the monthly payment on the loan?",
-    "A hawker sells 150 plates of chicken rice per day at S$4.50 each. Operating costs are S$280 per day. What is the weekly profit?",
+    ("An HDB flat costs S$485,000. The buyer pays 25% down and finances the "
+     "rest at 2.6% annual interest over 25 years, repaid monthly. What is the "
+     "monthly payment on the loan?", 1650.22),
+    ("A hawker sells 150 plates of chicken rice per day at S$4.50 each. "
+     "Operating costs are S$280 per day. What is the weekly profit?", 2765.00),
 ]
 
 # Zero-shot vs CoT comparison
-for problem in problems:
-    # Zero-shot
+for problem, expected in problems:
     result_zero = await agent.run_async(problem=problem)
-    print(f"Zero-shot: {result_zero['answer']}")
-
-    # CoT (add reasoning instruction)
     result_cot = await agent.run_async(problem=f"Think step by step. {problem}")
-    print(f"CoT: {result_cot['answer']}")
-    print(f"Reasoning: {result_cot['reasoning']}")
+    print(f"Expected {expected:,.2f} | zero-shot {result_zero.get('answer')} "
+          f"| CoT {result_cot.get('answer')}")
+    print(f"CoT reasoning: {result_cot.get('reasoning', '')[:200]}")
 ```
+
+The reference answers are exact. The hawker problem is (150 × 4.50 − 280) × 7 = S$2,765. The loan is the annuity formula $M = P\,r(1+r)^n / ((1+r)^n - 1)$ with $P = 0.75 \times 485{,}000 = 363{,}750$, $r = 0.026/12$ and $n = 300$, giving S$1,650.22 a month. Check which of the two your model gets right. The hawker problem is three multiplications; the annuity needs $(1+r)^{300}$, which a language model cannot compute reliably token by token. If your model misses it even with CoT, that is a lesson in itself: for exact arithmetic, give the agent a calculator tool (Lesson 6.5) rather than more prompting. Your printed answers depend on your model and on sampling; `.get()` is used because a small model can omit a field.
 
 ## Try It Yourself
 
-**Drill 1.** Compare zero-shot, few-shot (3 examples), and CoT prompting on 10 Singapore math word problems. Which technique achieves the highest accuracy? At what token cost per problem?
+**Drill 1.** Compare zero-shot, few-shot (3 examples), and CoT prompting on 10 math word problems with known answers. Which technique achieves the highest accuracy? At what token cost per problem?
 
-**Solution:**
+**Solution:** extend the worked example's `problems` list to ten `(problem, answer)` pairs. A Delegate gives you the token count of every call, so ask for the answer on a fixed last line and parse it.
 
 ```python
-from shared.mlfp06._ollama_bootstrap import make_delegate
+import re
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
 
-delegate = make_delegate(
-    signature=MathSolver,
+delegate = make_delegate(temperature=0.0)
+FORMAT = "End your reply with a final line of the form 'ANSWER: <number>'."
+FEW_SHOT = (
+    "Q: A stall sells 40 kopi at S$1.50. What is the revenue?\nANSWER: 60\n\n"
+    "Q: A 3-room flat of 68 sqm sells for S$408,000. What is the price per sqm?\nANSWER: 6000\n\n"
+    "Q: A bus travels 18 km in 45 minutes. What is its speed in km/h?\nANSWER: 24\n\n"
 )
-
 techniques = {
-    "zero_shot": lambda p: p,
-    "few_shot": lambda p: f"[examples]\n{p}",
-    "cot": lambda p: f"Let's think step by step.\n{p}",
+    "zero_shot": lambda p: f"{p}\n{FORMAT}",
+    "few_shot": lambda p: f"{FEW_SHOT}Q: {p}\n{FORMAT}",
+    "cot": lambda p: f"{p}\nLet's think step by step. {FORMAT}",
 }
 
-for name, transform in techniques.items():
-    correct = 0
-    for problem, expected in test_problems:
-        result = delegate.run_sync(transform(problem))
-        if abs(float(result.get("answer", 0)) - expected) < 0.01:
-            correct += 1
-    print(f"{name}: {correct}/{len(test_problems)} correct")
+def parse_answer(text: str) -> float | None:
+    match = re.search(r"ANSWER:\s*S?\$?\s*(-?[\d,]*\.?\d+)", text)
+    return float(match.group(1).replace(",", "")) if match else None
+
+async def compare(problems):
+    for name, build in techniques.items():
+        correct, tokens, unparsed = 0, 0, 0
+        for problem, expected in problems:
+            text, usage, _secs = await run_delegate_text(delegate, build(problem))
+            tokens += usage["total_tokens"]
+            answer = parse_answer(text)
+            if answer is None:
+                unparsed += 1           # count format failures separately
+            elif abs(answer - expected) <= 0.01 * abs(expected):
+                correct += 1            # within 1% of the exact answer
+        print(f"{name:10s} {correct}/{len(problems)} correct, "
+              f"{unparsed} unparsed, {tokens / len(problems):.0f} tokens/problem")
+
+await compare(problems)
 ```
+
+Expect CoT to cost several times the tokens of zero-shot. Whether it buys accuracy depends on how many reasoning steps the problems need. Report unparsed replies separately: a format failure is not the same error as a wrong answer.
 
 **Drill 2.** Implement self-consistency: sample 5 CoT responses (temperature=0.7) and take the majority-vote answer. Does self-consistency improve accuracy over single-sample CoT?
 
-**Solution:**
+**Solution:** reuse `techniques["cot"]` and `parse_answer` from Drill 1. Sampling needs a non-zero temperature, otherwise all five paths are (nearly) identical.
 
 ```python
 from collections import Counter
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
 
-def self_consistency(delegate, problem, n_samples=5):
+sampler = make_delegate(temperature=0.7)
+
+async def self_consistency(problem: str, n_samples: int = 5):
     answers = []
     for _ in range(n_samples):
-        result = delegate.run_sync(f"Think step by step.\n{problem}")
-        answers.append(round(float(result.get("answer", 0)), 2))
-    most_common = Counter(answers).most_common(1)[0][0]
-    return most_common
+        text, _usage, _secs = await run_delegate_text(sampler, techniques["cot"](problem))
+        answer = parse_answer(text)
+        if answer is not None:
+            answers.append(round(answer, 2))
+    if not answers:
+        return None, 0.0                 # every path failed to give an answer
+    winner, votes = Counter(answers).most_common(1)[0]
+    return winner, votes / n_samples     # answer and its agreement rate
+
+answer, agreement = await self_consistency(problems[1][0])
+print(answer, f"agreement {agreement:.0%}")
 ```
 
-**Drill 3.** Build a classification system using Kaizen Delegate that classifies Singapore news headlines into categories (politics, economy, sports, technology, lifestyle). Use a Signature with typed output. Test on 50 headlines.
+The agreement rate is a useful by-product: when the five paths disagree, the problem is hard for this model and the answer deserves less trust.
+
+**Drill 3.** Build a classification system with a typed Signature for the SST-2 movie-review sentences that Exercise 6.1 uses. Test it on 50 sentences and report accuracy against the gold labels.
 
 **Solution:**
 
 ```python
-class HeadlineClassifier(Signature):
-    """Classify a Singapore news headline into a category."""
-    headline: str = InputField()
-    category: str = OutputField(description="One of: politics, economy, sports, technology, lifestyle")
-    confidence: float = OutputField()
+from kaizen import Signature, InputField, OutputField
+from kaizen.core.base_agent import BaseAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
+from shared.mlfp06.ex_1 import load_sst2
+
+class ReviewSentiment(Signature):
+    """Classify the sentiment of a short movie-review phrase."""
+    text: str = InputField(description="A sentence or phrase from a movie review")
+    sentiment: str = OutputField(description="Exactly one of: positive, negative")
+    confidence: float = OutputField(description="Confidence score 0-1")
+
+classifier = BaseAgent(
+    config={
+        "llm_provider": "ollama", "model": DEFAULT_CHAT_MODEL,
+        "base_url": OLLAMA_BASE_URL, "use_async_llm": True, "temperature": 0.0,
+        "response_format": {"type": "json_object"},
+        "structured_output_mode": "explicit",
+    },
+    signature=ReviewSentiment(),
+)
+
+sample = load_sst2().head(50)                 # columns: text, label, label_id
+correct, invalid = 0, 0
+for text, gold in zip(sample["text"], sample["label"]):
+    out = await classifier.run_async(text=text)
+    predicted = str(out.get("sentiment", "")).strip().lower()
+    if predicted not in {"positive", "negative"}:
+        invalid += 1                           # missing or off-schema label
+    elif predicted == gold:
+        correct += 1
+print(f"accuracy {correct}/50, invalid outputs {invalid}")
 ```
 
-**Drill 4.** Implement token tracking: process 100 classification requests and report total tokens, average tokens per request, and per-model breakdown. (Cost tracking from the OpenAI era is replaced by token tracking — Ollama is free, but token throughput is the honest workload signal.)
+SST-2 sentences are fragments ("soulful and", "be fruitful"), so some are genuinely ambiguous; read the misclassified rows before blaming the prompt.
+
+**Drill 4.** Implement token tracking: process 100 classification requests and report total tokens, average tokens per request, and a breakdown by prompting technique. (Ollama is free, so token count — not dollars — is the honest workload signal.)
 
 **Solution:**
 
 ```python
+import polars as pl
 from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
-import asyncio
+from shared.mlfp06.ex_1 import load_sst2
 
-delegate = make_delegate(signature=HeadlineClassifier)
+delegate = make_delegate(temperature=0.0)
+prompts = {
+    "zero_shot": "Classify as positive or negative. Reply with one word.\n\n{t}",
+    "cot": "Classify as positive or negative. Let's think step by step, "
+           "then give the label on the last line.\n\n{t}",
+}
 
-async def classify_all(headlines):
-    total_tokens = 0
-    for headline in headlines[:100]:
-        prompt = f"Classify this headline: {headline}"
-        text, usage, _elapsed = await run_delegate_text(delegate, prompt)
-        total_tokens += usage["total_tokens"]
-    return total_tokens
+rows = []
+for text in load_sst2().head(50)["text"]:          # 50 texts x 2 prompts = 100 calls
+    for name, template in prompts.items():
+        _reply, usage, secs = await run_delegate_text(delegate, template.format(t=text))
+        rows.append({"technique": name, "tokens": usage["total_tokens"], "seconds": secs})
 
-total = asyncio.run(classify_all(headlines))
-print(f"Total tokens: {total}, avg per request: {total / 100:.0f}")
+log = pl.DataFrame(rows)
+print(f"total tokens {log['tokens'].sum()}, mean per request {log['tokens'].mean():.0f}")
+print(log.group_by("technique").agg(
+    pl.col("tokens").sum().alias("total_tokens"),
+    pl.col("tokens").mean().alias("mean_tokens"),
+    pl.col("seconds").mean().alias("mean_seconds"),
+))
 ```
 
 **Drill 5.** Explain the relationship between temperature, top-p (nucleus sampling), and output quality. Run the same prompt at temperatures 0, 0.3, 0.7, and 1.0 ten times each. Measure the variance of the outputs.
 
-**Solution:** At temperature 0, all 10 outputs are identical (deterministic). At 0.3, outputs are nearly identical with occasional minor variations. At 0.7, there is meaningful diversity in phrasing but consistent conclusions. At 1.0, outputs vary significantly, including occasional errors. For factual tasks, temperature 0–0.3 is appropriate; for creative tasks, 0.7–1.0.
+**Solution:** temperature rescales the logits before the softmax (Mathematical Foundations below); top-p then keeps only the smallest set of tokens whose cumulative probability reaches $p$ and samples from that set. Both trade diversity against reliability. Measure variance as the number of distinct answers out of ten (or the spread of a parsed number). What you should expect: at temperature 0 the ten outputs are identical or nearly so (greedy decoding; tiny differences can come from floating-point non-determinism on the GPU). As temperature rises, phrasing diversifies first; at 1.0 the conclusions themselves start to vary and occasional errors appear. For factual and classification tasks use temperature 0–0.3; for brainstorming and creative text, 0.7–1.0. Your own counts are the answer to this drill — report them, not this paragraph.
 
 ## Cross-References
 
@@ -338,9 +422,9 @@ print(f"Total tokens: {total}, avg per request: {total / 100:.0f}")
 You should now be able to:
 
 - Explain how LLMs are pre-trained and aligned.
-- Apply five prompt engineering techniques and know when each is appropriate.
-- Use Kaizen Delegate for structured, type-safe LLM output.
-- Track and budget LLM costs in production.
+- Apply six prompt engineering techniques and know when each is appropriate.
+- Use a Kaizen Delegate for streaming text and a BaseAgent with a Signature for structured, type-safe output.
+- Track token usage and latency per technique, and convert tokens into an estimated hosted cost when you need one.
 
 ---
 

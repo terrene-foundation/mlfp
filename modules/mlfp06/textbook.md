@@ -432,7 +432,7 @@ You should now be able to:
 
 ## Why This Matters
 
-Prompt engineering is limited. No matter how clever your prompt, the model's knowledge is fixed at pre-training. If you need a model that understands Singapore legal terminology, medical Mandarin-English code-switching, or your company's internal product taxonomy, you need to fine-tune. But full fine-tuning of a 7-billion-parameter model requires hundreds of gigabytes of GPU memory — impractical for most teams. Parameter-efficient fine-tuning (PEFT) methods like LoRA and adapters achieve comparable results by modifying only a tiny fraction of the parameters.
+Prompt engineering is limited. No matter how clever your prompt, the model's knowledge is fixed at pre-training. If you need a model that understands Singapore legal terminology, medical Mandarin-English code-switching, or your company's internal product taxonomy, you need to fine-tune. But full fine-tuning of a 7-billion-parameter model with the Adam optimiser needs roughly 16 bytes per parameter (FP16 weights and gradients, plus FP32 master weights and two Adam moments) — about 112 GB of GPU memory before activations — which is impractical for most teams. Parameter-efficient fine-tuning (PEFT) methods like LoRA and adapters achieve comparable results by modifying only a tiny fraction of the parameters.
 
 ## Core Concepts
 
@@ -440,92 +440,142 @@ Prompt engineering is limited. No matter how clever your prompt, the model's kno
 
 LoRA (Low-Rank Adaptation of Large Language Models) is based on the observation that the weight updates during fine-tuning have low intrinsic rank. Instead of updating the full weight matrix $\mathbf{W} \in \mathbb{R}^{d \times k}$, LoRA decomposes the update into two low-rank matrices:
 
-$$\mathbf{W}' = \mathbf{W}_0 + \mathbf{B}\mathbf{A}$$
+$$\mathbf{W}' = \mathbf{W}_0 + \frac{\alpha}{r}\mathbf{B}\mathbf{A}$$
 
-where $\mathbf{W}_0$ is the frozen pre-trained weight, $\mathbf{B} \in \mathbb{R}^{d \times r}$ and $\mathbf{A} \in \mathbb{R}^{r \times k}$ are the trainable low-rank matrices, and $r \ll \min(d, k)$ is the rank.
+where $\mathbf{W}_0$ is the frozen pre-trained weight, $\mathbf{B} \in \mathbb{R}^{d \times r}$ and $\mathbf{A} \in \mathbb{R}^{r \times k}$ are the trainable low-rank matrices, $r \ll \min(d, k)$ is the rank, and $\alpha / r$ is a fixed scaling factor (so changing $r$ does not change the update's magnitude). One of the two matrices starts at zero, so at initialisation $\mathbf{W}' = \mathbf{W}_0$ exactly: training starts from the pre-trained model, not from a perturbed one.
 
 The connection to Module 4: LoRA IS low-rank matrix factorisation (Lesson 4.3, SVD). The pre-trained weights capture the bulk of the model's knowledge; the low-rank update captures the task-specific adaptation. Typical ranks are $r = 4, 8, 16$ — meaning you train a fraction of a percent of the total parameters.
 
+The from-scratch implementation below is the one Exercise 6.2 (`ex_2/01_lora_from_scratch.py`) builds. Because the code multiplies a row vector `x` on the left, `lora_A` has shape (d_in, r) and `lora_B` has shape (r, d_out); the update to the weight is their product, which is rank $r$ at most.
+
 ```python
+import math
 import torch
 import torch.nn as nn
 
 class LoRALayer(nn.Module):
-    def __init__(self, in_features, out_features, rank=8, alpha=16):
-        super().__init__()
-        self.original = nn.Linear(in_features, out_features, bias=False)
-        self.original.weight.requires_grad = False  # freeze original
+    """The trainable low-rank path: (x @ A @ B) * (alpha / r)."""
 
-        self.A = nn.Parameter(torch.randn(in_features, rank) * 0.01)
-        self.B = nn.Parameter(torch.zeros(rank, out_features))
+    def __init__(self, in_features, out_features, rank=8, alpha=16.0):
+        super().__init__()
+        self.rank = rank
         self.scaling = alpha / rank
+        self.lora_A = nn.Parameter(torch.empty(in_features, rank))
+        self.lora_B = nn.Parameter(torch.zeros(rank, out_features))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))  # random A
+        nn.init.zeros_(self.lora_B)                            # B = 0, so A @ B = 0
 
     def forward(self, x):
-        original_output = self.original(x)
-        lora_output = x @ self.A @ self.B * self.scaling
-        return original_output + lora_output
+        return (x @ self.lora_A @ self.lora_B) * self.scaling
+
+
+class LoRALinear(nn.Module):
+    """A pre-trained nn.Linear, frozen, plus a trainable LoRA path."""
+
+    def __init__(self, pretrained_linear: nn.Linear, rank=8, alpha=16.0):
+        super().__init__()
+        self.linear = pretrained_linear
+        for p in self.linear.parameters():     # freeze weight AND bias
+            p.requires_grad = False
+        self.lora = LoRALayer(
+            pretrained_linear.in_features, pretrained_linear.out_features, rank, alpha
+        )
+
+    def forward(self, x):
+        return self.linear(x) + self.lora(x)
 ```
+
+The wrapper takes the _existing_ pre-trained layer and freezes it. A common mistake is to build a fresh `nn.Linear` inside the LoRA module, freeze that, and then swap the pre-trained layer back in — the freeze then applies to a layer nobody uses, and every pre-trained weight is silently trained.
 
 ### THEORY: Adapter layers
 
-Adapter layers insert small bottleneck modules between transformer layers:
+Adapter layers (Houlsby et al., 2019) insert small bottleneck modules inside each transformer layer:
 
-$$\mathbf{h}' = \mathbf{h} + f(\mathbf{h} \mathbf{W}_{\text{down}}) \mathbf{W}_{\text{up}}$$
+$$\mathbf{h}' = \mathbf{h} + f(\text{LN}(\mathbf{h}) \mathbf{W}_{\text{down}}) \mathbf{W}_{\text{up}}$$
 
-where $\mathbf{W}_{\text{down}} \in \mathbb{R}^{d \times m}$ projects to a lower dimension $m$, $f$ is an activation function, and $\mathbf{W}_{\text{up}} \in \mathbb{R}^{m \times d}$ projects back. Only $\mathbf{W}_{\text{down}}$ and $\mathbf{W}_{\text{up}}$ are trained; the rest of the model is frozen.
+where $\mathbf{W}_{\text{down}} \in \mathbb{R}^{d \times m}$ projects to a lower dimension $m$, $f$ is an activation function, and $\mathbf{W}_{\text{up}} \in \mathbb{R}^{m \times d}$ projects back. Only the adapter's weights are trained; the rest of the model is frozen. Initialising $\mathbf{W}_{\text{up}}$ to zero makes the adapter start as the identity — the same trick as LoRA's $\mathbf{B} = 0$.
 
 ```python
 class AdapterLayer(nn.Module):
-    def __init__(self, d_model, bottleneck=64):
+    """x -> LayerNorm -> down -> GELU -> up -> + x (as in ex_2/02)."""
+
+    def __init__(self, d_model, bottleneck_dim=64):
         super().__init__()
-        self.down = nn.Linear(d_model, bottleneck)
-        self.up = nn.Linear(bottleneck, d_model)
+        self.layer_norm = nn.LayerNorm(d_model)
+        self.down_proj = nn.Linear(d_model, bottleneck_dim)
         self.activation = nn.GELU()
+        self.up_proj = nn.Linear(bottleneck_dim, d_model)
+        nn.init.zeros_(self.up_proj.weight)   # start as the identity
+        nn.init.zeros_(self.up_proj.bias)
 
     def forward(self, x):
-        return x + self.up(self.activation(self.down(x)))
+        h = self.up_proj(self.activation(self.down_proj(self.layer_norm(x))))
+        return x + h
 ```
 
 ### FOUNDATIONS: LoRA vs Adapter comparison
 
-| Dimension           | LoRA                         | Adapter                    |
-| ------------------- | ---------------------------- | -------------------------- |
-| Parameter update    | Low-rank matrices A, B       | Bottleneck FC layers       |
-| Where applied       | Weight matrices (Q, K, V, O) | Between transformer layers |
-| Merge at inference  | Yes (add B×A to W)           | No (module remains)        |
-| Inference overhead  | Zero                         | Small (extra forward pass) |
-| Typical parameter % | 0.1–1%                       | 1–5%                       |
+| Dimension           | LoRA                                     | Adapter                                    |
+| ------------------- | ---------------------------------------- | ------------------------------------------ |
+| Parameter update    | Low-rank matrices A, B beside a weight   | Bottleneck FC layers inside each block     |
+| Where applied       | Weight matrices (Q, K, V, O, FFN)        | After the attention and/or FFN sub-layers  |
+| Merge at inference  | Yes (add $\frac{\alpha}{r}BA$ to $W_0$)  | No (module remains)                        |
+| Inference overhead  | Zero after merging                       | Small (extra layers on every forward pass) |
+| Typical parameter % | 0.1–1%                                   | 0.5–5%                                     |
+| Implementation      | Wrap individual Linear layers            | Wrap or insert whole sub-layers            |
+| Flexibility         | Swap adapters per task; merge or unmerge | Stack or swap per task; never merged       |
+
+On BERT-base (110M parameters) the configurations used in this lesson's worked example and drills measure as follows (counted with the code below; each includes the 1,538-parameter classification head):
+
+| Configuration                          | Trainable parameters | Share of total |
+| -------------------------------------- | -------------------- | -------------- |
+| LoRA r = 8 on Q and V (12 layers)      | 296,450              | 0.27%          |
+| LoRA r = 8 on Q, K and V               | 443,906              | 0.40%          |
+| Adapter, bottleneck 64, after each FFN | 1,209,602            | 1.09%          |
+| Full fine-tuning                       | 109,483,778          | 100%           |
 
 ### FOUNDATIONS: The fine-tuning landscape (survey)
 
-| Technique              | Key Idea                       | Parameters Trained   |
-| ---------------------- | ------------------------------ | -------------------- |
-| Full fine-tuning       | Update all weights             | 100%                 |
-| LoRA                   | Low-rank weight update         | 0.1–1%               |
-| Adapters               | Bottleneck modules             | 1–5%                 |
-| Prefix tuning          | Learnable prefix tokens        | < 1%                 |
-| Prompt tuning          | Learnable soft prompts         | < 0.1%               |
-| LLRD                   | Layer-wise learning rate decay | 100% (different LRs) |
-| Progressive freezing   | Gradually unfreeze layers      | Varies               |
-| Knowledge distillation | Teacher-student                | 100% of student      |
-| QLoRA                  | Quantised base + LoRA          | 0.1–1%               |
+Exercise 6.2 (`ex_2/03_finetuning_landscape.py`) surveys ten techniques and builds a decision tree over them.
+
+| Technique                      | Key idea                                                                         | Parameters trained   |
+| ------------------------------ | -------------------------------------------------------------------------------- | -------------------- |
+| Task-specific full fine-tuning | Update all weights, with an LR schedule, gradient clipping, mixed precision      | 100%                 |
+| LoRA                           | Low-rank update beside frozen weight matrices                                    | 0.1–1%               |
+| Adapters                       | Bottleneck modules inside each block                                             | 0.5–5%               |
+| Prefix tuning                  | Learnable key/value vectors prepended at every attention layer                   | < 1%                 |
+| Prompt tuning                  | Learnable soft-prompt embeddings prepended to the input only                     | < 0.1%               |
+| LLRD                           | Layer-wise learning-rate decay: lower LR for earlier layers                      | 100% (different LRs) |
+| Progressive freezing           | Unfreeze layers top-down over the course of training                             | Varies               |
+| Knowledge distillation         | Train a small student on a large teacher's soft labels                           | 100% of the student  |
+| Differential privacy (DP-SGD)  | Clip each example's gradient and add Gaussian noise; privacy budget ε            | Any of the above     |
+| Elastic weight consolidation   | Penalise moving weights the Fisher information marks as important to an old task | 100% (regularised)   |
+
+Two rows need a sentence more. **DP-SGD** bounds how much any single training example can influence the weights, so the model cannot memorise (and later leak) one patient record or one customer email; the price is lower accuracy for a stronger privacy guarantee. **EWC** fights catastrophic forgetting: the loss gains a term $\sum_i \frac{\lambda}{2} F_i (\theta_i - \theta^_\_i)^2$ that anchors each weight to its old value $\theta^__i$ in proportion to its Fisher information $F_i$.
 
 ### ADVANCED: Model merging
 
-After fine-tuning multiple LoRA adapters for different tasks, you can merge them:
+After fine-tuning several adapters for different tasks you can merge them into one model without further training. Write each task's change as a **task vector** $\tau_t = \theta_t - \theta_0$ (for LoRA, $\tau_t = \frac{\alpha}{r} B_t A_t$ per wrapped layer).
 
-- **TIES (Trim, Elect Sign, Merge):** trim small values, resolve sign conflicts, merge remaining.
-- **DARE (Drop and Rescale):** randomly drop parameters, rescale survivors.
-- **SLERP:** spherical linear interpolation between weight vectors.
-- **Task arithmetic:** add or subtract fine-tuned weight deltas for compositional control.
+- **Task arithmetic:** $\theta = \theta_0 + \lambda \sum_t \tau_t$. Adding a vector adds a skill; subtracting one removes it.
+- **TIES (Trim, Elect Sign, Merge):** for each task, keep only the top-$k$% of $\tau_t$ entries by magnitude (trim); for each parameter, elect the sign of the _sum_ of the trimmed values (sign election); then average only the trimmed values that agree with the elected sign (disjoint merge). This stops two tasks' opposite-signed updates from cancelling to noise.
+- **DARE (Drop And REscale):** drop each entry of $\tau_t$ with probability $p$ and multiply the survivors by $1/(1-p)$, which keeps the expected update unchanged; it is usually applied before TIES or task arithmetic to reduce interference.
+- **SLERP:** spherical linear interpolation between two weight vectors, which preserves their norm better than a straight average. It merges exactly two models.
 
 ### FOUNDATIONS: Quantisation
 
-Reduce model precision to fit larger models on smaller hardware:
+Reduce model precision to fit larger models on smaller hardware. Memory scales with bytes per weight: FP32 uses 4 bytes, FP16/BF16 2, INT8 1, and 4-bit formats 0.5. So INT8 halves the memory of FP16 (and quarters FP32); 4-bit quarters FP16. A 7B model needs about 14 GB of weights in FP16, about 7 GB in INT8 and about 3.5 GB in 4-bit.
 
-- **GPTQ:** post-training quantisation using approximate Hessian.
-- **AWQ:** activation-aware quantisation that preserves important channels.
-- **QLoRA:** quantise the base model to 4-bit, then apply LoRA on top. This allows fine-tuning a 65B model on a single GPU.
+- **GPTQ:** post-training quantisation that corrects each layer's rounding error using approximate second-order (Hessian) information.
+- **AWQ:** activation-aware quantisation that protects the small fraction of weight channels that matter most for the activations.
+- **GGUF:** the llama.cpp file format with mixed-precision quantisation levels (Q2_K … Q8_0), built for CPU and laptop inference — and what Ollama runs.
+- **bitsandbytes:** the PyTorch library that loads a model in 8-bit or 4-bit (NF4) on the fly; it is what QLoRA uses during training.
+- **QLoRA:** quantise the frozen base model to 4-bit NF4, then train FP16/BF16 LoRA adapters on top. Dettmers et al. (2023) fine-tuned a 65B model on a single 48 GB GPU this way.
+
+Quantise when the deployment hardware is the constraint (a CPU server, a laptop, a single small GPU), and measure the quality drop on your own evaluation set — it is usually small at 8-bit and grows at 4-bit and below.
 
 ## Mathematical Foundations
 
@@ -537,98 +587,244 @@ For a weight matrix $\mathbf{W} \in \mathbb{R}^{768 \times 768}$ with $r = 8$: f
 
 ## The Kailash Engine: kailash-align
 
-```python
-from kailash_align import AlignmentPipeline, AlignmentConfig, AdapterRegistry
+The from-scratch code teaches the mechanism; for real LLM fine-tuning the course uses `kailash-align`, which wraps the TRL trainers behind one typed config. This is the pattern of `ex_2/06_sft_alignment_pipeline.py`. Training and registration are both `async`.
 
-config = AlignmentConfig(method="lora", rank=8, alpha=16)
+```python
+import os
+import polars as pl
+from datasets import Dataset
+from kailash_align import (AdapterRegistry, AdapterSignature, AlignmentConfig,
+                           AlignmentPipeline, LoRAConfig, SFTConfig)
+from shared.mlfp06.ex_2 import load_imdb_sft
+
+# Base model is a HuggingFace repo id from SFT_BASE_MODEL
+# (course default Qwen/Qwen2.5-0.5B-Instruct) — not an Ollama tag.
+config = AlignmentConfig(
+    method="sft",
+    base_model_id=os.environ.get("SFT_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct"),
+    lora=LoRAConfig(rank=8, alpha=16, target_modules=("q_proj", "v_proj")),
+    sft=SFTConfig(num_train_epochs=3, learning_rate=2e-4),
+)
+
+# SFT trains on the "text" column. Build it as instruction + response;
+# the raw review alone would teach the model IMDB prose, not the task.
+_full, train_df, _eval = load_imdb_sft()
+sft_frame = train_df.select(
+    (pl.col("instruction") + "\n\n" + pl.col("response")).alias("text")
+)
+train_ds = Dataset.from_dict(sft_frame.to_dict(as_series=False))
+
 pipeline = AlignmentPipeline(config)
-pipeline.train(train_dataset, eval_dataset)
+result = await pipeline.train(train_ds, adapter_name="imdb-sentiment-lora")
+print(result.training_metrics.get("train_loss"), result.adapter_path)
 
-# Register the adapter
-registry = AdapterRegistry()
-registry.register("sentiment_lora", pipeline.adapter)
-```
-
-## Worked Example: LoRA Fine-Tuning for Sentiment Classification
-
-```python
-import torch
-import torch.nn as nn
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-
-tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-model = AutoModelForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=2)
-
-# Replace attention layers with LoRA versions
-for layer in model.bert.encoder.layer:
-    original_q = layer.attention.self.query
-    layer.attention.self.query = LoRALayer(
-        original_q.in_features, original_q.out_features, rank=8
-    )
-    layer.attention.self.query.original = original_q
-
-# Count parameters
-total = sum(p.numel() for p in model.parameters())
-trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"Total: {total:,}, Trainable: {trainable:,} ({100*trainable/total:.2f}%)")
-
-# Train
-optimizer = torch.optim.AdamW(
-    [p for p in model.parameters() if p.requires_grad],
-    lr=1e-4
+# Store a versioned adapter for later use (Lesson 6.8 loads it again)
+version = await AdapterRegistry().register_adapter(
+    name="imdb-sentiment-lora",
+    adapter_path=result.adapter_path,
+    signature=AdapterSignature(base_model_id=config.base_model_id,
+                               adapter_type="lora", training_method="sft"),
 )
 ```
 
+`AlignmentResult` carries `adapter_name`, `adapter_path`, `adapter_version`, `training_metrics` (the raw trainer metrics dict), `experiment_dir` and `method`. It does not evaluate the model — accuracy, win rates and benchmark scores are your own evaluation step.
+
+## Worked Example: LoRA Fine-Tuning for Sentiment Classification
+
+Wrap BERT's query and value projections with `LoRALinear`, on the IMDB reviews Exercise 6.2 loads. The order matters: freeze the whole model first, then wrap, then unfreeze only the new classification head.
+
+```python
+import torch
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from shared.mlfp06.ex_2 import load_imdb_sft
+
+def build_lora_bert(rank=8, targets=("query", "value")):
+    model = AutoModelForSequenceClassification.from_pretrained(
+        "bert-base-uncased", num_labels=2
+    )
+    for p in model.parameters():          # 1. freeze every pre-trained weight
+        p.requires_grad = False
+    for layer in model.bert.encoder.layer:  # 2. wrap the chosen projections
+        attn = layer.attention.self
+        for name in targets:
+            setattr(attn, name, LoRALinear(getattr(attn, name), rank=rank, alpha=2 * rank))
+    for p in model.classifier.parameters():  # 3. the new head must learn too
+        p.requires_grad = True
+    return model
+
+model = build_lora_bert()
+total = sum(p.numel() for p in model.parameters())
+trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(f"Total: {total:,}, Trainable: {trainable:,} ({100 * trainable / total:.2f}%)")
+# Total: 109,778,690, Trainable: 296,450 (0.27%)
+
+# Data: IMDB reviews with positive/negative labels
+_full, train_df, eval_df = load_imdb_sft()      # 1,800 train / 200 eval rows
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+
+def batches(df, batch_size=16):
+    for start in range(0, df.height, batch_size):
+        chunk = df.slice(start, batch_size)
+        enc = tokenizer(chunk["text"].to_list(), truncation=True, max_length=256,
+                        padding=True, return_tensors="pt")
+        enc["labels"] = torch.tensor([int(lbl == "positive") for lbl in chunk["label"]])
+        yield enc
+
+optimizer = torch.optim.AdamW(
+    [p for p in model.parameters() if p.requires_grad], lr=2e-4
+)
+model.train()
+for batch in batches(train_df.sample(fraction=1.0, shuffle=True, seed=0)):
+    loss = model(**batch).loss
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+```
+
+The printed counts are exact for `bert-base-uncased`: 294,912 LoRA parameters (12 layers × 2 projections × (768 × 8 + 8 × 768)) plus the 1,538-parameter classifier. Had the base model not been frozen first, "trainable" would read 100%. One epoch over the 1,800 training reviews takes minutes on a GPU and much longer on a laptop CPU; reduce `max_length` or use a subset if you are on CPU.
+
 ## Try It Yourself
 
-**Drill 1.** Implement LoRA from scratch (the `LoRALayer` class) and apply it to a pre-trained BERT model. Fine-tune on IMDB sentiment classification. Report accuracy and compare with full fine-tuning.
+**Drill 1.** Apply `LoRALinear` to the Q, K and V projections of a pre-trained BERT model. Fine-tune on IMDB sentiment classification for 3 epochs, report test accuracy, and compare with full fine-tuning.
 
-**Solution:**
+**Solution:** reuse `build_lora_bert` and `batches` from the worked example.
 
 ```python
-# Apply LoRALayer to Q, K, V projections in all attention layers
-# Train for 3 epochs, evaluate on test set
+import time
+import torch
+
+def train_and_eval(model, train_df, eval_df, epochs=3, lr=2e-4):
+    optimizer = torch.optim.AdamW(
+        [p for p in model.parameters() if p.requires_grad], lr=lr
+    )
+    start = time.perf_counter()
+    for epoch in range(epochs):
+        model.train()
+        for batch in batches(train_df.sample(fraction=1.0, shuffle=True, seed=epoch)):
+            model(**batch).loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+    train_seconds = time.perf_counter() - start
+
+    model.eval()
+    correct = 0
+    with torch.no_grad():
+        for batch in batches(eval_df, batch_size=32):
+            labels = batch.pop("labels")
+            preds = model(**batch).logits.argmax(dim=-1)
+            correct += (preds == labels).sum().item()
+    return correct / eval_df.height, train_seconds
+
+lora_qkv = build_lora_bert(rank=8, targets=("query", "key", "value"))
+lora_acc, lora_secs = train_and_eval(lora_qkv, train_df, eval_df)
+
+full_ft = AutoModelForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=2)
+full_acc, full_secs = train_and_eval(full_ft, train_df, eval_df, lr=2e-5)  # full FT needs a ~10x lower LR
+
+print(f"LoRA QKV  acc={lora_acc:.3f}  {lora_secs:.0f}s  trainable=443,906")
+print(f"Full FT   acc={full_acc:.3f}  {full_secs:.0f}s  trainable=109,483,778")
 ```
 
-**Drill 2.** Implement adapter layers from scratch and insert them into BERT. Compare adapter fine-tuning with LoRA fine-tuning on the same task: accuracy, parameter count, training time.
+Expect LoRA to land close to full fine-tuning on a 1,800-review training set while training 0.4% of the weights and storing a checkpoint of under 2 MB instead of 440 MB. The time saving per step is smaller than the parameter saving, because the forward and backward passes still run through the whole frozen network.
 
-**Solution:**
+**Drill 2.** Insert adapter layers into BERT. Compare adapter fine-tuning with LoRA fine-tuning on the same task: accuracy, parameter count, training time.
+
+**Solution:** put an `AdapterLayer` after each layer's feed-forward output block (`layer.output`), which returns a plain hidden-state tensor.
 
 ```python
-class AdapterBertLayer(nn.Module):
-    def __init__(self, original_layer, bottleneck=64):
+class WithAdapter(nn.Module):
+    """Run a frozen sub-layer, then the adapter on its output."""
+
+    def __init__(self, block, d_model=768, bottleneck_dim=64):
         super().__init__()
-        self.original = original_layer
-        self.adapter = AdapterLayer(768, bottleneck)
+        self.block = block
+        self.adapter = AdapterLayer(d_model, bottleneck_dim)
 
     def forward(self, *args, **kwargs):
-        out = self.original(*args, **kwargs)
-        return (self.adapter(out[0]),) + out[1:]
+        return self.adapter(self.block(*args, **kwargs))
+
+def build_adapter_bert(bottleneck=64):
+    model = AutoModelForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=2)
+    for p in model.parameters():
+        p.requires_grad = False
+    for layer in model.bert.encoder.layer:
+        layer.output = WithAdapter(layer.output, 768, bottleneck)
+    for p in model.classifier.parameters():
+        p.requires_grad = True
+    return model
+
+adapter_model = build_adapter_bert()
+adapter_acc, adapter_secs = train_and_eval(adapter_model, train_df, eval_df, lr=1e-3)
+lora_model = build_lora_bert(rank=8)
+lora_acc, lora_secs = train_and_eval(lora_model, train_df, eval_df)
+print(f"Adapter  acc={adapter_acc:.3f}  {adapter_secs:.0f}s  trainable=1,209,602 (1.09%)")
+print(f"LoRA QV  acc={lora_acc:.3f}  {lora_secs:.0f}s  trainable=296,450 (0.27%)")
 ```
 
-**Drill 3.** Vary the LoRA rank from 1 to 64 (1, 2, 4, 8, 16, 32, 64). Plot accuracy vs rank and training time vs rank. What is the optimal rank for the sentiment task?
+The parameter counts are exact (measured on `bert-base-uncased`); the accuracies and times are yours to report. The adapter trains about four times as many parameters as LoRA on Q and V, and its extra layers stay in the forward pass at inference, whereas LoRA can be merged away.
+
+**Drill 3.** Vary the LoRA rank (1, 2, 4, 8, 16, 32, 64). Plot accuracy vs rank and training time vs rank. What is the optimal rank for the sentiment task?
 
 **Solution:**
 
 ```python
+import matplotlib.pyplot as plt
+import polars as pl
+
+rows = []
 for rank in [1, 2, 4, 8, 16, 32, 64]:
-    # Rebuild model with this rank, train, evaluate
-    pass
+    model = build_lora_bert(rank=rank)
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    acc, secs = train_and_eval(model, train_df, eval_df, epochs=1)
+    rows.append({"rank": rank, "trainable": trainable, "accuracy": acc, "seconds": secs})
+sweep = pl.DataFrame(rows)
+print(sweep)
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+ax1.plot(sweep["rank"], sweep["accuracy"], marker="o")
+ax1.set(xscale="log", xlabel="LoRA rank r", ylabel="eval accuracy")
+ax2.plot(sweep["rank"], sweep["seconds"], marker="o")
+ax2.set(xscale="log", xlabel="LoRA rank r", ylabel="training seconds")
+plt.tight_layout()
+plt.show()
 ```
 
-**Drill 4.** Train two LoRA adapters: one for sentiment classification and one for topic classification. Merge them using task arithmetic (add both weight deltas to the base model). Does the merged model perform both tasks?
+The trainable count is exactly $12 \times 2 \times 1536r + 1538$: 38,402 at r = 1, 296,450 at r = 8 and 2,360,834 at r = 64. Binary sentiment is a low-rank task, so accuracy typically plateaus at a small rank; pick the smallest rank on the plateau. Training time barely moves with rank, because the frozen network dominates the compute.
 
-**Solution:**
+**Drill 4.** Train two LoRA adapters on BERT: one for sentiment and one for a second binary task of your choice. Merge them by task arithmetic (add both weight deltas to the base model). Does the merged model perform both tasks?
+
+**Solution:** each wrapped layer's delta is $\frac{\alpha}{r}(AB)^\top$ in PyTorch's (out, in) weight layout. Fold both deltas into one copy of the base weights:
 
 ```python
-# Extract adapter weights: delta_sentiment = LoRA_A @ LoRA_B for sentiment adapter
-# Extract adapter weights: delta_topic = LoRA_A @ LoRA_B for topic adapter
-# Merged weight = W_0 + delta_sentiment + delta_topic
+import copy
+
+def lora_deltas(model):
+    """{module path: delta W} for every LoRALinear in the model."""
+    return {
+        name: (module.lora.lora_A @ module.lora.lora_B * module.lora.scaling).T.detach()
+        for name, module in model.named_modules()
+        if isinstance(module, LoRALinear)
+    }
+
+def merge_task_arithmetic(base, models, weights):
+    merged = copy.deepcopy(base)
+    all_deltas = [lora_deltas(m) for m in models]
+    for name, module in merged.named_modules():
+        if isinstance(module, nn.Linear) and name.endswith(("query", "value")):
+            key = name                      # same module path as the LoRALinear
+            for lam, deltas in zip(weights, all_deltas):
+                module.weight.data += lam * deltas[key]
+    return merged
+
+base = AutoModelForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=2)
+merged = merge_task_arithmetic(base, [sentiment_model, second_task_model], [1.0, 1.0])
 ```
+
+`sentiment_model` and `second_task_model` are two `build_lora_bert()` models you trained on their own tasks. The merged encoder carries both skills, but each task still needs its own classification head: copy `sentiment_model.classifier` onto the merged model to test sentiment, and the other head for the second task. Expect some loss on each task relative to its own adapter; interference grows when the two deltas push the same weights in opposite directions, which is exactly what TIES's sign election addresses.
 
 **Drill 5.** Explain in five sentences how LoRA relates to SVD from Module 4, Lesson 4.3. What is the "low-rank structure" that LoRA exploits? Why does constraining the rank act as a regulariser?
 
-**Solution:** SVD decomposes a matrix into $\mathbf{U}\boldsymbol{\Sigma}\mathbf{V}^T$, where keeping only the top $r$ singular values gives the best rank-$r$ approximation. LoRA's $\mathbf{B}\mathbf{A}$ decomposition is equivalent to constraining the weight update to rank $r$. The "low-rank structure" is the observation that fine-tuning changes lie in a low-dimensional subspace of the full parameter space. Constraining the rank acts as a regulariser because it limits the model's capacity to overfit to the fine-tuning data — similar to how PCA with fewer components prevents overfitting to noise. This is why LoRA with $r = 8$ often matches full fine-tuning on tasks with moderate training data.
+**Solution:** SVD decomposes a matrix into $\mathbf{U}\boldsymbol{\Sigma}\mathbf{V}^T$, where keeping only the top $r$ singular values gives the best rank-$r$ approximation. LoRA's $\mathbf{B}\mathbf{A}$ decomposition constrains the weight update to rank $r$ — it learns a rank-$r$ update directly rather than truncating a full one. The "low-rank structure" is the observation that fine-tuning changes lie in a low-dimensional subspace of the full parameter space. Constraining the rank acts as a regulariser because it limits the model's capacity to overfit to the fine-tuning data — similar to how PCA with fewer components discards noise. This is why LoRA with $r = 8$ often matches full fine-tuning on tasks with moderate training data.
 
 ## Cross-References
 
@@ -643,7 +839,9 @@ You should now be able to:
 - Implement LoRA from scratch and explain the low-rank mathematics.
 - Implement adapter layers from scratch.
 - Compare all major fine-tuning techniques and select the right one.
-- Merge multiple LoRA adapters using task arithmetic or TIES.
+- Merge multiple LoRA adapters using task arithmetic, TIES or DARE.
+- Choose a quantisation format for the deployment hardware.
+- Fine-tune and register an adapter with kailash-align's `AlignmentPipeline` and `AdapterRegistry`.
 
 ---
 

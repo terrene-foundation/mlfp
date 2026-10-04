@@ -50,3 +50,12 @@
 - Measured on the installed engine: four verdicts incl. fail-open for envelope-less + unknown addresses; verdict levels auto_approved / flagged / held / blocked.
 - DPO LR: ~1e-6 full fine-tuning, ~5e-5 with LoRA (ex_3.3). Unauthorised role → refused inside the Nexus handler with `blocked: true` (not a 403).
 - Full fine-tuning a 7B model needs ~112 GB (not 28 GB). Tokenisation slide uses real cl100k_base IDs. SFT base model from SFT_BASE_MODEL (no TinyLlama).
+
+---
+# Additions from the textbook shard (S3a, merged f2458287)
+- Lesson pages should match: toy DPO β table (KL 1.78 at β=0.01 → 0.27 at β=1.0); BM25 hit@k 0.92/0.97 + chunk-size table;
+  DriftMonitor PSI pattern; capstone tiers qa public $1, admin confidential $10, audit secret $50.
+- Exercise 6.2 (E13) still has no LoRA/adapter training loop — textbook 6.2 drills hold verified training + merge code to port (S6).
+- LoRA on BERT: trainable 296,450 params (0.27%), measured.
+- HDB prices filtered 50,000–2,000,000 in the textbook → settle with the X-DATA shared cleaner (P2).
+- RAGResearchAgent / MemoryAgent checked by signature only — confirm output keys (answer, sources, confidence, response) in S7 with Ollama.

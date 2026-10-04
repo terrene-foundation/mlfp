@@ -390,10 +390,16 @@ for attr in ["race", "gender", "age"]:
     base_rate = {k: round(y_test[g == k].mean(), 3) for k in np.unique(g)}
     print(attr, di, base_rate)</code></pre>
     <p>
-      Race and gender pass the four-fifths screen comfortably: every
+      These numbers belong to <em>one specific model</em>: Exercise 3.6's
+      class-weighted LightGBM, declining at $p \ge 0.5$, measured on our
+      run. Race and gender pass the four-fifths screen comfortably: every
       group's approval rate is above 95% of the most-approved group's. Age
       fails badly. Applicants aged 21–34 are approved about 36% as often as
-      those aged 65+. But their default base rate is also about ten times
+      those aged 65+. A different model or threshold gives different ratios
+      but the same picture: the module textbook's <em>unweighted</em>
+      LightGBM at $t^* = 0.130$ reports at least 0.97 for race and gender
+      and 0.26 for ages 21–34. Always state which model and which threshold
+      a fairness number was measured on. But their default base rate is also about ten times
       higher (about 25% against about 3%). The screen flags the outcome; it
       cannot tell you whether the gap is justified risk or unfair treatment.
     </p>

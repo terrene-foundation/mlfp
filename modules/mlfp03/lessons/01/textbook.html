@@ -455,10 +455,15 @@ vitals = vitals.with_columns(pl.col("timestamp").str.to_datetime(FMT))</code></p
 print(vitals.height, vitals_24h.height,
       vitals_24h["admission_id"].n_unique())   # 69421 38 4</code></pre>
     <p>
-      Look at that output before going further. Of 69,421 vital readings,
+      Look at that output before going further. Of 69,421 vital-sign rows,
       only 38 fall inside the 24-hour window, covering 4 of 8,000
-      admissions; medications and labs are just as sparse. In this extract
-      the event tables are simply not time-aligned with the admissions.
+      admissions. Exercise 3.1 counts the same thing per individual reading
+      (six vitals per row, unpivoted): only 198 of 416,526 readings fall in
+      the first 24 hours. Medications (14 admissions) and labs (17
+      admissions) are just as sparse. In this extract the event tables are
+      simply not time-aligned with the admissions, so <strong>the
+      first-24-hour features carry almost no signal</strong> — for all but
+      a handful of admissions they are empty and get imputed.
       Exercise 3.1 runs the same <em>window audit</em> and reports it as a
       data-quality finding. Catching this <em>before</em> modelling is the
       whole point of the audit: in a real project you would go back and fix

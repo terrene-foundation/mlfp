@@ -1128,9 +1128,9 @@ The rule picks the largest `alpha` whose mean CV error is within one standard er
 
 ## Why This Matters
 
-In 2018, a Singapore e-commerce company was building a customer churn model. The ML team's first attempt used logistic regression. It worked reasonably well — 0.74 AUC. The head of data science insisted they try "something more modern". They tried a deep neural network. It reached 0.76 AUC after two weeks of tuning. They tried XGBoost. It reached 0.83 AUC in an afternoon. They tried a random forest. It reached 0.82 AUC in twenty minutes.
+Consider an e-commerce team building a customer churn model (an illustrative composite). The ML team's first attempt used logistic regression. It worked reasonably well — 0.74 AUC. The head of data science insisted they try "something more modern". They tried a deep neural network. It reached 0.76 AUC after two weeks of tuning. They tried XGBoost. It reached 0.83 AUC in an afternoon. They tried a random forest. It reached 0.82 AUC in twenty minutes.
 
-What the team had re-learned is one of the most stable empirical facts in ML: **tree-based ensembles beat neural networks on tabular data**, almost always, almost every time. This is not a prediction about the future — it is an observation from thousands of Kaggle competitions, production deployments, and benchmark studies.
+What the team had re-learned is one of the more stable empirical findings in ML: **on medium-sized tabular data, tree-based ensembles usually match or beat neural networks** with far less tuning (see, for example, Grinsztajn, Oyallon and Varoquaux, 2022, "Why do tree-based models still outperform deep learning on tabular data?"). It is a strong default, not a law — and as this lesson's own leaderboard shows, sometimes a simpler family wins.
 
 But the story has another layer. When the team shipped the random forest, the legal team asked: "Can you explain why the model rejected this specific customer?" The random forest could not give a simple answer. They ended up adding a decision tree as a fallback model for the "explainability path" — slightly worse accuracy, but every prediction came with a rule.
 
@@ -1320,84 +1320,148 @@ When should you use each model family? Here is a rough decision guide.
 
 ## Kailash Engine: TrainingPipeline
 
-Kailash's `TrainingPipeline` wraps the scikit-learn ecosystem with consistent APIs for polars dataframes. You declare the model, the preprocessor, the CV strategy, and the metrics; it runs the loop.
+Kailash's `TrainingPipeline` runs one train-evaluate-register cycle on a polars frame. You describe the job with three small objects, and the engine does the rest:
 
-```python
-from kailash_ml import TrainingPipeline
-from sklearn.ensemble import RandomForestClassifier
+- a **`FeatureSchema`** (Lesson 3.1) naming the feature columns and the row-identifier column;
+- a **`ModelSpec(model_class=..., hyperparameters=..., framework=...)`** naming the estimator by its import path (for example `"sklearn.ensemble.RandomForestClassifier"` or `"lightgbm.LGBMClassifier"`);
+- an **`EvalSpec(metrics=[...], split_strategy="holdout", test_size=0.2)`** saying how to hold out evaluation rows and what to measure.
 
-pipeline = TrainingPipeline(
-    model=RandomForestClassifier(n_estimators=200, oob_score=True, random_state=42),
-    preprocessor=PreprocessingPipeline(
-        numeric_features=num_cols,
-        categorical_features=cat_cols,
-    ),
-    cv_strategy="stratified_kfold",
-    cv_folds=5,
-    scoring=["accuracy", "f1", "roc_auc"],
-)
+`await pipeline.train(data, schema, model_spec, eval_spec, experiment_name)` fits the model on the training part, scores the held-out part, and registers the fitted model in the `ModelRegistry` you gave the pipeline (new versions start in the `staging` stage — Lesson 3.7). It returns a `TrainingResult` with `.metrics` and `.model_version`.
 
-result = pipeline.fit(X_train, y_train)
-print(f"OOB score: {result.model.oob_score_:.3f}")
-print(f"CV AUC: {result.cv_scores['roc_auc'].mean():.3f}")
-```
+Three behaviours of the installed version (kailash-ml 2.2) are worth knowing before you trust its numbers:
+
+- The engine's `"f1"` is the **support-weighted** F1 across both classes (`average="weighted"`), not the F1 of the positive class — so it will not match `sklearn.metrics.f1_score(y, pred)`.
+- `split_strategy="stratified_kfold"` is accepted, but the engine scores **only the first fold**. For a genuine k-fold comparison of model families, use scikit-learn's `cross_validate` as in the worked example, then train the chosen model through the pipeline.
+- Metrics that need predicted probabilities beyond AUC (`average_precision`, `log_loss`, `brier_score_loss`) are skipped by the engine's evaluator; compute them yourself from the registered model's `predict_proba`.
+
+The last block of the worked example trains the winning family through the engine.
 
 ## Worked Example: All Five Models on E-Commerce Churn
 
-Following the MLFP03 ex_3 solution, we train SVM, KNN, Naive Bayes, Decision Tree, and Random Forest on the same churn dataset and compare.
+Following Exercise 3, we train SVM, KNN, Naive Bayes, a decision tree and a random forest on the same churn data, with the same folds, and compare them against a do-nothing baseline.
+
+Four columns must go before anything else. `customer_id` is an identifier; `review_text` and `product_categories` are free text; and `days_since_last_order` **defines the label** — the dataset marks a customer as churned exactly when that column exceeds 180 days, so keeping it lets a one-split tree score 100% (target leakage, Lesson 3.1). SVM training scales roughly quadratically with rows, so we work with a 5,000-customer sample and hold out 1,000 of them first:
+
+```python
+import polars as pl
+from kailash_ml import PreprocessingPipeline
+from kailash_ml.interop import to_sklearn_input
+from shared import MLFPDataLoader
+
+churn = (
+    MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+    .drop("customer_id", "review_text", "product_categories", "days_since_last_order")
+    .sample(n=5_000, shuffle=True, seed=42)
+)
+test_df, dev_df = churn.head(1_000), churn.tail(4_000)   # hold out test rows first
+
+pipe = PreprocessingPipeline()                            # encodings fitted on dev rows only
+fitted = pipe.setup(dev_df, target="churned", train_size=0.8, seed=42, normalize=False,
+                    categorical_encoding="ordinal", imputation_strategy="median")
+dev = pl.concat([fitted.train_data, fitted.test_data])
+test = pipe.transform(test_df)
+
+feature_names = [c for c in dev.columns if c != "churned"]
+X, y, _ = to_sklearn_input(dev, feature_columns=feature_names, target_column="churned")
+X_test, y_test, _ = to_sklearn_input(test, feature_columns=feature_names, target_column="churned")
+print(X.shape, f"churn rate {y.mean():.3f}")
+```
+
+Churners are the **majority** here (about 74.5%), which changes how you read every metric: a model that says "churn" to everyone already scores 74.5% accuracy. Put that model in the table.
 
 ```python
 import time
-import polars as pl
-import numpy as np
-from sklearn.svm import SVC
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.naive_bayes import GaussianNB
-from sklearn.tree import DecisionTreeClassifier
+
+from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import StratifiedKFold, cross_validate
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import StratifiedKFold, cross_val_score
-from shared import MLFPDataLoader
-
-loader = MLFPDataLoader()
-df = loader.load("mlfp03", "ecommerce_customers.parquet")
-
-numeric = ["age", "total_purchases", "avg_order_value", "days_since_last_order",
-           "sessions_per_month", "support_tickets"]
-X = df.select(numeric).drop_nulls().to_numpy()
-y = df.select("churned").to_series().to_numpy()[:len(X)]
-
-X = StandardScaler().fit_transform(X)
-
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
 
 models = {
-    "SVM (RBF)":    SVC(kernel="rbf", C=1.0, gamma="scale", random_state=42),
-    "KNN (k=7)":    KNeighborsClassifier(n_neighbors=7),
-    "GaussianNB":   GaussianNB(),
-    "DecTree":      DecisionTreeClassifier(max_depth=8, random_state=42),
-    "RandForest":   RandomForestClassifier(n_estimators=200, oob_score=True, random_state=42),
+    "Always churn":  DummyClassifier(strategy="constant", constant=1),
+    "SVM (RBF)":     SVC(kernel="rbf", C=1.0, gamma="scale"),
+    "KNN (k=25)":    KNeighborsClassifier(n_neighbors=25),
+    "GaussianNB":    GaussianNB(),
+    "Decision tree": DecisionTreeClassifier(max_depth=6, random_state=42),
+    "Random forest": RandomForestClassifier(n_estimators=200, random_state=42),
 }
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-results = []
 for name, model in models.items():
     start = time.perf_counter()
-    auc_scores = cross_val_score(model, X, y, cv=cv, scoring="roc_auc")
-    elapsed = time.perf_counter() - start
-    results.append({
-        "model": name,
-        "auc_mean": auc_scores.mean(),
-        "auc_std": auc_scores.std(),
-        "time_sec": elapsed,
-    })
-    print(f"{name:12s}  AUC = {auc_scores.mean():.3f} +/- {auc_scores.std():.3f}   ({elapsed:.1f}s)")
+    # the scaler is refitted inside every fold; SVM and KNN need it, trees ignore it
+    res = cross_validate(make_pipeline(StandardScaler(), model), X, y, cv=cv,
+                         scoring=["accuracy", "f1", "roc_auc"])
+    print(f"{name:14s} acc {res['test_accuracy'].mean():.3f}  F1 {res['test_f1'].mean():.3f}  "
+          f"AUC {res['test_roc_auc'].mean():.3f} +/- {res['test_roc_auc'].std(ddof=1):.3f}  "
+          f"({time.perf_counter() - start:.1f}s)")
 ```
 
-You will typically see Random Forest winning on AUC, Decision Tree close behind but higher variance across folds, SVM competitive if you tuned `C` and `gamma`, KNN lagging if the feature count is high, and Naive Bayes at the bottom but training in milliseconds.
+Measured on this sample (5-fold CV, 4,000 rows):
+
+| Model         | Accuracy | F1 (churn) | ROC-AUC |
+| ------------- | -------- | ---------- | ------- |
+| Always churn  | 0.745    | 0.854      | 0.500   |
+| SVM (RBF)     | 0.786    | 0.870      | 0.721   |
+| KNN (k=25)    | 0.768    | 0.862      | 0.744   |
+| GaussianNB    | 0.784    | 0.863      | 0.791   |
+| Decision tree | 0.779    | 0.864      | 0.761   |
+| Random forest | 0.777    | 0.863      | 0.775   |
+
+Three lessons hide in this table. First, **F1 on the majority class barely separates anything** — "always churn" already scores 0.854 — so compare accuracy and AUC against the baseline row, not F1 alone. Second, every model beats the baseline, but only by a few accuracy points: with the label-defining column removed, the remaining features carry modest signal. Third, **no family wins everywhere**: the humble Gaussian Naive Bayes has the best AUC on this data, ahead of the forest, while the SVM has the best accuracy but the weakest ranking. Your numbers may differ slightly with a different sample; the AUC standard deviations (about ±0.02) tell you how much of the gap between neighbours is noise.
+
+**Train the chosen family through `TrainingPipeline`.** Once a family is chosen, the engine trains it, scores a holdout and registers it. The registry needs a database; use an absolute SQLite path (relative `sqlite:///` paths are resolved from the filesystem root by some Kailash adapters):
+
+```python
+import asyncio
+from pathlib import Path
+
+from kailash.db import ConnectionManager
+from kailash_ml import ModelRegistry, TrainingPipeline
+from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+from kailash_ml.types import FeatureField, FeatureSchema
+
+dev_rows = dev.with_columns(pl.int_range(0, dev.height, dtype=pl.Int64).alias("row_id"))
+schema = FeatureSchema(
+    name="churn_input",
+    features=[FeatureField(f, "float64") for f in feature_names],
+    entity_id_column="row_id",
+)
+
+
+async def train_forest():
+    conn = ConnectionManager(f"sqlite:///{Path('mlfp03_models.db').resolve()}")
+    await conn.initialize()
+    try:
+        pipeline = TrainingPipeline(feature_store=None, registry=ModelRegistry(conn))
+        return await pipeline.train(
+            data=dev_rows,
+            schema=schema,
+            model_spec=ModelSpec(
+                model_class="sklearn.ensemble.RandomForestClassifier",
+                hyperparameters={"n_estimators": 200, "random_state": 42},
+            ),
+            eval_spec=EvalSpec(metrics=["accuracy", "f1", "auc"], split_strategy="holdout", test_size=0.2),
+            experiment_name="churn_random_forest",
+        )
+    finally:
+        await conn.close()
+
+
+result = asyncio.run(train_forest())
+print(result.metrics, "registered as version", result.model_version.version, "in", result.model_version.stage)
+```
+
+The engine reports holdout accuracy about 0.78 and AUC about 0.77 — consistent with the cross-validation table — and an `f1` of about 0.76, lower than the table's 0.86 because it is the support-weighted F1, not the churn-class F1.
 
 ### Computing Gini Impurity by Hand
 
-Suppose a node contains 100 samples: 70 retained, 30 churned. The Gini impurity is:
+Suppose a node contains 100 customers: 70 churned, 30 retained. The Gini impurity is:
 
 ```
 G = 1 - (70/100)^2 - (30/100)^2
@@ -1405,15 +1469,15 @@ G = 1 - (70/100)^2 - (30/100)^2
   = 0.42
 ```
 
-Now split on `sessions_per_month > 15`:
+Now split on `order_count > 15` (illustrative counts):
 
-- Left child (fewer sessions): 40 samples, 10 retained, 30 churned. `G_L = 1 - 0.0625 - 0.5625 = 0.375`.
-- Right child (more sessions): 60 samples, 60 retained, 0 churned. `G_R = 1 - 1 - 0 = 0`.
+- Left child (15 orders or fewer): 60 customers, 60 churned, 0 retained. `G_L = 1 - 1 - 0 = 0`.
+- Right child (more than 15 orders): 40 customers, 10 churned, 30 retained. `G_R = 1 - 0.0625 - 0.5625 = 0.375`.
 
 Weighted child impurity:
 
 ```
-G_children = (40/100) * 0.375 + (60/100) * 0 = 0.15
+G_children = (60/100) * 0 + (40/100) * 0.375 = 0.15
 ```
 
 Gini drop (analogous to information gain):
@@ -1422,25 +1486,26 @@ Gini drop (analogous to information gain):
 Delta G = 0.42 - 0.15 = 0.27
 ```
 
-A good split. The child on the right is pure — any sample reaching it is predicted retained with certainty. The child on the left still has a mixed population (10 retained, 30 churned) and will be split again by a child node.
+A good split. The left child is pure — every customer reaching it is predicted to churn. The right child is still mixed (10 churned, 30 retained) and will be split again.
 
 ### OOB Computation Demonstration
 
 ```python
-rf = RandomForestClassifier(n_estimators=500, oob_score=True, random_state=42)
-rf.fit(X, y)
+from sklearn.model_selection import cross_val_score
+
+rf = RandomForestClassifier(n_estimators=500, oob_score=True, random_state=42).fit(X, y)
 print(f"OOB accuracy: {rf.oob_score_:.3f}")
 
-# Compare with 5-fold CV
-cv_acc = cross_val_score(rf, X, y, cv=5, scoring="accuracy").mean()
+cv_acc = cross_val_score(RandomForestClassifier(n_estimators=500, random_state=42),
+                         X, y, cv=cv, scoring="accuracy").mean()
 print(f"5-fold CV accuracy: {cv_acc:.3f}")
 ```
 
-The two numbers are usually within a percentage point of each other. OOB gives you a free CV estimate; for small datasets, that is valuable because CV splits the data further.
+On this sample both print about 0.779. OOB gives you a free CV-quality estimate from a single fit; for small datasets that is valuable because CV must split the data further.
 
 ## Try It Yourself
 
-**Exercise A (easy).** Train KNN with `k = 1, 3, 5, 11, 21, 51` on the churn data. Plot AUC vs `k`. What shape does the curve take? Where is the optimal `k`?
+**Exercise A (easy).** Train KNN with `k = 1, 3, 5, 11, 21, 51` on the churn data (scaler inside the pipeline, same folds as the worked example). Plot cross-validated AUC vs `k`. What shape does the curve take? Where is the optimal `k`?
 
 **Exercise B (medium).** Compute the curse of dimensionality empirically. Sample 1000 points uniformly from `[0, 1]^d` for `d in {2, 5, 10, 50, 200}`. For each `d`, compute the ratio `(r_max - r_min) / r_min` where `r_min` and `r_max` are the distances from the origin to the nearest and farthest points. Plot the ratio against `d`. How fast does it shrink?
 
@@ -1448,10 +1513,10 @@ The two numbers are usually within a percentage point of each other. OOB gives y
 
 ## Cross-References
 
-- **Module 2, Lesson 2.3** Bayesian thinking connects directly to Naive Bayes.
+- **Module 2, Lesson 2.1** Bayesian thinking connects directly to Naive Bayes.
 - **Lesson 3.2** Cross-validation and bias-variance — used to compare the five models here.
 - **Forward link:** Lesson 3.4 takes the Random Forest intuition and replaces bagging with boosting.
-- **Forward link:** Lesson 3.6 uses SHAP to explain the Random Forest from this lesson.
+- **Forward link:** Lesson 3.6 uses TreeSHAP to explain tree ensembles like the forest here (applied to the credit model).
 
 ## Deeper Dive: SVM Slack and the Hinge Loss
 

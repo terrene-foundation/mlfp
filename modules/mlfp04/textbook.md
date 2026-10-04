@@ -2515,12 +2515,15 @@ where $\eta$ is the learning rate. Too large: overshoots and diverges. Too small
 | ---------- | ------------------------------- | -------------------------- | ------------------------------------------ |
 | ReLU       | $\max(0, z)$                    | Default hidden layer       | Simple, fast, mitigates vanishing gradient |
 | Leaky ReLU | $\max(0.01z, z)$                | Hidden layer               | Avoids dead neurons                        |
+| PReLU      | $\max(az, z)$, $a$ learned       | Hidden layer               | Leaky ReLU whose negative slope is trained |
+| ELU        | $z$ if $z>0$, else $\alpha(e^z - 1)$ | Hidden layer             | Smooth, negative outputs push mean activation towards 0 |
+| Swish / SiLU | $z \cdot \sigma(z)$          | Hidden layers in deep nets | Smooth, non-monotonic; close cousin of GELU |
 | GELU       | $z \cdot \Phi(z)$               | Transformer hidden layers  | Smooth, used in BERT/GPT                   |
 | Sigmoid    | $1/(1 + e^{-z})$                | Binary output              | Maps to $[0,1]$ probability                |
 | Tanh       | $(e^z - e^{-z})/(e^z + e^{-z})$ | Hidden layer (less common) | Zero-centred, maps to $[-1,1]$             |
 | Softmax    | $e^{z_i}/\sum_j e^{z_j}$        | Multi-class output         | Maps to probability distribution           |
 
-ReLU is the default choice for hidden layers. Sigmoid and softmax are for output layers. GELU is the default in modern transformer architectures.
+ReLU is the default choice for hidden layers. Sigmoid and softmax are for output layers. GELU is the default in modern transformer architectures. The "dead neuron" problem: a ReLU unit whose input is negative for every example outputs 0 and receives zero gradient, so it can never recover; Leaky ReLU, PReLU and ELU keep a small gradient for negative inputs to avoid this.
 
 ### THEORY: Loss functions taxonomy
 
@@ -2532,10 +2535,13 @@ ReLU is the default choice for hidden layers. Sigmoid and softmax are for output
 | Binary CE     | $-[y\log\hat{y} + (1-y)\log(1-\hat{y})]$ | Binary classification       |
 | Focal loss    | $-\alpha_t(1-p_t)^\gamma \log(p_t)$      | Imbalanced classification   |
 | KL divergence | $\sum p \log(p/q)$                       | Distribution matching (VAE) |
+| Reconstruction | $\|\mathbf{x} - \hat{\mathbf{x}}\|^2$ (or BCE per pixel) | Autoencoders (Lesson 5.1) |
+| Contrastive   | $y\,d^2 + (1-y)\max(0, m - d)^2$, $d = \|f(\mathbf{a}) - f(\mathbf{b})\|$ | Similarity learning: pull matching pairs together, push others at least $m$ apart |
+| Triplet       | $\max(0,\ d(\mathbf{a}, \mathbf{p}) - d(\mathbf{a}, \mathbf{n}) + m)$ | Metric learning: an anchor must be closer to a positive than to a negative by margin $m$ |
 
 ### FOUNDATIONS: Dropout
 
-Dropout randomly sets a fraction $p$ of the hidden layer activations to zero during training. This forces the network to learn redundant representations — no single neuron can be relied upon, so the knowledge must be distributed. During inference, dropout is turned off and activations are scaled by $(1-p)$ to compensate.
+Dropout randomly sets a fraction $p$ of the hidden layer activations to zero during training. This forces the network to learn redundant representations — no single neuron can be relied upon, so the knowledge must be distributed. Modern implementations (including PyTorch's `nn.Dropout`) use **inverted dropout**: during training the surviving activations are scaled up by $1/(1-p)$, so their expected value is unchanged, and at inference dropout is simply switched off — the identity, no rescaling. (The original 2014 formulation instead scaled the weights by $(1-p)$ at test time; the two are equivalent in expectation.) Remember to switch the model to evaluation mode before predicting.
 
 Dropout rate is typically 0.1–0.5. Higher rates provide stronger regularisation but slow convergence. It is the neural network equivalent of bagging — each training step uses a different random subset of neurons, effectively training an ensemble of networks.
 
@@ -2581,6 +2587,7 @@ A fixed learning rate is rarely optimal. Common schedules:
 - **Step decay:** reduce by a factor every $N$ epochs.
 - **Cosine annealing:** $\eta_t = \eta_{\min} + \frac{1}{2}(\eta_{\max} - \eta_{\min})(1 + \cos(\pi t / T))$
 - **Warmup + cosine:** start with a low learning rate, linearly increase to the peak, then follow cosine decay. Used in transformer training.
+- **One-cycle policy:** rise from a low learning rate to a high one over the first part of training, then anneal to well below the start; often allows fast training with a large peak rate.
 - **ReduceLROnPlateau:** reduce when validation loss stops improving.
 
 ### FOUNDATIONS: Gradient clipping and early stopping
@@ -2640,6 +2647,17 @@ The second hidden layer combines these into more abstract features:
 These features were not designed by anyone. They emerged from minimising the price prediction error via backpropagation. This is representation learning — the network discovers its own representations.
 
 The connection to Module 4's journey: in Lesson 4.3, PCA found linear combinations that maximise variance. In Lesson 4.7, matrix factorisation found linear combinations that minimise reconstruction error. Here, neural networks find non-linear combinations that minimise task-specific loss. Each step adds more power.
+
+### THEORY: Word2Vec is a one-hidden-layer network
+
+Lesson 4.6 used word embeddings as tools and promised to show how they are learned. Here it is. Skip-gram Word2Vec (Mikolov et al., 2013) is a network with one hidden layer and **no** activation function:
+
+- **Input:** a one-hot vector $\mathbf{x} \in \{0, 1\}^{V}$ for a centre word (vocabulary size $V$).
+- **Hidden layer:** $\mathbf{h} = \mathbf{W}_{\text{in}}^T \mathbf{x}$. Multiplying by a one-hot vector just selects one row of $\mathbf{W}_{\text{in}}$ ($V \times d$, with $d$ typically 100–300) — that row *is* the word's embedding.
+- **Output:** scores $\mathbf{W}_{\text{out}}\mathbf{h}$ for every word in the vocabulary, turned into probabilities with a softmax: $p(w_o \mid w_c) = \frac{\exp(\mathbf{v}'^{T}_{w_o} \mathbf{v}_{w_c})}{\sum_{w} \exp(\mathbf{v}'^{T}_{w} \mathbf{v}_{w_c})}$.
+- **Loss:** cross-entropy for predicting each word that actually appears within a small window around the centre word.
+
+Backpropagation changes only the rows involved, and words that occur in similar contexts receive similar gradient updates, so their rows drift together — "words that appear in similar contexts have similar meanings", learned rather than designed. Because the softmax over the whole vocabulary is expensive, practical training uses *negative sampling*: a binary classifier that separates real (centre, context) pairs from a few randomly drawn fake ones, which is logistic regression on dot products of embeddings. Levy and Goldberg (2014) showed that skip-gram with negative sampling implicitly factorises a matrix of shifted pointwise mutual information between words and contexts — the same PMI you used for topic coherence in Lesson 4.6, and the same "factorise a co-occurrence matrix" idea as Lesson 4.7. Word embeddings are matrix factorisation learned by a shallow neural network.
 
 ## The Kailash Engine: OnnxBridge (model export)
 
@@ -2890,7 +2908,7 @@ This lesson completes the Module 4 arc. You entered this chapter knowing how to 
 
 Module 4 took you from the last row of labelled data in Module 3 into the territory of unlabelled data and beyond. The arc has a clear shape.
 
-**The first half (Lessons 4.1–4.6)** was unsupervised machine learning: discovering structure in data without labels. Clustering found groups. PCA found directions. Topic modelling found themes. Anomaly detection found outliers. Association rules found co-occurrences. In every case, the features were discovered from the data's own geometry — no error signal, no loss function, no gradient.
+**The first half (Lessons 4.1–4.6)** was unsupervised machine learning: discovering structure in data without labels. Clustering found groups. PCA found directions. Topic modelling found themes. Anomaly detection found outliers. Association rules found co-occurrences. In every case the features were discovered from the data's own structure. Some of these methods minimise an objective (K-means, PCA, NMF), but always as a summary of a fully observed matrix — none was trained to predict values it had not seen.
 
 **The pivot (Lesson 4.7)** introduced optimisation-driven feature discovery. Matrix factorisation learns embeddings by minimising reconstruction error. The embeddings are features, but nobody designed them — they emerged from the loss function. This is the bridge between unsupervised and supervised feature learning.
 
@@ -2980,7 +2998,7 @@ Module 5 introduces specialised architectures: autoencoders for reconstruction, 
 
 **Dimensionality reduction.** Reducing the number of features while preserving important structure. PCA, t-SNE, and UMAP are dimensionality reduction methods.
 
-**Dropout.** A regularisation technique that randomly zeros out a fraction of neurons during training, forcing the network to learn distributed representations.
+**Dropout.** A regularisation technique that randomly zeros out a fraction of neurons during training, forcing the network to learn distributed representations. In the usual (inverted) form, survivors are scaled by $1/(1-p)$ during training and dropout is switched off at inference.
 
 **Early stopping.** Halting training when validation loss stops improving, to prevent overfitting.
 
@@ -2994,7 +3012,13 @@ Module 5 introduces specialised architectures: autoencoders for reconstruction, 
 
 **Embedding.** A dense vector representation of a high-dimensional or discrete object (word, user, item) in a continuous low-dimensional space, learned through optimisation.
 
-**EnsembleEngine.** Kailash ML engine for combining multiple models via blending, stacking, bagging, or boosting.
+**EnsembleEngine.** Kailash ML engine for combining supervised models via blending (soft/hard voting), stacking, bagging, or boosting. It needs a target column, so it cannot blend unsupervised anomaly scores.
+
+**AnomalyDetectionEngine.** Kailash ML engine that runs Isolation Forest, LOF or a one-class SVM (`detect`) and blends several detectors' normalised scores (`ensemble_detect`).
+
+**ClusteringEngine.** Kailash ML engine that fits K-means, GMM, DBSCAN or spectral clustering behind one `fit()` and sweeps $K$ with `sweep_k()`.
+
+**DimReductionEngine.** Kailash ML engine that runs PCA, NMF, t-SNE or UMAP behind one `reduce()` call.
 
 **Feature Engineering Spectrum.** The organising framework of the MLFP curriculum: from manual features (M3) through unsupervised discovery (M4.1–4.6) to optimisation-driven learning (M4.7) to neural representation learning (M4.8+).
 
@@ -3016,7 +3040,9 @@ Module 5 introduces specialised architectures: autoencoders for reconstruction, 
 
 **Hidden layer.** A layer in a neural network between the input and output layers. Its activations are learned features.
 
-**IDF (Inverse Document Frequency).** A measure of how rare a word is across a corpus: $\log(N / \text{df}(t))$.
+**IDF (Inverse Document Frequency).** A measure of how rare a word is across a corpus: $\log(N / \text{df}(t))$ in the textbook form; libraries often use a smoothed variant.
+
+**Intrinsic dimension.** The number of independent directions along which data actually vary, often far below the number of features; estimated with PCA thresholds or the Levina–Bickel nearest-neighbour estimator.
 
 **IQR (Interquartile Range).** The difference between the 75th and 25th percentiles. Used for outlier detection: values outside $Q_1 - 1.5 \times \text{IQR}$ to $Q_3 + 1.5 \times \text{IQR}$ are flagged.
 
@@ -3039,6 +3065,8 @@ Module 5 introduces specialised architectures: autoencoders for reconstruction, 
 **Loading (PCA).** The weight of an original feature in a principal component. Used for interpreting what each component represents.
 
 **Local Outlier Factor (LOF).** An anomaly detection method that compares a point's local density to the local densities of its neighbours.
+
+**Masking.** The failure of a neighbourhood-based detector such as LOF to flag a tight group of anomalies when the neighbourhood size is smaller than the group.
 
 **Loss function.** A function that measures the discrepancy between model predictions and true values. Training minimises the loss.
 
@@ -3084,7 +3112,7 @@ Module 5 introduces specialised architectures: autoencoders for reconstruction, 
 
 **Topic model.** A model that discovers latent themes (topics) in a collection of documents. LDA and BERTopic are topic models.
 
-**UMAP.** Uniform Manifold Approximation and Projection. A non-linear dimensionality reduction method that preserves both local and global structure.
+**UMAP.** Uniform Manifold Approximation and Projection. A non-linear dimensionality reduction method that preserves local neighbourhoods well and can transform new points; distances between separated clusters in its output are not reliable.
 
 **Universal Approximation Theorem.** The theorem that a sufficiently wide single-hidden-layer neural network can approximate any continuous function on a compact set.
 

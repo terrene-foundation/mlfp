@@ -1502,21 +1502,25 @@ An LLM generates text. An agent generates actions. The difference is that an age
 
 ### THEORY: ReAct formalisation
 
-ReAct (Reasoning + Acting) interleaves reasoning traces with actions:
+ReAct (Reasoning + Acting; Yao et al., 2023) interleaves reasoning traces with actions:
 
 $$\text{Thought}_t \to \text{Action}_t \to \text{Observation}_t \to \text{Thought}_{t+1} \to \ldots$$
 
-The thought is free-form text where the agent reasons about the current state. The action invokes a tool with specific parameters. The observation is the tool's output. The loop continues until the agent produces a final answer.
+The thought is free-form text where the agent reasons about the current state. The action invokes a tool with specific parameters. The observation is the tool's output. The loop continues until the agent produces a final answer — or hits a bound you set (below).
+
+### FOUNDATIONS: Chain-of-thought agents
+
+A chain-of-thought agent reasons step by step *before* answering but takes no actions: it is Lesson 6.1's CoT prompting packaged as an agent. Use it when everything needed is already in the prompt (a policy question with the policy attached, a calculation with all the numbers). Use a ReAct agent when the answer depends on information the agent must fetch or compute.
 
 ### FOUNDATIONS: Function calling
 
-Function calling provides structured tool invocation:
+Function calling provides structured tool invocation. Each tool is described by a name, a description and a JSON schema for its arguments:
 
 ```python
 tools = [
     {
-        "name": "search_database",
-        "description": "Search the Singapore property database",
+        "name": "search_listings",
+        "description": "Search HDB resale transactions by town and price range",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1524,79 +1528,248 @@ tools = [
                 "min_price": {"type": "number"},
                 "max_price": {"type": "number"},
             },
+            "required": ["town"],
         },
     }
 ]
 ```
 
-The LLM selects the appropriate tool and fills in the parameters based on the user's natural language query. This bridges natural language understanding with structured API calls.
+The LLM selects the appropriate tool and fills in the arguments from the user's natural-language request; your code executes the call and returns the result as the observation. Three controls matter in practice:
 
-### FOUNDATIONS: Cost budget safety
+- **`tool_choice`:** `auto` (the model decides whether to call a tool), `required` (it must call some tool) or a specific function (it must call that one) — for example, forcing a `search` call before any answer.
+- **Parallel function calling:** a model may request several independent calls in one turn (look up two towns at once); your executor runs them and returns all the results.
+- **Descriptions are the interface:** the model chooses tools by their descriptions. Two tools with near-identical descriptions are the commonest cause of wrong tool selection.
 
-Agents can enter infinite loops or make expensive API calls. Kaizen 2.7 moved the cost cap onto the agent itself — there is no separate `LLMCostTracker` class. `ReActAgent` accepts `max_llm_cost_usd` as a constructor argument and halts gracefully when the budget is exhausted:
+### FOUNDATIONS: Tools in Kaizen
+
+A Kaizen `Delegate` only calls tools that are registered in a `ToolRegistry`: name, description, JSON-schema parameters and an `async` executor. Passing a plain list of Python functions registers nothing — the agent then answers without tools, silently. Exercise 6.5 builds the registry with `shared.mlfp06.ex_5.build_tool_registry(...)`; the worked example below does it by hand.
+
+### FOUNDATIONS: Bounding an agent — turns, tokens, dollars
+
+Agents can loop: a confused agent may call tools many times before realising it is stuck, and on a priced API every call costs money. Three ceilings exist, and they apply in different places:
+
+| Ceiling | How to set it | Works on local Ollama? |
+| ------- | ------------- | ---------------------- |
+| Turns   | `make_delegate(tools=..., max_turns=8)` | Yes — the most useful bound in this course |
+| Tokens  | Measure per run (`run_delegate_text` usage) and cap prompt/answer sizes | Yes |
+| Dollars | `BaseAgentConfig(budget_limit_usd=0.50)`, passed **at construction** | No — local inference is priced at $0, so a dollar cap never trips |
 
 ```python
-import os
-from kaizen_agents.agents.specialized.react import ReActAgent
+from kaizen import Signature, InputField, OutputField
+from kaizen.core.base_agent import BaseAgent, BaseAgentConfig
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
 
-agent = ReActAgent(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[data_explorer_tool, training_tool, viz_tool],
-    max_llm_cost_usd=2.00,
+class BriefingSignature(Signature):
+    """Write a three-sentence briefing on a topic."""
+    topic: str = InputField(description="The topic")
+    briefing: str = OutputField(description="Three sentences")
+
+capped = BaseAgent(
+    config=BaseAgentConfig(
+        llm_provider="ollama", model=DEFAULT_CHAT_MODEL, base_url=OLLAMA_BASE_URL,
+        use_async_llm=True, budget_limit_usd=0.50,
+    ),
+    signature=BriefingSignature(),
 )
-result = await agent.run(
-    "Analyse the HDB dataset and build a price prediction model"
-)
+print(capped.execution_context.budget_limit)   # 0.5 — the limit actually enforced
+# Trap: assigning capped.config.budget_limit_usd AFTER construction changes the
+# config object but not the enforced limit. Always pass it at construction.
 ```
+
+`make_delegate` deliberately sets the Delegate's `budget_usd=None`, because Kaizen's cost estimator would price free local tokens at hosted-API rates. On local Ollama, bound agents by turns and measure tokens; on a priced provider, add the dollar cap as well. Lesson 6.7 cascades budgets across agents through PACT envelopes.
 
 ### FOUNDATIONS: Agent design framework
 
-From the deck: when designing an agent, ask four questions:
+When designing an agent, ask four questions:
 
 1. **What is our goal?** — the task in concrete terms.
 2. **What is our thought process?** — the reasoning steps.
 3. **What kind of specialist would we hire?** — be precise ("ML data analyst" not "researcher").
 4. **What tools do they need?** — versatile, fault-tolerant, with caching.
 
-## Worked Example: Data Analysis Agent with ReAct
+Three design considerations follow from them:
+
+- **Iterative refinement:** a critic agent reviews the output and returns concrete revisions (`ex_5/04_critic_agent.py` builds an Analyse → Critique → Refine loop).
+- **Human-in-the-loop:** pause before irreversible or expensive actions (sending an email, retraining a model) and ask a person to approve.
+- **Monitoring and logging:** record every tool call, its arguments and its result, so a wrong answer can be traced to the step that caused it (Lesson 6.8 does this with the Observatory's agent lens).
+
+### FOUNDATIONS: Ready-made Kaizen agents
+
+`kaizen_agents.agents` provides `ReActAgent` and `ChainOfThoughtAgent`. Both take `llm_provider="ollama"` and `model=DEFAULT_CHAT_MODEL`, and their `run()` is synchronous (`ReActAgent.run(task=...)`, `ChainOfThoughtAgent.run(problem=...)`). Custom agents are a `BaseAgent` with your own `Signature` (Lesson 6.1, `ex_5/03`). For tool use, the course's standard pattern is a `Delegate` with a `ToolRegistry`, shown next.
+
+## Worked Example: Data Analysis Agent with Tools
+
+The agent answers questions about the HDB resale data from Module 1 by calling two tools: a Kailash `DataExplorer` profile and a polars group-by.
 
 ```python
-import os
-from kaizen_agents.agents.specialized.react import ReActAgent
-from kailash_ml import DataExplorer, TrainingPipeline, ModelVisualizer
+import polars as pl
+from kailash_ml import DataExplorer
+from kaizen_agents.delegate.loop import ToolRegistry
+from shared import MLFPDataLoader
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
 
-def profile_data(dataset_name: str) -> str:
-    """Profile a dataset and return summary statistics."""
-    df = loader.load("mlfp06", dataset_name)
-    explorer = DataExplorer()
-    profile = explorer.profile(df)
-    return str(profile.summary)
+df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+# Module 1 planted impossible prices (S$10, S$9M) in this file; drop them first
+df = df.filter(pl.col("resale_price").is_between(50_000, 2_000_000))
 
-def train_model(dataset_name: str, target: str, model_type: str = "xgboost") -> str:
-    """Train a model on the dataset."""
-    df = loader.load("mlfp06", dataset_name)
-    pipeline = TrainingPipeline(model_type=model_type)
-    result = pipeline.train(df, target=target)
-    return f"Accuracy: {result.metrics['accuracy']:.3f}"
+async def explore_data() -> str:
+    """Profile the table with a Kailash engine (truncated for the prompt)."""
+    profile = await DataExplorer().profile(df)
+    return str(profile.to_dict())[:2000]
 
-agent = ReActAgent(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[profile_data, train_model],
-)
-result = await agent.run("Analyse sg_hdb_prices.csv and predict resale_price")
+async def mean_price_by(column: str) -> str:
+    """Mean resale price grouped by one column, highest first."""
+    if column not in df.columns:
+        return f"Unknown column {column!r}. Columns: {df.columns}"   # tool errors are observations
+    out = (df.group_by(column).agg(pl.col("resale_price").mean().round(0))
+             .sort("resale_price", descending=True).head(10))
+    return str(out)
+
+tools = ToolRegistry()
+tools.register(name="explore_data", description="Profile the HDB resale table",
+               parameters={"type": "object", "properties": {}},
+               executor=explore_data)
+tools.register(name="mean_price_by",
+               description="Mean resale price grouped by a column such as town or flat_type",
+               parameters={"type": "object", "required": ["column"],
+                           "properties": {"column": {"type": "string"}}},
+               executor=mean_price_by)
+
+agent = make_delegate(tools=tools, max_turns=8)     # model: OLLAMA_CHAT_MODEL
+answer, usage, seconds = await run_delegate_text(
+    agent, "Which flat type has the highest mean resale price, and by how much?")
+print(answer)
+print(usage["total_tokens"], f"{seconds:.1f}s")
 ```
+
+Two details make this robust. The tool returns an error message instead of raising when the model asks for a column that does not exist, so the agent can observe the mistake and retry. And `max_turns=8` guarantees the loop ends even if the model never settles on an answer. To see which tools the agent actually called, capture the run with the Observatory (Lesson 6.8): `await LLMObservatory().agent.capture_run(agent, prompt, run_id="hdb_1")`.
+
+Exercise 6.5 applies the same pattern to multi-hop questions from HotpotQA (`ex_5/01`), bounds a runaway agent (`ex_5/02`), builds a structured BaseAgent (`ex_5/03`) and a critic loop (`ex_5/04`).
 
 ## Try It Yourself
 
-**Drill 1.** Build a ReAct agent with three tools (data profiler, model trainer, visualiser). Test it on an end-to-end analysis task.
+**Drill 1.** Build an agent with three tools (data profiler, grouped statistics, and a chart tool that saves a plot to disk and returns its path). Test it on an end-to-end analysis question.
 
-**Drill 2.** Implement a cost budget that stops the agent after S$1.00. What happens when the budget is exhausted mid-task?
+**Solution:** add a third tool to the worked example's registry.
 
-**Drill 3.** Build a function-calling agent with structured tool schemas. Compare with the ReAct agent on the same task.
+```python
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+async def plot_price_by(column: str) -> str:
+    """Bar chart of mean price by a column; returns the saved file path."""
+    if column not in df.columns:
+        return f"Unknown column {column!r}"
+    agg = df.group_by(column).agg(pl.col("resale_price").mean()).sort("resale_price")
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.barh(agg[column].cast(pl.String).to_list(), agg["resale_price"].to_list())
+    ax.set_xlabel("mean resale price (S$)")
+    path = f"price_by_{column}.png"
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return f"saved {path}"
+
+tools.register(name="plot_price_by", description="Save a bar chart of mean price by a column",
+               parameters={"type": "object", "required": ["column"],
+                           "properties": {"column": {"type": "string"}}},
+               executor=plot_price_by)
+agent = make_delegate(tools=tools, max_turns=10)
+answer, usage, _ = await run_delegate_text(
+    agent, "Profile the data, find the most expensive town, and chart mean price by town.")
+```
+
+Check the answer against the data yourself (`mean_price_by("town")`): an agent that answers without calling a tool is guessing, however fluent the prose.
+
+**Drill 2.** Bound a runaway agent. Give it an impossible task and compare `max_turns=3` with `max_turns=20`. Then construct a BaseAgent with `budget_limit_usd` and explain why it never trips on local Ollama.
+
+**Solution:** use the Observatory to count what each run actually did.
+
+```python
+from shared.mlfp06.diagnostics import LLMObservatory
+
+obs = LLMObservatory()
+impossible = "Find the resale price of a flat in a town that is not in the data, called Atlantis."
+for turns in (3, 20):
+    bounded = make_delegate(tools=tools, max_turns=turns)
+    await obs.agent.capture_run(bounded, impossible, run_id=f"turns_{turns}")
+    print(turns, obs.agent.tool_usage(f"turns_{turns}"))
+```
+
+The turn ceiling is a hard stop that works on any provider. The dollar cap is enforced against the provider's price per token; local Ollama inference costs nothing, so the spend stays at $0 and the cap never fires. On a priced API the same `budget_limit_usd=0.50` (passed at construction) stops the agent once its cumulative spend reaches 50 cents.
+
+**Drill 3.** Build a function-calling agent with strict structured tool schemas (types, `required`, `enum` for allowed column names). Compare its tool-call error rate with the loose schema of the worked example.
+
+**Solution:** constrain the argument with an `enum`, so the model can only name a real column:
+
+```python
+strict = ToolRegistry()
+strict.register(
+    name="mean_price_by",
+    description="Mean resale price grouped by one categorical column",
+    parameters={"type": "object", "required": ["column"],
+                "properties": {"column": {"type": "string",
+                                          "enum": ["town", "flat_type", "flat_model", "storey_range"]}}},
+    executor=mean_price_by,
+)
+```
+
+Run the same ten questions through both registries with `capture_run`, and count tool calls whose result starts with "Unknown column". The enum turns a class of runtime errors into something the model cannot express.
 
 **Drill 4.** Add error handling: if a tool call fails, the agent should retry with different parameters or use an alternative tool.
 
-**Drill 5.** Implement an iterative refinement pattern: after the initial analysis, a "critic" agent evaluates the result and suggests improvements, then the original agent implements them.
+**Solution:** never let an executor raise into the loop; return an informative message instead, and tell the agent what to do with it:
+
+```python
+def safe(executor):
+    async def wrapped(**kwargs) -> str:
+        try:
+            return await executor(**kwargs)
+        except Exception as exc:          # the observation names the failure
+            return f"TOOL ERROR {type(exc).__name__}: {exc}. Try different arguments or another tool."
+    return wrapped
+
+robust = ToolRegistry()
+robust.register(name="mean_price_by", description="Mean resale price grouped by a column",
+                parameters={"type": "object", "required": ["column"],
+                            "properties": {"column": {"type": "string"}}},
+                executor=safe(mean_price_by))
+agent = make_delegate(tools=robust, max_turns=8,
+                      system_prompt="If a tool returns TOOL ERROR, change the arguments or use another tool.")
+```
+
+The exception is caught and turned into an observation, which is different from swallowing it: the agent (and your trace) still sees exactly what went wrong.
+
+**Drill 5.** Implement an iterative refinement pattern: after the initial analysis, a critic agent evaluates the result and suggests improvements, then the original agent implements them.
+
+**Solution:** `ex_5/04_critic_agent.py` is the full version. The shape is three typed agents in a bounded loop:
+
+```python
+from kaizen import Signature, InputField, OutputField
+
+class Critique(Signature):
+    """Review a data analysis for errors and gaps."""
+    analysis: str = InputField(description="The analysis to review")
+    issues: str = OutputField(description="Concrete problems, one per line")
+    should_revise: bool = OutputField(description="True if the analysis needs another pass")
+
+critic = BaseAgent(config={"llm_provider": "ollama", "model": DEFAULT_CHAT_MODEL,
+                           "base_url": OLLAMA_BASE_URL, "use_async_llm": True,
+                           "response_format": {"type": "json_object"},
+                           "structured_output_mode": "explicit"},
+                   signature=Critique())
+
+draft, _, _ = await run_delegate_text(agent, "Summarise how flat type drives resale price.")
+for _round in range(3):                       # bounded: at most three revisions
+    review = await critic.run_async(analysis=draft)
+    if not review.get("should_revise"):
+        break
+    draft, _, _ = await run_delegate_text(
+        agent, f"Revise this analysis.\nIssues:\n{review.get('issues')}\n\nAnalysis:\n{draft}")
+print(draft)
+```
+
+Unlike self-consistency (Lesson 6.1), which samples independent answers and votes, refinement feeds each critique into the next attempt. Bound the loop: a critic can always find something to say.
 
 ## Cross-References
 
@@ -1606,7 +1779,7 @@ result = await agent.run("Analyse sg_hdb_prices.csv and predict resale_price")
 
 ## Reflection
 
-You should now be able to build ReAct agents with custom tools, implement function calling, and enforce cost budgets.
+You should now be able to build tool-using agents with a `ToolRegistry`, write structured tool schemas, bound agents with turn ceilings (and dollar caps on priced providers), and apply the four-question design framework with critic refinement, human approval and logging.
 
 ---
 

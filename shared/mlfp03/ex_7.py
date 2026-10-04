@@ -29,11 +29,10 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from kailash_ml import PreprocessingPipeline
 from kailash_ml.types import FeatureField, FeatureSchema
 
 from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
+from shared.kailash_helpers import setup_environment, split_then_preprocess
 
 # ════════════════════════════════════════════════════════════════════════
 # ENVIRONMENT SETUP
@@ -96,16 +95,21 @@ def prepare_credit_frames(
     ``dev_frame`` (80%) is everything model SELECTION may touch —
     hyperparameter search, grid baselines, early stopping; TrainingPipeline
     carves its own validation holdout out of it. ``test_frame`` (20%) is
-    touched exactly once, to report the chosen model. Both carry a unique
+    touched exactly once, to report the chosen model. The 20% is held out
+    BEFORE the preprocessing is fitted, so its rows shape no imputation or
+    encoding statistic. Both carry a unique
     ``application_id`` so they satisfy the same ``FeatureSchema``.
     """
     if credit is None:
         credit = load_credit_frame()
 
-    pipeline = PreprocessingPipeline()
-    result = pipeline.setup(
+    # Split FIRST, then fit imputation/encoding on the training rows only:
+    # PreprocessingPipeline.setup() on the whole frame would fit them on the
+    # test rows too (it splits only after fitting).
+    result = split_then_preprocess(
         credit,
         target=TARGET_COLUMN,
+        test_size=0.2,
         seed=seed,
         normalize=False,
         categorical_encoding="ordinal",

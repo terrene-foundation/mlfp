@@ -19,14 +19,16 @@ from typing import Any
 
 import numpy as np
 import polars as pl
+from sklearn.base import clone
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import roc_auc_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 
-from kailash_ml import PreprocessingPipeline
 from kailash_ml.interop import to_sklearn_input
 
 from shared.data_loader import MLFPDataLoader
+from shared.kailash_helpers import preprocess_train_test, split_then_preprocess
 
 # ════════════════════════════════════════════════════════════════════════
 # CONSTANTS
@@ -100,8 +102,10 @@ def load_credit_data(
     dropped before preprocessing.
 
     Uses ``kailash_ml.PreprocessingPipeline`` for normalisation +
-    ordinal encoding + median imputation. All regularised models
-    REQUIRE normalised features (otherwise the penalty is unevenly
+    ordinal encoding + median imputation, fitted on the ``n_train``
+    training rows only — the test rows are held out FIRST, so none of
+    their statistics reach the scaler or the imputer. All regularised
+    models REQUIRE normalised features (otherwise the penalty is unevenly
     distributed across the coefficient vector).
     """
     loader = MLFPDataLoader()
@@ -110,11 +114,12 @@ def load_credit_data(
     )
     credit = credit.sample(n=n_train + n_test, seed=SEED)
 
-    pipeline = PreprocessingPipeline()
-    result = pipeline.setup(
-        data=credit,
+    # Split FIRST (exactly n_test held-out rows), then fit the preprocessing
+    # on the training rows only.
+    result = split_then_preprocess(
+        credit,
         target=CREDIT_TARGET,
-        train_size=n_train / (n_train + n_test),
+        test_size=n_test,
         seed=SEED,
         normalize=True,
         categorical_encoding="ordinal",
@@ -141,15 +146,28 @@ def load_credit_data(
     return X_train, y_train, X_test, y_test, col_info["feature_columns"]
 
 
+# Preprocessing for the credit-default CV demo. It is fitted INSIDE every
+# fold (see ``cross_val_auc_split_first``), never once on the whole sample.
+CREDIT_DEFAULT_PREPROCESSING: dict[str, Any] = {
+    "normalize": True,
+    "categorical_encoding": "ordinal",
+    "imputation_strategy": "median",
+}
+
+
 def load_credit_default_sample(
     n: int = 600,
-) -> tuple[np.ndarray, np.ndarray, list[str]]:
+) -> tuple[pl.DataFrame, np.ndarray, list[str]]:
     """A small credit sample with the BINARY ``default`` outcome as target.
 
     Used to show why stratified k-fold matters for an imbalanced target
     (~13% defaults): with plain k-fold the default rate drifts from fold
-    to fold. Returns (X, y, feature_names); features are normalised and
-    the ID / post-outcome leak columns are dropped.
+    to fold. Returns (X_raw, y, feature_names). The ID / post-outcome leak
+    columns are dropped, but ``X_raw`` is NOT preprocessed: in
+    cross-validation every fold is its own train/test split, so imputation
+    and scaling must be fitted inside each fold on that fold's training
+    rows — fitting them once on all ``n`` rows would leak every test fold
+    into its training fold. Score models with ``cross_val_auc_split_first``.
     """
     loader = MLFPDataLoader()
     credit = (
@@ -157,22 +175,42 @@ def load_credit_default_sample(
         .drop(["customer_id", "future_default_indicator"])
         .sample(n=n, seed=SEED)
     )
-    pipeline = PreprocessingPipeline()
-    result = pipeline.setup(
-        data=credit,
-        target="default",
-        train_size=0.99,
-        seed=SEED,
-        normalize=True,
-        categorical_encoding="ordinal",
-        imputation_strategy="median",
-    )
-    frame = pl.concat([result.train_data, result.test_data])
-    feature_cols = [c for c in frame.columns if c != "default"]
-    X, y, col_info = to_sklearn_input(
-        frame, feature_columns=feature_cols, target_column="default"
-    )
-    return X, y.astype(int), col_info["feature_columns"]
+    y = credit["default"].to_numpy().astype(int)
+    X_raw = credit.drop("default")
+    return X_raw, y, X_raw.columns
+
+
+def cross_val_auc_split_first(
+    model: Any, X_raw: pl.DataFrame, y: np.ndarray, *, cv: Any
+) -> np.ndarray:
+    """ROC-AUC per fold with the preprocessing re-fitted inside every fold.
+
+    Plays the role of ``cross_val_score(model, X, y, cv=cv,
+    scoring="roc_auc")`` for RAW features: in each fold the
+    ``PreprocessingPipeline`` is fitted on the training rows only and
+    applied to the held-out rows, then a fresh clone of ``model`` is fitted
+    and scored. Returns one AUC per fold.
+    """
+    frame = X_raw.with_columns(pl.Series("default", y))
+    scores: list[float] = []
+    for tr_idx, te_idx in cv.split(np.zeros(len(y)), y):
+        prep = preprocess_train_test(
+            frame[tr_idx.tolist()],
+            frame[te_idx.tolist()],
+            "default",
+            seed=SEED,
+            **CREDIT_DEFAULT_PREPROCESSING,
+        )
+        features = [c for c in prep.train_data.columns if c != "default"]
+        X_tr, y_tr, _ = to_sklearn_input(
+            prep.train_data, feature_columns=features, target_column="default"
+        )
+        X_te, y_te, _ = to_sklearn_input(
+            prep.test_data, feature_columns=features, target_column="default"
+        )
+        fitted = clone(model).fit(X_tr, y_tr.astype(int))
+        scores.append(float(roc_auc_score(y_te.astype(int), fitted.predict_proba(X_te)[:, 1])))
+    return np.array(scores)
 
 
 ICU_CV_FEATURES: list[str] = [

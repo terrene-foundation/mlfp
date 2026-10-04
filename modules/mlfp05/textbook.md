@@ -577,17 +577,21 @@ With stride 2: output $= (28 - 3 + 2)/2 + 1 = 14$. The spatial dimension is halv
 
 Pooling reduces spatial dimensions by summarising local regions. **Max pooling** takes the maximum value in each window. **Average pooling** takes the mean. Pooling makes the representation more compact and slightly more invariant to small translations of the input.
 
-### THEORY: ResNet skip connections
+### THEORY: ResNet skip connections and the degradation problem
 
-As networks get deeper, gradients vanish — the gradient signal becomes exponentially smaller as it passes through many layers, making early layers nearly impossible to train. ResNet solves this with skip connections:
+Adding layers to a plain CNN should never hurt in principle — the extra layers could learn the identity. Yet He et al. (2015) found that a 56-layer plain network had **higher training error** than a 20-layer one. This is the **degradation problem**. It is not overfitting (the *training* error is worse), and the authors argued it is "unlikely to be caused by vanishing gradients": their plain networks used batch normalisation and the gradients they measured were healthy. It is an optimisation difficulty — solvers struggle to make a stack of non-linear layers approximate an identity mapping. ResNet's answer is the skip connection:
 
 $$\mathbf{H}(\mathbf{x}) = \mathbf{F}(\mathbf{x}) + \mathbf{x}$$
 
-where $\mathbf{F}(\mathbf{x})$ is the residual function learned by the convolutional layers, and $\mathbf{x}$ is the identity shortcut. The gradient of the skip connection is always 1, providing a highway for gradient flow regardless of depth.
+where $\mathbf{F}(\mathbf{x})$ is the residual function learned by the convolutional layers and $\mathbf{x}$ is the identity shortcut. Two things follow:
 
-Why this works: instead of learning the full mapping $\mathbf{H}(\mathbf{x})$ directly, the network learns the residual $\mathbf{F}(\mathbf{x}) = \mathbf{H}(\mathbf{x}) - \mathbf{x}$. If the identity mapping is approximately correct, the residual is small and easy to learn. This is why very deep ResNets (50, 101, 152 layers) can be trained effectively.
+1. **Identity is easy.** If the identity mapping is close to optimal, the block only has to push $\mathbf{F}(\mathbf{x})$ towards zero, which is far easier than fitting an identity with stacked non-linearities.
+2. **An identity gradient path.** $\partial \mathbf{H} / \partial \mathbf{x} = \partial \mathbf{F} / \partial \mathbf{x} + \mathbf{I}$, so the gradient reaching earlier layers always includes an un-attenuated term, whatever the depth. This is why 50-, 101- and 152-layer ResNets train well.
 
 ```python
+import torch
+import torch.nn as nn
+
 class ResBlock(nn.Module):
     def __init__(self, channels):
         super().__init__()
@@ -600,82 +604,150 @@ class ResBlock(nn.Module):
         residual = x
         out = torch.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
-        out += residual  # skip connection
+        out = out + residual  # skip connection
         return torch.relu(out)
 ```
 
-### FOUNDATIONS: SE blocks and modern enhancements
+### FOUNDATIONS: A short history of CNN architectures
+
+| Architecture | Year | Idea it introduced |
+|---|---|---|
+| LeNet-5 | 1998 | Convolution + subsampling + fully connected head, for handwritten digits. |
+| AlexNet | 2012 | Much deeper, ReLU activations, dropout, GPU training; won ImageNet by a wide margin. |
+| VGGNet | 2014 | Depth from uniform stacks of small $3 \times 3$ filters (two $3 \times 3$ layers see a $5 \times 5$ region with fewer parameters). |
+| GoogLeNet / Inception | 2014 | Parallel $1 \times 1$, $3 \times 3$, $5 \times 5$ branches in one block; $1 \times 1$ convolutions to cut channels cheaply. |
+| ResNet | 2015 | Skip connections; trainable at 152 layers. |
+
+### FOUNDATIONS: SE blocks and modern training enhancements
 
 **Squeeze-and-Excitation (SE) blocks** recalibrate channel-wise features by learning which channels are important:
 
 $$\mathbf{s} = \sigma(\mathbf{W}_2 \cdot \text{ReLU}(\mathbf{W}_1 \cdot \text{GAP}(\mathbf{x})))$$
 
-where GAP is Global Average Pooling (squeeze each channel to a scalar), and $\mathbf{W}_1, \mathbf{W}_2$ are small fully connected layers (excitation). The output is the input scaled by $\mathbf{s}$.
+where GAP is Global Average Pooling (squeeze each channel to a scalar), and $\mathbf{W}_1 \in \mathbb{R}^{C/r \times C}$, $\mathbf{W}_2 \in \mathbb{R}^{C \times C/r}$ are small fully connected layers (excitation) with reduction ratio $r$. The output is the input scaled channel by channel by $\mathbf{s} \in (0, 1)^C$. An SE block is cheap: with biases it adds $2C^2/r + C/r + C$ parameters, which is $64 \cdot 4 + 4 + 4 \cdot 64 + 64 = 580$ for $C = 64$, $r = 16$. Across a whole SE-ResNet-50 the SE blocks add about 10% to the parameter count (Hu et al., 2018). Because every scale lies in $(0, 1)$, SE can only re-weight a channel — a channel whose ReLU output is zero stays zero.
 
-**Mixed precision training** uses FP16 for forward and backward passes (faster, less memory) and FP32 for weight updates (maintains precision). PyTorch provides `torch.cuda.amp` for automatic mixed precision.
+**Kaiming (He) initialisation.** A ReLU zeroes half of its inputs on average, so to keep activation variance constant through depth the weights need variance $2/n_{\text{in}}$: $W \sim \mathcal{N}(0, 2/n_{\text{in}})$, i.e. standard deviation $\sqrt{2/n_{\text{in}}}$. (Glorot/Xavier uses $2/(n_{\text{in}} + n_{\text{out}})$ for tanh/sigmoid; $1/n_{\text{in}}$ is LeCun initialisation.) PyTorch's default for `nn.Conv2d` is a scaled uniform rule, so set Kaiming explicitly when you want it:
 
-**Mixup augmentation** creates training examples by linearly interpolating between pairs of images and their labels: $\tilde{x} = \lambda x_i + (1 - \lambda) x_j$, $\tilde{y} = \lambda y_i + (1 - \lambda) y_j$, where $\lambda \sim \text{Beta}(\alpha, \alpha)$. This smooths decision boundaries.
+```python
+def init_kaiming(module):
+    if isinstance(module, (nn.Conv2d, nn.Linear)):
+        nn.init.kaiming_normal_(module.weight, mode="fan_in", nonlinearity="relu")
+        nn.init.zeros_(module.bias)
+
+# model.apply(init_kaiming)   # visits every sub-module once
+```
+
+**Mixed precision training** runs most of the forward and backward pass in 16-bit floats (faster, half the activation memory) while keeping an FP32 master copy of the weights. `torch.autocast(device_type=...)` picks the 16-bit operations; with float16, a gradient scaler multiplies the loss before `backward()` so small gradients do not underflow. The pattern works on CUDA, Apple MPS and CPU (use `torch.bfloat16` on CPU):
+
+```python
+from shared.kailash_helpers import get_device
+
+device = get_device()
+amp_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
+scaler = torch.amp.GradScaler(device.type, enabled=amp_dtype == torch.float16)
+
+def amp_step(model, images, labels, criterion, optimizer):
+    with torch.autocast(device_type=device.type, dtype=amp_dtype):
+        loss = criterion(model(images), labels)
+    optimizer.zero_grad()
+    scaler.scale(loss).backward()   # no-op scaling when the scaler is disabled
+    scaler.step(optimizer)
+    scaler.update()
+    return loss.item()
+```
+
+**Mixup augmentation** creates training examples by linearly interpolating between pairs of images and their labels: $\tilde{x} = \lambda x_i + (1 - \lambda) x_j$, $\tilde{y} = \lambda y_i + (1 - \lambda) y_j$, where $\lambda \sim \text{Beta}(\alpha, \alpha)$. With cross-entropy this is the same as weighting the loss on the two original labels by $\lambda$ and $1 - \lambda$. It smooths decision boundaries and discourages over-confident predictions.
+
+**Label smoothing** replaces the one-hot target with $(1 - \varepsilon)$ on the true class and $\varepsilon / K$ spread over all $K$ classes. The model can no longer drive one logit to infinity to reach zero loss, which improves calibration. In PyTorch it is one argument: `nn.CrossEntropyLoss(label_smoothing=0.1)`.
+
+**Gradient flow analysis.** After `loss.backward()`, the per-layer gradient norm `p.grad.norm()` shows whether signal reaches the early layers. Healthy networks have norms within an order of magnitude or two across depth; norms that shrink by many orders of magnitude towards the input mean the early layers are barely learning (Drill 2 prints them).
 
 ### ADVANCED: Vision Transformers (ViT)
 
-Vision Transformers split an image into fixed-size patches (e.g., $16 \times 16$), flatten each patch into a vector, add positional embeddings, and feed the sequence of patch embeddings into a transformer encoder. Since 2021, ViTs have matched or exceeded CNN performance on image classification, especially with large-scale pre-training.
+Vision Transformers split an image into fixed-size patches (e.g., $16 \times 16$), embed each patch as a token, and feed the sequence to a transformer *encoder*. They need transformer machinery, so they are covered properly in Lesson 5.4 (with code); the point to take from this lesson is that a ViT has much weaker built-in spatial assumptions than a CNN and therefore needs far more pre-training data to match it.
 
 ## Mathematical Foundations
 
 ### THEORY: Why convolutions detect patterns
 
-A convolution $(\mathbf{x} * \mathbf{w})[i,j] = \sum_{m,n} \mathbf{x}[i+m, j+n] \cdot \mathbf{w}[m,n]$ is a template-matching operation. When the input patch matches the filter, the dot product is large. The filter is learned, so the network discovers which templates (edges, textures, shapes) are useful for the task. Weight sharing (the same filter applied everywhere) dramatically reduces the number of parameters and enforces translation equivariance: a pattern detected in one location will be detected in another.
+A convolution $(\mathbf{x} * \mathbf{w})[i,j] = \sum_{m,n} \mathbf{x}[i+m, j+n] \cdot \mathbf{w}[m,n]$ is a template-matching operation (strictly a cross-correlation, which is what deep-learning libraries compute). When the input patch matches the filter, the dot product is large. The filter is learned, so the network discovers which templates (edges, textures, shapes) are useful for the task. Weight sharing (the same filter applied everywhere) dramatically reduces the number of parameters and makes the layer translation **equivariant**: shift the input and the feature map shifts the same way. Pooling then adds a little translation *invariance*.
 
 ### THEORY: Parameter count comparison
 
-For a $28 \times 28$ image:
+For a $28 \times 28$ greyscale image:
 
-- Fully connected layer to 256 outputs: $28 \times 28 \times 256 = 200,704$ parameters.
+- Fully connected layer to 256 outputs: $784 \times 256 + 256 = 200{,}960$ parameters.
 - Convolutional layer with 32 filters of size $3 \times 3$: $32 \times 1 \times 3 \times 3 + 32 = 320$ parameters.
 
-Convolutions are $600\times$ more parameter-efficient for this layer, which is why CNNs can be very deep without overfitting.
+The convolutional layer has about $630\times$ fewer parameters — and it still produces a richer output ($32 \times 28 \times 28$ values against 256). Fewer parameters plus the right structural assumption (locality and equivariance) is why CNNs learn from images with far less data than a fully connected network would need.
 
 ## The Kailash Engine: OnnxBridge (model export)
 
+`OnnxBridge` exports a trained model to ONNX, a portable graph format that ONNX Runtime can serve without PyTorch. Two calls matter:
+
+- `bridge.export(model, "torch", output_path=Path(...), sample_input=x)` traces the model with `sample_input` and writes the file. The framework string is `"torch"`; pass `output_path` as a `pathlib.Path`; trace with **at least two rows**, because a batch-of-one trace can fix the batch size at 1. It returns an `OnnxExportResult` — check `.success` (and `.error_message`); export does **not** validate the graph and does not raise on failure.
+- `bridge.validate(model, onnx_path, sample_input)` runs the native model and ONNX Runtime on the same rows and returns `.valid`, `.max_diff`, `.mean_diff`. It calls `model.predict(X)` with a NumPy array, so wrap a PyTorch module in a small adapter that has a `predict()` method.
+
+The worked example ends with both calls.
+
+## Worked Example: A residual CNN on CIFAR-10 (the Exercise 2 data)
+
+Exercise 2 classifies CIFAR-10 (60,000 colour images, $3 \times 32 \times 32$, 10 classes) and stores it in `data/mlfp05/cifar10`. This example builds a small residual CNN on the same data, trains it with AdamW and cosine annealing, measures held-out accuracy, and exports it with OnnxBridge.
+
 ```python
-from kailash_ml import OnnxBridge
+from pathlib import Path
+import numpy as np
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+from kailash_ml import ModelVisualizer, OnnxBridge
+from shared.kailash_helpers import get_device
 
-bridge = OnnxBridge()
-bridge.export(model, input_shape=(1, 1, 28, 28), output_path="cnn_classifier.onnx")
-```
+device = get_device()
+DATA_DIR = "data/mlfp05/cifar10"
+to_tensor = transforms.ToTensor()
+train_data = datasets.CIFAR10(DATA_DIR, train=True, download=True, transform=to_tensor)
+test_data = datasets.CIFAR10(DATA_DIR, train=False, download=True, transform=to_tensor)
+train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
+test_loader = DataLoader(test_data, batch_size=512)
 
-## Worked Example: Building a CNN for Fashion-MNIST
-
-```python
-class FashionCNN(nn.Module):
-    def __init__(self):
+class CifarCNN(nn.Module):
+    def __init__(self, n_classes=10):
         super().__init__()
         self.features = nn.Sequential(
-            nn.Conv2d(1, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(),
-            nn.MaxPool2d(2),
-            ResBlock(64),
+            nn.Conv2d(3, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(),   # 32 x 32 x 32
+            nn.MaxPool2d(2),                                                 # 32 x 16 x 16
+            nn.Conv2d(32, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(),  # 64 x 16 x 16
+            nn.MaxPool2d(2),                                                 # 64 x 8 x 8
+            ResBlock(64),                                                    # 64 x 8 x 8
         )
         self.classifier = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Flatten(),
-            nn.Dropout(0.3),
-            nn.Linear(64, 10),
+            nn.AdaptiveAvgPool2d(1), nn.Flatten(), nn.Dropout(0.3), nn.Linear(64, n_classes),
         )
 
     def forward(self, x):
         return self.classifier(self.features(x))
 
-model = FashionCNN()
+def evaluate(model, loader):
+    model.eval()
+    correct = total = 0
+    with torch.no_grad():
+        for images, labels in loader:
+            preds = model(images.to(device)).argmax(1).cpu()
+            correct += (preds == labels).sum().item()
+            total += labels.size(0)
+    return correct / total
+
+EPOCHS = 10
+model = CifarCNN().to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=30)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 criterion = nn.CrossEntropyLoss()
 
-for epoch in range(30):
+for epoch in range(EPOCHS):
     model.train()
-    total_loss, correct, total = 0, 0, 0
+    total_loss, correct, total = 0.0, 0, 0
     for images, labels in train_loader:
+        images, labels = images.to(device), labels.to(device)
         outputs = model(images)
         loss = criterion(outputs, labels)
         optimizer.zero_grad()
@@ -685,23 +757,54 @@ for epoch in range(30):
         correct += (outputs.argmax(1) == labels).sum().item()
         total += images.size(0)
     scheduler.step()
-    print(f"Epoch {epoch}: loss={total_loss/total:.4f}, acc={correct/total:.3f}")
+    print(f"epoch {epoch + 1}: loss={total_loss / total:.3f}  train acc={correct / total:.3f}  "
+          f"test acc={evaluate(model, test_loader):.3f}")
+
+# Export with OnnxBridge, then check the ONNX graph against PyTorch
+class TorchPredictor:
+    """Adapter: OnnxBridge.validate calls predict(X) with a NumPy array."""
+    def __init__(self, net):
+        self.net = net.eval()
+
+    def predict(self, X):
+        with torch.no_grad():
+            return self.net(torch.as_tensor(np.asarray(X), dtype=torch.float32)).numpy()
+
+model_cpu = model.cpu().eval()
+onnx_path = Path("outputs") / "cifar_cnn.onnx"
+onnx_path.parent.mkdir(parents=True, exist_ok=True)
+sample = torch.stack([test_data[i][0] for i in range(2)])          # 2 rows: dynamic batch
+bridge = OnnxBridge()
+result = bridge.export(model_cpu, "torch", output_path=onnx_path, sample_input=sample)
+assert result.success, result.error_message
+
+rows = torch.stack([test_data[i][0] for i in range(100)]).numpy()
+check = bridge.validate(TorchPredictor(model_cpu), onnx_path, rows, tolerance=1e-3)
+print(f"ONNX export ok: {result.success}; parity on 100 test images: "
+      f"valid={check.valid}, max |diff| = {check.max_diff:.1e}")
 ```
+
+What to expect: test accuracy climbs fastest in the first epochs and is far above the 10% chance level after one. For a model this small (94,346 parameters), a figure around 70% after ten epochs is typical — treat that as an illustrative ballpark, not a measured result; large pre-trained ResNets reach the mid-90s (Lesson 5.7). The ONNX graph reproduces the PyTorch logits to within about $10^{-6}$ (we measured a maximum difference of $2 \times 10^{-6}$). Recent PyTorch exporters may print an ONNX version-conversion traceback during export; that is log noise — `result.success` is the signal to trust.
 
 ## Try It Yourself
 
-**Drill 1.** Compute the output size at each layer of the FashionCNN using the formula. Verify by printing tensor shapes during a forward pass.
+The drills reuse `device`, `train_loader`, `test_loader`, `test_data`, `CifarCNN`, `ResBlock`, `evaluate`, `TorchPredictor` and `EPOCHS` from the worked example.
+
+**Drill 1.** Compute the output size at each layer of `CifarCNN` using the formula. Verify by printing tensor shapes during a forward pass.
 
 **Solution:**
 
 ```python
-x = torch.randn(1, 1, 28, 28)
-for layer in model.features:
+probe = CifarCNN()
+x = torch.randn(1, 3, 32, 32)
+for layer in probe.features:
     x = layer(x)
-    print(f"{layer.__class__.__name__}: {x.shape}")
+    print(f"{layer.__class__.__name__:>12}: {tuple(x.shape)}")
 ```
 
-**Drill 2.** Add an SE block after the second convolutional layer. Compare training curves with and without SE blocks. Does the SE block improve final accuracy?
+Each $3 \times 3$ convolution with padding 1 and stride 1 keeps the size: $(32 - 3 + 2)/1 + 1 = 32$. Each $2 \times 2$ max pool with stride 2 halves it: $32 \to 16 \to 8$. The residual block keeps $64 \times 8 \times 8$ (its input and output shapes must match for the addition), and `AdaptiveAvgPool2d(1)` then reduces each of the 64 channels to one number.
+
+**Drill 2.** Add an SE block after the residual block. Compare training curves with and without it, and print the per-layer gradient norms after one backward pass.
 
 **Solution:**
 
@@ -716,42 +819,131 @@ class SEBlock(nn.Module):
         )
 
     def forward(self, x):
-        scale = self.fc(x).unsqueeze(-1).unsqueeze(-1)
+        scale = self.fc(x).unsqueeze(-1).unsqueeze(-1)   # (B, C, 1, 1)
         return x * scale
+
+def train_curve(model, epochs=EPOCHS):
+    model.to(device)
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    accs = []
+    for _ in range(epochs):
+        model.train()
+        for images, labels in train_loader:
+            loss = nn.functional.cross_entropy(model(images.to(device)), labels.to(device))
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+        accs.append(evaluate(model, test_loader))
+    return accs
+
+se_model = CifarCNN()
+se_model.features.append(SEBlock(64))
+print("SE parameters:", sum(p.numel() for p in se_model.features[-1].parameters()))   # 580
+curves = {"plain": train_curve(CifarCNN()), "with SE": train_curve(se_model)}
+fig = ModelVisualizer().training_history(curves, x_label="Epoch", y_label="Test accuracy")
+
+images, labels = next(iter(train_loader))
+loss = nn.functional.cross_entropy(se_model(images.to(device)), labels.to(device))
+se_model.zero_grad()
+loss.backward()
+for name, p in se_model.named_parameters():
+    if p.grad is not None and name.endswith("weight") and p.dim() > 1:
+        print(f"{name:>28}: grad norm {p.grad.norm():.2e}")
 ```
 
-**Drill 3.** Implement Mixup augmentation. Train with and without Mixup for 30 epochs. Compare test accuracy and calibration (plot reliability diagrams).
+On a network this shallow, one SE block changes final accuracy by at most a point or so — within run-to-run noise. Its value grows with depth and channel count, which is why the published gains are reported on ResNet-50-scale models. The gradient norms of a healthy residual CNN stay within a couple of orders of magnitude from the first convolution to the classifier.
+
+**Drill 3.** Implement Mixup and label smoothing. Train with and without them for the same number of epochs. Compare test accuracy and calibration with a reliability diagram.
 
 **Solution:**
 
 ```python
 def mixup(x, y, alpha=0.2):
-    lam = torch.distributions.Beta(alpha, alpha).sample()
-    idx = torch.randperm(x.size(0))
-    x_mix = lam * x + (1 - lam) * x[idx]
-    y_a, y_b = y, y[idx]
-    return x_mix, y_a, y_b, lam
+    lam = float(torch.distributions.Beta(alpha, alpha).sample())
+    idx = torch.randperm(x.size(0), device=x.device)
+    return lam * x + (1 - lam) * x[idx], y, y[idx], lam
+
+def train_regularised(model, epochs=EPOCHS, use_mixup=True, smoothing=0.1):
+    model.to(device)
+    criterion = nn.CrossEntropyLoss(label_smoothing=smoothing)
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    for _ in range(epochs):
+        model.train()
+        for images, labels in train_loader:
+            images, labels = images.to(device), labels.to(device)
+            if use_mixup:
+                x_mix, y_a, y_b, lam = mixup(images, labels)
+                out = model(x_mix)
+                loss = lam * criterion(out, y_a) + (1 - lam) * criterion(out, y_b)
+            else:
+                loss = criterion(model(images), labels)
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+    return model
+
+def confidence_and_correct(model):
+    model.eval()
+    conf, correct = [], []
+    with torch.no_grad():
+        for images, labels in test_loader:
+            probs = torch.softmax(model(images.to(device)), dim=1).cpu()
+            top_p, pred = probs.max(dim=1)
+            conf.append(top_p)
+            correct.append((pred == labels).float())
+    return torch.cat(conf).numpy(), torch.cat(correct).numpy()
+
+viz = ModelVisualizer()
+for tag, model in [("baseline", train_regularised(CifarCNN(), use_mixup=False, smoothing=0.0)),
+                   ("mixup + smoothing", train_regularised(CifarCNN()))]:
+    conf, correct = confidence_and_correct(model)
+    print(f"{tag:>18}: test acc {correct.mean():.3f}, mean confidence {conf.mean():.3f}")
+    fig = viz.calibration_curve(correct, conf, n_bins=10)   # reliability diagram
 ```
+
+A model is calibrated when its mean confidence matches its accuracy. Without regularisation the network's confidence tends to run above its accuracy (over-confidence), and the gap widens with longer training. Label smoothing and Mixup pull confidence down towards accuracy; on a short run the accuracy change is small, so judge them mainly on the reliability diagram.
 
 **Drill 4.** Export the trained model to ONNX and load it back. Verify that predictions match between the PyTorch model and the ONNX model on 100 test samples.
 
 **Solution:**
 
 ```python
-torch.onnx.export(model, torch.randn(1, 1, 28, 28), "fashion_cnn.onnx")
 import onnxruntime as ort
-session = ort.InferenceSession("fashion_cnn.onnx")
-# Compare predictions
+
+session = ort.InferenceSession(str(onnx_path))
+input_name = session.get_inputs()[0].name
+onnx_logits = session.run(None, {input_name: rows})[0]         # rows: 100 test images
+with torch.no_grad():
+    torch_logits = model_cpu(torch.from_numpy(rows)).numpy()
+print("same predicted class on all 100:",
+      bool((onnx_logits.argmax(1) == torch_logits.argmax(1)).all()))
+print(f"max |logit difference|: {np.abs(onnx_logits - torch_logits).max():.1e}")
 ```
 
-**Drill 5.** Visualise the learned filters of the first convolutional layer. What patterns do they detect (edges, textures, gradients)? Compare filters from a trained model versus a randomly initialised model.
+A batch of 100 runs even though the model was traced with two rows — the exported batch dimension is dynamic. `OnnxBridge.validate` in the worked example performs the same comparison for you.
+
+**Drill 5.** Visualise the learned filters of the first convolutional layer. What patterns do they detect? Compare filters from the trained model with a randomly initialised one.
 
 **Solution:**
 
 ```python
-filters = model.features[0].weight.data
-# Plot each filter as a 3x3 grayscale image
+import matplotlib.pyplot as plt
+
+def show_filters(conv, title):
+    w = conv.weight.detach().cpu()                    # (32, 3, 3, 3)
+    w = (w - w.min()) / (w.max() - w.min())           # rescale to [0, 1] for display
+    fig, axes = plt.subplots(4, 8, figsize=(8, 4))
+    for ax, f in zip(axes.flat, w):
+        ax.imshow(f.permute(1, 2, 0))                 # 3 x 3 RGB patch
+        ax.axis("off")
+    fig.suptitle(title)
+    plt.show()
+
+show_filters(model_cpu.features[0], "trained first-layer filters")
+show_filters(CifarCNN().features[0], "random initial filters")
 ```
+
+Trained $3 \times 3$ filters show structure — light/dark edges at different orientations and colour-opponent patterns (for example, more red than green) — whereas random filters are unstructured noise. Filters this small are hard to read; the edge and colour detectors become obvious in networks with $7 \times 7$ or $11 \times 11$ first layers (AlexNet's first-layer filters are the classic picture).
 
 ## Cross-References
 
@@ -766,9 +958,9 @@ You should now be able to:
 
 - Implement a CNN with convolution, pooling, batch normalisation, and skip connections.
 - Compute output dimensions using the formula $(W - F + 2P)/S + 1$.
-- Explain why ResNet skip connections solve the vanishing gradient problem.
-- Apply SE blocks, Mixup, and mixed precision training as modern enhancements.
-- Export a model to ONNX for deployment.
+- Explain why ResNet skip connections make very deep networks trainable: the degradation problem and the identity gradient path.
+- Apply SE blocks, Kaiming initialisation, mixed precision, Mixup and label smoothing as modern enhancements.
+- Export a model to ONNX with OnnxBridge and verify parity with `validate()`.
 
 ---
 

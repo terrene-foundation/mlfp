@@ -40,20 +40,23 @@
   costs, and audit trails that prove compliance. Today you implement all four with
   PACT: D/T/R addressing, <code>GovernanceEngine</code>, <code>GovernedSupervisor</code>,
   and the five-dimension <code>ConstraintEnvelopeConfig</code>. The result: a
-  multi-agent system where every tool call is checked, every budget is enforced,
-  and every decision is logged.
+  multi-agent system where every action is checked against an attached envelope,
+  every budget is enforced, and every decision is logged. You will also learn the
+  one default that catches people out: in the installed PACT release, a role with
+  <em>no</em> envelope is allowed to do anything.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Why This Matters</h2>
 
 <p>
-  Singapore's Monetary Authority (MAS) requires financial institutions to explain
-  every AI-driven decision that affects customers. A recommendation engine that
-  denies a loan must log <em>why</em>. An agent that executes a trade must record
-  <em>who</em> authorised it, <em>what</em> envelope it operated under, and
-  <em>how much</em> it was allowed to spend. "The AI decided" is not an
-  acceptable audit response.
+  Financial regulators expect firms to be accountable for AI-driven decisions
+  that affect customers — in Singapore, the Monetary Authority's FEAT principles
+  (Fairness, Ethics, Accountability, Transparency) set out that expectation. In
+  engineering terms, a recommendation engine that declines a loan must log
+  <em>why</em>. An agent that executes a trade must record <em>who</em>
+  authorised it, <em>what</em> envelope it operated under, and <em>how much</em>
+  it was allowed to spend. "The AI decided" is not an acceptable audit response.
 </p>
 
 <p>
@@ -79,13 +82,13 @@
   <rect x="200" y="55" width="150" height="70" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
   <text x="275" y="78" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">2. Compile</text>
   <text x="275" y="96" text-anchor="middle" font-size="10" fill="#1E293B">load_org_yaml()</text>
-  <text x="275" y="112" text-anchor="middle" font-size="10" fill="#1E293B">Resolve inheritance</text>
+  <text x="275" y="112" text-anchor="middle" font-size="10" fill="#1E293B">apply_governance_specs()</text>
 
   <!-- Phase 3: Enforce -->
   <rect x="380" y="55" width="150" height="70" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
   <text x="455" y="78" text-anchor="middle" font-weight="700" font-size="12" fill="#F59E0B">3. Enforce</text>
-  <text x="455" y="96" text-anchor="middle" font-size="10" fill="#1E293B">can_access() on every call</text>
-  <text x="455" y="112" text-anchor="middle" font-size="10" fill="#1E293B">Block or warn</text>
+  <text x="455" y="96" text-anchor="middle" font-size="10" fill="#1E293B">verify_action() on every call</text>
+  <text x="455" y="112" text-anchor="middle" font-size="10" fill="#1E293B">approve / flag / hold / block</text>
 
   <!-- Phase 4: Test -->
   <rect x="560" y="55" width="140" height="70" rx="8" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
@@ -100,7 +103,7 @@
 
   <!-- Audit trail running beneath -->
   <rect x="20" y="155" width="680" height="40" rx="6" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="1.5"/>
-  <text x="360" y="175" text-anchor="middle" font-weight="600" font-size="11" fill="#8B5CF6">Audit Trail — every access check logged with timestamp, address, resource, decision, reason</text>
+  <text x="360" y="175" text-anchor="middle" font-weight="600" font-size="11" fill="#8B5CF6">Audit Trail — every step recorded in a hash-chained log (timestamp, agent, action, details)</text>
   <line x1="95" y1="130" x2="95" y2="150" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4 3"/>
   <line x1="275" y1="130" x2="275" y2="150" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4 3"/>
   <line x1="455" y1="130" x2="455" y2="150" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4 3"/>
@@ -125,24 +128,27 @@
   <tbody>
     <tr><td><strong>Department (D)</strong></td><td>Top-level organisational unit</td><td><code>D1</code> = mortgage-risk</td></tr>
     <tr><td><strong>Team (T)</strong></td><td>A team nested inside a department</td><td><code>T1</code> = underwriting</td></tr>
-    <tr><td><strong>Role (R)</strong></td><td>The responsible role that owns a D or T leaf</td><td><code>R1</code> = the head or responsible</td></tr>
+    <tr><td><strong>Role (R)</strong></td><td>A position (human or agent); the first R after a D or T is its head</td><td><code>R1</code> = the head of that unit</td></tr>
   </tbody>
 </table>
 
 <p>
   A role address is a dash-delimited path like <code>D1-R1-T1-R1</code>. The
   grammar rule: every <code>D</code> or <code>T</code> MUST be immediately followed
-  by exactly one <code>R</code>. The <code>GovernanceEngine</code> is constructed
-  from a loaded org YAML (<code>load_org_yaml</code>) and resolves access by
-  walking the tree: the responsible at a deeper level inherits the envelope of
-  its parent role, tightened by its own envelope.
+  by exactly one <code>R</code> — its head. So <code>D1-R1-T1-R1</code> reads
+  "the role heading Team 1, under the role heading Department 1". The
+  <code>GovernanceEngine</code> is constructed from a loaded org YAML
+  (<code>load_org_yaml</code>). Delegation is a separate concept: an envelope is
+  <em>defined by</em> one role (usually the head above) <em>for</em> another
+  role, and a child envelope may never be looser than the envelope of the role
+  that defined it.
 </p>
 
 <div class="callout foundations">
   <span class="label">Foundations</span>
   <p>
     Think of D/T/R as a postal address for permissions. The department is the
-    street, the task is the building, the role is the apartment. When a request
+    street, the team is the building, the role is the apartment. When a request
     arrives, the system checks whether that address has the mailbox (envelope)
     for this type of mail (action). The grammar is strict: every D or T is
     immediately followed by exactly one R.
@@ -247,34 +253,71 @@ manager_envelope = ConstraintEnvelopeConfig(
   <line x1="520" y1="115" x2="540" y2="115" stroke="#EF4444" stroke-width="2"/>
   <text x="530" y="112" font-size="14" fill="#EF4444" font-weight="700">X</text>
 
-  <text x="360" y="210" text-anchor="middle" font-size="10" fill="#64748B">Each nested envelope is a strict subset of its parent. Violations are rejected at compile time.</text>
+  <text x="360" y="210" text-anchor="middle" font-size="10" fill="#64748B">Each nested envelope sits inside its parent. Violations are rejected when the envelope is attached.</text>
 </svg>
-<figcaption>Envelopes are nested. Each child envelope is strictly contained within its parent. Attempting to loosen raises <code>MonotonicTighteningError</code> from <code>RoleEnvelope.validate_tightening</code>.</figcaption>
+<figcaption>Envelopes are nested. Each child envelope is contained within its parent (equal or tighter on every dimension). Attempting to loosen raises <code>MonotonicTighteningError</code> — from <code>engine.set_role_envelope</code> when the envelope is attached, or from <code>RoleEnvelope.validate_tightening(parent_envelope=..., child_envelope=...)</code> when you check a pair directly.</figcaption>
 </figure>
 
-<h3>Enforcement Modes</h3>
+<h3>Verdict Levels</h3>
 
 <p>
-  PACT supports three enforcement modes for governance checks:
+  There is one decision call: <code>engine.verify_action(role_address, action, context)</code>.
+  It returns a <code>GovernanceVerdict</code> with <code>.allowed</code>,
+  <code>.level</code> and <code>.reason</code>. There are no enforcement modes to
+  switch between — the level is decided by the role's envelope and the action's
+  context. The four levels, with the reasons the installed engine actually
+  returns (measured on the worked-example org below):
 </p>
 
 <table>
-  <thead><tr><th>Mode</th><th>Behaviour</th><th>Use case</th></tr></thead>
+  <thead><tr><th><code>.level</code></th><th><code>.allowed</code></th><th>When</th><th>Example <code>.reason</code></th></tr></thead>
   <tbody>
-    <tr><td><code>block</code></td><td>Deny access immediately. Fail-closed.</td><td>Production systems. This is the default.</td></tr>
-    <tr><td><code>warn</code></td><td>Log violation, allow access.</td><td>Development and testing. See what would be blocked.</td></tr>
-    <tr><td><code>audit</code></td><td>Allow access, log for review.</td><td>Shadow mode before enabling block. Compliance review.</td></tr>
+    <tr><td><code>auto_approved</code></td><td>True</td><td>Action inside every envelope dimension</td><td>Action 'explore_data' is within all constraint dimensions</td></tr>
+    <tr><td><code>flagged</code></td><td>True</td><td>Allowed, but close to a limit (cost within 20% of <code>max_spend_usd</code>)</td><td>Action cost ($3.50) is within 20% of financial limit ($4.00)</td></tr>
+    <tr><td><code>held</code></td><td>False</td><td>Cost above <code>requires_approval_above_usd</code> — waits for a human</td><td>Action cost ($9.00) exceeds approval threshold ($8.00) -- held for human approval</td></tr>
+    <tr><td><code>blocked</code></td><td>False</td><td>Action blocked, not allowed, or over the spend limit</td><td>Action 'deploy_model' is explicitly blocked by operational constraints</td></tr>
   </tbody>
 </table>
+
+<h3>The Default You Must Know: No Envelope Means Allowed</h3>
+
+<p>
+  In the installed release (kailash-pact 0.14.1), <code>verify_action</code> is
+  <strong>fail-open</strong> for two cases: a role with <em>no envelope on
+  itself or on any role above it</em>, and an address that is <em>not in the org
+  at all</em>. (A role with no envelope of its own but an enveloped ancestor is
+  governed by the ancestor's envelope.) Both
+  return <code>allowed == True</code>, <code>level == "auto_approved"</code> with
+  the reason <code>"No envelope constraints -- action permitted"</code>. Loading
+  the YAML with <code>load_org_yaml</code> and building
+  <code>GovernanceEngine(loaded.org_definition)</code> compiles only the
+  structure; until envelopes are attached (with
+  <code>engine.set_role_envelope(...)</code>, or
+  <code>apply_governance_specs(engine, loaded)</code> for the envelopes declared
+  in the YAML), every role in the org is auto-approved for every action.
+</p>
+
+<p>
+  The engine <em>is</em> fail-closed in one narrower sense: if
+  <code>verify_action</code> itself raises internally, it returns a
+  <code>blocked</code> verdict rather than crashing. But "no rule" is not an
+  error — it is an approval. Deny paths exist only where an envelope is
+  attached, so the engineering rule for this lesson is:
+  <strong>attach an envelope to every role before you rely on a deny</strong>,
+  and reject unknown addresses in your own code (Step 5 of the worked example
+  shows how).
+</p>
 
 <div class="callout advanced">
   <span class="label">Advanced</span>
   <p>
-    The standard deployment progression is: <code>audit</code> for one week
-    (collect baseline), review audit logs for false positives, adjust rules,
-    switch to <code>warn</code> for another week (verify no critical workflows
-    break), then <code>block</code> for production. This gradual rollout prevents
-    governance rules from accidentally blocking legitimate operations.
+    The <code>flagged</code> and <code>held</code> levels give you a staged
+    rollout without a separate "warn mode". Start a new role with a generous
+    <code>max_spend_usd</code> and a lower <code>requires_approval_above_usd</code>:
+    expensive actions are <code>held</code> for a human, near-limit actions are
+    <code>flagged</code> (allowed, but visible in the verdict), and only actions
+    outside the envelope are <code>blocked</code>. Review the flagged and held
+    verdicts, then tighten the envelope.
   </p>
 </div>
 
@@ -296,11 +339,33 @@ manager_envelope = ConstraintEnvelopeConfig(
 </div>
 
 <p>
-  The sum of all child budgets cannot exceed the parent's total. Each child can
-  further subdivide its allocation, but the total at every level is bounded. When
-  a child exhausts its budget, it stops gracefully and returns partial results.
-  The parent can then decide whether to reallocate remaining budget from other
-  children.
+  The sum of all child budgets should not exceed the parent's total. Each child can
+  further subdivide its allocation, but the total at every level is bounded.
+  Note what PACT checks for you and what it does not:
+  <code>set_role_envelope</code> rejects any <em>single</em> child whose
+  <code>max_spend_usd</code> exceeds its parent's, but it does not add up the
+  siblings — the sum constraint is yours to assert (Step 3 of the worked example
+  does it).
+</p>
+
+<p>
+  What happens when the budget runs out? <code>GovernedSupervisor</code> checks
+  the remaining budget <em>before</em> each plan step. A step that overspends
+  still completes (its cost is recorded, so <code>budget_consumed</code> can end
+  above <code>budget_allocated</code>), and every later step is
+  <code>HELD</code>: the run returns <code>success == False</code>, any results
+  produced before the hold are kept in <code>result.results</code>, and the
+  audit log gains a <code>held</code> record. That is the graceful degradation
+  — a bounded overspend, partial results, and a logged stop — rather than a
+  hard kill mid-call.
+</p>
+
+<p>
+  Budgets also exist on single agents: a Kaizen <code>BaseAgentConfig</code>
+  takes <code>budget_limit_usd</code> at construction (Lesson 6.5). On the
+  course's local Ollama models every call costs $0, so dollar caps never trip
+  there; the course exercises charge a <em>notional</em> price per 1,000 tokens
+  when they need the financial dimension to be visible.
 </p>
 
 <p>
@@ -335,14 +400,18 @@ manager_envelope = ConstraintEnvelopeConfig(
 <div class="callout kailash">
   <span class="label">Kailash Engine</span>
   <p>
-    <code>pact</code> provides: <code>GovernanceEngine</code> for compiling
-    organisational structures and checking access via
-    <code>engine.verify_action(role_address, action, context)</code>;
+    <code>pact</code> provides: <code>load_org_yaml</code> and
+    <code>GovernanceEngine</code> for compiling organisational structures
+    (with <code>apply_governance_specs</code> from
+    <code>kailash.trust.pact.yaml_resolvers</code> to apply the YAML's
+    clearances and envelopes); <code>engine.verify_action(role_address, action, context)</code>
+    as the single decision call;
     <code>Address.parse("D1-R1-T1-R1")</code> for D/T/R addressing;
     <code>ConstraintEnvelopeConfig</code> with five canonical dimensions
-    (Financial, Operational, Temporal, Data Access, Communication) for
-    operating envelopes; and <code>RoleEnvelope.validate_tightening</code>
-    for structural monotonic-tightening enforcement.
+    (Financial, Operational, Temporal, Data Access, Communication) attached to
+    roles with <code>engine.set_role_envelope(RoleEnvelope(...))</code>; and
+    <code>RoleEnvelope.validate_tightening(parent_envelope=..., child_envelope=...)</code>
+    (keyword-only) for monotonic-tightening checks.
     <code>GovernedSupervisor</code> (from <code>kaizen_agents</code>) is the
     pact-governed agent entry point. Together they transform governance from
     policy documents into executable, testable code.
@@ -389,46 +458,89 @@ manager_envelope = ConstraintEnvelopeConfig(
 <div class="worked-example">
   <h3>Goal</h3>
   <p>
-    Build a governed multi-agent system for HDB price analysis in Singapore.
-    A supervisor agent delegates to three specialists: DataScientist,
-    ModelSelector, and ReportWriter. Each agent has a defined role, budget,
-    and task envelope. Unauthorised access is blocked. Budget overruns are
-    prevented. Every decision is logged.
+    Build a governed multi-agent system for mortgage-risk analysis on an HDB
+    resale portfolio. A risk supervisor heads three specialist teams: data
+    assessment (DataScientist), model selection (ModelSelector) and reporting
+    (ReportWriter). Each role gets an envelope with its own budget and allowed
+    actions. Out-of-envelope actions are blocked, budget overruns stop the run,
+    unknown addresses are rejected, and every step is logged.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1 — Declare the org in YAML and load it.</span>
     <p>
-      Modern PACT loads the organisation from a YAML file. The grammar is strict:
-      every <code>D</code> (department) or <code>T</code> (task) is immediately
-      followed by exactly one <code>R</code> (responsible role). Addresses are
-      dash-delimited, e.g. <code>D1-R1-T1-R1</code>.
+      <code>load_org_yaml</code> expects a flat schema: <code>org_id</code> and
+      <code>name</code>, then lists of <code>departments</code>,
+      <code>teams</code> and <code>roles</code> (plus optional
+      <code>clearances</code> and <code>envelopes</code>). A role attaches to the
+      unit it leads with <code>heads:</code> and to its manager with
+      <code>reports_to:</code>; the engine derives the D/T/R addresses from that.
     </p>
     <pre><code class="language-yaml"># org/mortgage_risk.yaml
-org_id: mortgage_risk_assessment
+org_id: "mortgage_risk"
+name: "Mortgage Risk Analytics"
+
 departments:
-  - id: D1
-    name: mortgage-risk
-    head: { id: R1, name: risk-supervisor }
-    tasks:
-      - id: T1
-        name: assessment
-        responsible: { id: R1, name: data-scientist }
-      - id: T2
-        name: selection
-        responsible: { id: R1, name: model-selector }
-      - id: T3
-        name: reporting
-        responsible: { id: R1, name: report-writer }</code></pre>
-    <pre><code class="language-python">from pact import GovernanceEngine, load_org_yaml
+  - id: "mortgage_risk"
+    name: "Mortgage Risk"
+
+teams:
+  - id: "assessment"
+    name: "Data Assessment"
+  - id: "selection"
+    name: "Model Selection"
+  - id: "reporting"
+    name: "Reporting"
+
+roles:
+  - id: "risk_supervisor"
+    name: "Risk Supervisor"
+    heads: "mortgage_risk"
+  - id: "data_scientist"
+    name: "Data Scientist"
+    reports_to: "risk_supervisor"
+    heads: "assessment"
+  - id: "model_selector"
+    name: "Model Selector"
+    reports_to: "risk_supervisor"
+    heads: "selection"
+  - id: "report_writer"
+    name: "Report Writer"
+    reports_to: "risk_supervisor"
+    heads: "reporting"
+
+# pact levels, lowest to highest: public < restricted < confidential < secret < top_secret
+clearances:
+  - role: "risk_supervisor"
+    level: "confidential"
+  - role: "data_scientist"
+    level: "restricted"
+  - role: "model_selector"
+    level: "restricted"
+  - role: "report_writer"
+    level: "restricted"</code></pre>
+    <pre><code class="language-python">from kailash.trust.pact.yaml_resolvers import apply_governance_specs
+from pact import GovernanceEngine, load_org_yaml
 
 loaded = load_org_yaml("org/mortgage_risk.yaml")
-engine = GovernanceEngine(loaded.org_definition)
+engine = GovernanceEngine(loaded.org_definition)   # structure only
+apply_governance_specs(engine, loaded)             # now the YAML clearances apply
 
-compiled = engine.get_org()
-# compiled.nodes keys are the dash-delimited addresses
-print(list(compiled.nodes.keys()))
-# → ['D1-R1', 'D1-R1-T1-R1', 'D1-R1-T2-R1', 'D1-R1-T3-R1']</code></pre>
+for addr, node in engine.get_org().nodes.items():
+    print(f"{addr:<14} {node.node_type.name:<10} {node.name}")
+# D1             DEPARTMENT Mortgage Risk
+# D1-R1          ROLE       Risk Supervisor
+# D1-R1-T1       TEAM       Data Assessment
+# D1-R1-T1-R1    ROLE       Data Scientist
+# D1-R1-T2       TEAM       Model Selection
+# D1-R1-T2-R1    ROLE       Model Selector
+# D1-R1-T3       TEAM       Reporting
+# D1-R1-T3-R1    ROLE       Report Writer</code></pre>
+    <p>
+      At this point no role has an envelope, so every <code>verify_action</code>
+      call would return <code>auto_approved</code>. The next two steps close
+      that gap.
+    </p>
   </div>
 
   <div class="step">
@@ -436,33 +548,40 @@ print(list(compiled.nodes.keys()))
     <p>
       Envelopes are <code>ConstraintEnvelopeConfig</code> instances with the five
       canonical dimensions (financial, operational, temporal, data access,
-      communication) plus a confidentiality clearance and a delegation-depth cap.
-      The financial dimension is where per-role budgets live — there is no
-      separate <code>CostTracker</code> object anymore.
+      communication) plus a confidentiality clearance and a delegation-depth cap
+      (a positive integer, or <code>None</code> for unlimited). The financial
+      dimension is where per-role budgets live. The supervisor's envelope must
+      already contain every action it will hand down — a child may only narrow
+      it.
     </p>
     <pre><code class="language-python">from pact import (
     RoleEnvelope, ConstraintEnvelopeConfig,
     FinancialConstraintConfig, OperationalConstraintConfig,
-    TemporalConstraintConfig, DataAccessConstraintConfig,
-    CommunicationConstraintConfig, ConfidentialityLevel,
+    ConfidentialityLevel,
 )
 
-# Supervisor envelope — full co-ordination surface, $10 total budget
+SPECIALIST_ACTIONS = [
+    "explore_data", "compute_statistics", "feature_engineering",    # assessment
+    "train_model", "evaluate_model", "hyperparameter_search",       # selection
+    "generate_report", "format_output",                             # reporting
+]
+
+# Supervisor envelope: $10 total, everything its teams may do, never deploy.
+# Any single action above $8 is held for a human.
 supervisor_env = ConstraintEnvelopeConfig(
     id="supervisor_env",
     description="Mortgage-risk supervisor",
     confidentiality_clearance=ConfidentialityLevel.CONFIDENTIAL,
-    financial=FinancialConstraintConfig(max_spend_usd=10.00),
+    financial=FinancialConstraintConfig(max_spend_usd=10.00,
+                                        requires_approval_above_usd=8.00),
     operational=OperationalConstraintConfig(
-        allowed_actions=["delegate", "allocate_budget", "aggregate_results"],
+        allowed_actions=["delegate", "aggregate_results", *SPECIALIST_ACTIONS],
+        blocked_actions=["deploy_model"],
     ),
-    temporal=TemporalConstraintConfig(),
-    data_access=DataAccessConstraintConfig(),
-    communication=CommunicationConstraintConfig(),
     max_delegation_depth=3,
 )
 
-# DataScientist envelope — exploration only, $3 share
+# DataScientist: exploration only, $3 share
 data_scientist_env = ConstraintEnvelopeConfig(
     id="data_scientist_env",
     description="Data exploration specialist",
@@ -470,15 +589,12 @@ data_scientist_env = ConstraintEnvelopeConfig(
     financial=FinancialConstraintConfig(max_spend_usd=3.00),
     operational=OperationalConstraintConfig(
         allowed_actions=["explore_data", "compute_statistics", "feature_engineering"],
-        denied_actions=["train_model", "deploy_model"],
+        blocked_actions=["train_model", "deploy_model"],
     ),
-    temporal=TemporalConstraintConfig(),
-    data_access=DataAccessConstraintConfig(),
-    communication=CommunicationConstraintConfig(),
-    max_delegation_depth=0,
+    max_delegation_depth=1,
 )
 
-# ModelSelector envelope — training, no deploy, $4 share
+# ModelSelector: training and evaluation, no deploy, $4 share
 model_selector_env = ConstraintEnvelopeConfig(
     id="model_selector_env",
     description="Model-selection specialist",
@@ -486,15 +602,12 @@ model_selector_env = ConstraintEnvelopeConfig(
     financial=FinancialConstraintConfig(max_spend_usd=4.00),
     operational=OperationalConstraintConfig(
         allowed_actions=["train_model", "evaluate_model", "hyperparameter_search"],
-        denied_actions=["deploy_model"],
+        blocked_actions=["deploy_model"],
     ),
-    temporal=TemporalConstraintConfig(),
-    data_access=DataAccessConstraintConfig(),
-    communication=CommunicationConstraintConfig(),
-    max_delegation_depth=0,
+    max_delegation_depth=1,
 )
 
-# ReportWriter envelope — read-only reporting, $3 share
+# ReportWriter: reporting only, $3 share
 report_writer_env = ConstraintEnvelopeConfig(
     id="report_writer_env",
     description="Report-writing specialist",
@@ -503,24 +616,27 @@ report_writer_env = ConstraintEnvelopeConfig(
     operational=OperationalConstraintConfig(
         allowed_actions=["generate_report", "format_output"],
     ),
-    temporal=TemporalConstraintConfig(),
-    data_access=DataAccessConstraintConfig(),
-    communication=CommunicationConstraintConfig(),
-    max_delegation_depth=0,
+    max_delegation_depth=1,
 )</code></pre>
+    <p>
+      The temporal, data-access and communication dimensions are left at their
+      defaults here (no time window, no path restrictions, no channel
+      restrictions); they are still part of every envelope and can be tightened
+      the same way.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3 — Attach envelopes to roles and verify the budget sum.</span>
     <p>
-      Budget cascading in the modern API is a property of the envelope tree:
-      the parent holds the total, children hold shares, and
-      <code>validate_tightening</code> catches any child that tries to exceed
-      its parent's cap. You still check the sum manually — the framework won't
-      silently reject over-allocation, it will just refuse to run the offending
-      delegation at verify time.
+      Attach the parent first, then the children. <code>set_role_envelope</code>
+      checks each child against the envelope of its defining role and raises
+      <code>MonotonicTighteningError</code> if the child is looser on any
+      dimension. It does not add up siblings, so the sum check is an explicit
+      assertion.
     </p>
-    <pre><code class="language-python"># Attach each envelope to its D/T/R address
+    <pre><code class="language-python">from pact import MonotonicTighteningError
+
 engine.set_role_envelope(RoleEnvelope(
     id="supervisor_role_env",
     defining_role_address="D1-R1",
@@ -528,114 +644,171 @@ engine.set_role_envelope(RoleEnvelope(
     envelope=supervisor_env,
 ))
 
-for task_id, env in [("T1", data_scientist_env),
-                     ("T2", model_selector_env),
-                     ("T3", report_writer_env)]:
+children = {"D1-R1-T1-R1": data_scientist_env,
+            "D1-R1-T2-R1": model_selector_env,
+            "D1-R1-T3-R1": report_writer_env}
+for address, env in children.items():
     engine.set_role_envelope(RoleEnvelope(
         id=f"{env.id}_role",
-        defining_role_address="D1-R1",
-        target_role_address=f"D1-R1-{task_id}-R1",
+        defining_role_address="D1-R1",      # the supervisor defines it
+        target_role_address=address,
         envelope=env,
     ))
 
-# Verify the child budgets don't exceed the parent
-child_total = sum(env.financial.max_spend_usd
-                  for env in [data_scientist_env, model_selector_env, report_writer_env])
+child_total = sum(env.financial.max_spend_usd for env in children.values())
 assert child_total <= supervisor_env.financial.max_spend_usd, "over-allocation"
 print(f"Total allocated to children: ${child_total:.2f}")
-print(f"Supervisor reserve: ${supervisor_env.financial.max_spend_usd - child_total:.2f}")</code></pre>
+print(f"Supervisor reserve: ${supervisor_env.financial.max_spend_usd - child_total:.2f}")
+# Total allocated to children: $10.00
+# Supervisor reserve: $0.00
+
+# A child that tries to loosen its parent is rejected when attached
+greedy = ConstraintEnvelopeConfig(
+    id="greedy_env",
+    confidentiality_clearance=ConfidentialityLevel.RESTRICTED,
+    financial=FinancialConstraintConfig(max_spend_usd=30.00),
+    operational=OperationalConstraintConfig(allowed_actions=["explore_data"]),
+    max_delegation_depth=1,
+)
+try:
+    engine.set_role_envelope(RoleEnvelope(
+        id="greedy_role", defining_role_address="D1-R1",
+        target_role_address="D1-R1-T1-R1", envelope=greedy,
+    ))
+except MonotonicTighteningError as err:
+    print(err)
+# Monotonic tightening violation(s): Financial: child max_spend_usd (30.0) exceeds parent (10.0)</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 4 — Construct the GovernedSupervisor.</span>
+    <span class="step-label">Step 4 — Run the work through a GovernedSupervisor.</span>
     <p>
-      <code>GovernedSupervisor</code> replaces the legacy
-      <code>PactGovernedAgent</code> wrapper. It is not a wrapper — it is a
-      standalone planning supervisor that accepts a model, budget, tool list,
-      and clearance string, and runs a two-layer protocol where your
-      <code>execute_node</code> callback performs the actual LLM work.
+      <code>GovernedSupervisor</code> does not wrap an agent. It takes a
+      <code>model</code> and three knobs — <code>budget_usd</code>,
+      <code>tools</code> and <code>data_clearance</code> — and
+      <code>await supervisor.run(objective, execute_node=...)</code> turns the
+      objective into a plan, checks the budget before each step, calls
+      <em>your</em> <code>execute_node(spec, inputs)</code> callback to do the
+      model work, records the reported cost, and appends to a hash-chained
+      audit log. <code>run()</code> builds a one-step plan (node
+      <code>task-0</code>) whose <code>spec.description</code> is the
+      objective; multi-step plans go through <code>run_plan(plan, ...)</code>.
+    </p>
+    <p>
+      The two layers fit together inside the callback: before a specialist
+      acts, ask the org engine whether its role may take that action. A raised
+      exception marks the step <code>FAILED</code> and the run returns
+      <code>success == False</code>.
     </p>
     <pre><code class="language-python">from kaizen_agents import GovernedSupervisor
+from shared.mlfp06._ollama_bootstrap import (
+    DEFAULT_CHAT_MODEL, make_delegate, run_delegate_text,
+)
 
 governed_supervisor = GovernedSupervisor(
-    model="gpt-4o-mini",
+    model=DEFAULT_CHAT_MODEL,          # from OLLAMA_CHAT_MODEL in .env
     budget_usd=10.00,
-    tools=["delegate", "allocate_budget", "aggregate_results"],
-    data_clearance="confidential",  # canonical: public/restricted/confidential/secret/top_secret
+    tools=["explore_data", "compute_statistics", "feature_engineering"],
+    data_clearance="restricted",       # public < restricted < confidential < secret < top_secret
 )
 
-# execute_node is YOUR callback — runs the LLM (or an offline stub for tests)
-async def executor(spec, inputs):
-    """Dispatch to the right specialist given the planned step."""
-    if spec.role == "data-scientist":
-        return await run_data_scientist(inputs)
-    if spec.role == "model-selector":
-        return await run_model_selector(inputs)
-    return await run_report_writer(inputs)
+def specialist_executor(role_address: str, action: str):
+    """Build an execute_node callback that is gated by the org engine."""
+    async def execute_node(spec, inputs):
+        verdict = engine.verify_action(role_address, action)
+        if not verdict.allowed:
+            raise PermissionError(f"{role_address} may not {action}: {verdict.reason}")
+        delegate = make_delegate(system_prompt="You are a mortgage-risk data scientist.")
+        text, usage, _latency = await run_delegate_text(delegate, spec.description)
+        return {"result": text,
+                "cost": 0.0,                       # local Ollama is free
+                "prompt_tokens": usage["prompt_tokens"],
+                "completion_tokens": usage["completion_tokens"]}
+    return execute_node
 
 result = await governed_supervisor.run(
-    objective="Assess default risk for HDB flat portfolio",
-    execute_node=executor,
+    objective="List three data-quality checks for an HDB resale mortgage portfolio.",
+    execute_node=specialist_executor("D1-R1-T1-R1", "explore_data"),
 )
-# result.success         → bool
-# result.budget_consumed → float
-# result.audit_trail     → list[dict] (every plan, call, and verdict)</code></pre>
+print(result.success, result.budget_consumed, result.budget_allocated)
+print(result.results["task-0"][:200])
+# True 0.0 10.0, then the model's answer (needs `ollama serve`)
+
+blocked = await governed_supervisor.run(
+    objective="Train a default-risk model.",
+    execute_node=specialist_executor("D1-R1-T1-R1", "train_model"),
+)
+print(blocked.success, [n.error for n in blocked.plan.nodes.values()])
+# False ["D1-R1-T1-R1 may not train_model: Action 'train_model' is explicitly
+#         blocked by operational constraints"]</code></pre>
+    <p>
+      The second run never reaches the model: the engine blocks the action,
+      the callback raises, and the supervisor records the step as failed.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 5 — Test access controls with <code>verify_action</code>.</span>
-    <pre><code class="language-python"># Verify access: data scientist can explore data
-verdict = engine.verify_action(
-    role_address="D1-R1-T1-R1",
-    action="explore_data",
-    context={"cost": 0.10, "data_classification": "restricted"},
-)
-assert verdict.allowed
-print(f"{verdict.level}: {verdict.reason}")
-# → "allowed: action 'explore_data' in envelope.operational.allowed_actions"
+    <span class="step-label">Step 5 — Test access decisions with <code>verify_action</code>.</span>
+    <pre><code class="language-python">def show(role_address, action, context=None):
+    v = engine.verify_action(role_address, action, context)
+    print(f"{role_address:<16} {action:<18} {v.level:<13} {v.reason}")
 
-# Verify denial: data scientist cannot deploy models
-verdict = engine.verify_action(
-    role_address="D1-R1-T1-R1",
-    action="deploy_model",
-    context={},
-)
-assert not verdict.allowed
-print(f"{verdict.level}: {verdict.reason}")
-# → "blocked: action 'deploy_model' in envelope.operational.denied_actions"
+show("D1-R1-T1-R1", "explore_data", {"cost": 0.10})
+show("D1-R1-T1-R1", "deploy_model")
+show("D1-R1-T1-R1", "delete_records")
+show("D1-R1-T1-R1", "explore_data", {"cost": 5.00})
+show("D1-R1-T2-R1", "train_model", {"cost": 3.50})
+show("D1-R1", "aggregate_results", {"cost": 9.00})
+show("D99-R99-T99-R99", "read_data")
+# D1-R1-T1-R1      explore_data       auto_approved Action 'explore_data' is within all constraint dimensions
+# D1-R1-T1-R1      deploy_model       blocked       Action 'deploy_model' is explicitly blocked by operational constraints
+# D1-R1-T1-R1      delete_records     blocked       Action 'delete_records' is not in the allowed actions list: ['compute_statistics', 'explore_data', 'feature_engineering']
+# D1-R1-T1-R1      explore_data       blocked       Action cost ($5.00) exceeds financial limit ($3.00)
+# D1-R1-T2-R1      train_model        flagged       Action cost ($3.50) is within 20% of financial limit ($4.00)
+# D1-R1            aggregate_results  held          Action cost ($9.00) exceeds approval threshold ($8.00) -- held for human approval
+# D99-R99-T99-R99  read_data          auto_approved No envelope constraints -- action permitted</code></pre>
+    <p>
+      The last line is the fail-open default: the address does not exist, yet
+      the action is approved. Close the gap in your own code by refusing any
+      address that has no effective envelope —
+      <code>engine.compute_envelope(addr)</code> returns <code>None</code> both
+      for unknown addresses and for roles with no envelope on themselves or any
+      ancestor:
+    </p>
+    <pre><code class="language-python">def governed_allowed(role_address: str, action: str, context=None) -> bool:
+    """Deny unless the role exists AND has an envelope AND the verdict allows."""
+    if engine.compute_envelope(role_address) is None:
+        return False
+    return engine.verify_action(role_address, action, context).allowed
 
-# Fail-closed: unknown role address denies immediately (Step 1 of the 5-step algorithm)
-verdict = engine.verify_action(
-    role_address="D99-R99-T99-R99",
-    action="any_action",
-    context={},
-)
-assert not verdict.allowed
-assert verdict.level == "blocked"</code></pre>
+print(governed_allowed("D99-R99-T99-R99", "read_data"))   # False
+print(governed_allowed("D1-R1-T1-R1", "explore_data"))    # True
+print(governed_allowed("D1-R1-T1-R1", "deploy_model"))    # False</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 6 — Read the tamper-evident audit trail.</span>
-    <pre><code class="language-python"># Audit trail lives on the supervisor, not the engine
-trail = governed_supervisor.audit.to_list()
-for entry in trail:
-    print(f"[{entry['timestamp']}] {entry['role_address']} → {entry['action']}: "
-          f"{entry['verdict']} ({entry['reason']})")
+    <pre><code class="language-python"># The audit trail lives on the supervisor (the engine keeps none unless
+# you pass it an audit_chain when you construct it)
+for entry in governed_supervisor.audit.to_list():
+    print(entry["timestamp"], entry["agent_id"], entry["record_type"], entry["action"])
+# 2026-10-04T05:56:41.933448+00:00 root genesis genesis
+# 2026-10-04T05:56:41.934019+00:00 root action node_completed:task-0
+# 2026-10-04T05:56:41.934161+00:00 root action node_failed:task-0
 
-# Output:
-# [2026-04-13T10:01:02] D1-R1-T1-R1 → explore_data:
-#     allowed (action in envelope.operational.allowed_actions)
-# [2026-04-13T10:01:03] D1-R1-T1-R1 → deploy_model:
-#     blocked (action in envelope.operational.denied_actions)
-
-# NEW in 0.8.1: hash-chain tamper-evidence
+# Each record carries record_id, record_type, timestamp, agent_id, parent_id,
+# action, details, prev_hash and record_hash. Every record_hash covers the
+# previous record's hash, so editing any record breaks the chain:
 assert governed_supervisor.audit.verify_chain(), "audit trail has been tampered with"</code></pre>
   </div>
 
   <p>
-    Every governance decision — granted and denied — is logged with a timestamp,
-    the D/T/R address, the resource, the decision, and the reason. This audit
-    trail is what MAS (or any regulator) will review.
+    Every supervised step — completed, failed or held — lands in that log with a
+    timestamp, the agent, the action and its details (the cost, the node). Store
+    the <code>verify_action</code> verdicts your code acts on next to it (each
+    verdict has <code>to_dict()</code>), and you have the record a regulator or
+    internal auditor will ask for: who acted, under which envelope, and why the
+    engine said yes or no.
   </p>
 </div>
 
@@ -644,76 +817,116 @@ assert governed_supervisor.audit.verify_chain(), "audit trail has been tampered 
 
 <p>
   PACT's confidentiality clearance adds graduated access based on data
-  sensitivity. Rather than binary allow/deny, clearance levels enable
-  progressive trust: a new role starts with a <code>PUBLIC</code> envelope
-  (read-only, low budget) and earns higher clearance through demonstrated
-  reliability. Each envelope carries a
-  <code>confidentiality_clearance</code> field of type
-  <code>ConfidentialityLevel</code>.
+  sensitivity. The order is PACT's <code>ConfidentialityLevel</code> enum, lowest
+  to highest:
+  <code>public &lt; restricted &lt; confidential &lt; secret &lt; top_secret</code>.
+  Note that <em>restricted</em> is the second-lowest tier, not the top
+  (<code>GovernedSupervisor</code> also accepts <code>"internal"</code> as an
+  alias for <code>restricted</code>). In the course organisation used by the
+  exercises (<code>shared.mlfp06.ex_7.compile_governance()</code>), the
+  department heads hold <code>secret</code>, the data analyst
+  <code>restricted</code> and the customer-facing agent <code>public</code>.
 </p>
 
 <table>
-  <thead><tr><th>Level</th><th>Name</th><th>Access</th><th>Typical budget</th></tr></thead>
+  <thead><tr><th>Rank</th><th>Level</th><th>Example data in a lending business</th><th>Illustrative budget</th></tr></thead>
   <tbody>
-    <tr><td>1</td><td>PUBLIC</td><td>Read-only data access</td><td>$1</td></tr>
-    <tr><td>2</td><td>RESTRICTED</td><td>Read + compute (statistics, predictions)</td><td>$5</td></tr>
-    <tr><td>3</td><td>CONFIDENTIAL</td><td>Read + compute + train models</td><td>$20</td></tr>
-    <tr><td>4</td><td>SECRET</td><td>Full access including deploy</td><td>$50</td></tr>
+    <tr><td>1</td><td>PUBLIC</td><td>Published rates, FAQ answers</td><td>$1</td></tr>
+    <tr><td>2</td><td>RESTRICTED</td><td>Aggregated portfolio statistics</td><td>$5</td></tr>
+    <tr><td>3</td><td>CONFIDENTIAL</td><td>Customer-level loan records</td><td>$20</td></tr>
+    <tr><td>4</td><td>SECRET</td><td>Credit-model internals, fraud investigations</td><td>$50</td></tr>
+    <tr><td>5</td><td>TOP_SECRET</td><td>Board-level or regulator-only material</td><td>by exception</td></tr>
   </tbody>
 </table>
 
 <p>
-  Promotion in the modern API is not a separate object — it is an
-  <em>envelope replacement</em> on the role. The supervisor
-  (<code>defining_role_address</code>) issues a new <code>RoleEnvelope</code>
-  at a higher clearance, and the framework enforces monotonic tightening
-  structurally: a child envelope may never exceed the parent envelope on
-  any dimension.
+  Clearance appears in two places. A <strong>role clearance</strong> (the
+  YAML's <code>clearances:</code> list, applied by
+  <code>apply_governance_specs</code>, or <code>engine.grant_clearance</code>)
+  says what the role may read. An <strong>envelope clearance</strong>
+  (<code>confidentiality_clearance</code> on <code>ConstraintEnvelopeConfig</code>)
+  caps what a delegated envelope may carry, and is subject to monotonic
+  tightening like every other dimension. Clearance is only checked when the
+  action names the data it touches: pass a <code>KnowledgeItem</code> as
+  <code>context["resource"]</code>.
+</p>
+
+<pre><code class="language-python">from pact import ConfidentialityLevel, KnowledgeItem
+
+for level in ["restricted", "confidential"]:
+    loan_book = KnowledgeItem(item_id=f"loan_book_{level}",
+                              classification=ConfidentialityLevel(level),
+                              owning_unit_address="D1")
+    v = engine.verify_action("D1-R1-T1-R1", "explore_data", {"resource": loan_book})
+    print(level, v.level, v.reason)
+# restricted auto_approved Action 'explore_data' is within all constraint dimensions
+# confidential blocked Knowledge access denied: Effective clearance 'restricted'
+#     is below item classification 'confidential'</code></pre>
+
+<p>
+  Promotion is not a separate object — it is an <em>envelope replacement</em> on
+  the role. The defining role issues a new <code>RoleEnvelope</code> at a higher
+  clearance; monotonic tightening is enforced against the <em>parent's</em>
+  envelope, so a promotion can go up to, but never beyond, what the supervisor
+  itself holds.
 </p>
 
 <pre><code class="language-python">from pact import (
     RoleEnvelope, ConstraintEnvelopeConfig, FinancialConstraintConfig,
-    OperationalConstraintConfig, TemporalConstraintConfig,
-    DataAccessConstraintConfig, CommunicationConstraintConfig,
-    ConfidentialityLevel,
+    OperationalConstraintConfig, ConfidentialityLevel, MonotonicTighteningError,
 )
 
 def build_envelope(level: ConfidentialityLevel, budget_usd: float,
-                    actions: list[str]) -> ConstraintEnvelopeConfig:
+                   actions: list[str]) -> ConstraintEnvelopeConfig:
     return ConstraintEnvelopeConfig(
         id=f"env_{level.name.lower()}",
         description=f"{level.name} clearance",
         confidentiality_clearance=level,
         financial=FinancialConstraintConfig(max_spend_usd=budget_usd),
         operational=OperationalConstraintConfig(allowed_actions=actions),
-        temporal=TemporalConstraintConfig(),
-        data_access=DataAccessConstraintConfig(),
-        communication=CommunicationConstraintConfig(),
-        max_delegation_depth=0,
+        max_delegation_depth=1,
     )
 
-# New role starts at PUBLIC (Level 1)
-initial = build_envelope(ConfidentialityLevel.PUBLIC, 1.00, ["read_data"])
+# The data scientist starts at PUBLIC with one action
+initial = build_envelope(ConfidentialityLevel.PUBLIC, 1.00, ["explore_data"])
 engine.set_role_envelope(RoleEnvelope(
-    id="new_role_env_v1",
-    defining_role_address="D1-R1",
-    target_role_address="D1-R1-T1-R1",
-    envelope=initial,
+    id="ds_env_v1", defining_role_address="D1-R1",
+    target_role_address="D1-R1-T1-R1", envelope=initial,
 ))
+print(engine.verify_action("D1-R1-T1-R1", "compute_statistics").level)   # blocked
 
-# After 100 successful operations with no violations, promote to RESTRICTED
-promoted = build_envelope(
-    ConfidentialityLevel.RESTRICTED, 5.00,
-    ["read_data", "compute_statistics", "run_predictions"],
-)
+# After a clean track record, the supervisor promotes it to RESTRICTED
+promoted = build_envelope(ConfidentialityLevel.RESTRICTED, 3.00,
+                          ["explore_data", "compute_statistics"])
 engine.set_role_envelope(RoleEnvelope(
-    id="new_role_env_v2",
-    defining_role_address="D1-R1",
-    target_role_address="D1-R1-T1-R1",
-    envelope=promoted,
+    id="ds_env_v2", defining_role_address="D1-R1",
+    target_role_address="D1-R1-T1-R1", envelope=promoted,
 ))
-# The supervisor is the defining role, so this replacement is authorised.
-# If an unauthorised role tried to promote, verify_action would deny.</code></pre>
+print(engine.verify_action("D1-R1-T1-R1", "compute_statistics").level)   # auto_approved
+
+# Promoting past the supervisor's own clearance (CONFIDENTIAL) is rejected
+try:
+    engine.set_role_envelope(RoleEnvelope(
+        id="ds_env_v3", defining_role_address="D1-R1",
+        target_role_address="D1-R1-T1-R1",
+        envelope=build_envelope(ConfidentialityLevel.SECRET, 3.00, ["explore_data"]),
+    ))
+except MonotonicTighteningError as err:
+    print(err)
+# Monotonic tightening violation(s): Confidentiality: child clearance (secret)
+#     exceeds parent (confidential)</code></pre>
+
+<div class="callout warning">
+  <span class="label">Who may promote?</span>
+  <p>
+    <code>set_role_envelope</code> checks the new envelope against the defining
+    role's envelope; it does not check that the caller <em>is</em> that role, or
+    that the defining role sits above the target (a sibling address is
+    accepted). Treat the call as a privileged operation: only your supervisor
+    code path may invoke it, and log every envelope change alongside the
+    verdicts.
+  </p>
+</div>
 
 <div class="callout advanced">
   <span class="label">Advanced</span>
@@ -734,85 +947,133 @@ engine.set_role_envelope(RoleEnvelope(
 <p>
   Governance testing is not optional — it is the most important testing you do.
   Functional tests verify that the system works. Governance tests verify that the
-  system <em>fails safely</em>. Here are the four patterns:
+  system <em>fails safely</em>. The suite below runs as-is with
+  <code>pytest</code> against the installed stack (no model calls: the supervisor
+  tests use a callback that reports a fixed cost). It covers five patterns:
+  deny paths on an attached envelope, the fail-open default and the guard that
+  closes it, monotonic tightening, budget exhaustion, and audit-chain integrity.
 </p>
 
 <pre><code class="language-python">import pytest
+from kaizen_agents import GovernedSupervisor
+from kailash.trust.pact.yaml_resolvers import apply_governance_specs
 from pact import (
-    RoleEnvelope, ConstraintEnvelopeConfig, FinancialConstraintConfig,
-    OperationalConstraintConfig, TemporalConstraintConfig,
-    DataAccessConstraintConfig, CommunicationConstraintConfig,
-    ConfidentialityLevel, MonotonicTighteningError,
+    ConfidentialityLevel, ConstraintEnvelopeConfig, FinancialConstraintConfig,
+    GovernanceEngine, MonotonicTighteningError, OperationalConstraintConfig,
+    RoleEnvelope, load_org_yaml,
 )
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL
 
-# Pattern 1: Verify access denial
-def test_data_scientist_cannot_deploy():
-    verdict = engine.verify_action(
-        role_address="D1-R1-T1-R1",
-        action="deploy_model",
-        context={},
+
+def envelope(env_id, clearance, budget_usd, actions, blocked=()):
+    return ConstraintEnvelopeConfig(
+        id=env_id,
+        confidentiality_clearance=clearance,
+        financial=FinancialConstraintConfig(max_spend_usd=budget_usd),
+        operational=OperationalConstraintConfig(allowed_actions=list(actions),
+                                                blocked_actions=list(blocked)),
+        max_delegation_depth=1,
     )
+
+
+@pytest.fixture
+def engine():
+    """The worked-example org with envelopes ATTACHED — deny paths need them."""
+    loaded = load_org_yaml("org/mortgage_risk.yaml")   # Step 1 of the worked example
+    eng = GovernanceEngine(loaded.org_definition)
+    apply_governance_specs(eng, loaded)
+    eng.set_role_envelope(RoleEnvelope(
+        id="sup", defining_role_address="D1-R1", target_role_address="D1-R1",
+        envelope=envelope("sup_env", ConfidentialityLevel.CONFIDENTIAL, 10.0,
+                          ["explore_data", "compute_statistics", "train_model"],
+                          blocked=["deploy_model"])))
+    eng.set_role_envelope(RoleEnvelope(
+        id="ds", defining_role_address="D1-R1", target_role_address="D1-R1-T1-R1",
+        envelope=envelope("ds_env", ConfidentialityLevel.RESTRICTED, 3.0,
+                          ["explore_data", "compute_statistics"],
+                          blocked=["train_model", "deploy_model"])))
+    return eng
+
+
+# Pattern 1: an action outside an ATTACHED envelope is blocked
+def test_data_scientist_cannot_deploy(engine):
+    verdict = engine.verify_action("D1-R1-T1-R1", "deploy_model")
     assert not verdict.allowed
     assert verdict.level == "blocked"
 
-# Pattern 2: Verify fail-closed on unknown roles
-def test_unknown_role_is_denied():
-    verdict = engine.verify_action(
-        role_address="D99-R99",         # does not exist in compiled org
-        action="read_data",
-        context={},
-    )
-    assert not verdict.allowed
-    assert verdict.level == "blocked"
 
-# Pattern 3: Verify monotonic tightening — child cannot exceed parent
+def test_data_scientist_cannot_overspend(engine):
+    verdict = engine.verify_action("D1-R1-T1-R1", "explore_data", {"cost": 5.00})
+    assert verdict.level == "blocked"           # $5 &gt; the $3 envelope
+
+
+# Pattern 2: pin the installed default, then prove your own guard closes it
+def test_unknown_address_is_auto_approved_by_default(engine):
+    verdict = engine.verify_action("D99-R99-T99-R99", "read_data")
+    assert verdict.allowed and verdict.level == "auto_approved"   # fail-open
+
+
+def test_guard_rejects_unknown_and_envelope_less_roles(engine):
+    def governed_allowed(addr, action):
+        if engine.compute_envelope(addr) is None:
+            return False
+        return engine.verify_action(addr, action).allowed
+    assert not governed_allowed("D99-R99-T99-R99", "read_data")
+    assert governed_allowed("D1-R1-T1-R1", "explore_data")
+
+
+def test_role_without_own_envelope_inherits_its_parents(engine):
+    # D1-R1-T2-R1 has no envelope of its own: the supervisor's envelope applies
+    assert engine.verify_action("D1-R1-T2-R1", "deploy_model").level == "blocked"
+
+
+# Pattern 3: monotonic tightening — keyword-only arguments
 def test_child_envelope_cannot_loosen_parent():
-    parent = ConstraintEnvelopeConfig(
-        id="parent", description="",
-        confidentiality_clearance=ConfidentialityLevel.RESTRICTED,
-        financial=FinancialConstraintConfig(max_spend_usd=5.00),
-        operational=OperationalConstraintConfig(allowed_actions=["read"]),
-        temporal=TemporalConstraintConfig(),
-        data_access=DataAccessConstraintConfig(),
-        communication=CommunicationConstraintConfig(),
-        max_delegation_depth=1,
-    )
-    child = ConstraintEnvelopeConfig(
-        id="child", description="",
-        confidentiality_clearance=ConfidentialityLevel.CONFIDENTIAL,  # ← tries to escalate
-        financial=FinancialConstraintConfig(max_spend_usd=10.00),     # ← exceeds parent
-        operational=OperationalConstraintConfig(allowed_actions=["read"]),
-        temporal=TemporalConstraintConfig(),
-        data_access=DataAccessConstraintConfig(),
-        communication=CommunicationConstraintConfig(),
-        max_delegation_depth=1,
-    )
-    with pytest.raises(MonotonicTighteningError):
-        RoleEnvelope.validate_tightening(parent, child)
+    parent = envelope("parent", ConfidentialityLevel.RESTRICTED, 5.00, ["read"])
+    child = envelope("child", ConfidentialityLevel.CONFIDENTIAL, 10.00, ["read"])
+    with pytest.raises(MonotonicTighteningError, match="Confidentiality"):
+        RoleEnvelope.validate_tightening(parent_envelope=parent, child_envelope=child)
 
-# Pattern 4: Verify budget exhaustion stops the supervisor
-async def test_budget_stops_supervisor():
-    from kaizen_agents import GovernedSupervisor
-    tiny = GovernedSupervisor(
-        model="gpt-4o-mini",
-        budget_usd=0.01,                 # tiny budget
-        tools=["answer_question"],
-        data_clearance="public",
-    )
-    async def expensive_executor(spec, inputs):
-        return {"result": "...", "cost": 0.02,  # exceeds $0.01
+
+# Pattern 4: budget exhaustion holds every later step
+@pytest.mark.asyncio
+async def test_budget_exhaustion_holds_further_work():
+    tiny = GovernedSupervisor(model=DEFAULT_CHAT_MODEL, budget_usd=0.01,
+                              tools=["answer_question"], data_clearance="public")
+
+    async def costly_step(spec, inputs):          # test double: reports $0.02 per step
+        return {"result": "draft", "cost": 0.02,
                 "prompt_tokens": 100, "completion_tokens": 50}
-    result = await tiny.run(objective="analyse portfolio",
-                             execute_node=expensive_executor)
-    assert not result.success
-    assert result.budget_consumed <= 0.01 or "budget" in result.failure_reason.lower()
 
-# Pattern 5: Verify tamper-evident audit chain
-def test_audit_chain_is_valid(governed_supervisor):
-    # Run some operations that populate the trail
-    trail = governed_supervisor.audit.to_list()
-    assert len(trail) >= 1
-    assert governed_supervisor.audit.verify_chain(), "audit chain is broken"</code></pre>
+    first = await tiny.run(objective="analyse portfolio", execute_node=costly_step)
+    assert first.success                                   # the overspending step completes
+    assert first.budget_consumed &gt; first.budget_allocated  # ...and the overspend is recorded
+    second = await tiny.run(objective="write the summary", execute_node=costly_step)
+    assert not second.success and second.results == {}    # every later step is HELD
+    assert any(r["record_type"] == "held" for r in tiny.audit.to_list())
+
+
+# Pattern 5: the audit chain is intact
+@pytest.mark.asyncio
+async def test_audit_chain_is_valid():
+    supervisor = GovernedSupervisor(model=DEFAULT_CHAT_MODEL, budget_usd=1.0,
+                                    tools=["answer_question"], data_clearance="public")
+
+    async def free_step(spec, inputs):
+        return {"result": "ok", "cost": 0.0, "prompt_tokens": 0, "completion_tokens": 0}
+
+    await supervisor.run(objective="answer one question", execute_node=free_step)
+    trail = supervisor.audit.to_list()
+    assert [r["record_type"] for r in trail] == ["genesis", "action"]
+    assert supervisor.audit.verify_chain()</code></pre>
+
+<p>
+  Two details matter. The <code>engine</code> fixture attaches envelopes
+  <em>before</em> any deny test — without them every test in Pattern 1 would
+  fail, because the default is to approve. And Pattern 2 deliberately pins the
+  fail-open default: if a future PACT release changes it, that test fails and
+  tells you to revisit the guard rather than leaving the change unnoticed.
+</p>
 
 <div class="callout warning">
   <span class="label">Critical principle</span>
@@ -830,13 +1091,17 @@ def test_audit_chain_is_valid(governed_supervisor):
 <h2>Common Mistakes</h2>
 
 <div class="callout warning">
-  <span class="label">Mistake 1: Fail-open governance</span>
+  <span class="label">Mistake 1: Assuming the engine fails closed</span>
   <p>
-    If the governance check fails (network error, config issue, missing rules),
-    deny access. <em>Never</em> default to allow. A system that allows everything
-    when governance breaks is worse than a system with no governance at all,
-    because it creates a false sense of security. PACT's default is
-    <code>enforcement="block"</code> with fail-closed semantics.
+    If the governance check cannot reach a decision (missing rules, unknown
+    role), your system should deny. The installed PACT engine does
+    <em>not</em> do that for you: a role with no envelope in its chain, or an
+    address that is not in the org, is <code>auto_approved</code>. A system that
+    allows everything when its rules are missing is worse than no governance at
+    all, because it creates a false sense of security. Attach an envelope to
+    every role (or to a head whose envelope covers its subtree), reject
+    addresses without an effective envelope in your own code, and pin that
+    behaviour with a test.
   </p>
 </div>
 
@@ -853,8 +1118,11 @@ def test_audit_chain_is_valid(governed_supervisor):
 <div class="callout warning">
   <span class="label">Mistake 3: No audit trail</span>
   <p>
-    Compliance requires proving every access decision was checked. Log every
-    <code>can_access()</code> call — both grants and denials. The audit trail
+    Compliance requires proving every access decision was checked. Record every
+    <code>verify_action()</code> verdict your code acts on (<code>verdict.to_dict()</code>)
+    — both grants and denials — next to the supervisor's hash-chained audit log.
+    The engine keeps no audit record of its own unless you construct it with an
+    <code>audit_chain</code>. The audit trail
     is not for debugging; it is for the regulator. MAS, PDPA, and GDPR all
     require demonstrable access control.
   </p>
@@ -864,8 +1132,8 @@ def test_audit_chain_is_valid(governed_supervisor):
   <span class="label">Mistake 4: Governance as philosophy instead of code</span>
   <p>
     "We have an AI ethics framework" is not governance. Governance is
-    <code>engine.can_access(addr, resource)</code> returning <code>False</code>
-    and the tool call being blocked. If it is not in code, it is not enforced.
+    <code>engine.verify_action(addr, action)</code> returning a
+    <code>blocked</code> verdict and the tool call never running. If it is not in code, it is not enforced.
     If it is not tested, it does not work. This lesson is engineering, not philosophy.
   </p>
 </div>
@@ -876,12 +1144,14 @@ def test_audit_chain_is_valid(governed_supervisor):
 <div class="try-it">
   <h3>Exercise A — Build a D/T/R structure</h3>
   <p>
-    Define a governance structure for a Singapore e-commerce company with two
-    domains (<code>marketplace</code> and <code>logistics</code>), three teams
-    (<code>search</code>, <code>recommendations</code>, <code>delivery</code>),
-    and three roles (<code>analyst</code>, <code>engineer</code>,
-    <code>director</code>). Define permissions for each role. Test that an
-    analyst in the search team cannot access delivery data.
+    Write an org YAML (flat schema, as in Step 1) for a Singapore e-commerce
+    company with two departments (<code>marketplace</code> and
+    <code>logistics</code>), three teams (<code>search</code>,
+    <code>recommendations</code>, <code>delivery</code>) and a head role for
+    each unit. Print the compiled addresses. Attach envelopes, then test with
+    <code>verify_action</code> that the search-team head cannot run a
+    <code>read_delivery_routes</code> action — and confirm what happens
+    <em>before</em> you attach the envelopes.
   </p>
 </div>
 
@@ -898,10 +1168,15 @@ def test_audit_chain_is_valid(governed_supervisor):
 <div class="try-it">
   <h3>Exercise C — Budget cascading</h3>
   <p>
-    Create a supervisor agent with $15 budget that delegates to three workers.
-    Allocate $5 each. Run a task that causes one worker to exhaust its budget.
-    Verify that (1) the worker stops gracefully, (2) the other workers continue,
-    and (3) the supervisor's total spend never exceeds $15.
+    Give a supervisor role a $15 envelope and three worker roles $5 envelopes
+    each; assert the sum. Show that a fourth $6 child envelope is still
+    accepted by <code>set_role_envelope</code> (it checks each child, not the
+    sum) and add the check that rejects it. Then give each worker its own
+    <code>GovernedSupervisor(budget_usd=5.0, ...)</code> and a callback that
+    reports a notional cost per step: show that the worker whose step
+    overspends completes that step, that its next run is held
+    (<code>success == False</code>), and that the other workers are
+    unaffected.
   </p>
 </div>
 
@@ -909,10 +1184,10 @@ def test_audit_chain_is_valid(governed_supervisor):
   <h3>Exercise D — Write governance tests</h3>
   <p>
     Write a complete test suite for the system in Exercise B. Include: access
-    denial tests (5 cases), envelope enforcement tests (3 cases), budget
-    exhaustion test (1 case), monotonic tightening test (1 case), and audit
-    trail completeness test (1 case). Every test should be a negative test
-    that verifies what does NOT happen.
+    denial tests (5 cases, each with the envelope attached first), envelope
+    enforcement tests (3 cases), one test that pins the fail-open default for an
+    unknown address, a budget exhaustion test (1 case), a monotonic tightening
+    test (1 case), and an audit trail completeness test (1 case).
   </p>
 </div>
 
@@ -926,9 +1201,9 @@ def test_audit_chain_is_valid(governed_supervisor):
   the supervisor-worker pattern maps directly to PACT's D/T/R hierarchy and
   per-role envelope budgets.
   <strong>M6.8 (Capstone)</strong> integrates PACT governance with Nexus deployment
-  — every API/CLI/MCP request passes through the governance layer before reaching
-  the agent. The operating envelopes you defined today become deployment-level
-  access controls in the capstone.
+  — the served handler reads the caller's role from a signed token and calls
+  <code>verify_action</code> before the agent runs. The operating envelopes you
+  defined today become deployment-level access controls in the capstone.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->

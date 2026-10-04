@@ -575,8 +575,17 @@ def make_llm_executor(
     from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
 
     async def _execute(spec: Any, inputs: dict[str, Any]) -> dict[str, Any]:
-        del spec  # interface-required positional; the prompt is in `inputs`
-        objective = inputs.get("objective") or inputs.get("prompt") or str(inputs)
+        # The objective lives in the plan node's AgentSpec.description; inputs
+        # is empty for the root task (reading only inputs sent the model "{}").
+        objective = (
+            getattr(spec, "description", None)
+            or inputs.get("objective")
+            or inputs.get("prompt")
+        )
+        if not objective:
+            raise ValueError(
+                "executor received no objective (spec.description and inputs empty)"
+            )
         delegate = make_delegate(system_prompt=system_prompt)
         text, usage, _latency = await run_delegate_text(delegate, str(objective))
         if not text.strip():

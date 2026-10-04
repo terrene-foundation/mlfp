@@ -547,13 +547,18 @@ async def _capstone_execute_node(_spec: Any, inputs: dict[str, Any]) -> dict[str
     because local Ollama is free. Raises if the agent reports an error, so
     the supervisor marks the node FAILED and ``handle_qa`` surfaces it.
     """
-    del _spec  # interface-required positional, not consumed
+    # GovernedSupervisor puts the objective in the plan node's AgentSpec
+    # (``spec.description``); ``inputs`` only carries resolved upstream
+    # outputs and is EMPTY for the root task. Reading only ``inputs`` sent the
+    # model the literal string "{}".
     objective = (
-        inputs.get("objective")
+        getattr(_spec, "description", None)
+        or inputs.get("objective")
         or inputs.get("question")
         or inputs.get("prompt")
-        or str(inputs)
     )
+    if not objective:
+        raise ValueError("executor received no objective (spec.description and inputs empty)")
     out = await _get_shared_agent().run_async(question=str(objective))
     if not isinstance(out, dict) or out.get("error"):
         detail = out.get("error") if isinstance(out, dict) else repr(out)

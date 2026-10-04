@@ -1,100 +1,96 @@
-# MLFP03 — Task 1: Feature Engineering & Leakage-Free Selection
+# MLFP03 — Task 1: Application-Time Model Inputs
 
-**Weight**: 20 marks · **Difficulty**: Hard · **Dataset**: `data/mlfp03/ecommerce_customers.parquet` (50,000 rows, 16 columns)
+**Weight**: 20 marks · **Dataset**: `mlfp02/sg_credit_scoring.parquet` (100,000 labelled loan applications, 36 columns, 12.9% default)
+**Outcomes assessed**: domain-driven feature engineering (3.1), leakage detection and prevention (3.1), feature selection (3.1), split-first preprocessing with Kailash engines (3.1, 3.2)
 
 ## Scenario
 
-A Southeast-Asia e-commerce operator wants to target customers for a paid
-**premium-membership upsell**. You are handed the raw customer table. Your job:
-engineer business-meaningful features, then let the kailash-ml
-`FeatureEngineer` rank them so the modelling team starts from the highest-signal
-inputs — **without leaking the test set into the ranking**.
+A Singapore lender is rebuilding its default model. The modelling team will
+take whatever **model inputs** you hand them and fit their own model on them,
+so your job is the inputs: what goes in, how it is computed, and how it is
+applied to applications that arrive later.
 
-Implement `solve() -> dict`.
+The risk team has already decided which labelled applications are held back
+for the model's final sign-off. Those **hold-out** rows are in the history you
+receive, with their outcomes, so that their inputs can be produced the same
+way as everyone else's. Sign-off is only meaningful if nothing you build has
+learned anything from them.
 
-## The derived target — `premium_response`
+The credit committee has also asked for two affordability measures to be among
+the inputs:
 
-The native `churned` column is a near-deterministic function of recency, so it
-is useless for teaching. Instead the assessment derives a realistic target:
-whether a customer accepts the premium upsell. It is built from a documented
-logit over satisfaction, loyalty, spend, returns, plus a
-loyalty x high-satisfaction **interaction** and seeded Gaussian noise (≈25%
-positive — a 3:1 imbalance). **The full target code is given to you in
-`_load_base()` — keep it byte-for-byte so your output matches the grader.**
+- **instalment burden** — how large the monthly instalment is relative to the
+  applicant's monthly income;
+- **savings cover** — how many months of instalments the applicant's savings
+  would pay.
 
-## Required engineered features (exact formulas)
+Nobody has told you whether every column in the file is something the bank
+actually knows when an application arrives. Finding out is part of the task.
 
-Add these six columns. `loyalty_int` is `loyalty_member` cast to `Int64`
-(already created in `_load_base()`).
-
-| Column | Formula |
-| ------ | ------- |
-| `revenue_per_order`    | `total_revenue / order_count` |
-| `returns_per_order`    | `num_returns / order_count` |
-| `is_satisfied`         | `Int64(satisfaction_score >= 4)` |
-| `loyal_and_satisfied`  | `loyalty_int * Int64(satisfaction_score >= 4)` |
-| `tenure_years`         | `customer_tenure_days / 365.0` |
-| `spend_per_tenure_day` | `total_revenue / customer_tenure_days` |
-
-## Candidate pool (14 features)
-
-```
-BASE (8): total_revenue, order_count, avg_order_value, days_since_last_order,
-          customer_tenure_days, satisfaction_score, num_returns, loyalty_int
-ENGINEERED (6): the six above
-```
-
-## Required pipeline
-
-1. **Engineer** the six features (exact formulas above).
-2. **Assemble** `feature_matrix` = the 14 candidate columns **plus** the target
-   `premium_response`, in original row order (no shuffle). Customer IDs, raw
-   `review_text`, `ltv_tier`, `product_categories`, and the native `churned`
-   label MUST NOT appear.
-3. **Select leakage-free**: take the **first 75%** of rows (the train split) and
-   rank with `kailash_ml` `FeatureEngineer.select(..., method="importance",
-   top_k=8)`. Build the candidate set with `GeneratedFeatures` /
-   `GeneratedColumn` (originals = the 8 base, generated = the 6 engineered).
-4. **Return** the dict described below.
-
-## Exact return contract
+## Interface
 
 ```python
-{
-  "feature_matrix":    pl.DataFrame,  # 14 candidate cols + "premium_response", 10,000 rows
-  "engineered_columns": list[str],    # the 6 engineered names
-  "selected_features":  list[str],    # top-8 features by importance (leakage-free)
-  "target_column":     "premium_response",
-}
+def build_model_inputs(history: pl.DataFrame, is_holdout: pl.Series) -> dict: ...
 ```
 
-## Visible sanity checks
+- `history` has the same 36 columns as the parquet file, including `default`.
+- `is_holdout` is a Boolean series aligned with `history`'s rows; `True` marks
+  a hold-out row.
 
-After a correct implementation:
+Return a dict with three entries:
 
-- `result["feature_matrix"].shape == (10000, 15)`
-- positive rate `result["feature_matrix"]["premium_response"].mean()` ≈ `0.254`
-- `len(result["selected_features"]) == 8`
-- the **top-ranked** feature is `loyal_and_satisfied` (the engineered
-  interaction) — engineering it surfaces the single strongest signal.
+| Key         | Value                                                                                                                                                                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `selected`  | list of the input column names you chose — at most **12**                                                                                                                                                                                 |
+| `inputs`    | polars DataFrame with `customer_id` plus exactly the `selected` columns, in that order, with **one row per row of `history`** (training and hold-out rows alike)                                                                          |
+| `transform` | a function that takes new applications (same columns as the file, **without** `default`) and returns a frame shaped like `inputs` for them. When an application arrives, any field recorded only after the loan's outcome is still empty. |
 
-## Performance target
+## Acceptance criteria
 
-A RandomForest trained on **only** your `selected_features` clears
-**ROC-AUC ≥ 0.84** on a held-out split (the reference clears ≈ 0.87).
+- Every input is numeric, with no missing or infinite values.
+- **Hold-out rows teach you nothing.** Every choice and every fitted value
+  (which inputs, fill values, scaling, any learned relationship) comes from
+  the training rows only. The hold-out rows' inputs are exactly what
+  `transform` produces for them.
+- **Inputs exist at application time.** No input may depend on an identifier
+  or on information recorded after the outcome.
+- **Scoring does not learn.** An application's inputs do not depend on which
+  other applications are scored with it.
+- The inputs include the two affordability measures above.
+- **The inputs keep the signal.** A plain logistic regression fitted on your
+  training-row inputs must rank new applicants' default risk (ROC-AUC) almost
+  as well as one fitted on every legitimate numeric field.
+- The function is deterministic: the same training rows always give the same
+  result.
 
-## Grading (12 automated checks, all must pass)
+## How you are graded (10 automated checks)
 
-return dict shape · types valid · no id/text/native-label leakage · engineered
-names exact · all 14 candidates present · derived target re-derived
-element-wise · engineered interaction + ratio correct · engineered spend +
-revenue correct · selection shape (exactly 8, valid, target excluded) · top
-driver is the interaction or satisfaction · selected overlaps independently
-re-derived importance top-8 by ≥ 6 · selected features clear the AUC floor.
+The grader calls your function on a **secret sample** of 10,000 labelled rows
+with a **secret hold-out flag**, and scores `transform` on **new applications
+you have never seen**, drawn from the same population. It never uses numbers
+your code reports about itself.
+
+| #   | Check                                                                                                                        |
+| --- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Output is well formed (keys, one row per application, ≤ 12 numeric inputs, no missing values) — every other check needs this |
+| 2   | Changing only the applications' IDs leaves their inputs unchanged                                                            |
+| 3   | Filling in the field recorded after the outcome leaves the inputs unchanged                                                  |
+| 4   | Re-running with the **hold-out rows altered** (outcomes and values) leaves the selection unchanged                           |
+| 5   | … and leaves every training row's inputs unchanged                                                                           |
+| 6   | Hold-out rows in `inputs` equal `transform` applied to them                                                                  |
+| 7   | An application's inputs are the same when it is scored inside a very different batch                                         |
+| 8   | One input ranks applicants like the instalment burden                                                                        |
+| 9   | One input ranks applicants like the savings cover                                                                            |
+| 10  | The grader's logistic model on your inputs scores new applications within 0.015 ROC-AUC of its all-fields reference          |
+
+Marks = 20 × checks passed / 10.
 
 ## Rules
 
-- **Polars only** — no pandas. Framework-first: selection via `FeatureEngineer`.
-- Load via `shared.MLFPDataLoader`. Fully deterministic (seeds fixed).
-- Selection MUST be fit on the train split only — fitting on all rows leaks
-  the test distribution and fails the leakage checks.
+- Polars for data handling (no pandas). Use the kailash-ml engines the module
+  teaches where they fit — for example `FeatureEngineer` for ranking
+  candidates and `PreprocessingPipeline` for imputation and scaling.
+- `build_model_inputs` works only on its arguments: it must not load files
+  itself and must not modify `history` in place.
+- Develop on the real file via `shared.MLFPDataLoader` (see `starter.py`).
+  Make your own hold-out flag to try your function.

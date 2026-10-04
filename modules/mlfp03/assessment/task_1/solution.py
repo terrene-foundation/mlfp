@@ -1,187 +1,156 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP03 — Assessment Task 1: Feature Engineering & Leakage-Free Selection
-(Reference Solution)
+MLFP03 — Assessment Task 1: Application-Time Model Inputs (Reference Solution)
 
-Reference implementation. Withheld from students. Verified to pass grader.py.
+Instructors only. Graded by grader.py on rows and applications the student
+never sees.
 
-Builds six business-meaningful engineered features from the raw Southeast-Asia
-e-commerce customer table, then ranks the full candidate pool with the
-kailash-ml FeatureEngineer (importance method, fit on the TRAIN split only so
-no test-set signal leaks into selection).
+Decisions this reference makes (one defensible route, not the only one):
+
+1. Split first. Every rule below is learned from the training rows only
+   (``is_holdout == False``); hold-out rows are transformed, never learned from.
+2. Leak screen on the training rows: a field that separates defaulters from
+   non-defaulters almost perfectly on its own (single-column AUC > 0.9) cannot
+   be known when an application arrives. Here that is
+   ``future_default_indicator``. ``customer_id`` is a key, never an input.
+3. Missing income (about 30% of rows) is imputed from age with a straight line
+   fitted on the training rows (income rises with age in this book); an
+   ``income_reported`` flag keeps the fact that it was missing.
+4. Three affordability features: instalment burden (monthly instalment as a
+   share of monthly income), savings cover (months of instalments the savings
+   would pay) and loan-to-income.
+5. Selection: kailash-ml ``FeatureEngineer`` ranks every candidate by tree
+   importance on the training rows; the top ranks fill the 12-input budget and
+   the two affordability measures the committee asked for are always kept.
+6. ``PreprocessingPipeline`` learns the remaining imputation and z-score scaling
+   from the training rows; ``transform`` only applies it.
 """
 from __future__ import annotations
 
 import warnings
+from typing import Callable
 
 import numpy as np
 import polars as pl
+from scipy.stats import rankdata
 
+from kailash_ml import PreprocessingPipeline
+from kailash_ml.engines.feature_engineer import (
+    FeatureEngineer,
+    GeneratedColumn,
+    GeneratedFeatures,
+)
 from shared import MLFPDataLoader
 
-warnings.filterwarnings("ignore")  # silence FeatureEngineer P2 ExperimentalWarning
+warnings.filterwarnings("ignore")
 
-# ── Deterministic contract ────────────────────────────────────────────────
-N_ROWS = 10_000
-SEED = 42
-TARGET = "premium_response"
-TRAIN_FRACTION = 0.75
-TOP_K = 8
-
-# Eight raw, model-ready base features (categoricals encoded to integers).
-BASE_FEATURES = [
-    "total_revenue",
-    "order_count",
-    "avg_order_value",
-    "days_since_last_order",
-    "customer_tenure_days",
-    "satisfaction_score",
-    "num_returns",
-    "loyalty_int",
-]
-# Six engineered features (exact formulas — see problem.md).
-ENGINEERED_FEATURES = [
-    "revenue_per_order",
-    "returns_per_order",
-    "is_satisfied",
-    "loyal_and_satisfied",
-    "tenure_years",
-    "spend_per_tenure_day",
-]
+ID = "customer_id"
+TARGET = "default"
+MAX_INPUTS = 12
+REQUIRED = ["instalment_burden", "savings_cover"]
+ENGINEERED = REQUIRED + ["loan_to_income", "income_reported"]
 
 
-def _load_base() -> pl.DataFrame:
-    """Load the first N_ROWS (sorted by customer_id) and derive the target.
+def load_history() -> pl.DataFrame:
+    """The labelled development file (for local runs only)."""
+    return MLFPDataLoader().load("mlfp02", "sg_credit_scoring.parquet")
 
-    The native ``churned`` column is a near-deterministic function of recency,
-    so it is unusable for a teaching problem. We derive ``premium_response`` —
-    whether a customer accepts a premium-membership upsell — from a documented
-    logit over satisfaction, loyalty, spend, returns, and a
-    loyalty x high-satisfaction interaction, plus seeded Gaussian noise. The
-    ~25%% positive rate gives a realistic 3:1 class imbalance.
-    """
-    df = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
-    df = df.sort("customer_id").head(N_ROWS)
 
-    rng = np.random.default_rng(SEED)
+def _single_column_auc(y: np.ndarray, x: np.ndarray) -> float:
+    ranks = rankdata(x)  # ties share their average rank
+    n1 = y.sum()
+    return float((ranks[y == 1].sum() - n1 * (n1 + 1) / 2) / (n1 * (len(y) - n1)))
 
-    def z(col: str) -> np.ndarray:
-        a = df[col].to_numpy().astype(float)
-        return (a - a.mean()) / (a.std() + 1e-9)
 
-    loyal = df["loyalty_member"].cast(pl.Int64).to_numpy().astype(float)
-    sat_high = (df["satisfaction_score"] >= 4).cast(pl.Int64).to_numpy().astype(float)
-    logit = (
-        1.0 * z("satisfaction_score")
-        + 0.9 * loyal
-        + 0.8 * z("avg_order_value")
-        - 0.7 * z("num_returns")
-        + 0.5 * z("order_count")
-        + 1.4 * (loyal * sat_high)
-        + rng.normal(0.0, 1.3, size=df.height)
-    )
-    target = (logit > 2.0).astype(np.int64)
+def _leak_screen(train: pl.DataFrame, numeric: list[str]) -> list[str]:
+    """Fields that predict the outcome almost perfectly on their own."""
+    y = train[TARGET].to_numpy()
+    leaks = []
+    for col in numeric:
+        x = train[col].cast(pl.Float64)
+        x = x.fill_null(x.median()).to_numpy()
+        if np.std(x) == 0:
+            continue
+        a = _single_column_auc(y, x)
+        if max(a, 1 - a) > 0.9:
+            leaks.append(col)
+    return leaks
 
+
+def _engineer(df: pl.DataFrame, slope: float, intercept: float) -> pl.DataFrame:
+    income = pl.col("income_sgd").cast(pl.Float64)
+    filled = income.fill_null(pl.lit(intercept) + pl.lit(slope) * pl.col("age").cast(pl.Float64))
     return df.with_columns(
-        [
-            pl.col("loyalty_member").cast(pl.Int64).alias("loyalty_int"),
-            pl.Series(TARGET, target),
-        ]
+        income.is_not_null().cast(pl.Int64).alias("income_reported"),
+        (pl.col("monthly_installment") / (filled / 12.0)).alias("instalment_burden"),
+        (pl.col("savings_balance") / pl.col("monthly_installment")).alias("savings_cover"),
+        (pl.col("loan_amount_sgd") / filled).alias("loan_to_income"),
+        filled.alias("income_sgd"),
     )
 
 
-def _engineer(df: pl.DataFrame) -> pl.DataFrame:
-    """Add the six engineered features with exact, documented formulas."""
-    return df.with_columns(
-        [
-            (pl.col("total_revenue") / pl.col("order_count")).alias("revenue_per_order"),
-            (pl.col("num_returns") / pl.col("order_count")).alias("returns_per_order"),
-            (pl.col("satisfaction_score") >= 4).cast(pl.Int64).alias("is_satisfied"),
-            (
-                pl.col("loyalty_int")
-                * (pl.col("satisfaction_score") >= 4).cast(pl.Int64)
-            ).alias("loyal_and_satisfied"),
-            (pl.col("customer_tenure_days") / 365.0).alias("tenure_years"),
-            (pl.col("total_revenue") / pl.col("customer_tenure_days")).alias(
-                "spend_per_tenure_day"
-            ),
-        ]
+def build_model_inputs(history: pl.DataFrame, is_holdout: pl.Series) -> dict:
+    """Learn every rule from the training rows; apply it to all rows."""
+    train = history.filter(~is_holdout)
+
+    numeric = [c for c, t in train.schema.items() if t.is_numeric() and c != TARGET]
+    leaks = _leak_screen(train, numeric)
+    candidates = [c for c in numeric if c not in leaks]
+
+    known = train.filter(pl.col("income_sgd").is_not_null())
+    slope, intercept = np.polyfit(
+        known["age"].to_numpy().astype(float), known["income_sgd"].to_numpy().astype(float), 1
+    )
+    slope, intercept = float(slope), float(intercept)
+    frame = _engineer(train, slope, intercept)
+
+    generated = GeneratedFeatures(
+        original_columns=candidates,
+        generated_columns=[
+            GeneratedColumn("instalment_burden", ["monthly_installment", "income_sgd"], "interaction", "float64"),
+            GeneratedColumn("savings_cover", ["savings_balance", "monthly_installment"], "interaction", "float64"),
+            GeneratedColumn("loan_to_income", ["loan_amount_sgd", "income_sgd"], "interaction", "float64"),
+            GeneratedColumn("income_reported", ["income_sgd"], "binning", "int64"),
+        ],
+        total_candidates=len(candidates) + len(ENGINEERED),
+        data=frame,
+    )
+    ranked = FeatureEngineer(max_features=MAX_INPUTS).select(
+        frame.select(candidates + ENGINEERED + [TARGET]), generated, TARGET, method="importance"
+    )
+    selected = list(REQUIRED)
+    for name in ranked.selected_columns:
+        if len(selected) >= MAX_INPUTS:
+            break
+        if name not in selected:
+            selected.append(name)
+
+    pipeline = PreprocessingPipeline()
+    pipeline.setup(
+        frame.select(selected + [TARGET]),
+        target=TARGET,
+        normalize=True,
+        imputation_strategy="median",
+        seed=42,
     )
 
-
-def solve() -> dict:
-    """Engineer features then rank them leakage-free with FeatureEngineer.
-
-    Returns a dict with keys:
-      - ``feature_matrix``    : pl.DataFrame of the 14 candidate features plus
-                                the target column (``premium_response``), in the
-                                original row order (no shuffle). Customer IDs,
-                                raw text, and the native ``churned`` label are
-                                excluded.
-      - ``engineered_columns``: list[str] of the 6 engineered feature names.
-      - ``selected_features`` : list[str] of the TOP_K (8) features ranked by
-                                kailash-ml FeatureEngineer importance, fit on the
-                                training split only.
-      - ``target_column``     : ``"premium_response"``.
-    """
-    from kailash_ml.engines.feature_engineer import (
-        FeatureEngineer,
-        GeneratedColumn,
-        GeneratedFeatures,
-    )
-
-    df = _engineer(_load_base())
-
-    candidates = BASE_FEATURES + ENGINEERED_FEATURES
-    feature_matrix = df.select(candidates + [TARGET])
-
-    # Leakage-free selection: fit the importance ranker on the TRAIN split only.
-    n_train = int(TRAIN_FRACTION * feature_matrix.height)
-    train = feature_matrix.head(n_train)
-
-    source_map = {
-        "revenue_per_order": ["total_revenue", "order_count"],
-        "returns_per_order": ["num_returns", "order_count"],
-        "is_satisfied": ["satisfaction_score"],
-        "loyal_and_satisfied": ["loyalty_int", "satisfaction_score"],
-        "tenure_years": ["customer_tenure_days"],
-        "spend_per_tenure_day": ["total_revenue", "customer_tenure_days"],
-    }
-    generated_cols = [
-        GeneratedColumn(
-            name=name,
-            source_columns=source_map[name],
-            strategy="interaction",
-            dtype="float64",
-        )
-        for name in ENGINEERED_FEATURES
-    ]
-    gen = GeneratedFeatures(
-        original_columns=BASE_FEATURES,
-        generated_columns=generated_cols,
-        total_candidates=len(candidates),
-        data=train,
-    )
-
-    engineer = FeatureEngineer(max_features=50)
-    selected = engineer.select(
-        train, gen, target=TARGET, method="importance", top_k=TOP_K
-    )
+    def transform(applications: pl.DataFrame) -> pl.DataFrame:
+        """Apply the learned rules to applications (no refitting)."""
+        engineered = _engineer(applications, slope, intercept)
+        inputs = pipeline.transform(engineered.select(selected))
+        return pl.concat([applications.select(ID), inputs.select(selected)], how="horizontal")
 
     return {
-        "feature_matrix": feature_matrix,
-        "engineered_columns": list(ENGINEERED_FEATURES),
-        "selected_features": list(selected.selected_columns),
-        "target_column": TARGET,
+        "selected": selected,
+        "inputs": transform(history.drop(TARGET)),
+        "transform": transform,
     }
 
 
 if __name__ == "__main__":
-    out = solve()
-    fm = out["feature_matrix"]
-    print(f"feature_matrix shape : {fm.shape}")
-    print(f"candidate columns    : {[c for c in fm.columns if c != TARGET]}")
-    print(f"engineered_columns   : {out['engineered_columns']}")
-    print(f"selected_features    : {out['selected_features']}")
-    print(f"target positive rate : {fm[TARGET].mean():.4f}")
+    data = load_history().head(10_000)
+    holdout = pl.Series("is_holdout", np.random.default_rng(0).random(data.height) < 0.25)
+    out = build_model_inputs(data, holdout)
+    print(f"model inputs ({len(out['selected'])}): {out['selected']}")
+    print(out["inputs"].head())

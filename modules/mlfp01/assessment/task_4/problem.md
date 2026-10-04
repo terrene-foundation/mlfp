@@ -1,63 +1,88 @@
-# MLFP01 — Task 4: Profile, Clean & Integrate with DataExplorer
+# MLFP01 — Task 4: Profile, Clean and Justify with DataExplorer
 
-**Weight**: 30 marks · **Difficulty**: Hard · **Dataset**: `data/mlfp01/economic_indicators.csv` (401 rows, 8 columns)
+**Weight**: 20 marks · **Dataset**: `data/mlfp01/economic_indicators.csv` (401 rows, 8 columns)
+**Outcomes assessed**: automated profiling with `DataExplorer`, alert
+configuration and justified cleaning decisions (1.7); parsing and type repair
+(1.1); null handling (1.8)
 
 ## Scenario
 
-Singapore's quarterly macro indicators arrive in a single messy file: numbers
-stored as text with thousands separators, three incompatible period formats,
-and scattered missing values. Use the kailash-ml **`DataExplorer`** engine to
-_discover_ the quality issues, fix them deterministically, and then prove the
-fix worked by re-profiling.
+An economics team keeps Singapore's macro indicators in one file that mixes
+monthly and quarterly rows. They want a clean **quarterly** table, and they want
+the data-quality work to be auditable. Every problem that the kailash-ml
+`DataExplorer` flags must either be fixed or be explicitly accepted with a
+reason.
 
-Implement `solve() -> dict` returning **exactly** these keys:
+Use `DataExplorer` to discover the problems. The `shared` helpers
+`run_profile(df, alert_config=None)` and `run_compare(df_a, df_b)` run it
+synchronously in a script, in Jupyter and in Colab. The task does not list the
+problems for you.
+
+## Interface
 
 ```python
-{
-    "cleaned": pl.DataFrame,    # the cleaned quarterly table (8 columns)
-    "raw_alert_count": int,     # DataExplorer alerts on the RAW quarterly slice
-    "clean_alert_count": int,   # DataExplorer alerts on your cleaned frame
-}
+def audit_indicators(raw: pl.DataFrame) -> dict: ...
 ```
 
-## Required pipeline
+`raw` has the same columns and dtypes as the CSV. The "raw quarterly slice" is
+the rows of `raw` whose `period_type` is `"quarterly"`. The function works only
+on the frame it is given. It will also be run on an **unseen variant** of the
+file, with rows in another order, other gaps and other repeated records.
 
-1. Keep only rows where `period_type == "quarterly"` (101 rows).
-2. Parse `period` into `period_year` (Int) and `period_quarter` (Int, 1–4). It
-   appears in **three** formats you must all handle:
-   - `"Q1 2000"` · `"2001-Q1"` · `"2001-2"` (year-dash-quarternumber)
-3. `tourist_arrivals` is stored as **text**, some with thousands separators
-   (`"5,246,242"`). Strip separators and cast to `Int64`.
-4. Impute `inflation_rate` and `trade_balance_sgd_bn` nulls with the **quarterly
-   median** of each column.
-5. `cleaned` = these **8 columns in this exact order**, sorted by
-   `[period_year, period_quarter]`:
+It returns a dict with exactly these keys:
 
-   ```
-   period_year, period_quarter, gdp_growth_pct, unemployment_rate,
-   inflation_rate, trade_balance_sgd_bn, property_price_index, tourist_arrivals
-   ```
+| Key                 | Value                                                                                                                                                                                                                                                             |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `raw_alerts`        | `list[str]`: every alert `DataExplorer` (default thresholds) raises on the raw quarterly slice, each encoded as described below                                                                                                                                   |
+| `cleaned`           | `pl.DataFrame`: the clean quarterly table (see acceptance criteria)                                                                                                                                                                                               |
+| `imputation`        | `str`: the method you used to fill the missing indicator values. One of `"median"`, `"mean"` (one statistic of the column over the cleaned quarters), `"interpolate"` (linear in time between the neighbouring quarters) or `"forward_fill"` (last known quarter) |
+| `null_alert_config` | an `AlertConfig` under which a column with **even one** missing value raises a `high_nulls` alert, whatever the table size, and a complete column raises none                                                                                                     |
+| `accepted_alerts`   | `dict[str, str]`: for **every** alert `DataExplorer` (default thresholds) still raises on your `cleaned` frame, the encoded alert mapped to your reason for accepting it. No other entries                                                                        |
+| `quality_delta`     | `dict`: `{"rows_removed": int, "nulls_filled": int}`, the rows removed and the missing values filled between the raw quarterly slice and `cleaned`                                                                                                                |
 
-6. Profile the **raw quarterly slice** and your **cleaned frame** with
-   `DataExplorer` (`await explorer.profile(df)`; the count is
-   `len(profile.alerts)`). Your cleaning must **reduce** the alert count.
+**Alert encoding.** An alert on one column is `"type:column"` (for example
+`"constant:period_type"`). An alert on a pair of columns is `"type:a,b"`, with
+the two names in alphabetical order. A whole-table alert is just `"type"`.
 
-## Visible sanity checks
+## Acceptance criteria for `cleaned`
 
-- `result["cleaned"].shape == (101, 8)`
-- `result["cleaned"]["tourist_arrivals"].dtype == pl.Int64`
-- `result["clean_alert_count"] < result["raw_alert_count"]`
-- no nulls in `inflation_rate`, `trade_balance_sgd_bn`, `tourist_arrivals`
+- Exactly **one row per quarter** covered by the data. The same quarter must not
+  appear twice, however it was written.
+- Columns: `period_year` (Int), `period_quarter` (Int, 1–4),
+  `gdp_growth_pct`, `unemployment_rate`, `inflation_rate`,
+  `trade_balance_sgd_bn`, `property_price_index` (Float) and
+  `tourist_arrivals` (Int64, the true integer count).
+- No missing values. Gaps are filled with the method you declare in
+  `imputation`, applied in time order. The grader recomputes your declared
+  method and compares.
+- Values that were present in the raw data are unchanged.
+- No `high_nulls` or `duplicates` alert remains. Any other alert that remains
+  must appear in `accepted_alerts` with a reason of at least one sentence.
 
-## Grading (automated, all checks must pass)
+Choose the imputation method that suits quarterly economic time series. In the
+docstring of `audit_indicators`, say in two or three sentences why you chose it.
+The docstring is read when your work is reviewed.
 
-returns the dict with the 3 keys · `cleaned` is a DataFrame · exact 8-column
-schema · row count 101 · `tourist_arrivals` is Int64 · quarter range 1–4 ·
-no nulls in imputed columns · `tourist_arrivals` values correct · `inflation_rate`
-values correct · (year, quarter) keys match reference · `raw_alert_count` matches
-the independently-measured ground truth · cleaning reduced the alert count.
+## How you are graded
+
+| #   | Check                                                                         |
+| --- | ----------------------------------------------------------------------------- |
+| G1  | Gate: returns the dict contract, `cleaned` has every required column          |
+| 1   | `raw_alerts` equals the alerts the grader gets by profiling the raw slice     |
+| 2   | `cleaned` has exactly one row per quarter                                     |
+| 3   | `tourist_arrivals` is Int64 with the correct counts                           |
+| 4   | Values that were present are unchanged                                        |
+| 5   | Gaps filled exactly as your declared `imputation` method would fill them      |
+| 6   | `null_alert_config` fires on a single missing value in a large table          |
+| 7   | `accepted_alerts` matches the grader's own re-profile of your `cleaned` frame |
+| 8   | `quality_delta` is correct                                                    |
+| 9   | Unseen variant of the file: the cleaned table is correct                      |
+
+Marks = 20 × (checks 1–9 passed / 9), and 0 if the gate fails.
 
 ## Rules
 
-- **Polars only** for data — no pandas. Use the kailash-ml `DataExplorer` engine
-  for profiling. Load via `shared.MLFPDataLoader`. Deterministic — no sampling.
+- **Polars only** for data. No pandas. Profile with the kailash-ml
+  `DataExplorer`, either directly or through `shared.run_profile` and
+  `shared.run_compare`.
+- Deterministic. Run `starter.py` to try your function before submitting.

@@ -1793,73 +1793,269 @@ Complex tasks require multiple specialists. A data analysis task might need a da
 
 ### FOUNDATIONS: Multi-agent patterns
 
-**Supervisor-worker.** One supervisor agent delegates sub-tasks to specialist workers. The supervisor decides which worker to call and aggregates results.
+**Supervisor-worker.** One supervisor agent delegates sub-tasks to specialist workers. The supervisor decides which worker to call and aggregates results. Best when the decomposition is dynamic.
 
-**Sequential.** Output of one agent feeds into the next: DataScientist -> FeatureEngineer -> ModelSelector -> ReportWriter.
+**Sequential.** Output of one agent feeds into the next: DataScientist → FeatureEngineer → ModelSelector → ReportWriter. Best for pipeline-like tasks where each stage needs the previous stage's result.
 
-**Parallel.** Multiple agents work simultaneously on independent sub-tasks. Results are aggregated.
+**Parallel.** Multiple agents work simultaneously on independent sub-tasks (fan-out), and the results are aggregated (fan-in). Latency becomes the slowest worker's time instead of the sum — but only if the calls really run concurrently (`asyncio.gather`), not one after another in a loop.
 
-**Handoff.** An agent transfers control to a specialist when it detects a topic outside its expertise.
+**Handoff.** An agent transfers control — and the conversation so far — to a specialist when the topic leaves its expertise (a general support agent hands a billing dispute to a billing agent).
 
-### FOUNDATIONS: MCP (Model Context Protocol)
+Decision rule: start with sequential (simplest to debug), add parallelism where sub-tasks are independent, and use a supervisor only when the decomposition must be decided at run time.
 
-MCP standardises how tools are exposed to agents:
+**Structured hand-offs.** In every pattern, agents should pass each other *typed* outputs (Signature fields), not free-form chat. A downstream agent that receives `{"claims": [...], "evidence_quality": "high"}` can be validated; one that receives a paragraph cannot.
 
-```python
-from kailash_mcp import MCPServer, Tool
+### FOUNDATIONS: Architecture and security considerations
 
-server = MCPServer("ml-tools")
+- **Modularity:** one specialist = one Signature = one responsibility, so a specialist can be swapped or tested alone.
+- **Load balancing:** run several replicas of a busy specialist behind a router (round-robin or least-busy), so one slow model call does not stall every request.
+- **Dynamic agent creation:** a supervisor may spawn a specialist per sub-task — always inside a hard limit on the number of children and on delegation depth, or a confused planner spawns agents without end.
+- **Isolation:** agents must not see data beyond their own authorisation. Every agent's output is untrusted input to the next one (prompt injection travels along the pipeline), and agent A must not get agent B to do what A itself may not do. Lesson 6.7 enforces these boundaries with PACT.
 
-@server.tool(description="Explore a dataset")
-async def explore(dataset_name: str) -> dict:
-    df = loader.load("mlfp06", dataset_name)
-    return {"rows": df.height, "columns": df.width}
+### FOUNDATIONS: A2A (agent-to-agent) communication
 
-@server.tool(description="Train a model")
-async def train(dataset: str, target: str) -> dict:
-    pipeline = TrainingPipeline()
-    result = pipeline.train(loader.load("mlfp06", dataset), target=target)
-    return result.metrics
-
-server.run(transport="stdio")
-```
+When agents run as separate services, they need a protocol, not shared memory. Agent-to-agent protocols have each agent publish an **agent card** (its capabilities, the tasks it accepts, how to reach it) and exchange typed task messages with a lifecycle — submitted → working → input-required → completed — with streaming for long tasks. MCP (below) connects an agent to *tools*; A2A connects an agent to *other agents*.
 
 ### FOUNDATIONS: Agent memory
 
-- **Short-term memory:** the current conversation context.
-- **Long-term memory:** persistent knowledge across sessions (stored in a database or file).
-- **Entity memory:** structured knowledge about people, places, and concepts.
+| Memory      | Holds                                              | Lifetime              | Typical store                    |
+| ----------- | -------------------------------------------------- | --------------------- | -------------------------------- |
+| Short-term  | The current conversation (a sliding window of turns) | One session          | The prompt / an in-process list  |
+| Long-term   | Facts and insights worth keeping across sessions   | Persistent            | A file, a database, a vector store searched by similarity |
+| Entity      | Structured facts about specific people, datasets, projects | Persistent      | A key-value store keyed by entity |
 
-## Worked Example: Multi-Agent ML Pipeline
+Never rely on the context window alone in production: it is short-term memory with a hard size limit. Exercise 6.6 (`ex_6/05_memory_and_security.py`) implements all three and probes each with questions whose answers are known — including one with no stored answer, where a correct memory must say it does not know.
+
+### FOUNDATIONS: MCP (Model Context Protocol)
+
+MCP standardises how tools are exposed to agents: a server publishes tools with JSON schemas; any MCP client — an agent framework, an IDE assistant, a desktop chat app — discovers them with the JSON-RPC method `tools/list` and invokes them with `tools/call`. The transport is chosen when the server is built: `stdio` (the client launches the server as a subprocess and talks over stdin/stdout — no network port at all) or HTTP/SSE (a remote server).
 
 ```python
-from shared.mlfp06._ollama_bootstrap import make_delegate
+import polars as pl
+from kailash_mcp import MCPServer
+from shared.mlfp06.ex_6 import load_squad_corpus
 
-# Each specialist is a Delegate bound to a tool set. Ollama is free, so
-# there are no per-agent dollar budgets; the bootstrap forces budget_usd=None.
-data_scientist = make_delegate(tools=[profile_data, visualise_data])
-feature_engineer = make_delegate(tools=[create_features, validate_features])
-model_selector = make_delegate(tools=[train_model, evaluate_model])
-report_writer = make_delegate(tools=[generate_report])
+passages = load_squad_corpus()                     # SQuAD 2.0 passages (title, text, question, ...)
+server = MCPServer(name="ml-tools", transport="stdio")
 
-# Sequential orchestration — output of each specialist feeds the next.
-data_analysis = data_scientist.run_sync("Analyse sg_hdb_prices.csv")
-features = feature_engineer.run_sync(f"Engineer features based on: {data_analysis}")
-model = model_selector.run_sync(f"Train model with features: {features}")
-report = report_writer.run_sync(f"Write report for: {model}")
+@server.tool()                                     # note the parentheses
+def search_corpus(query: str, top_k: int = 3) -> str:
+    """Return passages containing the query text.
+
+    Args:
+        query: Text to search for.
+        top_k: Maximum number of passages to return.
+    """
+    hits = passages.filter(pl.col("text").str.contains(query, literal=True))
+    return "\n\n".join(hits["text"].head(top_k).to_list())
+
+@server.tool()
+def get_corpus_stats() -> str:
+    """Number of passages and distinct article titles in the corpus."""
+    return f"{passages.height} passages from {passages['title'].n_unique()} articles"
+
+if __name__ == "__main__":
+    server.run()                                   # serves until the client disconnects
 ```
+
+The tool's name, description and argument schema are published from the function name, docstring and type hints. A client then discovers and calls the tools:
+
+```python
+import sys
+from kailash_mcp import MCPClient
+
+server_config = {"transport": "stdio", "command": sys.executable, "args": ["ml_tools_server.py"]}
+client = MCPClient()
+tools = await client.discover_tools(server_config, timeout=60)   # tools/list
+print([t["name"] for t in tools])                                # ['search_corpus', 'get_corpus_stats']
+stats = await client.call_tool(server_config, "get_corpus_stats", {})   # tools/call
+print(stats["success"], stats["content"])                       # True 300 passages from 35 articles
+```
+
+## Worked Example: Supervisor-Worker and Sequential Pipelines
+
+Exercise 6.6 builds both patterns on SQuAD 2.0 passages with three typed specialists (factual, semantic, structural analysis) and a synthesis agent from `shared.mlfp06.ex_6`, all running on `OLLAMA_CHAT_MODEL`.
+
+```python
+import asyncio
+import json
+from shared.mlfp06.ex_6 import (InterpretationAgent, build_specialists, build_synthesis,
+                                load_squad_corpus, run_checked)
+
+factual, semantic, structural = build_specialists()   # each a BaseAgent with its own Signature
+supervisor = build_synthesis()
+
+async def supervisor_worker(doc: str, question: str) -> dict:
+    # Fan-out: the three specialists run concurrently
+    f, s, st = await asyncio.gather(
+        run_checked(factual, document=doc, question=question),
+        run_checked(semantic, document=doc, question=question),
+        run_checked(structural, document=doc, question=question),
+    )
+    # Fan-in: the supervisor reads three STRUCTURED outputs
+    return await run_checked(
+        supervisor, document=doc, question=question,
+        factual_analysis=json.dumps(f, default=str),
+        semantic_analysis=json.dumps(s, default=str),
+        structural_analysis=json.dumps(st, default=str),
+    )   # -> unified_answer, confidence, reasoning_chain
+
+async def sequential(doc: str, question: str) -> dict:
+    claims = await run_checked(factual, document=doc, question=question)        # stage 1
+    interpreted = await run_checked(InterpretationAgent(),                       # stage 2
+                                    factual_claims=str(claims["factual_claims"]),
+                                    document=doc, question=question)
+    return await run_checked(supervisor, document=doc, question=question,         # stage 3
+                             factual_analysis=str(interpreted["interpreted_facts"]),
+                             semantic_analysis=str(interpreted["relevance_ranking"]),
+                             structural_analysis=f"Evidence quality: {claims['evidence_quality']}")
+
+row = load_squad_corpus().row(0, named=True)
+result = await supervisor_worker(row["text"], row["question"])
+print(result["unified_answer"], result["confidence"])
+```
+
+`run_checked` raises if an agent's LLM call failed instead of passing an error dict downstream, so a broken stage stops the pipeline loudly. Compare the two patterns on the same passages: the supervisor-worker run takes roughly the slowest specialist's time; the sequential run takes the sum of its stages, but stage 2 can use stage 1's claims.
 
 ## Try It Yourself
 
-**Drill 1.** Implement the full 4-agent sequential pipeline. Verify that each agent's output is consumed by the next.
+**Drill 1.** Implement the 4-agent sequential pipeline DataScientist → FeatureEngineer → ModelSelector → ReportWriter on the HDB resale data. Verify that each agent's output is consumed by the next.
 
-**Drill 2.** Build an MCP server exposing three ML tools. Connect an agent to the MCP server and verify it can discover and use the tools.
+**Solution:** give each role its own Signature, and feed each agent the previous agent's typed fields.
 
-**Drill 3.** Implement supervisor-worker orchestration. The supervisor receives a complex task, breaks it into sub-tasks, delegates each to a specialist, and aggregates the results.
+```python
+import polars as pl
+from kaizen import Signature, InputField, OutputField
+from kaizen.core.base_agent import BaseAgent
+from shared import MLFPDataLoader
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
+from shared.mlfp06.ex_6 import run_checked
 
-**Drill 4.** Add long-term memory to an agent using a simple JSON file store. The agent should remember insights from previous sessions.
+class DataScientistSig(Signature):
+    """Describe a dataset and the most promising signals for the target."""
+    data_summary: str = InputField(description="Column types and summary statistics")
+    target: str = InputField(description="Column to predict")
+    findings: str = OutputField(description="Key patterns, data issues and candidate predictors")
 
-**Drill 5.** Implement parallel execution: launch two agents simultaneously (data profiling and feature engineering) and aggregate their results.
+class FeatureEngineerSig(Signature):
+    """Propose features from a data scientist's findings."""
+    findings: str = InputField(description="Findings from the data scientist")
+    features: str = OutputField(description="Feature list, one per line, with a reason each")
+
+class ModelSelectorSig(Signature):
+    """Choose a model family for the proposed features."""
+    findings: str = InputField(description="Data findings")
+    features: str = InputField(description="Proposed features")
+    model_choice: str = OutputField(description="Model family and why")
+    evaluation_plan: str = OutputField(description="Split, metric and baseline")
+
+class ReportWriterSig(Signature):
+    """Write a short report for a non-technical manager."""
+    findings: str = InputField(description="Data findings")
+    features: str = InputField(description="Proposed features")
+    model_choice: str = InputField(description="Chosen model")
+    evaluation_plan: str = InputField(description="Evaluation plan")
+    report: str = OutputField(description="Five-sentence report")
+
+def agent(sig: Signature) -> BaseAgent:
+    return BaseAgent(config={"llm_provider": "ollama", "model": DEFAULT_CHAT_MODEL,
+                             "base_url": OLLAMA_BASE_URL, "use_async_llm": True,
+                             "response_format": {"type": "json_object"},
+                             "structured_output_mode": "explicit"}, signature=sig)
+
+df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+summary = str(df.describe())
+
+ds = await run_checked(agent(DataScientistSig()), data_summary=summary, target="resale_price")
+fe = await run_checked(agent(FeatureEngineerSig()), findings=ds["findings"])
+ms = await run_checked(agent(ModelSelectorSig()), findings=ds["findings"], features=fe["features"])
+report = await run_checked(agent(ReportWriterSig()), findings=ds["findings"], features=fe["features"],
+                           model_choice=ms["model_choice"], evaluation_plan=ms["evaluation_plan"])
+print(report["report"])
+```
+
+To verify the hand-offs, check that every stage's input fields are non-empty strings taken from the previous stage's output — not that the prose sounds plausible.
+
+**Drill 2.** Build an MCP server exposing three tools. Connect a client and verify it can discover and call them.
+
+**Solution:** add a third `@server.tool()` to the server above (for example `count_passages(title: str) -> str`), save it as `ml_tools_server.py`, and run the client code: `discover_tools` must list all three names, and `call_tool` must return each tool's result. `ex_6/04_mcp_server.py` does exactly this, including a call with an argument outside the tool's `Literal` type, which the server rejects before the handler runs.
+
+**Drill 3.** Implement supervisor-worker orchestration where the supervisor decides which specialists to call.
+
+**Solution:** let a router Signature pick the workers, then fan out to only those:
+
+```python
+class RouterSig(Signature):
+    """Decide which analyses a question needs."""
+    question: str = InputField(description="The user's question")
+    analyses: str = OutputField(description="Comma-separated subset of: factual, semantic, structural")
+
+router = agent(RouterSig())
+workers = {"factual": factual, "semantic": semantic, "structural": structural}
+
+async def routed(doc: str, question: str) -> dict:
+    plan = await run_checked(router, question=question)
+    chosen = [w.strip() for w in str(plan["analyses"]).split(",") if w.strip() in workers]
+    chosen = chosen or list(workers)                 # an empty plan falls back to all three, visibly
+    outputs = await asyncio.gather(*(run_checked(workers[w], document=doc, question=question)
+                                     for w in chosen))
+    return {"plan": chosen, "outputs": dict(zip(chosen, outputs))}
+```
+
+Log `plan` with every answer: when the final answer is wrong, the first question is whether the supervisor routed it to the right specialists.
+
+**Drill 4.** Add long-term memory to an agent using a JSON file store. The agent should remember insights from previous sessions.
+
+**Solution:**
+
+```python
+import json
+from pathlib import Path
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+
+class JsonMemory:
+    def __init__(self, path: str = "agent_memory.json"):
+        self.path = Path(path)
+        self.facts: dict[str, str] = json.loads(self.path.read_text()) if self.path.exists() else {}
+
+    def remember(self, key: str, fact: str) -> None:
+        self.facts[key] = fact
+        self.path.write_text(json.dumps(self.facts, indent=2))
+
+    def recall(self, query: str) -> list[str]:
+        words = set(query.lower().split())
+        return [f for k, f in self.facts.items() if words & set(k.lower().split("_"))]
+
+memory = JsonMemory()
+memory.remember("most_expensive_flat_type", "MULTI-GENERATION flats have the highest mean resale price.")
+context = "\n".join(memory.recall("most expensive flat type")) or "No stored facts."
+answer, _, _ = await run_delegate_text(
+    make_delegate(), f"Known facts:\n{context}\n\nQuestion: Which flat type is most expensive?")
+```
+
+Keyword recall is enough to see persistence across sessions; a production long-term memory embeds the facts and retrieves by similarity, exactly like Lesson 6.4's dense retriever.
+
+**Drill 5.** Implement parallel execution: launch two agents simultaneously and aggregate their results. Measure the speed-up over running them one after the other.
+
+**Solution:**
+
+```python
+import time
+
+row = load_squad_corpus().row(1, named=True)
+start = time.perf_counter()
+await run_checked(factual, document=row["text"], question=row["question"])
+await run_checked(semantic, document=row["text"], question=row["question"])
+sequential_s = time.perf_counter() - start
+
+start = time.perf_counter()
+await asyncio.gather(run_checked(factual, document=row["text"], question=row["question"]),
+                     run_checked(semantic, document=row["text"], question=row["question"]))
+parallel_s = time.perf_counter() - start
+print(f"sequential {sequential_s:.1f}s, parallel {parallel_s:.1f}s")
+```
+
+On one local Ollama server the speed-up depends on whether it serves requests concurrently (`OLLAMA_NUM_PARALLEL`); if it queues them, "parallel" agents take as long as sequential ones. That is the load-balancing point above, measured.
 
 ## Cross-References
 
@@ -1868,7 +2064,7 @@ report = report_writer.run_sync(f"Write report for: {model}")
 
 ## Reflection
 
-You should now be able to implement multi-agent patterns, build MCP servers, and configure agent memory.
+You should now be able to implement supervisor-worker, sequential, parallel and handoff patterns with typed hand-offs, build and call an MCP server, explain where A2A fits, configure short-term, long-term and entity memory, and name the isolation risks that Lesson 6.7 governs.
 
 ---
 

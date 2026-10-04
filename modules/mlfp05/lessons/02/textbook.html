@@ -178,7 +178,7 @@
     <tr><th>Year</th><th>Model</th><th>Depth</th><th>Key idea</th></tr>
   </thead>
   <tbody>
-    <tr><td>1998</td><td>LeNet-5</td><td>7</td><td>First working CNN — for handwritten digit recognition on the US postal system</td></tr>
+    <tr><td>1998</td><td>LeNet-5</td><td>7</td><td>Gradient‑trained CNN for handwritten digits (LeCun et al. 1998, later used to read bank cheques)</td></tr>
     <tr><td>2012</td><td>AlexNet</td><td>8</td><td>ReLU, dropout, two GPUs, massive data augmentation — won ImageNet by a landslide</td></tr>
     <tr><td>2014</td><td>VGGNet</td><td>16–19</td><td>Only 3×3 filters, homogeneous blocks — depth is what matters</td></tr>
     <tr><td>2014</td><td>GoogLeNet / Inception</td><td>22</td><td>Parallel filter sizes in one block (1×1, 3×3, 5×5)</td></tr>
@@ -192,10 +192,13 @@
 
 <p>
   Before ResNet, adding more layers to a CNN <em>hurt</em> accuracy after
-  about 20 layers. The problem was not overfitting — it was that deep
-  networks could not even fit the training data. Gradients vanished or
-  exploded; the optimiser could not push updates through a long chain of
-  non‑linearities.
+  about 20 layers. The problem was not overfitting — the deeper
+  networks had <em>higher training error</em> too, so they could not even
+  fit the training data. He et al. (2015) call this the
+  <strong>degradation problem</strong> and note it is "unlikely to be
+  caused by vanishing gradients": their plain networks already used batch
+  normalisation, and the gradient norms were healthy. Deep plain stacks
+  are simply hard for the optimiser to drive to a good solution.
 </p>
 
 <p>
@@ -216,9 +219,10 @@
 <p>
   The skip connection gives the gradient a clear path from the loss back
   to early layers — there is always an additive route that does not go
-  through the non‑linearity. In the worst case, $F$ can learn to output
-  zero and the block becomes the identity, so adding more layers never
-  makes the loss worse.
+  through the non‑linearity. And if $F$ learns to output zero the block
+  becomes the identity, so an extra block is easy to make harmless — the
+  optimiser only has to learn a small correction on top of $x$, which is
+  why very deep residual networks train where plain ones degrade.
 </p>
 
 <figure class="diagram">
@@ -277,9 +281,12 @@
 </ol>
 
 <p>
-  It adds only a handful of parameters per block and typically buys you
-  1–2% accuracy on ImageNet benchmarks. Modern ResNets use SE blocks by
-  default.
+  With the paper's reduction ratio of 16, each SE block adds
+  $2C^2/16 + C/16 + C$ parameters (two small linear layers with biases);
+  across SE‑ResNet‑50 that is about 10% more parameters, for roughly
+  1.5 points lower top‑1 error on ImageNet (Hu et al., 2018). SE is an
+  optional add‑on, not part of the standard ResNet — torchvision's
+  ResNets, for example, do not include it.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -291,22 +298,42 @@
     After you train a model, you need to ship it somewhere that is not a
     PyTorch process — a Rust service, a mobile app, a browser, an NVIDIA
     Triton server. <code>OnnxBridge</code> exports your trained model to
-    ONNX, the portable format every production runtime supports, in a
-    single call. It also validates the export by comparing PyTorch and
-    ONNX outputs on a sample input and warns you if they drift.
+    ONNX, the portable format most production runtimes support. Export
+    and parity checking are <strong>two separate calls</strong>:
+    <code>export(model, "torch", ...)</code> traces and writes the file and
+    returns a result object (it does <em>not</em> validate, and on failure
+    it returns <code>success=False</code> instead of raising — so check
+    it); <code>validate(model, path, rows)</code> runs the PyTorch model and
+    ONNX Runtime on the same rows and reports the largest difference.
   </p>
 </div>
 
-<pre><code class="language-python">from kailash_ml import OnnxBridge
+<pre><code class="language-python">from pathlib import Path
+import torch
+from kailash_ml import OnnxBridge
+from shared.mlfp05.ex_2 import FlatImageAdapter
 
 bridge = OnnxBridge()
-bridge.export(
-    model=trained_resnet,
-    sample_input=torch.randn(1, 3, 224, 224),
-    output_path="resnet_se.onnx",
-)
-# → validates PyTorch ↔ ONNX numerical parity automatically
+serving = FlatImageAdapter(resnet_se).eval()  # Exercise 2's CIFAR-10 ResNetSE, flat pixel rows in
+path = Path("resnet_se_cifar10.onnx")          # output_path must be a Path, not a str
+x = torch.randn(2, 3 * 32 * 32)                # 2 rows: a batch of 1 can freeze the batch size
+
+res = bridge.export(serving, "torch", output_path=path, sample_input=x)
+assert res.success, res.error_message          # "torch", not "pytorch"; failure returns success=False
+
+v = bridge.validate(serving, path, x.numpy(), tolerance=1e-3)
+print(v.valid, v.max_diff)                     # PyTorch vs ONNX Runtime parity
 </code></pre>
+
+<p>
+  <code>validate</code> calls <code>model.predict(rows)</code> on a NumPy
+  array to get the PyTorch reference, so the model you pass needs a
+  <code>predict</code> method. Exercise 2 (file 03) runs exactly the
+  snippet above: <code>FlatImageAdapter</code> adds <code>predict</code>
+  and accepts flat pixel rows, which is the shape
+  <code>InferenceServer</code> feeds the graph in Lesson 5.7. The worked
+  example below writes a five‑line adapter of its own.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Worked Example: A ResNet block with SE, trained and exported</h2>
@@ -315,34 +342,58 @@ bridge.export(
   <h3>📝 Goal</h3>
   <p>
     Build a small CNN that starts as plain conv, then upgrades to a
-    ResNet basic block, then adds an SE block. Train on a synthetic
-    shape‑classification dataset (three classes) and export the final
-    model to ONNX.
+    ResNet basic block, then adds an SE block. Train on a small
+    <strong>synthetic</strong> shape‑classification dataset (three
+    classes, generated below so the example runs in about a minute on a
+    laptop) and export the final model to ONNX. Exercise 2 applies the
+    same ideas to the real CIFAR‑10 dataset.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — imports and dataset.</span>
-    <pre><code class="language-python">import torch
+    <span class="step-label">Step 1 — imports and the (synthetic) dataset.</span>
+    <pre><code class="language-python">from pathlib import Path
+import numpy as np
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
-from kailash_ml import ModelVisualizer, OnnxBridge
-import numpy as np
+from kailash_ml import OnnxBridge
+from shared.kailash_helpers import get_device
 
 torch.manual_seed(42)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+rng = np.random.default_rng(42)
+device = get_device()          # MPS / CUDA / CPU, picked automatically
 
-# 28x28 grayscale synthetic shapes: 0=circle, 1=square, 2=triangle
 def make_shapes(n=3000, size=28):
+    """SYNTHETIC 28x28 shapes: 0 = circle, 1 = square, 2 = triangle."""
+    yy, xx = np.mgrid[0:size, 0:size]
     X = np.zeros((n, 1, size, size), dtype=np.float32)
-    y = np.random.randint(0, 3, n)
-    # ... (see exercise 2 solution for the generator)
+    y = rng.integers(0, 3, n)
+    for i in range(n):
+        r = rng.uniform(3, 7)                       # half-size in pixels
+        cx, cy = rng.uniform(r + 1, size - r - 1, 2)
+        if y[i] == 0:                               # circle
+            mask = (xx - cx) ** 2 + (yy - cy) ** 2 &lt;= r ** 2
+        elif y[i] == 1:                             # axis-aligned square
+            mask = (abs(xx - cx) &lt;= r) &amp; (abs(yy - cy) &lt;= r)
+        else:                                       # upward triangle
+            top = cy - r
+            mask = (yy &gt;= top) &amp; (yy &lt;= cy + r) &amp; (abs(xx - cx) &lt;= (yy - top) / 2)
+        X[i, 0] = mask
+    X += rng.normal(0, 0.3, X.shape).astype(np.float32)   # sensor noise
     return X, y
 
 X_np, y_np = make_shapes()
 X = torch.from_numpy(X_np).to(device)
 y = torch.from_numpy(y_np).long().to(device)
-loader = DataLoader(TensorDataset(X, y), batch_size=64, shuffle=True)</code></pre>
+split = 2400                                         # 2,400 train / 600 validation
+train_loader = DataLoader(TensorDataset(X[:split], y[:split]), batch_size=64, shuffle=True)
+X_val, y_val = X[split:], y[split:]</code></pre>
+    <p>
+      The three classes are balanced (about 1,000 each). Shapes vary in
+      size and position, and heavy Gaussian noise is added so the task is
+      not trivial.
+    </p>
   </div>
 
   <div class="step">
@@ -371,7 +422,7 @@ loader = DataLoader(TensorDataset(X, y), batch_size=64, shuffle=True)</code></pr
   <div class="step">
     <span class="step-label">Step 3 — a squeeze‑and‑excitation block.</span>
     <pre><code class="language-python">class SEBlock(nn.Module):
-    def __init__(self, channels, reduction=8):
+    def __init__(self, channels, reduction=8):   # paper uses 16; 8 suits our tiny 16/32-channel net
         super().__init__()
         hidden = max(channels // reduction, 4)
         self.fc1 = nn.Linear(channels, hidden)
@@ -418,37 +469,74 @@ opt = torch.optim.Adam(model.parameters(), lr=1e-3)
 history = []
 
 for epoch in range(15):
-    running, correct = 0.0, 0
-    for xb, yb in loader:
+    model.train()
+    running = 0.0
+    for xb, yb in train_loader:
         logits = model(xb)
         loss = F.cross_entropy(logits, yb)
         opt.zero_grad(); loss.backward(); opt.step()
         running += loss.item() * xb.size(0)
-        correct += (logits.argmax(1) == yb).sum().item()
-    history.append(running / len(loader.dataset))
-    print(f"epoch {epoch+1}: loss {history[-1]:.4f}  acc {correct/len(loader.dataset):.3f}")</code></pre>
+    history.append(running / split)
+
+    model.eval()                                  # BatchNorm → running stats
+    with torch.no_grad():
+        val_acc = (model(X_val).argmax(1) == y_val).float().mean().item()
+    print(f"epoch {epoch+1:2d}: train loss {history[-1]:.4f}  val acc {val_acc:.3f}")</code></pre>
     <p>
       Standard PyTorch training loop. Same structure as Lesson 5.1 —
-      the only differences are cross‑entropy loss, the argmax to compute
-      accuracy, and the fact that our model is much richer.
+      the differences are cross‑entropy loss, the argmax to compute
+      accuracy, and the switch to <code>model.eval()</code> before
+      scoring the 600 held‑out shapes (BatchNorm must use its running
+      statistics, not the batch's). On one run of this exact code (about
+      a minute on a laptop), training loss fell steadily from 0.95 to
+      0.003, and validation accuracy passed 99% at epoch 5 — but then
+      swung between 35% and 99.7% from epoch to epoch while the training
+      loss kept falling. That is not overfitting: with only 38 batches
+      per epoch and a fast‑moving network, BatchNorm's running averages
+      lag behind the weights, so eval‑mode outputs jump around. Keeping
+      the best validation checkpoint, lowering the learning rate late in
+      training (the cosine schedule below), or recalibrating the BN
+      statistics before evaluating all fix it. Your exact numbers will
+      differ by device and seed.
     </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 6 — export to ONNX.</span>
-    <pre><code class="language-python">bridge = OnnxBridge()
-bridge.export(
-    model=model.cpu().eval(),
-    sample_input=torch.randn(1, 1, 28, 28),
-    output_path="tiny_resnet_se.onnx",
-)</code></pre>
+    <span class="step-label">Step 6 — export to ONNX and check parity.</span>
+    <pre><code class="language-python">class Servable(nn.Module):
+    """Adds the predict() method that OnnxBridge.validate calls."""
+    def __init__(self, net):
+        super().__init__()
+        self.net = net
+    def forward(self, x):
+        return self.net(x)
+    def predict(self, X):
+        with torch.no_grad():
+            return self.net(torch.as_tensor(X, dtype=torch.float32)).numpy()
+
+serving = Servable(model.cpu()).eval()
+onnx_path = Path("/tmp/tiny_resnet_se.onnx")       # any writable location
+sample = X_val[:2].cpu()                            # 2 rows, not 1
+
+bridge = OnnxBridge()
+res = bridge.export(serving, "torch", output_path=onnx_path, sample_input=sample)
+assert res.success, res.error_message
+
+v = bridge.validate(serving, onnx_path, X_val[:100].cpu().numpy(), tolerance=1e-3)
+print(f"valid={v.valid}  max_diff={v.max_diff:.1e}  over {v.n_samples} logits")</code></pre>
     <p>
-      <code>OnnxBridge</code> traces the model with the sample input,
-      writes the ONNX file, and validates that a forward pass in ONNX
-      Runtime gives the same output as PyTorch (within floating‑point
-      tolerance). If the numbers drift, it raises — a common cause is
-      using an unsupported op, which forces you to rewrite that piece of
-      the network before deployment.
+      <code>export</code> traces the model with the two sample rows and
+      writes the ONNX file; it reports failure through
+      <code>res.success</code> rather than raising, so always assert it.
+      <code>validate</code> then runs PyTorch (via <code>predict</code>)
+      and ONNX Runtime on 100 validation images and reports the largest
+      logit difference — on our run it was below $10^{-5}$ (300 logits
+      compared: 100 images × 3 classes), far below the $10^{-3}$
+      tolerance. A large drift usually means an operator
+      that ONNX does not support the same way, which you must rewrite
+      before deployment. (The exporter may print an opset‑conversion
+      traceback and fall back to opset 18; that is log noise —
+      <code>res.success</code> is the real signal.)
     </p>
   </div>
 </div>
@@ -462,7 +550,7 @@ bridge.export(
   </thead>
   <tbody>
     <tr><td><strong>Kaiming init</strong></td><td>Scales initial weights for ReLU so variance is preserved layer‑to‑layer</td><td>Faster convergence, no dead layers</td></tr>
-    <tr><td><strong>Mixed precision</strong></td><td><code>torch.cuda.amp</code>: forward pass in FP16, master copy in FP32</td><td>2× speed, ½ memory on modern GPUs</td></tr>
+    <tr><td><strong>Mixed precision</strong></td><td><code>torch.amp.autocast(device_type)</code>: forward pass in FP16/BF16, master weights in FP32</td><td>Up to 2× speed and less memory on GPUs with tensor cores (device‑dependent)</td></tr>
     <tr><td><strong>Mixup</strong></td><td>Train on $\lambda x_i + (1-\lambda) x_j$ with mixed labels</td><td>+1% accuracy, smoother decision boundaries</td></tr>
     <tr><td><strong>Label smoothing</strong></td><td>Replace hard targets with $(1-\varepsilon, \varepsilon/(K-1))$</td><td>Calibration, better generalisation</td></tr>
     <tr><td><strong>Cosine LR schedule</strong></td><td>Slowly anneal learning rate along a cosine curve</td><td>Consistent +0.5–1% gain</td></tr>
@@ -475,9 +563,13 @@ bridge.export(
     With zero‑mean Gaussian weights and ReLU activations, half the
     outputs die at every layer. To keep the forward‑pass variance
     constant you need to initialise weights with variance
-    $2 / n_{\text{in}}$. Xavier init (variance $1/n_{\text{in}}$) was
-    designed for tanh and is <em>wrong</em> for ReLU networks — use
-    <code>nn.init.kaiming_normal_</code> instead.
+    $2 / n_{\text{in}}$ (He et al., 2015). Xavier/Glorot init (variance
+    $2/(n_{\text{in}} + n_{\text{out}})$) and LeCun init (variance
+    $1/n_{\text{in}}$) were derived for symmetric activations such as
+    tanh and leave a ReLU network's activations shrinking layer by
+    layer — use <code>nn.init.kaiming_normal_(w, nonlinearity="relu")</code>
+    instead. (PyTorch's default <code>Conv2d</code>/<code>Linear</code>
+    init is a Kaiming‑uniform variant with a smaller gain.)
   </p>
 </div>
 
@@ -603,8 +695,8 @@ bridge.export(
   it on a synthetic 3‑class dataset, and exported it to ONNX via
   <code>OnnxBridge</code>. You derived the convolution output‑size
   formula, understood why skip connections make deep networks trainable,
-  and saw how channel attention adds ~2% accuracy for a handful of
-  parameters.
+  and saw how channel attention buys roughly 1.5 points of ImageNet
+  accuracy for about 10% more parameters.
 </p>
 <p>
   Lesson 5.3 swaps grid‑structured data (images) for temporally

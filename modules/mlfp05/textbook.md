@@ -982,7 +982,7 @@ The hidden state $\mathbf{h}_t$ is a summary of all inputs up to time $t$. For l
 
 ### THEORY: LSTM — all six gate equations
 
-The Long Short-Term Memory network introduces a cell state $\mathbf{C}_t$ — a highway for information that flows through the sequence with only additive modifications, avoiding the vanishing gradient problem.
+The Long Short-Term Memory network introduces a cell state $\mathbf{C}_t$ — a highway for information that flows through the sequence with only element-wise, mostly additive modifications. An LSTM has **three gates (forget, input, output) plus a candidate**, and six equations in total:
 
 **Forget gate** — what to discard from the cell state:
 $$\mathbf{f}_t = \sigma(\mathbf{W}_f [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_f)$$
@@ -1002,14 +1002,20 @@ $$\mathbf{o}_t = \sigma(\mathbf{W}_o [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{
 **Hidden state** — filtered cell state:
 $$\mathbf{h}_t = \mathbf{o}_t \odot \tanh(\mathbf{C}_t)$$
 
-The cell state $\mathbf{C}_t$ flows through time with only element-wise operations (multiply by forget gate, add input), which means the gradient of $\mathbf{C}_T$ with respect to $\mathbf{C}_1$ is a product of forget-gate values — not a product of weight matrices. Since forget-gate values are between 0 and 1, the gradient is bounded, and information can persist over long sequences.
+Why this helps gradients: along the direct cell-state path, $\partial \mathbf{C}_t / \partial \mathbf{C}_{t-1} = \text{diag}(\mathbf{f}_t)$ (holding the gates fixed). So the gradient of $\mathbf{C}_T$ with respect to $\mathbf{C}_1$ along that path is a product of forget-gate values, not of weight matrices — and **when $\mathbf{f}_t \approx 1$ the gradient passes through nearly unchanged**. The network *learns* when to keep memory (forget gate near 1) and when to reset it (near 0). The full gradient also flows through the gates and the hidden state, so LSTMs greatly reduce vanishing gradients rather than abolish them; exploding gradients are still possible, which is why RNNs are trained with gradient clipping (below).
 
-**GRU** (Gated Recurrent Unit) simplifies LSTM to two gates (update and reset), using fewer parameters:
+**GRU** (Gated Recurrent Unit) simplifies LSTM to two gates (update and reset) and no separate cell state, so it has three weight blocks where an LSTM has four — about 25% fewer parameters at the same size:
 
 $$\mathbf{z}_t = \sigma(\mathbf{W}_z [\mathbf{h}_{t-1}, \mathbf{x}_t])$$
 $$\mathbf{r}_t = \sigma(\mathbf{W}_r [\mathbf{h}_{t-1}, \mathbf{x}_t])$$
 $$\tilde{\mathbf{h}}_t = \tanh(\mathbf{W} [\mathbf{r}_t \odot \mathbf{h}_{t-1}, \mathbf{x}_t])$$
 $$\mathbf{h}_t = (1 - \mathbf{z}_t) \odot \mathbf{h}_{t-1} + \mathbf{z}_t \odot \tilde{\mathbf{h}}_t$$
+
+(Conventions differ: PyTorch's `nn.GRU` writes the same update with the roles of $\mathbf{z}_t$ and $1 - \mathbf{z}_t$ swapped. The model class is identical.)
+
+### FOUNDATIONS: Gradient clipping
+
+Because backpropagation through time multiplies many Jacobians, an RNN's gradient norm occasionally spikes by orders of magnitude, and one such step can wreck the weights. Gradient clipping rescales the whole gradient vector whenever its norm exceeds a threshold: if $\|\mathbf{g}\| > \tau$, set $\mathbf{g} \leftarrow \tau \, \mathbf{g} / \|\mathbf{g}\|$. The direction is preserved; only the step size is capped. In PyTorch, call `torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)` between `loss.backward()` and `optimizer.step()`; it returns the norm *before* clipping, which is worth logging.
 
 ### THEORY: Perplexity
 
@@ -1017,109 +1023,363 @@ Perplexity measures how well a language model predicts a sequence. For a sequenc
 
 $$\text{PP} = \exp\left(-\frac{1}{N}\sum_{i=1}^{N} \log P(w_i \mid w_1, \ldots, w_{i-1})\right)$$
 
-Lower perplexity means the model is less "perplexed" by the data — it assigns higher probability to the observed words. A perplexity of 1 means perfect prediction; a perplexity of $V$ (vocabulary size) means random guessing.
+Lower perplexity means the model is less "perplexed" by the data — it assigns higher probability to the observed words. A perplexity of 1 means perfect prediction; a perplexity of $V$ (vocabulary size) is what a model that spreads probability uniformly over the vocabulary gets. Perplexity is simply $\exp$ of the mean cross-entropy loss (in nats), so you get it for free from the training loss; for a character-level model the "words" are characters and $V$ is the alphabet size (Drill 1).
+
+Other sequence metrics you will meet: **sequence accuracy** (fraction of sequences predicted exactly right — harsh, useful for short outputs such as codes), and **BLEU** (n-gram overlap between a generated and a reference text, the classic machine-translation score; it rewards matching wording, not meaning).
 
 ### FOUNDATIONS: Temporal attention
 
-Attention allows the model to focus on specific time steps when making a prediction. For each output step, an attention weight is computed over all input hidden states:
+Attention allows the model to focus on specific time steps when making a prediction. A score is computed for every hidden state, normalised with a softmax over time, and used to weight the hidden states:
 
-$$\alpha_t = \text{softmax}(\mathbf{h}_t^T \mathbf{H})$$
-$$\mathbf{c}_t = \alpha_t \mathbf{H}$$
+$$e_t = \mathbf{w}^\top \mathbf{h}_t, \qquad \alpha_t = \frac{\exp(e_t)}{\sum_{s=1}^{T} \exp(e_s)}, \qquad \mathbf{c} = \sum_{t=1}^{T} \alpha_t \mathbf{h}_t$$
 
-where $\mathbf{H}$ is the matrix of all hidden states and $\mathbf{c}_t$ is the context vector. This mechanism is the precursor to the full self-attention of transformers (Lesson 5.4).
+where $\mathbf{c}$ is the context vector passed to the prediction head. (Encoder–decoder RNNs score each encoder state against the decoder's current state instead, $e_t = \mathbf{s}^\top \mathbf{h}_t$; same idea.) The weights $\alpha_t$ are readable: they say which days or words the prediction leaned on. This mechanism is the precursor to the full self-attention of transformers (Lesson 5.4).
+
+### THEORY: Stacked LSTMs with residual connections
+
+Stacking LSTM layers (`nn.LSTM(..., num_layers=2)`) lets the lower layer track short patterns and the upper layer combine them. Deep stacks run into the same optimisation trouble as deep CNNs, and the same fix applies: add each layer's input to its output, $\mathbf{H}^{(l+1)} = \text{LSTM}^{(l)}(\mathbf{H}^{(l)}) + \mathbf{H}^{(l)}$, whenever the shapes match (Lesson 5.2's skip connection, applied across layers instead of across convolutions).
+
+```python
+import torch
+import torch.nn as nn
+
+class ResidualLSTM(nn.Module):
+    """Stack of single-layer LSTMs with a skip connection around every layer after the first."""
+    def __init__(self, input_dim, hidden_dim, num_layers):
+        super().__init__()
+        self.layers = nn.ModuleList(
+            nn.LSTM(input_dim if i == 0 else hidden_dim, hidden_dim, batch_first=True)
+            for i in range(num_layers)
+        )
+
+    def forward(self, x):
+        h = x
+        for i, lstm in enumerate(self.layers):
+            out, _ = lstm(h)
+            h = out if i == 0 else out + h      # first layer changes the width, so no skip
+        return h                                # (batch, seq_len, hidden_dim)
+```
+
+### THEORY: Spatial (feature) attention with multi-head attention
+
+Temporal attention asks *which days matter*. Spatial attention asks *which features matter, and how they relate* — for a price series, how the RSI reading should modify the meaning of a Bollinger reading on the same day. Treat the $F$ features of one time step as $F$ tokens, embed each scalar into a small vector, and let multi-head attention (Lesson 5.4) mix them; each head can learn a different feature relationship. The attended features then feed the LSTM:
+
+```python
+class SpatialAttention(nn.Module):
+    """Multi-head attention ACROSS the features of each time step."""
+    def __init__(self, n_features, d_embed=16, n_heads=4):
+        super().__init__()
+        self.embed = nn.Linear(1, d_embed)                         # each scalar -> vector
+        self.feature_id = nn.Parameter(torch.randn(n_features, d_embed) * 0.02)
+        self.mha = nn.MultiheadAttention(d_embed, n_heads, batch_first=True)
+        self.out = nn.Linear(n_features * d_embed, n_features)
+
+    def forward(self, x):                                          # x: (B, T, F)
+        B, T, F = x.shape
+        tokens = self.embed(x.reshape(B * T, F, 1)) + self.feature_id    # (B*T, F, d)
+        mixed, weights = self.mha(tokens, tokens, tokens)               # weights: (B*T, F, F)
+        y = self.out(mixed.reshape(B * T, -1)).reshape(B, T, F)
+        return x + y, weights.reshape(B, T, F, F)                       # residual keeps raw features
+
+sa = SpatialAttention(n_features=6)
+x_feat, feat_weights = sa(torch.randn(2, 20, 6))
+print(x_feat.shape, feat_weights.shape)      # (2, 20, 6) and (2, 20, 6, 6)
+```
+
+### FOUNDATIONS: Technical indicators for financial sequences
+
+Raw prices are a weak input: they drift over years, so a model trained on 2012 levels sees unfamiliar numbers in 2023. Traders' technical indicators turn price history into bounded, comparable signals:
+
+- **RSI (14-day Relative Strength Index):** $\text{RSI} = 100 - 100/(1 + \overline{\text{gain}}/\overline{\text{loss}})$, using Wilder's exponential average (weight $1/14$) of daily gains and losses. It lies in $[0, 100]$; readings above 70 are conventionally called overbought and below 30 oversold.
+- **MACD:** the 12-day minus the 26-day exponential moving average of the close; its 9-day EMA is the *signal line*, and MACD minus signal is the *histogram* (momentum turning up or down).
+- **Bollinger %B:** where the close sits inside a band of the 20-day mean $\pm$ 2 standard deviations; 0 is the lower band, 1 the upper band.
+
+They are computed with polars expressions in the worked example. One caution: daily index *prices* behave close to a random walk, so "tomorrow's close ≈ today's close" is a strong baseline. Indicators help a model describe the recent past; they do not guarantee it predicts the future better than that baseline.
 
 ## The Kailash Engine: ModelVisualizer (training curves)
+
+`viz.training_history(metrics, x_label, y_label)` draws one line per entry of a dict of per-epoch lists. Record the train and validation loss as you go, then plot them together — the gap between the lines is your overfitting signal:
 
 ```python
 from kailash_ml import ModelVisualizer
 
-viz = ModelVisualizer()
-fig = viz.line(training_df, x="epoch", y=["train_loss", "val_loss"],
-               title="LSTM Training Curves")
+history = {"train_loss": [0.92, 0.41, 0.30], "val_loss": [0.88, 0.52, 0.47]}   # illustrative values
+fig = ModelVisualizer().training_history(history, x_label="Epoch", y_label="MSE")
 ```
 
-## Worked Example: Singapore Stock Price Prediction with LSTM
+The worked example below builds `history` from a real run.
+
+## Worked Example: Forecasting the Straits Times Index with an attention LSTM
+
+Exercise 3 forecasts the **next five closes of the Straits Times Index** from 20-day windows of real daily bars (`data/mlfp05/stocks/STI.parquet`, 2010–2024). This example uses the same file, window and horizon, with two design decisions worth copying:
+
+1. **Predict the change, not the level.** The model outputs the percentage change of each of the next five closes relative to the last observed close; the forecast price is `last_close * (1 + change / 100)`. We first tried predicting z-scored price *levels*: training loss fell to 0.04, but validation MSE stayed near 0.65 — about 20× worse than simply repeating the last close (0.031). The validation years (2022–2024) reach index levels above anything in the training years (2010–2021: maximum 3,615 against 3,823), and a network with saturating units cannot extrapolate to inputs and targets outside the range it was trained on. Changes and indicators are stationary — their range does not drift with the index level.
+2. **Split by time and fit every statistic on the training period only.** Shuffling windows would leak the future into training.
 
 ```python
+import numpy as np
+import polars as pl
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+from kailash_ml import ModelVisualizer
+from shared.kailash_helpers import get_device
+
+device = get_device()
+SEQ_LEN, HORIZON, EPOCHS = 20, 5, 15
+
+df = pl.read_parquet("data/mlfp05/stocks/STI.parquet").sort("Date")
+close = pl.col("Close")
+delta = close.diff()
+gain = delta.clip(lower_bound=0).ewm_mean(alpha=1 / 14, adjust=False)   # Wilder smoothing
+loss = (-delta).clip(lower_bound=0).ewm_mean(alpha=1 / 14, adjust=False)
+mid, sd = close.rolling_mean(20), close.rolling_std(20)
+macd = close.ewm_mean(span=12, adjust=False) - close.ewm_mean(span=26, adjust=False)
+df = df.with_columns(
+    (100 * close.pct_change()).alias("ret_pct"),                       # daily return, %
+    (100 * (pl.col("High") - pl.col("Low")) / close).alias("range_pct"),
+    (100 - 100 / (1 + gain / loss)).alias("rsi_14"),
+    (100 * (macd - macd.ewm_mean(span=9, adjust=False)) / close).alias("macd_hist_pct"),
+    ((close - (mid - 2 * sd)) / (4 * sd)).alias("bb_pct_b"),
+).drop_nulls()
+
+FEATURES = ["ret_pct", "range_pct", "rsi_14", "macd_hist_pct", "bb_pct_b"]
+feats = df.select(FEATURES).to_numpy().astype(np.float32)
+closes = df["Close"].to_numpy().astype(np.float32)
+split = int(0.8 * len(feats))                                     # first 80% of days = train
+mean, std = feats[:split].mean(0), feats[:split].std(0) + 1e-8    # fit on train only
+z = (feats - mean) / std
+
+def windows(start, end, seq_len=SEQ_LEN):
+    """seq_len days of features -> % change of the next HORIZON closes vs the last close."""
+    idx = range(start, end - seq_len - HORIZON + 1)
+    X = np.stack([z[i:i + seq_len] for i in idx])
+    last = np.array([closes[i + seq_len - 1] for i in idx])[:, None]
+    future = np.stack([closes[i + seq_len:i + seq_len + HORIZON] for i in idx])
+    y = (100 * (future / last - 1)).astype(np.float32)
+    return torch.from_numpy(X), torch.from_numpy(y)
+
+X_tr, y_tr = windows(0, split)
+X_va, y_va = windows(split - SEQ_LEN, len(z))     # validation targets all lie after the split
+train_loader = DataLoader(TensorDataset(X_tr, y_tr), batch_size=64, shuffle=True)
+print(f"{len(df)} trading days -> train windows {tuple(X_tr.shape)}, validation {tuple(X_va.shape)}")
+
 class StockLSTM(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_layers=2):
+    def __init__(self, n_features, hidden_dim=64, horizon=HORIZON):
         super().__init__()
-        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers,
-                            batch_first=True, dropout=0.2)
+        self.lstm = nn.LSTM(n_features, hidden_dim, num_layers=2, batch_first=True, dropout=0.2)
         self.attention = nn.Linear(hidden_dim, 1)
-        self.fc = nn.Linear(hidden_dim, 1)
+        self.head = nn.Linear(hidden_dim, horizon)
 
     def forward(self, x):
-        lstm_out, _ = self.lstm(x)  # (batch, seq_len, hidden_dim)
-        # Temporal attention
-        attn_weights = torch.softmax(self.attention(lstm_out), dim=1)
-        context = (attn_weights * lstm_out).sum(dim=1)
-        return self.fc(context)
+        out, _ = self.lstm(x)                                # (B, T, H)
+        weights = torch.softmax(self.attention(out), dim=1)  # (B, T, 1): one weight per day
+        context = (weights * out).sum(dim=1)                 # (B, H)
+        return self.head(context), weights.squeeze(-1)
 
-model = StockLSTM(input_dim=8, hidden_dim=64)
+torch.manual_seed(0)
+model = StockLSTM(len(FEATURES)).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+history = {"train_loss": [], "val_loss": []}
+for epoch in range(EPOCHS):
+    model.train()
+    batch_losses = []
+    for xb, yb in train_loader:
+        pred, _ = model(xb.to(device))
+        loss_value = nn.functional.mse_loss(pred, yb.to(device))
+        optimizer.zero_grad()
+        loss_value.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+        batch_losses.append(loss_value.item())
+    model.eval()
+    with torch.no_grad():
+        val_pred, _ = model(X_va.to(device))
+        history["val_loss"].append(nn.functional.mse_loss(val_pred, y_va.to(device)).item())
+    history["train_loss"].append(float(np.mean(batch_losses)))
+
+baseline = (y_va ** 2).mean().item()      # random-walk forecast: "no change" for all 5 days
+print(f"validation MSE (%^2): LSTM best {min(history['val_loss']):.3f} "
+      f"(epoch {int(np.argmin(history['val_loss'])) + 1}), final {history['val_loss'][-1]:.3f} | "
+      f"no-change baseline {baseline:.3f}")
+fig = ModelVisualizer().training_history(history, x_label="Epoch", y_label="MSE (%^2)")
 ```
+
+Read the result against the baseline, not in isolation. In our run the no-change baseline scored 1.686 and the LSTM's validation MSE moved between about 1.65 and 1.80: its best epoch beat the baseline by roughly 2% (and choosing that epoch *on the validation set* makes even that optimistic), while the training loss kept falling and the validation loss drifted up — the overfitting signal in the plot. That is a finding, not a bug: daily index prices behave close to a random walk, and an honest model shows it. In practice you would pick the epoch on a separate validation period and report the final score on a later test period.
 
 ## Try It Yourself
 
-**Drill 1.** Implement a character-level LSTM for text generation. Train on a corpus of Singapore Straits Times headlines. Generate 10 new headlines by sampling from the model's output distribution.
+The drills reuse `device`, `FEATURES`, `z`, `split`, `windows`, `X_va`, `y_va`, `baseline`, `train_loader`, `model`, `StockLSTM`, `ResidualLSTM`, `HORIZON`, `SEQ_LEN` and `EPOCHS` from above.
+
+**Drill 1.** Implement a character-level LSTM for text generation. Train it on the news text in `data/mlfp05/ag_news.parquet` (5,000 headlines with their first sentence), report validation perplexity, and generate text by sampling from the model's output distribution.
 
 **Solution:**
 
 ```python
-# Build character vocabulary, convert text to sequences of indices
-# Train LSTM to predict next character given previous characters
-# Generate by repeatedly sampling and feeding back
-```
+texts = pl.read_parquet("data/mlfp05/ag_news.parquet")["text"].to_list()
+corpus = "\n".join(texts)
+chars = sorted(set(corpus))
+stoi = {c: i for i, c in enumerate(chars)}
+encoded = torch.tensor([stoi[c] for c in corpus])
+cut = int(0.9 * len(encoded))
+train_ids, val_ids = encoded[:cut], encoded[cut:]
+V, CTX = len(chars), 100
+print(f"{len(corpus):,} characters, vocabulary of {V}")
 
-**Drill 2.** Compare LSTM and GRU on the stock price prediction task. Which has more parameters? Which converges faster? Which achieves lower test MSE?
-
-**Solution:**
-
-```python
-lstm_params = sum(p.numel() for p in lstm_model.parameters())
-gru_params = sum(p.numel() for p in gru_model.parameters())
-print(f"LSTM: {lstm_params:,}, GRU: {gru_params:,}")
-```
-
-**Drill 3.** Add gradient clipping with max_norm = 1.0. Monitor the gradient norm during training. How often does clipping activate? Does it improve final performance?
-
-**Solution:**
-
-```python
-torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-```
-
-**Drill 4.** Visualise attention weights for a specific prediction. Which time steps does the model attend to most? Do the attention patterns make sense for stock price prediction (e.g., attending to recent days more than distant ones)?
-
-**Solution:**
-
-```python
-with torch.no_grad():
-    lstm_out, _ = model.lstm(sample_input)
-    weights = torch.softmax(model.attention(lstm_out), dim=1).squeeze()
-    # Plot weights over time steps
-```
-
-**Drill 5.** Implement a multi-layer LSTM with residual connections between layers. Compare with a standard multi-layer LSTM. Does the residual connection improve training on longer sequences (length 100+)?
-
-**Solution:**
-
-```python
-class ResidualLSTM(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_layers):
+class CharLSTM(nn.Module):
+    def __init__(self, vocab, emb=64, hidden=256):
         super().__init__()
-        self.layers = nn.ModuleList()
-        for i in range(num_layers):
-            dim = input_dim if i == 0 else hidden_dim
-            self.layers.append(nn.LSTM(dim, hidden_dim, batch_first=True))
+        self.emb = nn.Embedding(vocab, emb)
+        self.lstm = nn.LSTM(emb, hidden, num_layers=2, batch_first=True, dropout=0.2)
+        self.out = nn.Linear(hidden, vocab)
+
+    def forward(self, idx, state=None):
+        h, state = self.lstm(self.emb(idx), state)
+        return self.out(h), state
+
+def batch(ids, n=64):
+    starts = torch.randint(0, len(ids) - CTX - 1, (n,))
+    x = torch.stack([ids[s:s + CTX] for s in starts])
+    y = torch.stack([ids[s + 1:s + CTX + 1] for s in starts])   # next character
+    return x.to(device), y.to(device)
+
+char_model = CharLSTM(V).to(device)
+opt = torch.optim.Adam(char_model.parameters(), lr=2e-3)
+for step in range(3000):
+    x, y = batch(train_ids)
+    logits, _ = char_model(x)
+    loss_value = nn.functional.cross_entropy(logits.reshape(-1, V), y.reshape(-1))
+    opt.zero_grad()
+    loss_value.backward()
+    torch.nn.utils.clip_grad_norm_(char_model.parameters(), 1.0)
+    opt.step()
+
+char_model.eval()
+with torch.no_grad():
+    x, y = batch(val_ids, n=256)
+    logits, _ = char_model(x)
+    val_ce = nn.functional.cross_entropy(logits.reshape(-1, V), y.reshape(-1)).item()
+print(f"validation perplexity: {np.exp(val_ce):.2f}  (uniform guessing: {V})")
+
+def generate(prompt, n=200, temperature=0.8):
+    idx = torch.tensor([[stoi[c] for c in prompt]], device=device)
+    out, state = list(prompt), None
+    with torch.no_grad():
+        logits, state = char_model(idx, state)
+        for _ in range(n):
+            probs = torch.softmax(logits[0, -1] / temperature, dim=-1)
+            nxt = torch.multinomial(probs, 1)
+            out.append(chars[nxt.item()])
+            logits, state = char_model(nxt.view(1, 1), state)
+    return "".join(out)
+
+print(generate("Stocks "))
+```
+
+Perplexity starts near the vocabulary size (83 characters here) and falls as training proceeds — in our check it was already 8.3 after 300 steps and it keeps falling with the full 3,000, i.e. the model is choosing among a handful of plausible next characters instead of the whole alphabet. The samples learn spelling, spacing, capitalised headline words and news phrasing well before they make sense. Lower `temperature` gives safer, more repetitive text; higher gives more varied text with more misspellings.
+
+**Drill 2.** Compare LSTM and GRU on the STI task. Which has more parameters? Which converges faster? Which achieves lower validation MSE?
+
+**Solution:**
+
+```python
+class StockGRU(StockLSTM):
+    def __init__(self, n_features, hidden_dim=64, horizon=HORIZON):
+        super().__init__(n_features, hidden_dim, horizon)
+        self.lstm = nn.GRU(n_features, hidden_dim, num_layers=2, batch_first=True, dropout=0.2)
+
+def fit(model, loader=None, epochs=EPOCHS, clip=1.0):
+    """Train a forecaster; return per-epoch validation MSE and the pre-clipping gradient norms."""
+    model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    curve, norms = [], []
+    for _ in range(epochs):
+        model.train()
+        for xb, yb in loader or train_loader:
+            loss_value = nn.functional.mse_loss(model(xb.to(device))[0], yb.to(device))
+            opt.zero_grad()
+            loss_value.backward()
+            norms.append(torch.nn.utils.clip_grad_norm_(model.parameters(), clip).item())
+            opt.step()
+        model.eval()
+        with torch.no_grad():
+            curve.append(nn.functional.mse_loss(model(X_va.to(device))[0], y_va.to(device)).item())
+    return curve, np.array(norms)
+
+for name, cls in [("LSTM", StockLSTM), ("GRU", StockGRU)]:
+    torch.manual_seed(0)
+    m = cls(len(FEATURES))
+    n_params = sum(p.numel() for p in m.parameters())
+    curve, _ = fit(m)
+    print(f"{name}: {n_params:,} parameters, best val MSE {min(curve):.3f} "
+          f"at epoch {int(np.argmin(curve)) + 1} (baseline {baseline:.3f})")
+```
+
+The LSTM has 51,846 parameters and the GRU 38,982: their recurrent layers have four and three weight blocks respectively, so the GRU's recurrent part is exactly 25% smaller. Neither reliably wins. In our runs both reached best validation MSEs of about 1.64–1.65 against the baseline's 1.69, and which one was ahead changed with the random seed. Differences between seeds are as large as the difference between the architectures — so on small data, prefer the cheaper GRU unless you have evidence otherwise.
+
+**Drill 3.** Monitor the gradient norm during training. How often does clipping at 1.0 activate? Does clipping change the final validation loss?
+
+**Solution:**
+
+```python
+torch.manual_seed(0)
+clipped_curve, norms = fit(StockLSTM(len(FEATURES)), clip=1.0)
+torch.manual_seed(0)
+free_curve, _ = fit(StockLSTM(len(FEATURES)), clip=float("inf"))   # inf = never clip
+print(f"clipping fired on {(norms > 1.0).mean():.0%} of steps; "
+      f"median norm {np.median(norms):.2f}, max {norms.max():.2f}")
+print(f"final val MSE with clipping {clipped_curve[-1]:.3f}, without {free_curve[-1]:.3f}")
+```
+
+`clip_grad_norm_` returns the norm *before* clipping, so the fraction of steps above 1.0 is exactly how often clipping changed the update. In our runs it fired on a minority of steps (between 2% and 16% depending on seed and cell type) with a median norm around 0.3–0.5 — but the largest pre-clipping norm was 9.1, so occasional spikes do happen even on this short series. In the run above the clipped model finished at a validation MSE of 1.670 and the unclipped one at 1.746; one pair of runs is not proof, but it is the direction you expect. Clipping is insurance against the rare exploding step, and it costs nothing when it does not fire.
+
+**Drill 4.** Visualise attention weights for a specific prediction. Which time steps does the model attend to most? Does the pattern make sense?
+
+**Solution:**
+
+```python
+import matplotlib.pyplot as plt
+
+model.eval()
+with torch.no_grad():
+    _, w = model(X_va.to(device))          # (n_windows, SEQ_LEN)
+w = w.cpu().numpy()
+plt.bar(range(-SEQ_LEN + 1, 1), w[-1])
+plt.xlabel("day relative to forecast date (0 = most recent)")
+plt.ylabel("attention weight")
+plt.show()
+print(f"mean weight on the last 5 days: {w[:, -5:].sum(1).mean():.3f} | uniform would be {5 / SEQ_LEN:.3f}")
+```
+
+In our run the last five days received 32% of the weight on average, against 25% for uniform attention: a mild tilt towards recent days rather than a sharp focus. That is what you would expect when the target is close to unpredictable — recent days are slightly more informative, but no day is decisive. Treat attention weights as a description of what this model uses, not as proof of a mechanism — two models that predict equally well can spread their weights quite differently.
+
+**Drill 5.** Compare `ResidualLSTM` (4 layers) with a plain 4-layer `nn.LSTM` on longer windows (`seq_len=100`). Does the residual connection help?
+
+**Solution:**
+
+```python
+class Forecaster(nn.Module):
+    def __init__(self, body, hidden_dim=64):
+        super().__init__()
+        self.body, self.head = body, nn.Linear(hidden_dim, HORIZON)
 
     def forward(self, x):
-        for i, lstm in enumerate(self.layers):
-            out, _ = lstm(x if i == 0 else h)
-            h = out + h if i > 0 and out.shape == h.shape else out
-        return h
+        h = self.body(x)
+        h = h[0] if isinstance(h, tuple) else h        # nn.LSTM returns (output, state)
+        return self.head(h[:, -1]), None
+
+X_tr100, y_tr100 = windows(0, split, seq_len=100)
+X_va, y_va = windows(split - 100, len(z), seq_len=100)   # fit() scores on X_va / y_va
+loader100 = DataLoader(TensorDataset(X_tr100, y_tr100), batch_size=64, shuffle=True)
+n_in = len(FEATURES)
+for name, body in [("plain 4-layer", nn.LSTM(n_in, 64, num_layers=4, batch_first=True)),
+                   ("residual 4-layer", ResidualLSTM(n_in, 64, num_layers=4))]:
+    torch.manual_seed(0)
+    curve, norms = fit(Forecaster(body), loader=loader100)
+    print(f"{name}: best val MSE {min(curve):.3f}, median grad norm {np.median(norms):.2f}")
 ```
+
+Look at two things: how quickly each model's validation loss settles, and the gradient norms. The skip connections give every layer an identity path — in our run the residual stack's median gradient norm was about twice the plain stack's (1.17 against 0.54), i.e. more signal reached the parameters, and its best validation MSE was slightly lower (1.624 against 1.645). But on a near-random-walk target both models end close to the no-change baseline — a better optimiser cannot extract signal that is not there. The residual design pays off on long sequences that *do* contain learnable structure (Drill 1's text is one).
 
 ## Cross-References
 
@@ -1131,11 +1391,12 @@ class ResidualLSTM(nn.Module):
 
 You should now be able to:
 
-- Write all six LSTM gate equations from memory and explain each gate's role.
-- Explain why the cell state highway solves the vanishing gradient problem.
-- Compare LSTM and GRU in terms of complexity and performance.
-- Implement temporal attention and visualise attention weights.
-- Train RNNs for time-series prediction and text generation.
+- Write all six LSTM equations (three gates plus a candidate, the cell update and the hidden state) and explain each gate's role.
+- Explain why the cell-state highway eases the vanishing gradient problem, and why gradient clipping is still needed.
+- Compare LSTM and GRU in terms of parameters and performance.
+- Implement temporal attention, residual LSTM stacks and multi-head spatial attention, and read attention weights critically.
+- Build technical-indicator features with polars and judge a forecast against the no-change baseline.
+- Train a character-level LSTM for text generation and report its perplexity.
 
 ---
 
@@ -1143,7 +1404,7 @@ You should now be able to:
 
 ## Why This Matters
 
-The transformer is the architecture behind GPT, BERT, Claude, and every major language model since 2017. It replaced RNNs for most sequence tasks because it processes all positions in parallel (instead of sequentially) and captures long-range dependencies through attention (instead of hoping information persists through gates).
+The transformer is the architecture behind GPT, BERT and essentially every major language model since 2017. It replaced RNNs for most sequence tasks because it processes all positions in parallel (instead of sequentially) and captures long-range dependencies through attention (instead of hoping information persists through gates).
 
 In this lesson you will derive self-attention from scratch — starting from the question "how should a sequence element decide which other elements to pay attention to?" — and build up to the full transformer architecture. The $\sqrt{d_k}$ normalisation factor, multi-head attention, positional encoding, and the encoder-decoder structure will all be derived from first principles.
 
@@ -1185,9 +1446,12 @@ $$\text{MultiHead}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{Concat}(\text{hea
 
 where $\text{head}_i = \text{Attention}(\mathbf{Q}\mathbf{W}_Q^i, \mathbf{K}\mathbf{W}_K^i, \mathbf{V}\mathbf{W}_V^i)$.
 
-Each head operates in a lower-dimensional subspace ($d_k/h$ per head), so the total computation is the same as a single head with full dimensionality.
+Each head operates in a lower-dimensional subspace of size $d_k = d_{\text{model}}/h$ (64 per head for $d_{\text{model}} = 512$, $h = 8$), so the total computation is about the same as a single head with full dimensionality.
 
 ```python
+import torch
+import torch.nn as nn
+
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, n_heads):
         super().__init__()
@@ -1214,12 +1478,12 @@ class MultiHeadAttention(nn.Module):
 
 ### THEORY: Positional encoding
 
-Transformers have no inherent sense of position — unlike RNNs, which process sequentially. Positional encodings are added to the input embeddings to provide position information:
+Self-attention on its own is **permutation-equivariant**: shuffle the input tokens and the outputs are shuffled in exactly the same way, so the model is order-blind — "dog bites man" and "man bites dog" contain the same set of tokens. Unlike RNNs, which process sequentially, transformers therefore need position information added to the input embeddings:
 
 $$\text{PE}(\text{pos}, 2i) = \sin\left(\frac{\text{pos}}{10000^{2i/d}}\right)$$
 $$\text{PE}(\text{pos}, 2i+1) = \cos\left(\frac{\text{pos}}{10000^{2i/d}}\right)$$
 
-The sinusoidal encoding allows the model to attend to relative positions (the dot product between positions $p$ and $p+k$ is a function of $k$ only). Learned positional embeddings are an alternative and often perform similarly.
+Each pair of dimensions is a sinusoid with angular frequency $\omega_i = 10000^{-2i/d}$. At $i = 0$ the frequency is 1 radian per position, the fastest; as $i$ approaches $d/2$ it falls towards $10^{-4}$, the slowest. So **low dimensions oscillate rapidly and encode fine, local position; high dimensions change slowly and encode coarse, global position** — like the second, minute and hour hands of a clock. Because $\sin(a)\sin(b) + \cos(a)\cos(b) = \cos(a - b)$, the dot product $\text{PE}(p) \cdot \text{PE}(p+k) = \sum_i \cos(\omega_i k)$ depends only on the offset $k$, which makes relative positions easy to attend to (Drill 5 verifies this). Learned positional embeddings are an alternative and often perform similarly; BERT and ViT use learned ones.
 
 ### FOUNDATIONS: Layer normalisation
 
@@ -1229,23 +1493,113 @@ $$\hat{z}_i = \frac{z_i - \mu}{\sqrt{\sigma^2 + \epsilon}} \cdot \gamma + \beta$
 
 where $\mu$ and $\sigma^2$ are computed over the feature dimension, not the batch dimension.
 
-### FOUNDATIONS: Transformer variants
+### THEORY: The encoder and decoder blocks
 
-| Model    | Architecture    | Pre-training              | Strength                            |
-| -------- | --------------- | ------------------------- | ----------------------------------- |
-| **BERT** | Encoder only    | Masked language modelling | NLU tasks (classification, NER, QA) |
-| **GPT**  | Decoder only    | Next token prediction     | Generation, few-shot learning       |
-| **T5**   | Encoder-decoder | Text-to-text              | Unified framework for all NLP tasks |
+An **encoder layer** is two sub-layers, each wrapped in a residual connection and a layer norm: multi-head self-attention, then a position-wise feed-forward network (two linear layers with a ReLU or GELU between them, typically 4× wider than $d_{\text{model}}$):
 
-## The Kailash Engine: ModelVisualizer (attention visualisation)
+$$\mathbf{Z} = \text{LayerNorm}(\mathbf{X} + \text{MHA}(\mathbf{X}, \mathbf{X}, \mathbf{X})), \qquad \mathbf{Y} = \text{LayerNorm}(\mathbf{Z} + \text{FFN}(\mathbf{Z}))$$
+
+(The original paper normalises after the residual, as written; most modern models normalise *before* each sub-layer — "pre-norm" — which trains more stably when deep. PyTorch's `nn.TransformerEncoderLayer(norm_first=True)` is pre-norm.)
+
+A **decoder layer** adds two things:
+
+1. **Masked (causal) self-attention.** When generating token $t$, the decoder must not look at tokens $t+1, t+2, \ldots$ — they do not exist yet at inference time. A causal mask sets those attention scores to $-\infty$ before the softmax, so their weights are exactly zero.
+2. **Cross-attention.** Queries come from the decoder; keys and values come from the encoder's output. This is how a translation model's decoder "looks at" the source sentence.
+
+The `MultiHeadAttention` class above already supports both: pass a lower-triangular mask for causal attention, and pass different tensors for the query and the key/value for cross-attention.
 
 ```python
-from kailash_ml import ModelVisualizer
-viz = ModelVisualizer()
-fig = viz.heatmap(attention_weights, title="Self-Attention Weights")
+d_model, n_heads, L_dec, L_enc = 32, 4, 5, 7
+self_attn = MultiHeadAttention(d_model, n_heads)
+cross_attn = MultiHeadAttention(d_model, n_heads)
+
+dec = torch.randn(2, L_dec, d_model)               # decoder tokens so far
+enc = torch.randn(2, L_enc, d_model)               # encoder output (source sentence)
+causal = torch.tril(torch.ones(L_dec, L_dec))      # 1 = may attend, 0 = future (masked)
+
+h = self_attn(dec, dec, dec, mask=causal)          # masked self-attention
+out = cross_attn(h, enc, enc)                      # queries from decoder, keys/values from encoder
+print(h.shape, out.shape)                          # (2, 5, 32) and (2, 5, 32)
+
+# The mask really hides the future: changing the LAST token leaves earlier outputs unchanged
+dec2 = dec.clone()
+dec2[:, -1] += 10.0
+same = torch.allclose(self_attn(dec, dec, dec, mask=causal)[:, :-1],
+                      self_attn(dec2, dec2, dec2, mask=causal)[:, :-1])
+print("earlier positions unaffected by a future token:", same)   # True
 ```
 
+PyTorch provides the same mask as `nn.Transformer.generate_square_subsequent_mask(L)` (a float mask of 0 and $-\infty$), and the full blocks as `nn.TransformerEncoderLayer` and `nn.TransformerDecoderLayer`.
+
+### FOUNDATIONS: Transformer variants
+
+| Model | Architecture | Pre-training / idea | Strength |
+|---|---|---|---|
+| **BERT** | Encoder only | Masked language modelling (bidirectional context) | Understanding tasks: classification, NER, extractive QA |
+| **GPT** | Decoder only | Next-token prediction (causal) | Generation, few-shot learning |
+| **T5** | Encoder–decoder | Every task cast as text-to-text | One model and one loss for all NLP tasks |
+| **Transformer-XL** | Decoder with memory | Re-uses hidden states from the previous segment (segment-level recurrence) | Context longer than one segment |
+| **Reformer / Longformer** | Efficient attention | Locality-sensitive hashing (Reformer) or sliding-window + a few global tokens (Longformer) instead of all-pairs attention | Long documents; attention cost grows roughly linearly, not quadratically |
+| **ViT** | Encoder only | Image patches as tokens | Image classification at scale |
+
+### THEORY: Vision Transformers (ViT)
+
+A ViT (Dosovitskiy et al., 2021) turns an image into a sequence: cut it into $P \times P$ patches, flatten and linearly project each patch to a $d_{\text{model}}$-dimensional token (a `Conv2d` with kernel size and stride both $P$ does exactly this), prepend a learnable `[CLS]` token, add learned positional embeddings, and run a standard transformer **encoder**. The classifier reads the final `[CLS]` vector. A $224 \times 224$ image with $16 \times 16$ patches becomes $14 \times 14 = 196$ tokens.
+
+The trade-off against CNNs is inductive bias. A CNN assumes locality and translation equivariance; a ViT assumes almost nothing — every patch can attend to every other from the first layer. That makes ViTs data-hungry: trained from scratch on a small dataset they usually trail a CNN, while with large-scale pre-training they match or beat CNNs, and pre-trained ViTs are now a default backbone for image classification. Lesson 5.7 shows how to reuse such pre-trained backbones.
+
+```python
+class TinyViT(nn.Module):
+    """ViT for 32x32 RGB images (CIFAR-10 shape): 4x4 patches -> 64 tokens + [CLS]."""
+    def __init__(self, img_size=32, patch=4, in_ch=3, d_model=64, depth=4, n_heads=4, n_classes=10):
+        super().__init__()
+        n_patches = (img_size // patch) ** 2
+        self.patch_embed = nn.Conv2d(in_ch, d_model, kernel_size=patch, stride=patch)
+        self.cls = nn.Parameter(torch.zeros(1, 1, d_model))
+        self.pos = nn.Parameter(torch.randn(1, n_patches + 1, d_model) * 0.02)   # learned positions
+        layer = nn.TransformerEncoderLayer(d_model, n_heads, dim_feedforward=4 * d_model,
+                                           activation="gelu", batch_first=True, norm_first=True)
+        self.encoder = nn.TransformerEncoder(layer, depth, enable_nested_tensor=False)
+        self.head = nn.Sequential(nn.LayerNorm(d_model), nn.Linear(d_model, n_classes))
+
+    def forward(self, x):
+        tokens = self.patch_embed(x).flatten(2).transpose(1, 2)            # (B, 64, d_model)
+        tokens = torch.cat([self.cls.expand(len(x), -1, -1), tokens], dim=1) + self.pos
+        return self.head(self.encoder(tokens)[:, 0])                        # read [CLS]
+
+vit = TinyViT()
+print(vit(torch.randn(2, 3, 32, 32)).shape)                    # torch.Size([2, 10])
+print(f"{sum(p.numel() for p in vit.parameters()):,} parameters")
+```
+
+You can train `TinyViT` with exactly the CIFAR-10 loop from Lesson 5.2's worked example; with no pre-training, expect it to trail the small residual CNN — the inductive-bias point above, made concrete.
+
+## The Kailash Engine: ModelVisualizer and attention maps
+
+Use `ModelVisualizer().training_history(...)` for the loss and accuracy curves of every model in this lesson, exactly as in Lessons 5.1–5.3. `ModelVisualizer` has no heatmap method, so draw attention maps with matplotlib's `imshow`. To read the attention weights of a **trained** `nn.TransformerEncoderLayer`, call its attention module yourself with `need_weights=True` — inside the layer's own forward pass PyTorch requests no weights (so a forward hook sees `None`):
+
+```python
+import matplotlib.pyplot as plt
+
+layer = nn.TransformerEncoderLayer(d_model=64, nhead=4, batch_first=True, norm_first=True)
+layer.eval()
+x = torch.randn(1, 10, 64)                       # in practice: your embedded, position-encoded tokens
+with torch.no_grad():
+    h = layer.norm1(x)                           # pre-norm layers attend over the normed input
+    _, attn = layer.self_attn(h, h, h, need_weights=True, average_attn_weights=False)
+print(attn.shape)                                # (1, 4, 10, 10): batch, head, query, key
+plt.imshow(attn[0, 0], cmap="viridis")
+plt.xlabel("key position")
+plt.ylabel("query position")
+plt.colorbar()
+plt.show()
+```
+
+Use the weights of the trained layer — a freshly constructed attention module has random projections, and its "patterns" mean nothing.
+
 ## Worked Example: Self-Attention from Scratch and BERT Fine-Tuning
+
+Part A computes attention by hand. Part B fine-tunes pre-trained BERT on AG News topic classification (World, Sports, Business, Sci/Tech), the task of Exercise 4. Exercise 4 downloads the full 120,000-headline training set; this example uses the 5,000-row slice and 1,000-row test set bundled in `data/mlfp05/` so it runs in minutes.
 
 ```python
 # Part A: Self-attention from scratch
@@ -1268,25 +1622,68 @@ scores = Q @ K.transpose(-2, -1) / (d_k ** 0.5)
 attn_weights = torch.softmax(scores, dim=-1)
 output = attn_weights @ V
 
-print(f"Scores shape: {scores.shape}")       # (1, 10, 10)
+print(f"Scores shape: {scores.shape}")          # (1, 10, 10)
 print(f"Attention shape: {attn_weights.shape}") # (1, 10, 10)
-print(f"Output shape: {output.shape}")        # (1, 10, 64)
-
-# Part B: BERT fine-tuning for text classification
-from transformers import BertTokenizer, BertForSequenceClassification
-import torch.optim as optim
-
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-model = BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=6)
-
-# Freeze all layers except the classifier head
-for param in model.bert.parameters():
-    param.requires_grad = False
-
-optimizer = optim.AdamW(model.classifier.parameters(), lr=2e-5)
+print(f"Output shape: {output.shape}")          # (1, 10, 64)
+print(attn_weights.sum(dim=-1))                 # every row sums to 1
 ```
 
+```python
+# Part B: fine-tune BERT for 4-class topic classification
+import polars as pl
+from torch.utils.data import DataLoader, TensorDataset
+from transformers import AutoTokenizer, BertForSequenceClassification
+from shared.kailash_helpers import get_device
+
+device = get_device()
+train_df = pl.read_parquet("data/mlfp05/ag_news.parquet")        # 5,000 rows: text, label
+test_df = pl.read_parquet("data/mlfp05/ag_news_test.parquet")    # 1,000 held-out rows
+LABELS = ["World", "Sports", "Business", "Sci/Tech"]
+
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+bert = BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=4).to(device)
+
+def encode(df, max_len=64):
+    enc = tokenizer(df["text"].to_list(), max_length=max_len, padding="max_length",
+                    truncation=True, return_tensors="pt")
+    return TensorDataset(enc["input_ids"], enc["attention_mask"], torch.tensor(df["label"].to_list()))
+
+bert_train = DataLoader(encode(train_df), batch_size=32, shuffle=True)
+bert_test = DataLoader(encode(test_df), batch_size=64)
+
+# Freeze the embeddings and the lower 8 of 12 encoder layers, as Exercise 4 does
+frozen = ("bert.embeddings.",) + tuple(f"bert.encoder.layer.{i}." for i in range(8))
+for name, p in bert.named_parameters():
+    p.requires_grad = not name.startswith(frozen)
+trainable = [p for p in bert.parameters() if p.requires_grad]
+print(f"trainable {sum(p.numel() for p in trainable):,} of {sum(p.numel() for p in bert.parameters()):,}")
+
+def bert_accuracy(model, loader):
+    model.eval()
+    correct = total = 0
+    with torch.no_grad():
+        for ids, mask, y in loader:
+            logits = model(input_ids=ids.to(device), attention_mask=mask.to(device)).logits
+            correct += (logits.argmax(-1).cpu() == y).sum().item()
+            total += len(y)
+    return correct / total
+
+optimizer = torch.optim.AdamW(trainable, lr=2e-5, weight_decay=0.01)
+for epoch in range(3):
+    bert.train()
+    for ids, mask, y in bert_train:
+        out = bert(input_ids=ids.to(device), attention_mask=mask.to(device), labels=y.to(device))
+        optimizer.zero_grad()
+        out.loss.backward()            # the model computes cross-entropy when labels are passed
+        optimizer.step()
+    print(f"epoch {epoch + 1}: test accuracy {bert_accuracy(bert, bert_test):.3f}")
+```
+
+About 28.9M of BERT-base's 109.5M parameters are trained here (the top four layers, the pooler and the new 4-way head). Judge the result against two reference points measured on the same 1,000 test rows: the majority class is 27.4%, and a TF-IDF + logistic-regression bag-of-words model scores **85.5%**. Topic classification of news is a task where word choice alone carries most of the signal, so BERT has to beat a strong baseline, not a weak one. A learning rate around $2 \times 10^{-5}$ is standard when pre-trained layers are being updated; much larger rates destroy the pre-trained features in the first few hundred steps.
+
 ## Try It Yourself
+
+The drills reuse `MultiHeadAttention`, `bert`, `bert_accuracy`, `encode`, `train_df`, `test_df`, `bert_test` and `device` from above.
 
 **Drill 1.** Implement scaled dot-product attention from scratch (no PyTorch modules, just matrix operations). Verify the output shape is correct for batch size 4, sequence length 20, and dimension 128.
 
@@ -1295,49 +1692,114 @@ optimizer = optim.AdamW(model.classifier.parameters(), lr=2e-5)
 ```python
 B, L, D = 4, 20, 128
 x = torch.randn(B, L, D)
-Q = x @ torch.randn(D, D); K = x @ torch.randn(D, D); V = x @ torch.randn(D, D)
+Q = x @ torch.randn(D, D)
+K = x @ torch.randn(D, D)
+V = x @ torch.randn(D, D)
 scores = Q @ K.transpose(-2, -1) / (D ** 0.5)
 attn = torch.softmax(scores, dim=-1)
 out = attn @ V
 assert out.shape == (B, L, D)
+assert torch.allclose(attn.sum(-1), torch.ones(B, L))
 ```
 
-**Drill 2.** Demonstrate the $\sqrt{d_k}$ effect empirically. Compute attention weights with and without scaling for $d_k = 512$. Show that without scaling, the attention distribution is peakier (higher max, lower entropy).
+**Drill 2.** Demonstrate the $\sqrt{d_k}$ effect empirically. Compute attention weights with and without scaling for $d_k = 512$. Show that without scaling the attention distribution is peakier (higher maximum, lower entropy).
 
 **Solution:**
 
 ```python
+torch.manual_seed(0)
 Q, K = torch.randn(1, 10, 512), torch.randn(1, 10, 512)
 scores_unscaled = Q @ K.transpose(-2, -1)
 scores_scaled = scores_unscaled / (512 ** 0.5)
 
-attn_unscaled = torch.softmax(scores_unscaled, dim=-1)
-attn_scaled = torch.softmax(scores_scaled, dim=-1)
+def entropy(p):
+    return -(p * torch.log(p.clamp_min(1e-12))).sum(-1).mean()
 
-print(f"Unscaled max attn: {attn_unscaled.max():.4f}")
-print(f"Scaled max attn: {attn_scaled.max():.4f}")
+for name, s in [("unscaled", scores_unscaled), ("scaled", scores_scaled)]:
+    a = torch.softmax(s, dim=-1)
+    print(f"{name:>8}: score std {s.std():6.2f}, mean max weight {a.max(-1).values.mean():.3f}, "
+          f"entropy {entropy(a):.3f} (uniform over 10 = {torch.log(torch.tensor(10.0)):.3f})")
 ```
 
-**Drill 3.** Fine-tune BERT for text classification on a small dataset (e.g., 1000 labelled sentences). Compare accuracy when (a) only the classifier head is trained, (b) the last 2 transformer layers are also unfrozen.
+The unscaled scores have a standard deviation near $\sqrt{512} \approx 22.6$ (25.0 in our run), so each row's softmax puts almost all its weight on one key — mean maximum weight 0.97, entropy 0.06. After scaling the standard deviation is about 1 and the weights spread over several keys — mean maximum 0.41, entropy 1.77, against 2.30 for uniform attention over 10 keys. A near one-hot softmax has near-zero gradients for every other key, which is why unscaled attention trains badly.
+
+**Drill 3.** Fine-tune BERT with (a) only the classifier head trained, (b) the last 2 transformer layers also unfrozen. Compare accuracy.
 
 **Solution:**
 
 ```python
-# (a) Freeze all BERT layers, train classifier only
-# (b) Unfreeze last 2 layers:
-for param in model.bert.encoder.layer[-2:].parameters():
-    param.requires_grad = True
+def finetune(n_top_layers, lr, epochs=2, n_train=2000):
+    model = BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=4).to(device)
+    for name, p in model.named_parameters():
+        p.requires_grad = name.startswith("classifier.") or name.startswith("bert.pooler.") or any(
+            name.startswith(f"bert.encoder.layer.{11 - k}.") for k in range(n_top_layers))
+    loader = DataLoader(encode(train_df.head(n_train)), batch_size=32, shuffle=True)
+    opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=lr)
+    for _ in range(epochs):
+        model.train()
+        for ids, mask, y in loader:
+            loss_value = model(input_ids=ids.to(device), attention_mask=mask.to(device),
+                               labels=y.to(device)).loss
+            opt.zero_grad()
+            loss_value.backward()
+            opt.step()
+    return bert_accuracy(model, bert_test)
+
+print(f"(a) head only:        {finetune(0, lr=1e-3):.3f}")
+print(f"(b) + top 2 layers:   {finetune(2, lr=2e-5):.3f}")
 ```
 
-**Drill 4.** Compare the BERT fine-tuned model with the LSTM baseline from Lesson 5.3 on the same text classification task. Report accuracy and training time.
+Note the different learning rates: with the encoder frozen, the head is a small linear classifier on fixed features and needs a "normal" rate such as $10^{-3}$; once pre-trained layers are trainable, the rate drops to about $2 \times 10^{-5}$. Expect (b) to beat (a): BERT's frozen `[CLS]` features were trained for next-sentence prediction, not topic, and adapting even the top two layers re-shapes them for the task. Both should land far above the 27% majority rate; whether they clear the 85.5% bag-of-words baseline with only 2,000 training rows is exactly what this drill measures.
+
+**Drill 4.** Compare the fine-tuned BERT with an LSTM text classifier trained from scratch on the same data (the model of Exercise 4's LSTM baseline). Report accuracy and training time.
 
 **Solution:**
 
 ```python
-# Run both models on same train/test split, measure accuracy and wall time
+import time
+from collections import Counter
+
+counts = Counter(w for t in train_df["text"].to_list() for w in t.lower().split())
+vocab = {w: i + 2 for i, (w, _) in enumerate(counts.most_common(20000))}   # 0 = pad, 1 = unknown
+
+def to_ids(texts, max_len=40):
+    rows = [[vocab.get(w, 1) for w in t.lower().split()][:max_len] for t in texts]
+    return torch.tensor([r + [0] * (max_len - len(r)) for r in rows])
+
+class LSTMClassifier(nn.Module):
+    def __init__(self, vocab_size, emb=128, hidden=128, n_classes=4):
+        super().__init__()
+        self.emb = nn.Embedding(vocab_size, emb, padding_idx=0)
+        self.lstm = nn.LSTM(emb, hidden, batch_first=True, bidirectional=True)
+        self.out = nn.Linear(2 * hidden, n_classes)
+
+    def forward(self, ids):
+        h, _ = self.lstm(self.emb(ids))
+        mask = (ids != 0).unsqueeze(-1).float()
+        return self.out((h * mask).sum(1) / mask.sum(1).clamp(min=1))   # mean over real tokens
+
+X_tr, y_tr = to_ids(train_df["text"].to_list()), torch.tensor(train_df["label"].to_list())
+X_te, y_te = to_ids(test_df["text"].to_list()), torch.tensor(test_df["label"].to_list())
+lstm_clf = LSTMClassifier(len(vocab) + 2).to(device)
+opt = torch.optim.Adam(lstm_clf.parameters(), lr=1e-3)
+start = time.perf_counter()
+for _ in range(8):
+    lstm_clf.train()
+    for xb, yb in DataLoader(TensorDataset(X_tr, y_tr), batch_size=64, shuffle=True):
+        loss_value = nn.functional.cross_entropy(lstm_clf(xb.to(device)), yb.to(device))
+        opt.zero_grad()
+        loss_value.backward()
+        opt.step()
+lstm_clf.eval()
+with torch.no_grad():
+    lstm_acc = (lstm_clf(X_te.to(device)).argmax(-1).cpu() == y_te).float().mean().item()
+print(f"LSTM from scratch: accuracy {lstm_acc:.3f}, {time.perf_counter() - start:.0f}s to train")
+print(f"BERT (fine-tuned above): accuracy {bert_accuracy(bert, bert_test):.3f}")
 ```
 
-**Drill 5.** Implement sinusoidal positional encoding from scratch. Visualise the encoding matrix as a heatmap. Verify that the dot product between position $p$ and $p+k$ is a function of $k$ only (compute for several values of $p$ and $k$).
+Time the BERT epochs in the worked example the same way. The usual picture: the from-scratch LSTM trains in a fraction of BERT's time but, with only 5,000 labelled rows, learns weaker word representations than BERT brings from pre-training; BERT costs far more compute per example. Whether the accuracy gap justifies the compute is the real decision — and with a bag-of-words baseline at 85.5%, report all three numbers side by side.
+
+**Drill 5.** Implement sinusoidal positional encoding from scratch. Visualise the encoding matrix as a heatmap. Verify that the dot product between positions $p$ and $p+k$ depends only on $k$, and confirm which dimensions oscillate fastest.
 
 **Solution:**
 
@@ -1349,13 +1811,30 @@ def sinusoidal_pe(max_len, d_model):
     pe[:, 0::2] = torch.sin(pos * div)
     pe[:, 1::2] = torch.cos(pos * div)
     return pe
+
+pe = sinusoidal_pe(100, 64)
+for k in [1, 5, 20]:
+    dots = [float(pe[p] @ pe[p + k]) for p in [0, 10, 40, 70]]
+    print(f"k={k:>2}: dot products at p=0,10,40,70 -> {[round(d, 4) for d in dots]}")
+
+crossings = ((pe[1:] * pe[:-1]) < 0).sum(0)        # strict sign changes per dimension
+print("zero crossings over 100 positions, dims 0, 1, 20, 62:", crossings[[0, 1, 20, 62]].tolist())
+
+plt.imshow(pe.T, aspect="auto", cmap="RdBu")
+plt.xlabel("position")
+plt.ylabel("dimension")
+plt.colorbar()
+plt.show()
 ```
+
+For each $k$ the four dot products are identical (up to floating-point rounding): the similarity between two positions depends only on how far apart they are. The zero-crossing counts confirm the frequencies: dimensions 0 and 1 change sign about 30 times in 100 positions, dimension 20 once, and dimension 62 not at all — low dimensions are the fast "second hand", high dimensions the slow "hour hand". In the heatmap this is the band of rapid stripes at the bottom (low dimensions) fading to smooth colour at the top.
 
 ## Cross-References
 
 - **Lesson 5.3** introduced attention as a mechanism on top of RNNs. Self-attention removes the RNN entirely.
 - **Module 4, Lesson 4.6** used word embeddings as features. Transformers compute contextualised embeddings — the same word gets different representations depending on context.
-- **Lesson 5.7** applies transfer learning with pre-trained transformers (BERT, GPT).
+- **Lesson 5.2** introduced CNNs; ViT is the attention-based alternative for images.
+- **Lesson 5.7** applies transfer learning with pre-trained models, including BERT with adapters and the HuggingFace pipeline API.
 - **Module 6** builds extensively on transformers: LLM fundamentals (6.1), fine-tuning (6.2), and RAG (6.4).
 
 ## Reflection
@@ -1364,9 +1843,11 @@ You should now be able to:
 
 - Derive scaled dot-product attention from first principles.
 - Explain why dividing by $\sqrt{d_k}$ is necessary (prevent softmax saturation).
-- Implement multi-head attention in PyTorch.
-- Fine-tune BERT for a downstream classification task.
-- Compare BERT, GPT, and T5 and know when each is appropriate.
+- Implement multi-head attention in PyTorch, including causal masking and cross-attention.
+- Explain why self-attention is permutation-equivariant and how sinusoidal encodings (fast low dimensions, slow high dimensions) restore order.
+- Explain how a ViT turns an image into tokens and why it needs more data than a CNN.
+- Fine-tune BERT for a downstream classification task and judge it against a bag-of-words baseline.
+- Compare BERT, GPT, T5 and the long-context variants and know when each is appropriate.
 
 ---
 

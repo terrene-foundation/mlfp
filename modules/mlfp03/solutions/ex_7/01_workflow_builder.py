@@ -119,8 +119,10 @@ class CreditLoadNode(Node):
 class CreditPreprocessNode(Node):
     """Preprocessing node: PreprocessingPipeline → dev + test parquet files.
 
-    The dev frame is for training (TrainingPipeline takes its own holdout
-    from it); the test frame is touched only by the evaluation node.
+    The test rows are held out BEFORE the pipeline is fitted, so the
+    imputation and encoding are learned from the dev rows only. The dev
+    frame is for training (TrainingPipeline takes its own holdout from
+    it); the test frame is touched only by the evaluation node.
     """
 
     def get_parameters(self) -> dict[str, NodeParameter]:

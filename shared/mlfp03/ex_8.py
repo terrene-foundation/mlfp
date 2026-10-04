@@ -36,12 +36,11 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 
-from kailash_ml import PreprocessingPipeline
 from kailash_ml.interop import to_sklearn_input
 from kailash_ml.types import FeatureField, FeatureSchema
 
 from shared.data_loader import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
+from shared.kailash_helpers import setup_environment, split_then_preprocess
 
 # ════════════════════════════════════════════════════════════════════════
 # ENVIRONMENT
@@ -103,10 +102,13 @@ def load_credit_split() -> dict[str, Any]:
     # preprocessing — see CREDIT_NON_FEATURE_COLUMNS above.
     credit = credit.drop(CREDIT_NON_FEATURE_COLUMNS)
 
-    pipeline = PreprocessingPipeline()
-    result = pipeline.setup(
+    # Split FIRST, then fit imputation/encoding on the training rows only:
+    # PreprocessingPipeline.setup() on the whole frame would fit them on the
+    # test rows too (it splits only after fitting).
+    result = split_then_preprocess(
         credit,
         target="default",
+        test_size=0.2,
         seed=RANDOM_SEED,
         normalize=False,
         categorical_encoding="ordinal",

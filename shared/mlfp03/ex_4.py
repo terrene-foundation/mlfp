@@ -27,10 +27,10 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from kailash_ml import PreprocessingPipeline
 from kailash_ml.interop import to_sklearn_input
 
 from shared.data_loader import MLFPDataLoader
+from shared.kailash_helpers import split_then_preprocess
 
 # ════════════════════════════════════════════════════════════════════════
 # CONFIG — output directory, random seeds, dataset tag
@@ -115,11 +115,13 @@ def prepare_credit_split() -> dict[str, Any]:
     """
     credit = load_credit_data().drop(CREDIT_NON_FEATURE_COLUMNS)
 
-    pipeline = PreprocessingPipeline()
-    result = pipeline.setup(
-        data=credit,
+    # Split FIRST, then fit imputation/encoding on the training rows only:
+    # PreprocessingPipeline.setup() on the whole frame would fit them on the
+    # test rows too (it splits only after fitting).
+    result = split_then_preprocess(
+        credit,
         target=TARGET_COLUMN,
-        train_size=0.8,
+        test_size=0.2,
         seed=SEED,
         normalize=False,
         categorical_encoding="ordinal",

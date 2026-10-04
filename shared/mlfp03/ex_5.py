@@ -30,10 +30,10 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from kailash_ml import PreprocessingPipeline
 from kailash_ml.interop import to_sklearn_input
 
 from shared.data_loader import MLFPDataLoader
+from shared.kailash_helpers import split_then_preprocess
 
 # ════════════════════════════════════════════════════════════════════════
 # OUTPUT DIRECTORY — every technique writes visual proof to the same place
@@ -112,18 +112,23 @@ def load_credit_splits(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
     """Load the SG credit scoring dataset and return (X_train, y_train, X_test, y_test, pos_rate).
 
-    Uses kailash-ml PreprocessingPipeline for consistent preprocessing across
-    every technique file. Returns numpy arrays ready for sklearn-style fit.
+    Holds out a stratified 20% test split FIRST, then fits kailash-ml's
+    PreprocessingPipeline on the training rows only, so every technique file
+    gets the same leak-free preprocessing. Returns numpy arrays ready for
+    sklearn-style fit.
     """
     loader = MLFPDataLoader()
     credit = loader.load("mlfp02", "sg_credit_scoring.parquet").drop(
         CREDIT_NON_FEATURE_COLUMNS
     )
 
-    pipeline = PreprocessingPipeline()
-    result = pipeline.setup(
+    # Split FIRST, then fit imputation/encoding on the training rows only:
+    # PreprocessingPipeline.setup() on the whole frame would fit them on the
+    # test rows too (it splits only after fitting).
+    result = split_then_preprocess(
         credit,
         target="default",
+        test_size=0.2,
         seed=seed,
         normalize=False,
         categorical_encoding="ordinal",

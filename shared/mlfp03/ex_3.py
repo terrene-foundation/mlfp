@@ -30,11 +30,11 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import StratifiedKFold, cross_validate
 
-from kailash_ml import ModelVisualizer, PreprocessingPipeline
+from kailash_ml import ModelVisualizer
 from kailash_ml.interop import to_sklearn_input
 
 from shared.data_loader import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
+from shared.kailash_helpers import setup_environment, split_then_preprocess
 
 # ════════════════════════════════════════════════════════════════════════
 # ENVIRONMENT
@@ -90,9 +90,10 @@ def load_ecommerce_churn() -> pl.DataFrame:
 def build_train_test_split() -> dict[str, Any]:
     """Return a fully prepared dict: X_train, X_test, y_train, y_test, feature_names, cv.
 
-    Uses kailash_ml PreprocessingPipeline with z-score normalisation and
-    ordinal categorical encoding. Every technique file calls this so all
-    models share identical folds and identical preprocessing.
+    Holds out a stratified 20% test split FIRST, then fits kailash_ml's
+    PreprocessingPipeline (z-score normalisation, ordinal categorical
+    encoding) on the training rows only. Every technique file calls this
+    so all models share identical folds and identical preprocessing.
 
     Also returns the two "do-nothing" reference points every model must be
     judged against, because churners are the MAJORITY class (~74%):
@@ -103,11 +104,13 @@ def build_train_test_split() -> dict[str, Any]:
     """
     df = load_ecommerce_churn()
 
-    pipeline = PreprocessingPipeline()
-    result = pipeline.setup(
-        data=df,
+    # Split FIRST, then fit imputation/encoding on the training rows only:
+    # PreprocessingPipeline.setup() on the whole frame would fit them on the
+    # test rows too (it splits only after fitting).
+    result = split_then_preprocess(
+        df,
         target=TARGET_COL,
-        train_size=0.8,
+        test_size=0.2,
         seed=RANDOM_SEED,
         normalize=True,
         normalize_method="zscore",

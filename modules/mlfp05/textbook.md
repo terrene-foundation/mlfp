@@ -16,14 +16,14 @@ By the end of this chapter you will have implemented autoencoders, CNNs, RNNs, t
 
 By the end of this chapter you will be able to:
 
-- Build and train autoencoders (vanilla, denoising, variational, convolutional) and generate new data from VAE latent spaces by deriving the ELBO and reparameterisation trick.
-- Implement CNNs with modern enhancements (ResNet skip connections, SE blocks, mixed precision training, Mixup augmentation) and explain the convolution output size formula.
-- Build LSTM and GRU networks, write all six LSTM gate equations, apply temporal attention, and train sequence models for time-series prediction and text generation.
-- Derive scaled dot-product self-attention from scratch, explain the $\sqrt{d_k}$ normalisation, implement multi-head attention, and fine-tune pre-trained BERT for downstream tasks.
-- Implement DCGAN and WGAN with gradient penalty, explain mode collapse and how Wasserstein distance addresses it, and evaluate generative quality with FID.
-- Build graph convolutional networks for node and graph classification, implement message passing, and use torch_geometric.
-- Fine-tune pre-trained vision and NLP models using transfer learning, export models to ONNX, and deploy with InferenceServer.
-- Implement DQN and PPO reinforcement learning algorithms, create custom Gymnasium environments, and explain how RL connects to RLHF for LLM alignment.
+- Build and train autoencoders (vanilla, denoising, variational, convolutional, and the contractive, sparse and β variants) and generate new data from VAE latent spaces by deriving the ELBO and reparameterisation trick.
+- Implement CNNs with modern enhancements (ResNet skip connections, SE blocks, Kaiming initialisation, mixed precision, Mixup and label smoothing) and explain the convolution output size formula and the degradation problem.
+- Build LSTM and GRU networks, write all six LSTM equations, apply temporal and spatial attention, and train sequence models for time-series prediction (judged against a no-change baseline) and character-level text generation.
+- Derive scaled dot-product self-attention from scratch, explain the $\sqrt{d_k}$ normalisation, implement multi-head, masked and cross-attention, explain ViT, and fine-tune pre-trained BERT for downstream tasks.
+- Implement DCGAN and WGAN with gradient penalty, explain mode collapse and how Wasserstein distance addresses it, evaluate generative quality with FID and Inception Score, and explain why synthetic data is not private by default.
+- Build GCN, GraphSAGE, GAT and GIN models for node and graph classification, implement message passing, evaluate link prediction without leakage, and use torch_geometric.
+- Fine-tune pre-trained vision and NLP models using transfer learning and adapters, export models with OnnxBridge, and serve them from the ModelRegistry with InferenceServer.
+- Implement DQN and PPO (including continuous actions), describe A2C, DDPG and SAC, create custom Gymnasium environments, and explain how RL connects to RLHF for LLM alignment.
 
 ---
 
@@ -2211,6 +2211,16 @@ Social networks, molecular structures, supply chains, and knowledge graphs are n
 
 ## Core Concepts
 
+### FOUNDATIONS: Graph data and the three graph tasks
+
+A graph has $N$ nodes with feature vectors (stacked as $\mathbf{X} \in \mathbb{R}^{N \times F}$) and edges, stored as an adjacency matrix $\mathbf{A}$ ($A_{ij} = 1$ if $i$ and $j$ are connected) or, in torch_geometric, as an `edge_index` tensor of shape $(2, E)$ listing source and target nodes. Three tasks recur:
+
+- **Node classification** — predict a label per node (the topic of a paper in a citation network, whether an account is fraudulent). Exercise 6 does this on Cora: 2,708 papers, 1,433 bag-of-words features, 7 topics, 5,278 undirected citation links.
+- **Graph classification** — predict one label per graph (is this molecule mutagenic?). Needs a *readout* that pools node vectors into one graph vector.
+- **Link prediction** — predict whether an edge exists (which papers should cite each other, which products are bought together).
+
+**Transductive vs inductive.** In Cora's standard setting every node, including the test nodes, is in the graph during training; only their *labels* are hidden. That is transductive learning. Inductive learning must handle nodes or graphs never seen in training (new users, new molecules) — GraphSAGE, GAT and GIN can all do that, because they learn functions of a neighbourhood rather than an embedding per node.
+
 ### THEORY: GCN propagation rule
 
 The Graph Convolutional Network (GCN) layer updates node features using the normalised adjacency matrix:
@@ -2219,17 +2229,27 @@ $$\mathbf{H}^{(l+1)} = \sigma\left(\tilde{\mathbf{D}}^{-1/2} \tilde{\mathbf{A}} 
 
 where $\tilde{\mathbf{A}} = \mathbf{A} + \mathbf{I}$ (adjacency matrix with self-loops), $\tilde{\mathbf{D}}_{ii} = \sum_j \tilde{\mathbf{A}}_{ij}$ (degree matrix), $\mathbf{H}^{(l)}$ is the feature matrix at layer $l$, and $\mathbf{W}^{(l)}$ is the learnable weight matrix.
 
-The normalisation $\tilde{\mathbf{D}}^{-1/2} \tilde{\mathbf{A}} \tilde{\mathbf{D}}^{-1/2}$ ensures that the aggregated features are averaged (not summed), preventing high-degree nodes from dominating.
+$\tilde{\mathbf{D}}^{-1/2} \tilde{\mathbf{A}} \tilde{\mathbf{D}}^{-1/2}$ is the **symmetric-normalised adjacency**: the message from $j$ to $i$ is weighted by $1/\sqrt{d_i d_j}$, so aggregated features stay on a comparable scale whatever a node's degree and high-degree nodes do not dominate. (The normalised graph *Laplacian* used in spectral clustering is $\mathbf{I}$ minus this matrix; GCN is a first-order approximation of a spectral filter on that Laplacian, which is where the name "graph convolution" comes from.)
 
 ### FOUNDATIONS: Message passing
 
 The GCN propagation can be viewed as message passing:
 
 1. **Message:** each node sends its current representation to all neighbours.
-2. **Aggregate:** each node averages the messages from its neighbours (and itself, via the self-loop).
+2. **Aggregate:** each node combines the messages from its neighbours (and itself, via the self-loop) — for GCN, a degree-normalised sum.
 3. **Update:** the aggregated message is transformed by a linear layer and activation function.
 
-After $L$ layers of message passing, each node's representation captures information from nodes up to $L$ hops away.
+After $L$ layers of message passing, each node's representation captures information from nodes up to $L$ hops away. Every GNN in this lesson is this template with a different aggregate and update.
+
+**Over-smoothing.** Each layer mixes a node with its neighbours, so many layers make all node vectors converge towards the same thing and the classes blur together. Most GNNs therefore use 2–3 layers (Drill 3 measures this).
+
+### THEORY: GraphSAGE — sample and aggregate
+
+GraphSAGE (Hamilton et al., 2017) separates the node from its neighbourhood and **samples** a fixed number of neighbours per node, so the cost per node is bounded even in graphs with millions of edges:
+
+$$\mathbf{h}_i' = \sigma\left(\mathbf{W} \left[\mathbf{h}_i \,\|\, \text{AGG}\left(\{\mathbf{h}_j : j \in \mathcal{S}(i)\}\right)\right]\right)$$
+
+where $\mathcal{S}(i)$ is a sampled subset of $i$'s neighbours and AGG is a mean, max-pool or LSTM aggregator. Because it learns *how to aggregate* rather than a vector per node, a trained GraphSAGE model can embed nodes that were not in the training graph — it is inductive. In torch_geometric the layer is `SAGEConv` and neighbour sampling is done by `NeighborLoader`.
 
 ### THEORY: GAT attention weights
 
@@ -2239,45 +2259,355 @@ $$e_{ij} = \text{LeakyReLU}(\mathbf{a}^T [\mathbf{W}\mathbf{h}_i \| \mathbf{W}\m
 $$\alpha_{ij} = \text{softmax}_j(e_{ij})$$
 $$\mathbf{h}_i' = \sigma\left(\sum_{j \in \mathcal{N}(i)} \alpha_{ij} \mathbf{W} \mathbf{h}_j\right)$$
 
-This allows the model to learn which neighbours are more important for each node.
+This allows the model to learn which neighbours are more important for each node, rather than weighting them by degree as GCN does. Like Lesson 5.4, GAT usually runs several heads and concatenates them. GAT is inductive: the original paper evaluates it on unseen protein-interaction graphs.
+
+### THEORY: GIN — the most expressive message-passing GNN
+
+How well can a GNN tell two different graphs apart? Xu et al. (2019) showed that a message-passing GNN is at most as powerful as the Weisfeiler–Lehman (WL) graph-isomorphism test, and reaches that bound only if its aggregation is **injective** on the multiset of neighbour features. Mean and max are not injective: a node with neighbours $\{a, b\}$ and one with $\{a, a, b, b\}$ get the same mean, and $\{a, b\}$ and $\{a, b, b\}$ get the same max. Sum is injective (for suitable features). The Graph Isomorphism Network uses sum plus an MLP:
+
+$$\mathbf{h}_i' = \text{MLP}\left((1 + \epsilon)\, \mathbf{h}_i + \sum_{j \in \mathcal{N}(i)} \mathbf{h}_j\right)$$
+
+For graph classification, GIN reads out each graph by **summing** its node vectors (again to keep counts), often from every layer. It is the standard strong baseline for molecule and graph classification; in torch_geometric it is `GINConv(mlp)` with `global_add_pool`.
+
+| Architecture | Aggregation | Strength | Typical use |
+|---|---|---|---|
+| GCN | Degree-normalised sum | Simple, fast, strong on citation-style graphs | Node classification (transductive) |
+| GraphSAGE | Sampled mean / max / LSTM | Scales to huge graphs; inductive | New nodes arriving (users, products) |
+| GAT | Learned attention over neighbours | Neighbour importance varies | Heterogeneous, noisy neighbourhoods |
+| GIN | Sum + MLP | Most expressive (WL-level) | Graph classification (molecules) |
+
+## The Kailash Engine: ModelVisualizer (embeddings)
+
+`ModelVisualizer().scatter(df, x, y, color=...)` shows learned node embeddings: project the hidden layer to 2-D (PCA or t-SNE), put the coordinates and the true labels in a polars DataFrame, and colour by label. If the GNN has learned the task, nodes of one class cluster together. The first worked example ends with this plot.
+
+## Worked Example 1: Node classification on Cora (the Exercise 6 data)
+
+Exercise 6 classifies Cora papers by topic and stores the dataset in `data/mlfp05/cora`. Cora ships with a standard split: 140 labelled training nodes (20 per class), 500 validation nodes and 1,000 test nodes. **Choose the epoch by validation accuracy and report test accuracy at that epoch** — picking the best test accuracy over epochs is selecting on the test set, and it inflates the result.
 
 ```python
-from torch_geometric.nn import GCNConv, GATConv, global_mean_pool
+import numpy as np
+import polars as pl
+import torch
+import torch.nn as nn
+from sklearn.decomposition import PCA
+from torch_geometric.datasets import Planetoid
+from torch_geometric.nn import GCNConv
+from kailash_ml import ModelVisualizer
+from shared.kailash_helpers import get_device
+
+device = get_device()
+torch.manual_seed(0)
+cora = Planetoid("data/mlfp05/cora", name="Cora")[0].to(device)
+print(f"{cora.num_nodes} nodes, {cora.num_edges // 2} undirected edges, {cora.num_features} features; "
+      f"train/val/test = {int(cora.train_mask.sum())}/{int(cora.val_mask.sum())}/{int(cora.test_mask.sum())}")
 
 class GCN(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels):
+    def __init__(self, in_dim, hidden, n_classes, dropout=0.5):
         super().__init__()
-        self.conv1 = GCNConv(in_channels, hidden_channels)
-        self.conv2 = GCNConv(hidden_channels, hidden_channels)
-        self.fc = nn.Linear(hidden_channels, out_channels)
+        self.conv1, self.conv2 = GCNConv(in_dim, hidden), GCNConv(hidden, n_classes)
+        self.dropout = dropout
+
+    def embed(self, x, edge_index):
+        x = nn.functional.dropout(x, self.dropout, self.training)
+        return torch.relu(self.conv1(x, edge_index))
+
+    def forward(self, x, edge_index):
+        h = nn.functional.dropout(self.embed(x, edge_index), self.dropout, self.training)
+        return self.conv2(h, edge_index)
+
+def train_node_model(model, data, epochs=200, lr=0.01, weight_decay=5e-4):
+    """Train on train_mask; return test accuracy at the epoch with the best VALIDATION accuracy."""
+    model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    best_val, test_at_best, best_epoch = 0.0, 0.0, 0
+    for epoch in range(epochs):
+        model.train()
+        out = model(data.x, data.edge_index)
+        loss = nn.functional.cross_entropy(out[data.train_mask], data.y[data.train_mask])
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        model.eval()
+        with torch.no_grad():
+            pred = model(data.x, data.edge_index).argmax(1)
+        val_acc = (pred[data.val_mask] == data.y[data.val_mask]).float().mean().item()
+        test_acc = (pred[data.test_mask] == data.y[data.test_mask]).float().mean().item()
+        if val_acc > best_val:
+            best_val, test_at_best, best_epoch = val_acc, test_acc, epoch + 1
+    return best_val, test_at_best, best_epoch
+
+gcn = GCN(cora.num_features, 16, 7)
+val_acc, test_acc, epoch = train_node_model(gcn, cora)
+print(f"GCN: best val acc {val_acc:.3f} at epoch {epoch}; test acc there {test_acc:.3f}")
+
+class NoGraphMLP(nn.Module):
+    """Same features, edges ignored: the baseline that shows what the graph adds."""
+    def __init__(self, in_dim, hidden, n_classes):
+        super().__init__()
+        self.net = nn.Sequential(nn.Dropout(0.5), nn.Linear(in_dim, hidden), nn.ReLU(),
+                                 nn.Dropout(0.5), nn.Linear(hidden, n_classes))
+
+    def forward(self, x, edge_index):
+        return self.net(x)
+
+_, mlp_test, _ = train_node_model(NoGraphMLP(cora.num_features, 16, 7), cora)
+print(f"MLP (no edges): test acc {mlp_test:.3f}")
+
+gcn.eval()
+with torch.no_grad():
+    hidden = gcn.embed(cora.x, cora.edge_index).cpu().numpy()      # (2708, 16)
+xy = PCA(n_components=2).fit_transform(hidden)
+topics = cora.y.cpu().tolist()
+emb_df = pl.DataFrame({"pc1": xy[:, 0], "pc2": xy[:, 1], "topic": [f"topic {t}" for t in topics]})
+fig = ModelVisualizer().scatter(emb_df, x="pc1", y="pc2", color="topic",
+                                title="GCN hidden layer (PCA), coloured by true topic")
+```
+
+Read the two numbers together. In our run the GCN reached 0.804 test accuracy (validation-selected at epoch 24) and the MLP 0.540. The MLP sees exactly the same word features but not the citations; that 26-point gap is what the graph contributes. With only 140 labelled nodes, citations let the label information spread to unlabelled neighbours — papers mostly cite papers on the same topic.
+
+## Worked Example 2: Graph classification on MUTAG with GIN
+
+Graph classification needs one prediction per graph. MUTAG (from the TUDataset collection, downloaded to `data/mlfp05/tudataset`) has 188 small molecules — atoms are nodes with a one-hot atom type, bonds are edges — each labelled mutagenic or not. torch_geometric's `DataLoader` packs many small graphs into one big disconnected graph per batch and keeps a `batch` vector saying which graph each node belongs to; the readout pools by that vector.
+
+```python
+from torch_geometric.datasets import TUDataset
+from torch_geometric.loader import DataLoader as GraphLoader
+from torch_geometric.nn import GINConv, global_add_pool
+
+torch.manual_seed(0)
+mutag = TUDataset("data/mlfp05/tudataset", name="MUTAG").shuffle()
+print(f"{len(mutag)} graphs, {mutag.num_node_features} node features, "
+      f"mean {sum(g.num_nodes for g in mutag) / len(mutag):.1f} nodes per graph, "
+      f"{float(sum(g.y.item() for g in mutag)) / len(mutag):.0%} positive")
+train_set, val_set, test_set = mutag[:120], mutag[120:150], mutag[150:]
+train_graphs = GraphLoader(train_set, batch_size=32, shuffle=True)
+
+class GIN(nn.Module):
+    def __init__(self, in_dim, hidden=64, n_layers=3, n_classes=2):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(n_layers):
+            mlp = nn.Sequential(nn.Linear(in_dim if i == 0 else hidden, hidden), nn.ReLU(),
+                                nn.Linear(hidden, hidden), nn.ReLU())
+            self.convs.append(GINConv(mlp, train_eps=True))      # (1 + eps) * h_i + sum of neighbours
+        self.head = nn.Linear(hidden * n_layers, n_classes)
 
     def forward(self, x, edge_index, batch):
-        x = torch.relu(self.conv1(x, edge_index))
-        x = torch.relu(self.conv2(x, edge_index))
-        x = global_mean_pool(x, batch)  # graph-level readout
-        return self.fc(x)
+        readouts = []
+        for conv in self.convs:
+            x = conv(x, edge_index)
+            readouts.append(global_add_pool(x, batch))           # sum readout per graph, per layer
+        return self.head(torch.cat(readouts, dim=1))
+
+def graph_accuracy(model, graphs):
+    model.eval()
+    correct = 0
+    with torch.no_grad():
+        for g in GraphLoader(graphs, batch_size=64):
+            g = g.to(device)
+            correct += (model(g.x, g.edge_index, g.batch).argmax(1) == g.y).sum().item()
+    return correct / len(graphs)
+
+gin = GIN(mutag.num_node_features).to(device)
+opt = torch.optim.Adam(gin.parameters(), lr=0.01)
+best_val, test_at_best = 0.0, 0.0
+for epoch in range(100):
+    gin.train()
+    for g in train_graphs:
+        g = g.to(device)
+        loss = nn.functional.cross_entropy(gin(g.x, g.edge_index, g.batch), g.y)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+    val_acc = graph_accuracy(gin, val_set)
+    if val_acc > best_val:
+        best_val, test_at_best = val_acc, graph_accuracy(gin, test_set)
+majority = max(float(sum(g.y.item() for g in test_set)), len(test_set) - float(sum(g.y.item() for g in test_set)))
+print(f"GIN: best val acc {best_val:.3f}, test acc at that epoch {test_at_best:.3f} "
+      f"(majority class {majority / len(test_set):.3f}, {len(test_set)} test graphs)")
 ```
+
+With 38 test graphs every misclassified molecule moves accuracy by 2.6 points, so a single split is noisy; the published protocol for MUTAG is 10-fold cross-validation. Compare against the majority-class rate printed on the last line, not against 50%: in our run GIN scored 0.895 on the 38 test graphs against a majority rate of 0.658.
+
+### FOUNDATIONS: Link prediction done properly
+
+A link predictor embeds nodes with a GNN encoder and scores a candidate edge $(i, j)$, usually by the dot product $\mathbf{z}_i^\top \mathbf{z}_j$ passed through a sigmoid. Training uses known edges as positives and randomly sampled non-edges as negatives. The trap is leakage: if the edges you test on are also in the graph the encoder propagates over, the model has already seen the answer. The correct protocol is to **split the edges** into train/validation/test (for example 85/5/10), build the message-passing graph from the training edges only, sample fresh negatives for each split, and report AUC on the test edges. torch_geometric's `RandomLinkSplit` transform does exactly this (Drill 5).
 
 ## Try It Yourself
 
-**Drill 1.** Build a GCN for graph classification on TUDataset (MUTAG or PROTEINS). Report accuracy.
+The drills reuse `device`, `cora`, `GCN`, `NoGraphMLP`, `train_node_model`, `gin`, `mutag`, `GIN` and `graph_accuracy` from the worked examples.
 
-**Drill 2.** Compare GCN vs GAT on the same dataset. Does attention improve accuracy?
+**Drill 1.** Compare GCN with GAT on Cora, using validation-based epoch selection for both. Does attention improve accuracy?
 
-**Drill 3.** Visualise learned node embeddings after 2 layers of GCN. Do nodes of the same class cluster together?
+**Solution:**
 
-**Drill 4.** Vary the number of GCN layers from 1 to 6. Does over-smoothing occur (all node embeddings become similar)?
+```python
+from torch_geometric.nn import GATConv
 
-**Drill 5.** Implement a simple message-passing network from scratch (without torch_geometric). Verify it produces the same output as GCNConv.
+class GAT(nn.Module):
+    def __init__(self, in_dim, hidden=8, heads=8, n_classes=7):
+        super().__init__()
+        self.conv1 = GATConv(in_dim, hidden, heads=heads, dropout=0.6)            # 8 heads x 8 = 64
+        self.conv2 = GATConv(hidden * heads, n_classes, heads=1, dropout=0.6)
+
+    def forward(self, x, edge_index):
+        x = nn.functional.dropout(x, 0.6, self.training)
+        x = nn.functional.elu(self.conv1(x, edge_index))
+        x = nn.functional.dropout(x, 0.6, self.training)
+        return self.conv2(x, edge_index)
+
+for name, make in [("GCN", lambda: GCN(cora.num_features, 16, 7)), ("GAT", lambda: GAT(cora.num_features))]:
+    tests = []
+    for seed in range(3):
+        torch.manual_seed(seed)
+        tests.append(train_node_model(make(), cora, lr=0.005 if name == "GAT" else 0.01)[1])
+    print(f"{name}: test acc over 3 seeds {np.mean(tests):.3f} +/- {np.std(tests):.3f}")
+```
+
+On Cora the two land within about a point of each other — 0.810 ± 0.005 for GCN and 0.811 ± 0.009 for GAT over three seeds in our run — and the seed-to-seed spread is of the same size — report the mean and spread over seeds, not one run. Attention pays off on graphs where some neighbours are much more informative than others; Cora's citation neighbourhoods are fairly homogeneous, so the degree-based weighting of GCN is already a good guess.
+
+**Drill 2.** Visualise the learned node embeddings from the GCN's hidden layer with t-SNE. Do nodes of the same class cluster together? Compare with t-SNE of the raw bag-of-words features.
+
+**Solution:**
+
+```python
+from sklearn.manifold import TSNE
+
+def tsne_df(features, labels):
+    xy = TSNE(n_components=2, random_state=0, init="pca").fit_transform(features)
+    return pl.DataFrame({"x": xy[:, 0], "y": xy[:, 1], "topic": [f"topic {t}" for t in labels]})
+
+labels = cora.y.cpu().tolist()
+viz = ModelVisualizer()
+fig_raw = viz.scatter(tsne_df(cora.x.cpu().numpy(), labels), x="x", y="y", color="topic",
+                      title="t-SNE of raw word features")
+fig_gcn = viz.scatter(tsne_df(hidden, labels), x="x", y="y", color="topic",
+                      title="t-SNE of GCN hidden layer")
+```
+
+The raw features form a diffuse cloud with only faint class structure; the GCN embeddings form clear clusters, one per topic, with mixing at the boundaries. Remember that t-SNE distorts distances between clusters — read cluster membership, not the gaps.
+
+**Drill 3.** Vary the number of GCN layers from 1 to 6. Does over-smoothing occur?
+
+**Solution:**
+
+```python
+class DeepGCN(nn.Module):
+    def __init__(self, in_dim, hidden, n_classes, n_layers):
+        super().__init__()
+        dims = [in_dim] + [hidden] * (n_layers - 1) + [n_classes]
+        self.convs = nn.ModuleList(GCNConv(a, b) for a, b in zip(dims[:-1], dims[1:]))
+
+    def forward(self, x, edge_index):
+        for i, conv in enumerate(self.convs):
+            x = conv(nn.functional.dropout(x, 0.5, self.training), edge_index)
+            if i < len(self.convs) - 1:
+                x = torch.relu(x)
+        return x
+
+for n_layers in range(1, 7):
+    torch.manual_seed(0)
+    _, test_acc, _ = train_node_model(DeepGCN(cora.num_features, 16, 7, n_layers), cora)
+    print(f"{n_layers} layers: test acc {test_acc:.3f}")
+
+# The mechanism, without any training: apply the propagation matrix k times
+from torch_geometric.utils import to_dense_adj
+A_tilde = to_dense_adj(cora.edge_index, max_num_nodes=cora.num_nodes)[0] + torch.eye(cora.num_nodes, device=device)
+d_inv_sqrt = A_tilde.sum(1).pow(-0.5)
+A_norm = d_inv_sqrt[:, None] * A_tilde * d_inv_sqrt[None, :]
+H = cora.x
+for k in range(1, 65):
+    H = A_norm @ H
+    if k in (1, 4, 16, 64):
+        Hn = nn.functional.normalize(H, dim=1)
+        print(f"after {k:>2} propagation steps: mean pairwise cosine similarity {(Hn @ Hn.T).mean():.3f}")
+```
+
+In our runs test accuracy peaked at two layers (0.804) and fell steadily to about 0.73–0.74 at six. The second loop shows why: repeated neighbourhood averaging makes node vectors more and more alike — the mean pairwise cosine similarity of the features rose from 0.06 for the raw features to 0.15 after one step, 0.35 after four, 0.62 after 16 and 0.82 after 64. That is over-smoothing: deep stacks pull every node in a connected region towards the same vector, so the classes blur. Residual connections, jumping-knowledge readouts (concatenating every layer, as the GIN example does) and normalisation layers are the standard counter-measures.
+
+**Drill 4.** Implement GCN message passing from scratch (no torch_geometric layers). Verify it produces the same output as `GCNConv`.
+
+**Solution:**
+
+```python
+conv = GCNConv(cora.num_features, 16).to(device)
+N = cora.num_nodes
+A = torch.zeros(N, N, device=device)
+A[cora.edge_index[0], cora.edge_index[1]] = 1.0
+A_tilde = A + torch.eye(N, device=device)                      # add self-loops
+d_inv_sqrt = A_tilde.sum(1).pow(-0.5)
+A_norm = d_inv_sqrt[:, None] * A_tilde * d_inv_sqrt[None, :]   # D^-1/2 (A + I) D^-1/2
+
+with torch.no_grad():
+    ours = A_norm @ (cora.x @ conv.lin.weight.T) + conv.bias    # aggregate (X W) over neighbours
+    theirs = conv(cora.x, cora.edge_index)
+print("max |difference|:", (ours - theirs).abs().max().item())
+```
+
+The difference is at floating-point rounding level (around $10^{-7}$ in our runs): `GCNConv` is exactly $\tilde{\mathbf{D}}^{-1/2}\tilde{\mathbf{A}}\tilde{\mathbf{D}}^{-1/2}\mathbf{X}\mathbf{W} + \mathbf{b}$. The library version stores the graph sparsely as `edge_index` instead of a dense $N \times N$ matrix — essential once graphs have millions of nodes.
+
+**Drill 5.** Train a link predictor on Cora with a proper edge split, and report test AUC.
+
+**Solution:**
+
+```python
+from sklearn.metrics import roc_auc_score
+from torch_geometric.transforms import RandomLinkSplit
+
+torch.manual_seed(0)
+split = RandomLinkSplit(num_val=0.05, num_test=0.10, is_undirected=True,
+                        add_negative_train_samples=False)
+train_data, val_data, test_data = split(Planetoid("data/mlfp05/cora", name="Cora")[0])
+
+class Encoder(nn.Module):
+    def __init__(self, in_dim, hidden=64):
+        super().__init__()
+        self.conv1, self.conv2 = GCNConv(in_dim, hidden), GCNConv(hidden, hidden)
+
+    def forward(self, x, edge_index):
+        return self.conv2(torch.relu(self.conv1(x, edge_index)), edge_index)
+
+def score(z, pairs):
+    return (z[pairs[0]] * z[pairs[1]]).sum(dim=1)             # dot-product decoder (a logit)
+
+enc = Encoder(cora.num_features).to(device)
+opt = torch.optim.Adam(enc.parameters(), lr=0.01)
+train_data = train_data.to(device)
+for epoch in range(200):
+    enc.train()
+    z = enc(train_data.x, train_data.edge_index)               # message passing on TRAIN edges only
+    pos = train_data.edge_label_index
+    neg = torch.randint(0, train_data.num_nodes, pos.shape, device=device)   # fresh negatives
+    logits = torch.cat([score(z, pos), score(z, neg)])
+    labels = torch.cat([torch.ones(pos.size(1)), torch.zeros(neg.size(1))]).to(device)
+    loss = nn.functional.binary_cross_entropy_with_logits(logits, labels)
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
+
+enc.eval()
+with torch.no_grad():
+    z = enc(train_data.x, train_data.edge_index)
+    test_scores = score(z, test_data.edge_label_index.to(device)).cpu()
+print(f"test AUC on held-out edges: {roc_auc_score(test_data.edge_label.numpy(), test_scores.numpy()):.3f}")
+```
+
+`RandomLinkSplit` removes the validation and test edges from the message-passing graph and attaches labelled positive and negative pairs to each split, so the encoder never sees the edges it is scored on. Our runs reached a test AUC of about 0.89. The test AUC is therefore a genuine "predict a missing citation" score. If you instead score the training edges with the full graph, you will see a much higher number that measures memorisation, not prediction.
 
 ## Cross-References
 
-- **Lesson 4.1** introduced spectral clustering, which uses the graph Laplacian — the same matrix that appears in GCN.
+- **Lesson 4.1** introduced spectral clustering, which uses the normalised graph Laplacian $\mathbf{I} - \tilde{\mathbf{D}}^{-1/2}\tilde{\mathbf{A}}\tilde{\mathbf{D}}^{-1/2}$ — GCN propagates with the normalised adjacency inside it.
 - **Lesson 5.4** introduced attention. GAT applies attention to graph neighbours.
 
 ## Reflection
 
-You should now be able to build GCNs and GATs, explain message passing, and use torch_geometric for graph ML.
+You should now be able to:
+
+- Explain message passing and how GCN, GraphSAGE, GAT and GIN differ in how they aggregate neighbours.
+- Build GCNs for node classification and GIN for graph classification with torch_geometric (`GCNConv`, `GINConv`, `global_add_pool`, the graph `DataLoader`).
+- Select epochs on validation data and compare against a no-graph baseline.
+- Explain over-smoothing and why most GNNs are shallow.
+- Evaluate link prediction on held-out edges without leakage.
 
 ---
 
@@ -2291,71 +2621,382 @@ Training a model from scratch on a small dataset often leads to overfitting. Tra
 
 ### FOUNDATIONS: The transfer learning recipe
 
-1. **Load a pre-trained model** (e.g., ResNet-50 from ImageNet, BERT from BookCorpus).
-2. **Replace the classification head** with a new one matching your number of classes.
-3. **Freeze early layers** — they contain general features that transfer well.
-4. **Fine-tune later layers** and the new head on your target dataset.
-5. **Optionally unfreeze more layers** if you have enough data.
+1. **Load a pre-trained model** — e.g. ResNet-18/50 trained on ImageNet-1k (1.28 million labelled images, 1,000 classes), or BERT pre-trained on BookCorpus and English Wikipedia.
+2. **Replace the task head** with a new one matching your number of classes.
+3. **Freeze the backbone** at first — its early layers contain general features (edges, textures; syntax, word meaning) that transfer well — and train only the new head.
+4. **Fine-tune later layers** with a smaller learning rate once the head is sensible ("discriminative learning rates": the deeper you go into the pre-trained network, the smaller the rate).
+5. **Unfreeze more layers** only if you have enough data; otherwise you overfit and erase the pre-trained features ("catastrophic forgetting").
+
+Lower layers transfer best because they are the most generic; the top layers are the most specific to the original task, which is why they are the first to be retrained.
+
+### FOUNDATIONS: Data augmentation for small datasets
+
+With little labelled data, every random transformation that preserves the label is free extra data: random crops, horizontal flips, small rotations, colour jitter for images; synonym replacement or back-translation for text. Augment the **training** set only, and choose transformations that keep the label true (a horizontal flip is fine for animals and vehicles, wrong for digits or text in images). Exercise 7's training transform is `Resize(96) → RandomHorizontalFlip → RandomCrop(96, padding=8) → ToTensor → Normalize(ImageNet mean/std)`.
+
+### THEORY: Adapter modules
+
+Full fine-tuning updates every parameter and needs a full model copy per task. **Adapters** (Houlsby et al., 2019) freeze the whole pre-trained network and insert small trainable bottleneck modules inside it: down-project to a small dimension $r$, apply a non-linearity, up-project back, and add the result to the input,
+
+$$\text{Adapter}(\mathbf{h}) = \mathbf{h} + \mathbf{W}_{\text{up}}\, \text{ReLU}(\mathbf{W}_{\text{down}} \mathbf{h}).$$
+
+Initialising $\mathbf{W}_{\text{up}}$ (and its bias) to zero makes every adapter the **identity at the start**, so training begins exactly from the pre-trained model and only learns a task-specific correction. Where the adapter sits matters: if it is applied to a summary of a block's output (as Exercise 7 does, on the channel-pooled features of a ResNet stage), add back only the adapter's *change*, `adapted - pooled`, or you add the pooled features a second time and perturb the backbone from step 0. With bottleneck 64 on ResNet-18's last two stages, about 1% of the parameters are trainable. Module 6's LoRA is the same idea with a low-rank update to the weight matrices themselves.
+
+```python
+import torch
+import torch.nn as nn
+from torchvision.models import resnet18, ResNet18_Weights
+
+class BottleneckAdapter(nn.Module):
+    def __init__(self, dim, bottleneck=64):
+        super().__init__()
+        self.down, self.up = nn.Linear(dim, bottleneck), nn.Linear(bottleneck, dim)
+        nn.init.zeros_(self.up.weight)           # zero-init: the adapter starts as the identity
+        nn.init.zeros_(self.up.bias)
+
+    def forward(self, x):
+        return x + self.up(torch.relu(self.down(x)))
+
+class AdaptedStage(nn.Module):
+    """Wrap a ResNet stage; adapt its channel-pooled output and add back only the change."""
+    def __init__(self, stage, channels, bottleneck=64):
+        super().__init__()
+        self.stage, self.adapter = stage, BottleneckAdapter(channels, bottleneck)
+
+    def forward(self, x):
+        out = self.stage(x)
+        pooled = out.mean(dim=(2, 3))                                  # (B, C)
+        return out + (self.adapter(pooled) - pooled)[:, :, None, None]
+
+backbone = resnet18(weights=ResNet18_Weights.DEFAULT)                 # ImageNet-1k weights
+for p in backbone.parameters():
+    p.requires_grad = False
+x = torch.randn(2, 3, 96, 96)
+backbone.eval()
+with torch.no_grad():
+    before = backbone(x)
+backbone.layer3 = AdaptedStage(backbone.layer3, 256)
+backbone.layer4 = AdaptedStage(backbone.layer4, 512)
+with torch.no_grad():
+    after = backbone(x)
+print("identity at initialisation:", torch.allclose(before, after, atol=1e-5))     # True
+
+backbone.fc = nn.Linear(512, 10)                                      # new, trainable head
+trainable = sum(p.numel() for p in backbone.parameters() if p.requires_grad)
+total = sum(p.numel() for p in backbone.parameters())
+print(f"trainable {trainable:,} of {total:,} ({trainable / total:.1%})")
+```
+
+### FOUNDATIONS: The HuggingFace pipeline API
+
+For NLP, the `transformers` library wraps tokenisation, the model call and post-processing in one object. Give the model readable label names and the pipeline returns them directly:
+
+```python
+from transformers import AutoTokenizer, BertForSequenceClassification, pipeline
+
+LABELS = ["World", "Sports", "Business", "Sci/Tech"]
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+clf_model = BertForSequenceClassification.from_pretrained(
+    "bert-base-uncased", num_labels=4,
+    id2label=dict(enumerate(LABELS)), label2id={name: i for i, name in enumerate(LABELS)},
+)
+# ... fine-tune clf_model exactly as in Lesson 5.4's worked example, then:
+classify = pipeline("text-classification", model=clf_model, tokenizer=tokenizer)
+print(classify(["Central bank holds rates as inflation cools", "Striker scores twice in cup final"]))
+```
+
+Each result is a dict such as `{"label": "Business", "score": 0.93}`. Until the head is fine-tuned the labels are meaningless — the new classification layer is randomly initialised (the library warns about exactly this). The pipeline is for inference and quick demos; training stays in your own loop or the `Trainer` class.
 
 ### FOUNDATIONS: Architecture selection guide
 
-| Data Type | Best Architecture  | When to Transfer              |
-| --------- | ------------------ | ----------------------------- |
-| Images    | CNN / ViT          | Always (ImageNet pre-trained) |
-| Text      | Transformer        | Always (BERT/GPT pre-trained) |
-| Sequences | LSTM / Transformer | Sometimes (domain-specific)   |
-| Graphs    | GNN                | Rarely (task-specific)        |
-| Tabular   | Gradient boosting  | Never (train from scratch)    |
+| Data Type | Best Architecture | When to Transfer |
+|---|---|---|
+| Images | CNN / ViT | Almost always (ImageNet pre-trained) |
+| Text | Transformer | Almost always (BERT/GPT-style pre-trained) |
+| Sequences | LSTM / Transformer | Sometimes (domain-specific) |
+| Graphs | GNN | Rarely (task-specific) |
+| Tabular | Gradient boosting (Module 3) | Rarely — train from scratch |
 
-### FOUNDATIONS: ONNX export and InferenceServer
+## The Kailash Engines: OnnxBridge, ModelRegistry and InferenceServer
+
+Deployment is three steps, each a Kailash engine:
+
+1. **Export** with `OnnxBridge().export(model, "torch", output_path=Path(...), sample_input=x)` and check parity with `validate(...)` (Lesson 5.2).
+2. **Register** the model in `ModelRegistry` and store the `.onnx` file as that version's `model.onnx` artifact.
+3. **Serve** with `server = await InferenceServer.from_registry(name, registry=registry, version=v, runtime="onnx")`, then `await server.start()` and `await server.predict({"records": [...]})`, which returns a mapping with a `"predictions"` list. `from_registry`, `start`, `predict` and `stop` are all coroutines, so they run inside an `async` function.
+
+Two practical details. InferenceServer turns each request record (a dict of named numbers) into **one row** of a 2-D float array, so an image model must be exported behind a small adapter that accepts flat pixel rows and reshapes them. And the PyTorch exporter OnnxBridge uses writes the weights to a side file (`<name>.onnx.data`) next to the graph; the registry stores a single file, so fold the weights into the `.onnx` file before registering it (`onnx.save_model(..., save_as_external_data=False)`), or the server loads a graph with no weights and every prediction fails. (There is no `InferenceServer(model_path=...)` constructor and no `predict_batch`, `warm_cache` or `PredictionResult` — older course material showed APIs that do not exist.)
+
+## Worked Example: Fine-Tuning ResNet-18 on CIFAR-10 and serving it
+
+Exercise 7 fine-tunes an ImageNet ResNet-18 on CIFAR-10 resized to $96 \times 96$ (at $32 \times 32$, ResNet's five stride-2 stages would shrink the image to $1 \times 1$ before the final pooling). This example follows the same recipe, then exports, registers and serves the model.
 
 ```python
-from kailash_ml import OnnxBridge, InferenceServer
+import asyncio
+import pickle
+from pathlib import Path
+import numpy as np
+import onnx
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms as T
+from kailash.db import ConnectionManager
+from kailash_ml import InferenceServer, ModelRegistry, OnnxBridge
+from kailash_ml.engines.model_registry import LocalFileArtifactStore
+from shared.kailash_helpers import get_device
 
-bridge = OnnxBridge()
-bridge.export(model, input_shape=(1, 3, 224, 224), output_path="model.onnx")
+device = get_device()
+SIZE, MEAN, STD = 96, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]     # ImageNet statistics
+train_tf = T.Compose([T.Resize((SIZE, SIZE)), T.RandomHorizontalFlip(), T.RandomCrop(SIZE, padding=8),
+                      T.ToTensor(), T.Normalize(MEAN, STD)])
+test_tf = T.Compose([T.Resize((SIZE, SIZE)), T.ToTensor(), T.Normalize(MEAN, STD)])
+train_data = datasets.CIFAR10("data/mlfp05/cifar10", train=True, download=True, transform=train_tf)
+test_data = datasets.CIFAR10("data/mlfp05/cifar10", train=False, download=True, transform=test_tf)
+train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
+test_loader = DataLoader(test_data, batch_size=256)
 
-server = InferenceServer(model_path="model.onnx")
-result = server.predict(sample_input)
-batch_results = server.predict_batch(sample_batch)
+model = resnet18(weights=ResNet18_Weights.DEFAULT)
+for p in model.parameters():
+    p.requires_grad = False                       # freeze the backbone
+model.fc = nn.Linear(512, 10)                     # new head (trainable by default)
+model = model.to(device)
+
+def run_epoch(optimizer):
+    model.train()
+    for images, labels in train_loader:
+        loss = nn.functional.cross_entropy(model(images.to(device)), labels.to(device))
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+def test_accuracy():
+    model.eval()
+    correct = 0
+    with torch.no_grad():
+        for images, labels in test_loader:
+            correct += (model(images.to(device)).argmax(1).cpu() == labels).sum().item()
+    return correct / len(test_data)
+
+# Stage 1: train the head only
+run_epoch(torch.optim.Adam(model.fc.parameters(), lr=1e-3))
+print(f"head only, 1 epoch: test acc {test_accuracy():.3f}")
+
+# Stage 2: unfreeze the last stage with a 10x smaller learning rate (discriminative LRs)
+for p in model.layer4.parameters():
+    p.requires_grad = True
+run_epoch(torch.optim.Adam([{"params": model.layer4.parameters(), "lr": 1e-4},
+                            {"params": model.fc.parameters(), "lr": 1e-3}]))
+print(f"+ layer4, 1 more epoch: test acc {test_accuracy():.3f}")
+
+# Export, register, serve
+IMAGE_SHAPE = (3, SIZE, SIZE)
+
+class FlatImageModel(nn.Module):
+    """Accept flat pixel rows (what InferenceServer sends) and reshape them to images."""
+    def __init__(self, net):
+        super().__init__()
+        self.net = net
+        self.eval()   # the WRAPPER too: OnnxBridge puts a module that was training back into train mode
+
+    def forward(self, rows):
+        return self.net(rows.reshape(-1, *IMAGE_SHAPE))
+
+    def predict(self, X):                         # OnnxBridge.validate calls this
+        with torch.no_grad():
+            return self.forward(torch.as_tensor(np.asarray(X), dtype=torch.float32)).numpy()
+
+def to_records(images):
+    rows = images.reshape(len(images), -1).tolist()
+    return [{f"px{j:05d}": float(v) for j, v in enumerate(row)} for row in rows]
+
+async def export_register_serve(net, name, images):
+    flat = FlatImageModel(net.cpu())
+    onnx_path = Path("outputs") / f"{name}.onnx"
+    bridge = OnnxBridge()
+    result = bridge.export(flat, "torch", output_path=onnx_path,
+                           sample_input=images[:2].reshape(2, -1))      # 2 rows: dynamic batch
+    assert result.success, result.error_message
+    check = bridge.validate(flat, onnx_path, images.reshape(len(images), -1).numpy(), tolerance=1e-3)
+    print(f"ONNX parity: valid={check.valid}, max |diff| {check.max_diff:.1e}")
+    onnx.save_model(onnx.load(str(onnx_path)), str(onnx_path), save_as_external_data=False)
+
+    store = LocalFileArtifactStore(".kailash_ml/artifacts")
+    conn = ConnectionManager(f"sqlite:///{Path('mlfp05_serving.db').resolve()}")   # absolute path
+    await conn.initialize()
+    registry = ModelRegistry(conn, artifact_store=store)
+    version = await registry.register_model(name, pickle.dumps(net.state_dict()))
+    await store.save(name, version.version, onnx_path.read_bytes(), "model.onnx")
+
+    server = await InferenceServer.from_registry(name, registry=registry,
+                                                 version=version.version, runtime="onnx")
+    await server.start()
+    response = await server.predict({"records": to_records(images)})
+    await server.stop()
+    await conn.close()
+    return np.asarray(response["predictions"], dtype=np.float32)
+
+images, labels = next(iter(DataLoader(test_data, batch_size=8)))
+served = asyncio.run(export_register_serve(model, "cifar10_resnet18", images))
+with torch.no_grad():
+    direct = model.cpu()(images).numpy()
+print("served classes:", served.argmax(1).tolist(), "| true:", labels.tolist())
+print(f"served vs PyTorch, max |logit difference|: {np.abs(served - direct).max():.1e}")
 ```
 
-## Worked Example: Fine-Tuning ResNet for Image Classification
-
-```python
-from torchvision import models
-
-model = models.resnet18(pretrained=True)
-
-# Freeze all layers
-for param in model.parameters():
-    param.requires_grad = False
-
-# Replace classifier head
-model.fc = nn.Linear(512, 10)  # 10 classes
-
-optimizer = torch.optim.Adam(model.fc.parameters(), lr=1e-3)
-
-# After a few epochs, optionally unfreeze layer4:
-for param in model.layer4.parameters():
-    param.requires_grad = True
-optimizer = torch.optim.Adam([
-    {"params": model.layer4.parameters(), "lr": 1e-4},
-    {"params": model.fc.parameters(), "lr": 1e-3},
-])
-```
+What to expect: the pre-trained features are strong enough that even the head-only stage gives a large jump over a from-scratch model trained for the same single epoch, and unfreezing `layer4` adds more; Exercise 7 trains longer and compares against a from-scratch baseline explicitly. The served predictions match PyTorch to floating-point precision — the same graph, executed by ONNX Runtime behind the server.
 
 ## Try It Yourself
 
-**Drill 1.** Fine-tune ResNet-18 on Fashion-MNIST. Compare accuracy with the CNN from Lesson 5.2. How many epochs does transfer learning need to match the from-scratch accuracy?
+The drills reuse the objects defined in the worked example and the adapter section.
 
-**Drill 2.** Fine-tune BERT for sentiment classification. Compare with the LSTM from Lesson 5.3.
+**Drill 1.** Data efficiency: train (a) the residual CNN from Lesson 5.2 from scratch and (b) the frozen ResNet-18 with a new head, each on only 10% of the CIFAR-10 training images. Which wins, and by how much?
 
-**Drill 3.** Export both fine-tuned models to ONNX. Measure inference latency.
+**Solution:**
 
-**Drill 4.** Implement progressive unfreezing: start with only the head, then unfreeze one layer at a time every 5 epochs. Does this improve final accuracy?
+```python
+from torch.utils.data import Subset
 
-**Drill 5.** Apply data augmentation (random crop, horizontal flip, colour jitter) to the image dataset. How much does augmentation improve transfer learning performance?
+small = Subset(train_data, range(0, len(train_data), 10))       # 5,000 images, all classes
+small_loader = DataLoader(small, batch_size=128, shuffle=True)
+
+def fit(net, params, epochs=3, lr=1e-3):
+    net.to(device)
+    opt = torch.optim.Adam(params, lr=lr)
+    for _ in range(epochs):
+        net.train()
+        for images, labels in small_loader:
+            loss = nn.functional.cross_entropy(net(images.to(device)), labels.to(device))
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+    net.eval()
+    correct = 0
+    with torch.no_grad():
+        for images, labels in test_loader:
+            correct += (net(images.to(device)).argmax(1).cpu() == labels).sum().item()
+    return correct / len(test_data)
+
+frozen = resnet18(weights=ResNet18_Weights.DEFAULT)
+for p in frozen.parameters():
+    p.requires_grad = False
+frozen.fc = nn.Linear(512, 10)
+scratch = resnet18(weights=None, num_classes=10)                 # same architecture, random weights
+print(f"pre-trained, head only: {fit(frozen, frozen.fc.parameters()):.3f}")
+print(f"from scratch, all layers: {fit(scratch, scratch.parameters()):.3f}")
+```
+
+With 5,000 labelled images the pre-trained model should win clearly, even though it trains only a 5,130-parameter head while the scratch model trains all 11 million parameters: the scratch model has to learn edges and textures from too little data. The gap narrows as the labelled set grows — which is exactly the trade-off Exercise 7's data-efficiency study plots.
+
+**Drill 2.** Compare three ways of adapting the same backbone on the 10% subset: head only, adapters (the `AdaptedStage` model above), and full fine-tuning. Report trainable parameters and accuracy.
+
+**Solution:**
+
+```python
+def adapter_model():
+    net = resnet18(weights=ResNet18_Weights.DEFAULT)
+    for p in net.parameters():
+        p.requires_grad = False
+    net.layer3, net.layer4 = AdaptedStage(net.layer3, 256), AdaptedStage(net.layer4, 512)
+    net.fc = nn.Linear(512, 10)
+    return net
+
+def full_model():
+    net = resnet18(weights=ResNet18_Weights.DEFAULT)
+    net.fc = nn.Linear(512, 10)
+    return net
+
+for name, net, lr in [("head only", frozen, 1e-3), ("adapters", adapter_model(), 1e-3),
+                      ("full fine-tune", full_model(), 1e-4)]:
+    params = [p for p in net.parameters() if p.requires_grad]
+    n = sum(p.numel() for p in params)
+    print(f"{name:>15}: {n:>10,} trainable params, test acc {fit(net, params, lr=lr):.3f}")
+```
+
+The trainable counts are exact: 5,130 for the head, 104,330 with the adapters (0.9% of the adapted model's 11,280,842) and all 11,181,642 for full fine-tuning. Adapters usually recover much of the gap between head-only and full fine-tuning at under 1% of the trainable parameters — and per task you store only those parameters, not a new copy of the network. Full fine-tuning needs the smaller learning rate, or it erases the pre-trained features.
+
+**Drill 3.** Measure inference latency of the exported ONNX model against PyTorch, for a batch of 1 and a batch of 64.
+
+**Solution:**
+
+```python
+import time
+import onnxruntime as ort
+
+session = ort.InferenceSession(str(Path("outputs") / "cifar10_resnet18.onnx"))
+input_name = session.get_inputs()[0].name
+flat_cpu = FlatImageModel(model.cpu())
+
+def ms_per_call(fn, repeats=20):
+    fn()                                                  # warm-up
+    start = time.perf_counter()
+    for _ in range(repeats):
+        fn()
+    return 1000 * (time.perf_counter() - start) / repeats
+
+for batch in [1, 64]:
+    rows = torch.randn(batch, 3 * SIZE * SIZE)
+    t_onnx = ms_per_call(lambda: session.run(None, {input_name: rows.numpy()}))
+    with torch.no_grad():
+        t_torch = ms_per_call(lambda: flat_cpu(rows))
+    print(f"batch {batch:>2}: ONNX Runtime {t_onnx:6.1f} ms | PyTorch (CPU) {t_torch:6.1f} ms")
+```
+
+Both run on the CPU here, and timings are only meaningful on an otherwise idle machine. The usual pattern is that ONNX Runtime has its clearest advantage at batch size 1, where framework overhead dominates, and that the two converge at large batches, where the convolutions themselves dominate. On our heavily loaded workstation ONNX Runtime was faster at batch 1 (155 against 223 ms) and slightly slower at batch 64 — so measure on the hardware you will actually serve from. The more important win is operational: the server needs ONNX Runtime, not PyTorch.
+
+**Drill 4.** Implement progressive unfreezing: start with only the head, then unfreeze one stage at a time (`layer4`, then `layer3`, then `layer2`) after each epoch, giving deeper stages smaller learning rates. Compare with unfreezing everything at once.
+
+**Solution:**
+
+```python
+def fit_groups(net, param_groups, epochs=1):
+    """Like fit(), but with one learning rate per parameter group."""
+    net.to(device)
+    opt = torch.optim.Adam(param_groups)
+    for _ in range(epochs):
+        net.train()
+        for images, labels in small_loader:
+            loss = nn.functional.cross_entropy(net(images.to(device)), labels.to(device))
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+    net.eval()
+    correct = 0
+    with torch.no_grad():
+        for images, labels in test_loader:
+            correct += (net(images.to(device)).argmax(1).cpu() == labels).sum().item()
+    return correct / len(test_data)
+
+net = full_model()
+for p in net.parameters():
+    p.requires_grad = False
+param_groups = []
+schedule = [(net.fc, 1e-3), (net.layer4, 1e-4), (net.layer3, 5e-5), (net.layer2, 2e-5)]
+for stage, (module, lr) in enumerate(schedule):
+    for p in module.parameters():
+        p.requires_grad = True
+    param_groups.append({"params": list(module.parameters()), "lr": lr})
+    print(f"after unfreezing stage {stage}: test acc {fit_groups(net, param_groups):.3f}")
+
+all_at_once = full_model()
+print(f"everything unfrozen for 4 epochs: {fit(all_at_once, all_at_once.parameters(), epochs=4, lr=1e-4):.3f}")
+```
+
+Each epoch the optimiser is rebuilt with one more, lower-rate group, so the new head settles before the layers beneath it start to move. On small data, progressive unfreezing usually ends at least as high as unfreezing everything at once and is less sensitive to the learning rate, because the randomly initialised head never sends large, noisy gradients into layers that are still being trained. On larger datasets the difference shrinks.
+
+**Drill 5.** Remove the training augmentation (use `test_tf` for training) and retrain the head-only model on the 10% subset. How much did augmentation contribute?
+
+**Solution:**
+
+```python
+plain_small = Subset(datasets.CIFAR10("data/mlfp05/cifar10", train=True, transform=test_tf),
+                     range(0, 50000, 10))
+small_loader = DataLoader(plain_small, batch_size=128, shuffle=True)    # fit() reads small_loader
+no_aug = resnet18(weights=ResNet18_Weights.DEFAULT)
+for p in no_aug.parameters():
+    p.requires_grad = False
+no_aug.fc = nn.Linear(512, 10)
+print(f"head only, no augmentation: {fit(no_aug, no_aug.fc.parameters()):.3f}")
+```
+
+With a frozen backbone and only three epochs, augmentation changes little: the head sees fixed features, and a few epochs are not enough to overfit 5,000 examples. Augmentation earns its keep when many parameters are trained for many epochs on little data — repeat the comparison with full fine-tuning for 10 epochs and the gap opens up.
 
 ## Cross-References
 
@@ -2365,7 +3006,14 @@ optimizer = torch.optim.Adam([
 
 ## Reflection
 
-You should now be able to fine-tune pre-trained models for new tasks, export to ONNX, and deploy with InferenceServer.
+You should now be able to:
+
+- Fine-tune a pre-trained model in stages: new head first, then deeper layers with smaller learning rates.
+- Explain why lower layers transfer best and when to unfreeze more.
+- Use augmentation correctly (training set only, label-preserving transformations).
+- Build an adapter that starts as the identity, and explain why adapters train about 1% of the parameters.
+- Run a fine-tuned text classifier through the HuggingFace `pipeline` API.
+- Export with OnnxBridge, register in ModelRegistry, and serve with `InferenceServer.from_registry` — and say why the served model needs flat input rows and embedded weights.
 
 ---
 
@@ -2377,149 +3025,432 @@ All deep learning so far learns from static datasets — images, text, sequences
 
 ## Core Concepts
 
-### THEORY: Bellman equations
+### FOUNDATIONS: Agent, environment, reward
 
-The value of a state is the expected cumulative reward from that state:
+At each step $t$ the agent observes a **state** $s_t$, chooses an **action** $a_t$ from its **policy** $\pi(a \mid s)$, and the environment returns a **reward** $r_{t+1}$ and the next state. An **episode** runs until the task ends. The agent maximises the expected **return**, the discounted sum of future rewards $G_t = r_{t+1} + \gamma r_{t+2} + \gamma^2 r_{t+3} + \cdots$, where $\gamma \in [0, 1)$ is the discount factor — future rewards are worth less than immediate ones.
 
-$$V(s) = \mathbb{E}\left[R_{t+1} + \gamma V(S_{t+1}) \mid S_t = s\right]$$
+Gymnasium, the standard environment library, distinguishes two ways an episode stops: `terminated` (the task genuinely ended — the customer churned, the pole fell) and `truncated` (a time limit cut the episode short). The distinction matters for learning: after a termination the future value is zero, but after a truncation the state still had a future, so value estimates should keep bootstrapping. A loop that waits only for `terminated` never ends on a time-limited environment; use `done = terminated or truncated` to stop the loop, and `terminated` alone to zero the bootstrap target.
 
-The value of a state-action pair:
+### THEORY: Bellman equations — expectation and optimality
 
-$$Q(s, a) = \mathbb{E}\left[R_{t+1} + \gamma \max_{a'} Q(S_{t+1}, a') \mid S_t = s, A_t = a\right]$$
+The **state-value function** of a policy $\pi$ is the expected return from a state when following $\pi$. It satisfies the **Bellman expectation equation**:
 
-where $\gamma \in [0, 1)$ is the discount factor — future rewards are worth less than immediate ones.
+$$V^\pi(s) = \mathbb{E}_\pi\left[R_{t+1} + \gamma V^\pi(S_{t+1}) \mid S_t = s\right]$$
+
+and likewise for the **action-value function** $Q^\pi(s, a) = \mathbb{E}_\pi[R_{t+1} + \gamma Q^\pi(S_{t+1}, A_{t+1}) \mid S_t = s, A_t = a]$. These describe *a given* policy.
+
+The **optimal** action-value function $Q^*(s, a) = \max_\pi Q^\pi(s, a)$ satisfies the **Bellman optimality equation**, in which the next action is chosen greedily:
+
+$$Q^*(s, a) = \mathbb{E}\left[R_{t+1} + \gamma \max_{a'} Q^*(S_{t+1}, a') \mid S_t = s, A_t = a\right]$$
+
+Once you have $Q^*$, the optimal policy is simply $\pi^*(s) = \arg\max_a Q^*(s, a)$. Value-based methods such as DQN learn $Q^*$ from the optimality equation; policy-gradient methods such as PPO learn $\pi$ directly and use $V^\pi$ as a baseline.
 
 ### THEORY: DQN (Deep Q-Network)
 
-DQN approximates $Q(s, a)$ with a neural network $Q(s, a; \theta)$. The loss is:
+DQN approximates $Q^*(s, a)$ with a neural network $Q(s, a; \theta)$ that outputs one value per discrete action, and regresses it onto the optimality target:
 
-$$\mathcal{L} = \mathbb{E}\left[\left(r + \gamma \max_{a'} Q(s', a'; \theta^-) - Q(s, a; \theta)\right)^2\right]$$
+$$\mathcal{L} = \mathbb{E}\left[\left(r + \gamma\,(1 - \text{terminated}) \max_{a'} Q(s', a'; \theta^-) - Q(s, a; \theta)\right)^2\right]$$
 
-where $\theta^-$ is a target network (periodically copied from $\theta$) that stabilises training. DQN handles discrete action spaces.
+Two stabilisers make this work. **Experience replay** stores transitions in a buffer and trains on random mini-batches, breaking the correlation between consecutive steps. The **target network** $\theta^-$ is a periodically refreshed copy of $\theta$, so the regression target does not move with every update. Exploration is **$\varepsilon$-greedy**: with probability $\varepsilon$ take a uniformly random action (any of the $|A|$ actions), otherwise the greedy one; $\varepsilon$ decays during training. DQN needs a discrete action space — the $\max_{a'}$ is a max over a list.
+
+### THEORY: Policy gradients, actor-critic and A2C
+
+Policy-gradient methods adjust a parameterised policy $\pi_\theta$ directly, increasing the log-probability of actions that turned out better than expected:
+
+$$\nabla_\theta J = \mathbb{E}\left[\nabla_\theta \log \pi_\theta(a_t \mid s_t)\, \hat{A}_t\right]$$
+
+The **advantage** $\hat{A}_t$ is how much better the action was than the state's average, $\hat{A}_t \approx G_t - V(s_t)$. Subtracting the baseline $V(s_t)$ does not change the expected gradient but greatly reduces its variance. An **actor-critic** learns both: the actor is $\pi_\theta$, the critic is $V_\phi$, trained by regression onto observed returns. **A2C (Advantage Actor-Critic)** is the synchronous version: collect a short rollout from one or several environment copies, compute advantages (often with Generalised Advantage Estimation, GAE, which blends one-step and multi-step estimates), take one gradient step, discard the data, repeat. It is on-policy and simple, and it works for discrete and continuous actions.
 
 ### THEORY: PPO (Proximal Policy Optimization)
 
-PPO is a policy gradient method with a clipped objective that prevents large policy updates:
+A2C takes one step per batch of experience; taking several would be more data-efficient, but large policy changes based on stale data collapse performance. PPO allows several epochs of updates on each rollout while limiting how far the policy moves, through a clipped objective:
 
 $$\mathcal{L}^{\text{CLIP}} = \mathbb{E}\left[\min\left(r_t(\theta) \hat{A}_t, \, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) \hat{A}_t\right)\right]$$
 
-where $r_t(\theta) = \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_{\text{old}}}(a_t \mid s_t)}$ is the probability ratio, $\hat{A}_t$ is the advantage estimate, and $\epsilon$ (typically 0.2) controls how far the new policy can deviate from the old one.
+where $r_t(\theta) = \pi_\theta(a_t \mid s_t) / \pi_{\theta_{\text{old}}}(a_t \mid s_t)$ is the probability ratio and $\epsilon$ is typically 0.2. The clip is **asymmetric in effect**. When $\hat{A}_t > 0$ the objective stops rewarding increases of $r_t$ beyond $1 + \epsilon$ — the gradient there is zero — but if $r_t$ has fallen *below* $1 - \epsilon$ the unclipped term is the minimum and the gradient still pushes the probability back up. Mirror-image for $\hat{A}_t < 0$. So the clip only removes the incentive to move *further in the direction the advantage favours*; it never blocks corrections.
 
-PPO handles continuous action spaces and is the algorithm used in RLHF (Reinforcement Learning from Human Feedback) for LLM alignment.
+PPO works for discrete actions (a categorical policy, as in Exercise 8) and **continuous** actions (a Gaussian policy whose network outputs a mean, with a learned standard deviation) — the second worked example below.
 
-### FOUNDATIONS: Five algorithms, five applications
+### THEORY: DDPG and SAC — off-policy methods for continuous control
 
-| Algorithm | Action Space        | Application               |
-| --------- | ------------------- | ------------------------- |
-| DQN       | Discrete            | Customer churn prevention |
-| DDPG      | Continuous          | Manufacturing control     |
-| SAC       | Continuous          | Dynamic pricing           |
-| A2C       | Discrete/Continuous | Resource allocation       |
-| PPO       | Discrete/Continuous | Supply chain optimisation |
+**DDPG (Deep Deterministic Policy Gradient)** extends DQN to continuous actions. Since you cannot take a max over infinitely many actions, an actor network $\mu_\theta(s)$ outputs the action directly and is trained to maximise the critic $Q_\phi(s, \mu_\theta(s))$; the critic is trained like DQN with target networks and a replay buffer. Exploration comes from adding noise to the actor's output. It is sample-efficient (off-policy, reuses old data) but brittle: the critic tends to over-estimate values and the actor exploits those errors. (TD3 adds twin critics and delayed actor updates to fix this.)
+
+**SAC (Soft Actor-Critic)** maximises reward *plus* the entropy of the policy, $\mathbb{E}[\sum_t \gamma^t (r_t + \alpha \mathcal{H}(\pi(\cdot \mid s_t)))]$. The actor is stochastic, two critics are trained and the smaller estimate is used, and the temperature $\alpha$ is usually tuned automatically. The entropy bonus keeps exploring and makes it robust to hyperparameters, which is why SAC is a default choice for continuous control when environment interaction is expensive.
+
+| Algorithm | Action space | On/off-policy | Key idea | Example application |
+|---|---|---|---|---|
+| DQN | Discrete | Off (replay) | Regress $Q$ onto the Bellman optimality target | Which retention offer to make to a customer |
+| A2C | Discrete or continuous | On | Actor-critic with an advantage baseline | Allocating a budget across a few channels |
+| PPO | Discrete or continuous | On | Clipped policy updates, several epochs per rollout | Re-order quantities in a supply chain |
+| DDPG | Continuous | Off | Deterministic actor + Q critic | Setting a machine's continuous control inputs |
+| SAC | Continuous | Off | Max-entropy actor + twin critics | Continuous price adjustments under uncertainty |
+
+The applications are illustrative pairings, not prescriptions: the deciding questions are whether the actions are discrete or continuous, and whether interaction with the environment is cheap (on-policy is fine) or expensive (prefer off-policy).
+
+## The Kailash Engine: RLTrainer (status in this course)
+
+kailash-ml's RL engine lives at `kailash_ml.rl.RLTrainer` (there is no top-level `kailash_ml.RLTrainer`), with the functional entry point `kailash_ml.rl.rl_train(env, algo="ppo", total_timesteps=..., hyperparameters={...})`. Its training backend is Stable-Baselines3, which ships as the optional `kailash-ml[rl]` extra and is **not installed** in the course environment. Exercise 8 therefore hand-writes DQN and PPO in PyTorch, which is also the best way to learn what each line of the algorithms does. In a production setting with the extra installed, RLTrainer runs the same algorithms (PPO, A2C, DQN, DDPG, SAC) and records the results with the rest of the Kailash ML lifecycle. You can check what your environment has:
 
 ```python
-import gymnasium as gym
+import importlib.util
+from kailash_ml.rl import RLTrainer, RLTrainingConfig, rl_train
 
-class ChurnEnv(gym.Env):
-    """Custom environment for customer churn prevention."""
-    def __init__(self):
-        super().__init__()
-        self.observation_space = gym.spaces.Box(low=0, high=1, shape=(10,))
-        self.action_space = gym.spaces.Discrete(3)  # no action, discount, call
-
-    def step(self, action):
-        # Compute next state, reward based on action effectiveness
-        reward = self._compute_reward(action)
-        return next_state, reward, done, False, {}
-
-    def reset(self, seed=None):
-        return self._initial_state(), {}
+config = RLTrainingConfig(algorithm="PPO", total_timesteps=50_000)   # what RLTrainer.train() takes
+print("RL backend (stable-baselines3) installed:",
+      importlib.util.find_spec("stable_baselines3") is not None)
 ```
 
-## Worked Example: DQN for Customer Churn Prevention
+## Worked Example 1: A custom environment and DQN for customer churn
+
+The environment is a simplified version of Exercise 8's churn-prevention scenario (synthetic: the dynamics below are invented for teaching, not fitted to any company's data). Each episode is one customer over 30 days. The state is satisfaction, usage, the fraction of the month elapsed and open support tickets, all in $[0, 1]$; the actions are do nothing, offer a discount, or make a support call; churn probability rises as satisfaction falls and tickets pile up, and a customer retained to the end of the month earns a bonus. The state includes the time elapsed because the bonus depends on it — without it the environment would not be Markov (the same observation could be one day or twenty days from the bonus), and value learning would be much harder.
 
 ```python
+import random
+from collections import deque
+import gymnasium as gym
+import numpy as np
 import torch
 import torch.nn as nn
+from gymnasium import spaces
+from gymnasium.utils.env_checker import check_env
+
+class ChurnEnv(gym.Env):
+    """One customer, 30 daily decisions. Synthetic dynamics for teaching."""
+    COST = {0: 0.0, 1: 1.0, 2: 0.5}               # do nothing, discount, support call
+
+    def __init__(self):
+        super().__init__()
+        self.observation_space = spaces.Box(0.0, 1.0, shape=(4,), dtype=np.float32)
+        self.action_space = spaces.Discrete(3)
+        self.max_steps = 30
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)                   # seeds self.np_random
+        satisfaction, usage, tickets = self.np_random.uniform(0.2, 0.8, size=3)
+        self.state = np.array([satisfaction, usage, 0.0, tickets], dtype=np.float32)
+        self.steps = 0
+        return self.state.copy(), {}
+
+    def step(self, action):
+        satisfaction, usage, _, tickets = self.state
+        if action == 1:                            # discount: happier, uses more
+            satisfaction, usage = satisfaction + 0.10, usage + 0.05
+        elif action == 2:                          # support call: fewer open tickets
+            tickets, satisfaction = tickets - 0.15, satisfaction + 0.05
+        satisfaction += -0.02 + self.np_random.normal(0, 0.02)     # natural drift
+        usage += -0.01 + self.np_random.normal(0, 0.02)
+        tickets += 0.02 + self.np_random.normal(0, 0.01)
+        self.steps += 1
+        elapsed = self.steps / self.max_steps
+        self.state = np.clip([satisfaction, usage, elapsed, tickets], 0.0, 1.0).astype(np.float32)
+
+        churn_prob = max(0.0, 0.3 - 0.4 * self.state[0] + 0.3 * self.state[3])
+        terminated = bool(self.np_random.random() < churn_prob)   # the customer left
+        truncated = self.steps >= self.max_steps                  # the month is over
+        reward = -5.0 if terminated else 1.0 - self.COST[int(action)]
+        if truncated and not terminated:
+            reward += 10.0                                         # retained for the month
+        return self.state.copy(), reward, terminated, truncated, {}
+
+check_env(ChurnEnv())          # Gymnasium's API checker: spaces, dtypes, reset/step contract
 
 class DQN(nn.Module):
     def __init__(self, state_dim, action_dim):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(state_dim, 128), nn.ReLU(),
-            nn.Linear(128, 128), nn.ReLU(),
-            nn.Linear(128, action_dim),
-        )
+        self.net = nn.Sequential(nn.Linear(state_dim, 128), nn.ReLU(),
+                                 nn.Linear(128, 128), nn.ReLU(),
+                                 nn.Linear(128, action_dim))
 
     def forward(self, x):
         return self.net(x)
 
-# Training loop with experience replay
-from collections import deque
-import random
+def train_dqn(env, episodes=600, gamma=0.99, batch_size=64, lr=5e-4, target_every=100,
+              reward_scale=0.1, seed=0):
+    torch.manual_seed(seed)
+    random.seed(seed)
+    n_actions = env.action_space.n
+    q_net = DQN(env.observation_space.shape[0], n_actions)
+    target = DQN(env.observation_space.shape[0], n_actions)
+    target.load_state_dict(q_net.state_dict())
+    opt = torch.optim.Adam(q_net.parameters(), lr=lr)
+    buffer, returns, step_count = deque(maxlen=20_000), [], 0
 
-replay_buffer = deque(maxlen=10000)
-
-def train_dqn(env, model, target_model, optimizer, episodes=500):
     for episode in range(episodes):
-        state, _ = env.reset()
-        total_reward = 0
-        done = False
-
+        state, _ = env.reset(seed=seed + episode)
+        epsilon = max(0.05, 1.0 - episode / (0.6 * episodes))     # linear decay to 5%
+        done, total = False, 0.0
         while not done:
-            # Epsilon-greedy action selection
-            if random.random() < max(0.01, 1.0 - episode / 200):
-                action = env.action_space.sample()
+            if random.random() < epsilon:
+                action = random.randrange(n_actions)                # every action can be explored
             else:
                 with torch.no_grad():
-                    q_values = model(torch.FloatTensor(state))
-                    action = q_values.argmax().item()
+                    action = int(q_net(torch.as_tensor(state)).argmax())
+            next_state, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
+            buffer.append((state, action, reward * reward_scale, next_state, float(terminated)))
+            state, total, step_count = next_state, total + reward, step_count + 1
 
-            next_state, reward, done, _, _ = env.step(action)
-            replay_buffer.append((state, action, reward, next_state, done))
-            state = next_state
-            total_reward += reward
+            if len(buffer) >= 1_000:
+                s, a, r, s2, term = map(np.array, zip(*random.sample(buffer, batch_size)))
+                s, s2 = torch.as_tensor(s), torch.as_tensor(s2)
+                q = q_net(s).gather(1, torch.as_tensor(a).view(-1, 1)).squeeze(1)
+                with torch.no_grad():   # bootstrap unless the episode TERMINATED (truncation still has a future)
+                    y = torch.as_tensor(r, dtype=torch.float32) + gamma * (
+                        1 - torch.as_tensor(term, dtype=torch.float32)) * target(s2).max(1).values
+                loss = nn.functional.smooth_l1_loss(q, y)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+            if step_count % target_every == 0:
+                target.load_state_dict(q_net.state_dict())
+        returns.append(total)
+    return q_net, returns
 
-            # Sample mini-batch and update
-            if len(replay_buffer) >= 64:
-                batch = random.sample(replay_buffer, 64)
-                # Compute DQN loss and update
+def evaluate(env, policy, episodes=200, seed=10_000):
+    totals = []
+    for i in range(episodes):
+        state, _ = env.reset(seed=seed + i)
+        done, total = False, 0.0
+        while not done:
+            state, reward, terminated, truncated, _ = env.step(policy(state))
+            done = terminated or truncated
+            total += reward
+        totals.append(total)
+    return float(np.mean(totals))
+
+env = ChurnEnv()
+q_net, returns = train_dqn(env)
+greedy = lambda s: int(q_net(torch.as_tensor(s)).argmax())
+rng = np.random.default_rng(0)
+for name, policy in [("never intervene", lambda s: 0), ("random", lambda s: int(rng.integers(3))),
+                     ("always discount", lambda s: 1), ("always call", lambda s: 2),
+                     ("DQN (greedy)", greedy)]:
+    print(f"{name:>16}: mean return {evaluate(env, policy):6.2f}")
 ```
+
+Always evaluate a learned policy against simple fixed policies on the same seeds. In our run (200 evaluation customers) the fixed policies scored: never intervene $-2.4$, always discount $-4.6$ (the discount costs as much as a day's revenue), random $3.3$, and **always make a support call $8.7$**. DQN after 600 training episodes scored $6.7$: it had learned that discounts lose money and that calls help, but not yet a policy as good as the simplest sensible heuristic. With the target network refreshed only every 500 steps, or without scaling the rewards down, it did worse than random. That is a realistic picture of RL: it is sample-hungry and sensitive to settings, and a learned policy is only worth deploying once it beats the heuristics a domain expert would try first.
+
+Three easy-to-miss details in the code: the bootstrap is masked by `terminated` only (a time-limit cut still has a future); exploration samples from **all** `n_actions`; and rewards are scaled by 0.1 for training, which keeps the regression targets near 1 without changing which policy is best.
+
+## Worked Example 2: PPO for a continuous action problem
+
+Pendulum-v1 is Gymnasium's standard continuous-control task: swing a pendulum upright and hold it there, choosing a torque in $[-2, 2]$ every step (200 steps per episode, reward between about $-16$ and 0 per step). The policy is a Gaussian: the actor network outputs the mean torque and a learned log standard deviation; actions are sampled, and clipped to the valid range only when sent to the environment.
+
+```python
+from torch.distributions import Normal
+
+class GaussianActorCritic(nn.Module):
+    def __init__(self, obs_dim, act_dim, hidden=64):
+        super().__init__()
+        self.actor = nn.Sequential(nn.Linear(obs_dim, hidden), nn.Tanh(), nn.Linear(hidden, hidden),
+                                   nn.Tanh(), nn.Linear(hidden, act_dim))
+        self.log_std = nn.Parameter(torch.zeros(act_dim))
+        self.critic = nn.Sequential(nn.Linear(obs_dim, hidden), nn.Tanh(), nn.Linear(hidden, hidden),
+                                    nn.Tanh(), nn.Linear(hidden, 1))    # separate network, no shared trunk
+
+    def dist(self, obs):
+        return Normal(self.actor(obs), self.log_std.exp())
+
+def ppo_continuous(env_id="Pendulum-v1", updates=150, steps=2048, epochs=10, minibatch=64,
+                   gamma=0.99, lam=0.95, clip_eps=0.2, lr=3e-4, seed=0):
+    env = gym.make(env_id)
+    torch.manual_seed(seed)
+    obs_dim, act_dim = env.observation_space.shape[0], env.action_space.shape[0]
+    low, high = env.action_space.low, env.action_space.high
+    ac = GaussianActorCritic(obs_dim, act_dim)
+    opt = torch.optim.Adam(ac.parameters(), lr=lr)
+    obs, _ = env.reset(seed=seed)
+    episode_return, finished = 0.0, []
+
+    for update in range(updates):
+        buf = {k: [] for k in ("obs", "act", "logp", "rew", "val", "end", "boot")}
+        for _ in range(steps):                                   # 1. collect a rollout
+            o = torch.as_tensor(obs, dtype=torch.float32)
+            with torch.no_grad():
+                d = ac.dist(o)
+                act = d.sample()
+                logp, val = d.log_prob(act).sum(), ac.critic(o).squeeze()
+            obs, rew, term, trunc, _ = env.step(np.clip(act.numpy(), low, high))
+            boot = 0.0                                            # value of the future after this step
+            if trunc and not term:                                # time limit: the future still exists
+                with torch.no_grad():
+                    boot = ac.critic(torch.as_tensor(obs, dtype=torch.float32)).item()
+            for k, v in zip(buf, (o, act, logp, rew, val, term or trunc, boot)):
+                buf[k].append(v)
+            episode_return += rew
+            if term or trunc:
+                finished.append(episode_return)
+                obs, _ = env.reset()
+                episode_return = 0.0
+
+        with torch.no_grad():                                     # 2. advantages with GAE
+            next_val = ac.critic(torch.as_tensor(obs, dtype=torch.float32)).squeeze()
+            adv, gae = torch.zeros(steps), 0.0
+            for t in reversed(range(steps)):
+                if buf["end"][t]:                                 # episode boundary: no GAE across it
+                    v_next, gae = buf["boot"][t], 0.0
+                else:
+                    v_next = next_val if t == steps - 1 else buf["val"][t + 1]
+                delta = buf["rew"][t] + gamma * v_next - buf["val"][t]
+                gae = delta + gamma * lam * gae
+                adv[t] = gae
+            values = torch.stack(buf["val"])
+            returns = adv + values
+            adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+        O, A, old_logp = torch.stack(buf["obs"]), torch.stack(buf["act"]), torch.stack(buf["logp"])
+
+        for _ in range(epochs):                                    # 3. several clipped epochs
+            for idx in torch.randperm(steps).split(minibatch):
+                d = ac.dist(O[idx])
+                ratio = (d.log_prob(A[idx]).sum(-1) - old_logp[idx]).exp()
+                surr1 = ratio * adv[idx]
+                surr2 = torch.clamp(ratio, 1 - clip_eps, 1 + clip_eps) * adv[idx]
+                policy_loss = -torch.min(surr1, surr2).mean()
+                value_loss = (ac.critic(O[idx]).squeeze(-1) - returns[idx]).pow(2).mean()
+                loss = policy_loss + 0.5 * value_loss
+                opt.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(ac.parameters(), 0.5)
+                opt.step()
+        if (update + 1) % 25 == 0:
+            print(f"update {update + 1}: mean return of last 10 episodes {np.mean(finished[-10:]):.0f}")
+    return ac, finished
+
+ac, episode_returns = ppo_continuous()
+```
+
+A random policy on Pendulum scores roughly $-1{,}200$ per episode; a well-trained one reaches about $-200$ or better (the pendulum held upright). Learning on this task is slow at first — the agent must discover swinging up before holding steady — so expect the first tens of updates to look flat. The exact path depends on the seed; compare runs on the mean of the last few episodes.
 
 ## Try It Yourself
 
-**Drill 1.** Implement DQN with experience replay on a CartPole environment. How many episodes until convergence?
+The drills reuse `ChurnEnv`, `DQN`, `train_dqn`, `evaluate`, `GaussianActorCritic` and `ppo_continuous` from the worked examples.
 
-**Drill 2.** Implement PPO for a continuous control task (e.g., Pendulum-v1). Verify the clipped objective prevents large updates.
+**Drill 1.** Run DQN on Gymnasium's `CartPole-v1` (the environment Exercise 8 starts with). How many episodes until the agent regularly reaches the 500-step limit?
 
-**Drill 3.** Create a custom Gymnasium environment for Singapore taxi pricing. Define state (time, location, demand), actions (price multiplier), and reward (revenue minus customer loss).
+**Solution:**
 
-**Drill 4.** Compare DQN and PPO on the same discrete-action environment. Which converges faster? Which achieves higher final reward?
+```python
+cartpole = gym.make("CartPole-v1")
+cp_net, cp_returns = train_dqn(cartpole, episodes=300)
+for start in range(0, 300, 50):
+    print(f"episodes {start:>3}-{start + 49}: mean return {np.mean(cp_returns[start:start + 50]):.0f}")
+print("greedy evaluation:", evaluate(cartpole, lambda s: int(cp_net(torch.as_tensor(s)).argmax()), episodes=20))
+```
+
+Returns stay low while $\varepsilon$ is high and climb as exploration decays. In our run the mean return per block of 50 episodes went 25, 54, 136, 129, 289, 325 — but the greedy policy then averaged only 130 over 20 evaluation episodes, well short of the 500-step cap. DQN on CartPole is famously unstable: performance can collapse and recover between nearby checkpoints, so evaluate checkpoints during training rather than trusting the last one, and expect to need longer training (and refinements such as Double DQN). CartPole is time-limited at 500 steps, so this is exactly the case where `truncated` must end the loop but must not zero the bootstrap.
+
+**Drill 2.** Verify that PPO's clipping is active. Instrument the update to record the fraction of samples whose ratio left $[1 - \epsilon, 1 + \epsilon]$ and the fraction where the clipped term was the one selected.
+
+**Solution:**
+
+```python
+def clip_stats(ratio, adv, clip_eps=0.2):
+    outside = ((ratio < 1 - clip_eps) | (ratio > 1 + clip_eps)).float().mean().item()
+    surr1, surr2 = ratio * adv, torch.clamp(ratio, 1 - clip_eps, 1 + clip_eps) * adv
+    clipped_active = (surr2 < surr1).float().mean().item()     # min() picked the clipped term
+    return outside, clipped_active
+
+# Inside ppo_continuous's minibatch loop, after computing ratio:
+#     stats.append(clip_stats(ratio.detach(), adv[idx]))
+ratio = torch.tensor([0.7, 0.95, 1.1, 1.3, 1.3, 0.7])
+adv = torch.tensor([1.0, 1.0, -1.0, 1.0, -1.0, -1.0])
+print(clip_stats(ratio, adv))   # (0.667, 0.333): 4 of 6 outside the range, only 2 actually clipped
+```
+
+The worked toy batch shows the asymmetry: of the four ratios outside $[0.8, 1.2]$, only two have their gradient cut — the ratio of 1.3 with a positive advantage (already pushed far enough up) and the ratio of 0.7 with a negative advantage (already pushed far enough down). The other two are outside the range in the direction that *undoes* a previous move, so the unclipped term is selected and their gradient survives. In a real run the clipped-and-active fraction typically sits in the low tens of percent and grows over the epochs of each update.
+
+**Drill 3.** Create a custom Gymnasium environment for ride-hailing pricing with a continuous action: the state is (hour of day, local demand, available drivers), the action is a price multiplier in $[0.8, 2.0]$, and the reward is revenue minus a penalty for riders lost to high prices. Check it with `check_env`, then train it with `ppo_continuous`.
+
+**Solution:**
+
+```python
+class SurgePricingEnv(gym.Env):
+    """Synthetic ride-hailing market: one decision per 15 minutes for one day."""
+    def __init__(self):
+        super().__init__()
+        self.observation_space = spaces.Box(0.0, 1.0, shape=(3,), dtype=np.float32)
+        self.action_space = spaces.Box(0.8, 2.0, shape=(1,), dtype=np.float32)
+        self.max_steps = 96
+
+    def _obs(self):
+        hour = (self.t / self.max_steps) % 1.0
+        rush = np.exp(-((hour - 0.35) ** 2) / 0.005) + np.exp(-((hour - 0.75) ** 2) / 0.005)
+        self.demand = float(np.clip(0.3 + 0.6 * rush + self.np_random.normal(0, 0.05), 0, 1))
+        self.drivers = float(np.clip(0.5 + self.np_random.normal(0, 0.1), 0, 1))
+        return np.array([hour, self.demand, self.drivers], dtype=np.float32)
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        self.t = 0
+        return self._obs(), {}
+
+    def step(self, action):
+        price = float(np.clip(action[0], 0.8, 2.0))
+        wanting = 100 * self.demand                                     # riders who want a trip
+        riders = wanting * np.exp(-1.2 * (price - 1.0))                 # fewer accept a higher price
+        served = min(riders, 100 * self.drivers)                        # limited by available drivers
+        lost = wanting - served                                         # priced out + unserved
+        reward = (served * price - 0.3 * lost) / 100                    # scaled revenue - goodwill cost
+        self.t += 1
+        return self._obs(), float(reward), False, self.t >= self.max_steps, {}
+
+check_env(SurgePricingEnv())
+gym.register(id="SurgePricing-v0", entry_point=SurgePricingEnv)
+pricing_ac, pricing_returns = ppo_continuous("SurgePricing-v0", updates=40, steps=2048)
+```
+
+The environment never *terminates* (a day always runs its 96 steps) — it only truncates, which is the correct modelling choice for a fixed horizon. Inspect the trained policy by feeding it states across the day: a sensible policy raises the multiplier in the two rush-hour peaks, when demand exceeds the available drivers, and drops it towards 0.8–1.0 off-peak, where high prices just lose riders. All dynamics here are invented; a real pricing environment would be fitted to historical demand data, and the reward would include the business's own constraints (caps on surge multipliers, fairness rules).
+
+**Drill 4.** Compare DQN and PPO on the same discrete-action environment (`ChurnEnv`). Which learns faster in environment steps, and which reaches a higher final return?
+
+**Solution:** PPO needs a categorical policy for discrete actions — replace the Gaussian head with logits:
+
+```python
+from torch.distributions import Categorical
+
+class CategoricalActorCritic(GaussianActorCritic):
+    def __init__(self, obs_dim, n_actions, hidden=64):
+        super().__init__(obs_dim, n_actions, hidden)
+
+    def dist(self, obs):
+        return Categorical(logits=self.actor(obs))
+
+# In a copy of ppo_continuous: build CategoricalActorCritic(obs_dim, env.action_space.n),
+# send int(act) to env.step instead of the clipped vector, and drop the .sum(-1) on
+# log_prob / entropy (a categorical log-probability is already one number per sample).
+probe = CategoricalActorCritic(4, 3)
+d = probe.dist(torch.rand(5, 4))
+print(d.sample().shape, d.log_prob(d.sample()).shape)     # torch.Size([5]) torch.Size([5])
+```
+
+Train both for the same number of environment steps (count steps, not episodes — DQN updates every step, PPO once per rollout) and plot return against steps. DQN usually extracts more from each step because it replays old experience; PPO is usually more stable and less sensitive to hyperparameters. On a 3-action problem this small, both should beat the fixed policies of Worked Example 1, and the gap between them is often smaller than the variation across seeds.
 
 **Drill 5.** Explain in a paragraph how PPO connects to RLHF for LLM alignment. What is the "environment"? What is the "reward"? What is the "policy"? (This connects to Module 6, Lesson 6.3.)
 
-**Solution:** In RLHF, the LLM is the policy — it takes a prompt (state) and generates a response (action). The reward comes from a reward model trained on human preferences: responses preferred by humans get higher reward. PPO updates the LLM's weights to increase the probability of generating responses that score highly, while the clipping objective prevents the model from deviating too far from its pre-trained behaviour. Module 6, Lesson 6.3 will show how DPO achieves the same goal without the reward model.
+**Solution:** In RLHF the **policy** is the language model. The **state** is the prompt plus the tokens generated so far, and each **action** is the next token — a choice from a *discrete* vocabulary of tens of thousands of tokens, so the policy is categorical, exactly like Drill 4's. An episode is one complete response. The **reward** comes from a reward model trained on human preference comparisons ("response A is better than response B") and is given at the end of the response. PPO then updates the LLM to make high-reward responses more likely. Two separate mechanisms keep the update safe, and they should not be confused: PPO's **clipping** bounds each update relative to the policy that generated the current batch ($\pi_{\theta_{\text{old}}}$); a **KL penalty** added to the reward, $-\beta\,\text{KL}(\pi_\theta \,\|\, \pi_{\text{ref}})$, keeps the model close to the original supervised fine-tuned *reference* model across the whole of training, so it does not drift into text that games the reward model. Module 6, Lesson 6.3 shows how DPO reaches the same preference objective without training a separate reward model or running PPO.
 
 ## Cross-References
 
 - **Lesson 4.8** introduced gradient descent and loss functions. RL uses the same optimisation but with rewards instead of labels.
-- **Module 6, Lesson 6.3** uses DPO and GRPO as alternatives to RLHF, bypassing the reward model.
+- **Lesson 5.4** built the transformer that RLHF fine-tunes; its output layer is the categorical policy over tokens.
+- **Module 6, Lesson 6.3** covers DPO, which optimises the preference objective directly without a separate reward model or PPO loop, and GRPO, a PPO-style method that replaces the learned critic with group-relative advantages.
 
 ## Reflection
 
 You should now be able to:
 
-- Write the Bellman equations and explain what they represent.
-- Implement DQN with experience replay.
-- Explain PPO's clipped objective and why it stabilises training.
-- Create custom Gymnasium environments.
-- Articulate the PPO-to-RLHF connection.
+- Write the Bellman expectation and optimality equations and say which algorithm uses which.
+- Implement DQN with experience replay, a target network, and correct `terminated`/`truncated` handling.
+- Explain PPO's clipped objective, including when the clip does and does not remove the gradient, and implement PPO for a continuous action problem.
+- Describe how A2C, DDPG and SAC differ (on/off-policy, deterministic/stochastic actor, entropy bonus).
+- Create and check custom Gymnasium environments, and benchmark a learned policy against simple heuristics.
+- Articulate the PPO-to-RLHF connection, keeping PPO clipping and the KL-to-reference penalty distinct.
 
 ---
 
 # Chapter Summary
 
-Module 5 covered every major deep learning architecture. You built eight types of neural networks, each exploiting a different structural assumption about the data:
+Module 5 covered the major deep learning architectures and two ways of putting them to work (transfer learning and reinforcement learning). Each exploits a different structural assumption about the data:
 
 | Architecture      | Assumption              | Data Type               | Lesson |
 | ----------------- | ----------------------- | ----------------------- | ------ |
@@ -2540,7 +3471,7 @@ Module 6 is the capstone. It assumes you can:
 
 - Fine-tune pre-trained models (BERT, ResNet) for new tasks.
 - Implement and train any architecture from this chapter.
-- Export models for deployment with ONNX.
+- Export models with OnnxBridge and serve them with InferenceServer.
 - Explain how RL connects to LLM alignment.
 
 Module 6 will take you from trained models to production LLM applications: prompt engineering, fine-tuning with LoRA, preference alignment with DPO, RAG systems, AI agents with ReAct, multi-agent orchestration, AI governance with PACT, and full production deployment with Nexus.
@@ -2548,6 +3479,12 @@ Module 6 will take you from trained models to production LLM applications: promp
 ---
 
 # Glossary
+
+**A2C.** Advantage Actor-Critic. An on-policy RL algorithm with a policy (actor) and a value baseline (critic).
+
+**Adapter.** A small bottleneck module inserted into a frozen pre-trained network and trained for a new task; zero-initialised so it starts as the identity.
+
+**Advantage.** How much better an action was than the state's average, $A(s, a) = Q(s, a) - V(s)$.
 
 **Attention.** A mechanism where each element in a sequence computes a weighted combination of all other elements, with weights based on relevance.
 
@@ -2557,7 +3494,7 @@ Module 6 will take you from trained models to production LLM applications: promp
 
 **Batch normalisation.** Normalising layer inputs within each mini-batch to stabilise training.
 
-**Bellman equation.** A recursive equation defining the value of a state as the immediate reward plus the discounted value of the next state.
+**Bellman equation.** A recursive equation defining the value of a state (or state-action pair) as the immediate reward plus the discounted value of what follows. The _expectation_ form describes a given policy; the _optimality_ form (with a max over next actions) defines $Q^*$.
 
 **BERT.** Bidirectional Encoder Representations from Transformers. A pre-trained transformer encoder for NLU tasks.
 
@@ -2569,7 +3506,11 @@ Module 6 will take you from trained models to production LLM applications: promp
 
 **Cosine annealing.** A learning rate schedule that follows a cosine curve.
 
-**DCGAN.** Deep Convolutional GAN. Uses convolutional layers in both generator and discriminator.
+**CycleGAN.** A GAN for unpaired image-to-image translation, trained with a cycle-consistency loss.
+
+**DCGAN.** Deep Convolutional GAN. Uses strided and transposed convolutions in the discriminator and generator.
+
+**DDPG.** Deep Deterministic Policy Gradient. An off-policy actor-critic for continuous actions with a deterministic actor.
 
 **Decoder.** The component of an autoencoder or transformer that maps from latent space to output space.
 
@@ -2587,7 +3528,7 @@ Module 6 will take you from trained models to production LLM applications: promp
 
 **Feature map.** The output of a convolutional filter applied to an input.
 
-**FID.** Frechet Inception Distance. A metric for evaluating generated image quality and diversity.
+**FID.** Fréchet Inception Distance. A distribution-level metric comparing feature statistics of real and generated images (fidelity and diversity); it does not score individual images and does not measure privacy.
 
 **Filter.** A small learnable matrix used in convolution to detect local patterns.
 
@@ -2601,7 +3542,11 @@ Module 6 will take you from trained models to production LLM applications: promp
 
 **GCN.** Graph Convolutional Network. A GNN that aggregates neighbour features using the normalised adjacency matrix.
 
-**GELU.** Gaussian Error Linear Unit. Activation function used in transformers.
+**GIN.** Graph Isomorphism Network. A GNN with sum aggregation and an MLP update, as expressive as the Weisfeiler–Lehman test.
+
+**GraphSAGE.** An inductive GNN that samples a fixed number of neighbours and learns how to aggregate them.
+
+**GELU.** Gaussian Error Linear Unit. Activation function used in BERT- and GPT-style transformers (PyTorch's `nn.TransformerEncoderLayer` defaults to ReLU unless you pass `activation="gelu"`).
 
 **GPT.** Generative Pre-trained Transformer. An autoregressive decoder for text generation.
 
@@ -2611,9 +3556,15 @@ Module 6 will take you from trained models to production LLM applications: promp
 
 **Hidden state.** The internal memory of an RNN at each time step.
 
-**InferenceServer.** Kailash ML engine for serving model predictions.
+**InferenceServer.** Kailash ML engine that loads a registered model version from the ModelRegistry (`from_registry`) and serves predictions with `await predict({"records": [...]})`.
+
+**Inception Score (IS).** $\exp(\mathbb{E}_x \text{KL}(p(y \mid x) \| p(y)))$: high when generated images are classified confidently and their classes are diverse.
 
 **Input gate.** The LSTM gate that controls what new information to store.
+
+**Kaiming (He) initialisation.** Weight variance $2/n_{\text{in}}$, which keeps activation variance stable through ReLU layers.
+
+**Label smoothing.** Training against targets of $1 - \varepsilon$ for the true class and $\varepsilon / K$ spread over all classes, to discourage over-confidence.
 
 **Key.** One of the three projections (Q, K, V) in attention, representing what each element contains.
 
@@ -2621,7 +3572,7 @@ Module 6 will take you from trained models to production LLM applications: promp
 
 **Layer normalisation.** Normalising across the feature dimension for each sample, used in transformers.
 
-**LSTM.** Long Short-Term Memory. An RNN variant with gating mechanisms that prevent vanishing gradients.
+**LSTM.** Long Short-Term Memory. An RNN variant with three gates and a cell state that greatly reduce (but do not abolish) vanishing gradients.
 
 **Message passing.** The GNN mechanism where nodes exchange information along edges.
 
@@ -2633,9 +3584,13 @@ Module 6 will take you from trained models to production LLM applications: promp
 
 **Multi-head attention.** Running multiple attention operations in parallel with different projections.
 
-**OnnxBridge.** Kailash ML engine for exporting models to ONNX format.
+**OnnxBridge.** Kailash ML engine for exporting models to ONNX (`export(model, "torch", output_path=..., sample_input=...)`) and checking parity with the native model (`validate`).
 
 **Output gate.** The LSTM gate that controls what to expose from the cell state.
+
+**Over-smoothing.** The convergence of node representations as GNN layers are stacked, which limits useful GNN depth.
+
+**Permutation equivariance.** Shuffling the inputs shuffles the outputs the same way; self-attention without positional encoding has this property.
 
 **Perplexity.** A measure of language model quality; lower is better.
 
@@ -2663,9 +3618,13 @@ Module 6 will take you from trained models to production LLM applications: promp
 
 **SE block.** Squeeze-and-Excitation block. Channel recalibration mechanism for CNNs.
 
+**SAC.** Soft Actor-Critic. An off-policy, maximum-entropy actor-critic for continuous actions.
+
 **Self-attention.** Attention where queries, keys, and values all come from the same sequence.
 
 **Skip connection.** A shortcut that adds the input of a layer directly to its output.
+
+**StyleGAN.** A GAN whose generator is controlled per resolution by a learned "style" vector, giving high-resolution, controllable images.
 
 **Stride.** The step size of a convolutional filter as it slides across the input.
 
@@ -2681,7 +3640,7 @@ Module 6 will take you from trained models to production LLM applications: promp
 
 **VAE.** Variational Autoencoder. An autoencoder with a probabilistic latent space, enabling generation.
 
-**ViT.** Vision Transformer. Applies transformer architecture to image patches.
+**ViT.** Vision Transformer. A transformer encoder applied to a sequence of image-patch tokens.
 
 **Wasserstein distance.** A distance metric between probability distributions used in WGAN.
 
@@ -2695,11 +3654,16 @@ Module 6 will take you from trained models to production LLM applications: promp
 
 - Kingma, D., and Welling, M. "Auto-Encoding Variational Bayes." _ICLR_, 2014. The original VAE paper.
 - Doersch, C. "Tutorial on Variational Autoencoders." _arXiv:1606.05908_, 2016.
+- Rifai, S., et al. "Contractive Auto-Encoders: Explicit Invariance During Feature Extraction." _ICML_, 2011.
+- Higgins, I., et al. "beta-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework." _ICLR_, 2017.
 
 **On CNNs**
 
 - He, K., et al. "Deep Residual Learning for Image Recognition." _CVPR_, 2016. The ResNet paper.
 - Hu, J., Shen, L., and Sun, G. "Squeeze-and-Excitation Networks." _CVPR_, 2018. The SE block paper.
+- He, K., et al. "Delving Deep into Rectifiers: Surpassing Human-Level Performance on ImageNet Classification." _ICCV_, 2015. Kaiming initialisation.
+- Zhang, H., et al. "mixup: Beyond Empirical Risk Minimization." _ICLR_, 2018.
+- Szegedy, C., et al. "Rethinking the Inception Architecture for Computer Vision." _CVPR_, 2016. Introduces label smoothing.
 - Dosovitskiy, A., et al. "An Image is Worth 16x16 Words." _ICLR_, 2021. The Vision Transformer paper.
 
 **On RNNs and LSTMs**
@@ -2712,6 +3676,8 @@ Module 6 will take you from trained models to production LLM applications: promp
 - Vaswani, A., et al. "Attention Is All You Need." _NeurIPS_, 2017. The original transformer paper.
 - Devlin, J., et al. "BERT: Pre-training of Deep Bidirectional Transformers." _NAACL_, 2019.
 - Radford, A., et al. "Language Models are Unsupervised Multitask Learners." OpenAI, 2019. The GPT-2 paper.
+- Dai, Z., et al. "Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context." _ACL_, 2019.
+- Beltagy, I., Peters, M., and Cohan, A. "Longformer: The Long-Document Transformer." _arXiv:2004.05150_, 2020.
 
 **On GANs and generative models**
 
@@ -2719,21 +3685,35 @@ Module 6 will take you from trained models to production LLM applications: promp
 - Arjovsky, M., Chintala, S., and Bottou, L. "Wasserstein GAN." _ICML_, 2017.
 - Gulrajani, I., et al. "Improved Training of Wasserstein GANs." _NeurIPS_, 2017. WGAN-GP.
 - Ho, J., Jain, A., and Abbeel, P. "Denoising Diffusion Probabilistic Models." _NeurIPS_, 2020.
+- Radford, A., Metz, L., and Chintala, S. "Unsupervised Representation Learning with Deep Convolutional Generative Adversarial Networks." _ICLR_, 2016. DCGAN.
+- Zhu, J.-Y., et al. "Unpaired Image-to-Image Translation using Cycle-Consistent Adversarial Networks." _ICCV_, 2017. CycleGAN.
+- Karras, T., Laine, S., and Aila, T. "A Style-Based Generator Architecture for Generative Adversarial Networks." _CVPR_, 2019. StyleGAN.
+- Salimans, T., et al. "Improved Techniques for Training GANs." _NeurIPS_, 2016. Inception Score.
+- Heusel, M., et al. "GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium." _NeurIPS_, 2017. FID.
+- Carlini, N., et al. "Extracting Training Data from Diffusion Models." _USENIX Security_, 2023.
 
 **On GNNs**
 
 - Kipf, T., and Welling, M. "Semi-Supervised Classification with Graph Convolutional Networks." _ICLR_, 2017.
 - Hamilton, W., Ying, R., and Leskovec, J. "Inductive Representation Learning on Large Graphs." _NeurIPS_, 2017. GraphSAGE.
 - Velickovic, P., et al. "Graph Attention Networks." _ICLR_, 2018. GAT.
+- Xu, K., et al. "How Powerful are Graph Neural Networks?" _ICLR_, 2019. GIN.
 
 **On reinforcement learning**
 
 - Sutton, R., and Barto, A. _Reinforcement Learning: An Introduction._ MIT Press, 2018. The definitive textbook. Free online at `incompleteideas.net/book/the-book.html`.
 - Mnih, V., et al. "Human-level control through deep reinforcement learning." _Nature_, 2015. DQN.
 - Schulman, J., et al. "Proximal Policy Optimization Algorithms." _arXiv:1707.06347_, 2017.
+- Schulman, J., et al. "High-Dimensional Continuous Control Using Generalized Advantage Estimation." _ICLR_, 2016. GAE.
+- Mnih, V., et al. "Asynchronous Methods for Deep Reinforcement Learning." _ICML_, 2016. A3C/A2C.
+- Lillicrap, T., et al. "Continuous Control with Deep Reinforcement Learning." _ICLR_, 2016. DDPG.
+- Haarnoja, T., et al. "Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor." _ICML_, 2018.
+- Ouyang, L., et al. "Training Language Models to Follow Instructions with Human Feedback." _NeurIPS_, 2022. RLHF with PPO and a KL penalty.
 
 **On transfer learning**
 
-- Zhuang, F., et al. "A Comprehensive Survey on Transfer Learning." _Proceedings of the IEEE_, 2020.
+- Zhuang, F., et al. "A Comprehensive Survey on Transfer Learning." _Proceedings of the IEEE_, 109(1), 2021.
+- Houlsby, N., et al. "Parameter-Efficient Transfer Learning for NLP." _ICML_, 2019. Adapter modules.
+- Wolf, T., et al. "Transformers: State-of-the-Art Natural Language Processing." _EMNLP (System Demonstrations)_, 2020. The HuggingFace library.
 
 ---

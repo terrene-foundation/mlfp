@@ -38,7 +38,8 @@
   story: <code>DataFlow</code> for database persistence,
   <code>DriftMonitor</code> for detecting distribution shift with PSI and
   KS tests, Model Cards for documentation, and conformal prediction for
-  distribution-free prediction intervals.
+  prediction sets with a coverage guarantee that needs no distributional
+  assumption beyond exchangeability.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -55,26 +56,81 @@
   </p>
 </div>
 
-<pre><code class="language-python">from kailash_dataflow import DataFlow, field
+<h3>A short primer on <code>async</code> / <code>await</code></h3>
 
-db = DataFlow()
+<p>
+  Database calls spend most of their time waiting for disk or network.
+  DataFlow, <code>ConnectionManager</code>, <code>ModelRegistry</code> and
+  <code>DriftMonitor</code> therefore expose <em>coroutines</em>: functions
+  defined with <code>async def</code> that can pause at each
+  <code>await</code> while the event loop runs other work. Three rules
+  cover everything in this lesson:
+</p>
+<ol>
+  <li><code>await</code> is only legal <em>inside</em> an <code>async def</code>
+    function (Jupyter is the exception: its cells already run inside an
+    event loop, so top-level <code>await</code> works there and nowhere
+    else).</li>
+  <li>From a normal script, start the coroutine once with
+    <code>asyncio.run(main())</code>.</li>
+  <li>Open a connection, use it, and close it in a <code>finally:</code>
+    block, so a failure does not leave the database locked.</li>
+</ol>
+
+<pre><code class="language-python">import asyncio
+
+async def main():
+    await db.initialize()          # pauses until the tables exist
+    rows = await db.express.list("Prediction")
+    return len(rows)
+
+n_rows = asyncio.run(main())       # the one entry point from plain Python</code></pre>
+
+<h3>Persisting predictions</h3>
+
+<pre><code class="language-python">import asyncio
+from pathlib import Path
+from dataflow import DataFlow
+
+# Use an ABSOLUTE path: a relative "sqlite:///monitoring.db" is resolved
+# from the filesystem root and fails with "unable to open database file"
+db = DataFlow(f"sqlite:///{Path('monitoring.db').resolve()}")
 
 @db.model
 class Prediction:
-    id: int = field(primary_key=True)
+    id: int
     customer_id: str
     probability: float
     model_version: int
-    created_at: str
 
-# Create
-await db.express.create(Prediction,
-    customer_id="C001", probability=0.73,
-    model_version=1, created_at="2024-01-15")
+async def crud_demo():
+    await db.initialize()
+    # Create — model name as a string, fields as a dict
+    await db.express.create("Prediction", {
+        "customer_id": "C001", "probability": 0.73, "model_version": 1})
+    await db.express.create("Prediction", {
+        "customer_id": "C002", "probability": 0.12, "model_version": 1})
 
-# Query
-high_risk = await db.express.list(Prediction,
-    filters={"probability__gt": 0.7})</code></pre>
+    # Read — MongoDB-style filter operators
+    high_risk = await db.express.list(
+        "Prediction", filter={"probability": {"$gt": 0.7}})
+    row = high_risk[0]                       # C001
+
+    # Update and delete — by primary key
+    await db.express.update("Prediction", row["id"], {"probability": 0.68})
+    await db.express.delete("Prediction", row["id"])
+    return await db.express.list("Prediction")   # only C002 is left
+
+remaining = asyncio.run(crud_demo())</code></pre>
+
+<p>
+  The package is imported as <code>dataflow</code> (there is no
+  <code>kailash_dataflow</code> module and no <code>field()</code> helper):
+  plain type annotations define the columns, and <code>id: int</code> is the
+  primary key. In Exercise 3.8 the same pattern stores one
+  <code>DriftCheck</code> row per monitoring run, so alerts can be read
+  back, acknowledged (updated) and cleaned up (deleted) later.
+</p>
 
 <figure class="diagram">
 <svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
@@ -131,31 +187,75 @@ high_risk = await db.express.list(Prediction,
   </tbody>
 </table>
 
+<p>
+  These bands are an industry rule of thumb, not a statistical test.
+  Exercise 3.8 alerts at PSI &gt; 0.2. PSI is undefined when a bin is
+  empty on either side, so implementations add a small floor to every
+  proportion — and the bin edges must be extended to ±∞ so that current
+  values outside the training range are counted, not silently
+  dropped.
+</p>
+
 <h3>KS test: Kolmogorov-Smirnov</h3>
 
 <p>
-  The KS test compares two CDFs and returns the maximum vertical distance
-  between them. A small p-value indicates the distributions differ
-  significantly.
+  The KS test compares two empirical CDFs and returns the maximum vertical
+  distance between them. A small p-value indicates the distributions
+  differ. Two cautions for monitoring. First, with tens of thousands of
+  rows the test detects even trivial shifts, so a significant p-value is a
+  prompt to look at PSI and model performance, not a verdict. Second, you
+  test every feature at once: 33 tests at $\alpha = 0.05$ produce a false
+  alarm on a clean batch most of the time. Exercise 3.8 therefore uses a
+  Bonferroni-style cut-off of 0.001 (about $0.05 / 33$).
 </p>
 
-<pre><code class="language-python">from kailash_ml import DriftMonitor, DriftSpec
+<pre><code class="language-python">import asyncio
+from pathlib import Path
+from kailash.db import ConnectionManager
+from kailash_ml import DriftMonitor
+from shared.mlfp03.ex_8 import load_credit_split, to_frame
 
-monitor = DriftMonitor(
-    spec=DriftSpec(
-        features=["income", "age", "credit_score"],
-        psi_threshold=0.15,
-        ks_alpha=0.05,
-        check_interval="daily",
-    )
-)
+split = load_credit_split()       # leak-free credit data, 33 features
+X_train, X_test = split["X_train"], split["X_test"]
+names = split["feature_names"]
 
-# Compare reference (training) to current (production)
-drift_report = monitor.check(df_reference, df_current)
+# A production batch where income has jumped by 3 standard deviations
+batch = X_test.copy()
+i = names.index("income_sgd")
+batch[:, i] += 3 * X_train[:, i].std()
 
-for alert in drift_report.alerts:
-    print(f"  {alert.feature}: PSI={alert.psi:.3f}, "
-          f"KS p={alert.ks_pvalue:.4f}")</code></pre>
+async def check():
+    # The monitor gets its OWN SQLite file (absolute path). Sharing the
+    # model registry's file fails: the registry already has a table with
+    # the same name and a different layout.
+    conn = ConnectionManager(f"sqlite:///{Path('drift.db').resolve()}")
+    await conn.initialize()
+    try:
+        monitor = DriftMonitor(conn, tenant_id="_single",
+                               psi_threshold=0.2,
+                               ks_threshold=0.001)   # Bonferroni for 33 tests
+        await monitor.set_reference_data(
+            "credit_scorer", to_frame(X_train, names), names)
+        for label, X_batch in (("clean", X_test), ("income +3 sd", batch)):
+            report = await monitor.check_drift(
+                "credit_scorer", to_frame(X_batch, names))
+            flagged = [(f.feature_name, round(f.psi, 2))
+                       for f in report.feature_results if f.drift_detected]
+            print(label, report.overall_drift_detected, flagged)
+    finally:
+        await conn.close()
+
+asyncio.run(check())</code></pre>
+
+<p>
+  On the clean test batch nothing is flagged, so no false alarm across 33
+  features. On the shifted batch only <code>income_sgd</code> is flagged,
+  with a PSI around 14 and severity "severe": every value has moved past
+  the top of the training range, far beyond the 0.25 "retrain" line. In
+  Exercise 3.8 each check is also written to a DataFlow
+  <code>DriftCheck</code> table so the alert can be read back, acknowledged
+  and audited later.
+</p>
 
 <figure class="diagram">
 <svg viewBox="0 0 720 240" class="illustration" xmlns="http://www.w3.org/2000/svg">
@@ -181,23 +281,33 @@ for alert in drift_report.alerts:
 <h2>Model Cards</h2>
 
 <p>
-  A Model Card (Mitchell et al., 2019) documents a model's purpose,
-  performance, limitations, and fairness findings. Every model promoted
-  to production should have one.
+  A Model Card (Mitchell et al., 2019, "Model Cards for Model Reporting")
+  documents a model's purpose, performance, limitations, and fairness
+  findings. Every model promoted to production should have one. The paper
+  proposes nine sections:
 </p>
 
 <table>
-  <thead><tr><th>Section</th><th>Contents</th></tr></thead>
+  <thead><tr><th>Section</th><th>Contents for the credit model</th></tr></thead>
   <tbody>
-    <tr><td>Model details</td><td>Name, version, type, training date, author</td></tr>
-    <tr><td>Intended use</td><td>Primary use case, out-of-scope uses</td></tr>
-    <tr><td>Training data</td><td>Source, size, date range, preprocessing</td></tr>
-    <tr><td>Evaluation</td><td>Metrics (AUC, F1, calibration), test set description</td></tr>
-    <tr><td>Fairness</td><td>Disparate impact, equalised odds, subgroup performance</td></tr>
-    <tr><td>Limitations</td><td>Known failure modes, data gaps, temporal constraints</td></tr>
-    <tr><td>Monitoring</td><td>Drift thresholds, retraining triggers, alert contacts</td></tr>
+    <tr><td>Model details</td><td>Name, registry version, type, training date, owner</td></tr>
+    <tr><td>Intended use</td><td>Decision support for unsecured-loan applications; out-of-scope uses</td></tr>
+    <tr><td>Factors</td><td>Groups the model is evaluated across: race, gender, age band</td></tr>
+    <tr><td>Metrics</td><td>AUC-ROC, AUC-PR, Brier; the decision threshold $t^* = 0.130$ and the cost matrix behind it</td></tr>
+    <tr><td>Evaluation data</td><td>The held-out test split, its size and default rate</td></tr>
+    <tr><td>Training data</td><td>Source, size, preprocessing, the columns dropped as leaks</td></tr>
+    <tr><td>Quantitative analyses</td><td>Measured per-group results: disparate impact, TPR/FPR, calibration by group</td></tr>
+    <tr><td>Ethical considerations</td><td>Who is harmed by each error type; the human sign-off for failed fairness screens</td></tr>
+    <tr><td>Caveats and recommendations</td><td>Known failure modes, data gaps, drift thresholds and retraining triggers</td></tr>
   </tbody>
 </table>
+
+<p>
+  Every number in the card must be <em>measured</em> on the registered
+  model, not typed in — Exercise 3.8 writes the card from the same
+  evaluation run, and its readiness check fails if the card's AUC differs
+  from the live model's.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Conformal Prediction</h2>
@@ -205,66 +315,172 @@ for alert in drift_report.alerts:
 <p>
   Traditional ML gives a point prediction: "this customer will default
   with probability 0.73". Conformal prediction adds a prediction
-  <em>interval</em> with guaranteed coverage:
+  <em>set</em> (for regression, an interval) with a coverage guarantee:
 </p>
 
 <div class="callout theory">
-  <span class="label">🔵 Theory</span>
+  <span class="label">🔵 Theory — What the guarantee says, and what it needs</span>
   <p>
-    Conformal prediction is <strong>distribution-free</strong>: it makes no
-    assumptions about the data distribution. Given a calibration set and a
-    desired coverage level $\alpha$, it produces prediction sets that
-    contain the true value with probability at least $1 - \alpha$. For
-    regression, this means prediction intervals; for classification, this
-    means sets of possible classes.
+    Split conformal prediction needs no model of the data distribution.
+    It needs one assumption: the calibration rows and the new row are
+    <strong>exchangeable</strong> (for example, drawn i.i.d. from the same
+    distribution). Pick a miscoverage level $\alpha$ — the error rate you
+    accept, so $\alpha = 0.10$ targets 90% coverage. Compute a
+    nonconformity score on $n$ held-out calibration rows, take the
+    finite-sample-corrected quantile
+  </p>
+  $$\hat{q} \;=\; \text{the } \tfrac{\lceil (n+1)(1-\alpha) \rceil}{n} \text{ quantile of the calibration scores,}$$
+  <p>
+    and include in the prediction set every label whose score is at most
+    $\hat{q}$. Then $P(Y_{\text{new}} \in C(X_{\text{new}})) \ge 1 - \alpha$.
+    The guarantee is <em>marginal</em>: it holds on average over new
+    applicants, not for each applicant or each subgroup. It also breaks
+    under drift, because drift is exactly a violation of exchangeability —
+    which is why conformal coverage belongs on the monitoring dashboard.
   </p>
 </div>
 
-<pre><code class="language-python"># Conformal prediction interval for regression
-residuals = np.abs(y_cal - model.predict(X_cal))
-q = np.quantile(residuals, 1 - alpha)
+<p>
+  For a classifier, the usual score is one minus the probability the model
+  gave to the true class. On the credit model:
+</p>
 
-# For a new point:
-y_hat = model.predict(X_new)
-interval = (y_hat - q, y_hat + q)
-print(f"Prediction: {y_hat:.0f}, 90% interval: [{interval[0]:.0f}, {interval[1]:.0f}]")</code></pre>
+<pre><code class="language-python">import numpy as np
+
+# model fitted on X_fit; X_cal / y_cal: held-out rows it never saw
+p_cal = model.predict_proba(X_cal)[:, 1]
+scores = np.where(y_cal == 1, 1 - p_cal, p_cal)   # 1 - p(true class)
+n, alpha = len(scores), 0.10
+q_hat = np.quantile(scores, np.ceil((n + 1) * (1 - alpha)) / n,
+                    method="higher")
+
+p_new = model.predict_proba(X_test)[:, 1]
+has_default = (1 - p_new) &lt;= q_hat     # "default" is in the set
+has_repay = p_new &lt;= q_hat             # "repay" is in the set
+both = has_default &amp; has_repay         # the model cannot tell: route to a human</code></pre>
+
+<p>
+  On the leak-free credit data (LightGBM, 20% of train held back for
+  calibration, $\alpha = 0.10$), $\hat{q} \approx 0.62$ and test coverage
+  comes out at 89.9% — the guarantee holds. About 94% of applicants get a
+  single-label set and 6% get {default, repay}, the cases to route to a
+  human; no set is empty. Now split the coverage by outcome: 99.6% for
+  applicants who repaid, but only 25% for those who defaulted. That is
+  what <em>marginal</em> means: the 90% is an average dominated by the
+  majority class. If you need a guarantee per class, calibrate a separate
+  $\hat{q}$ per class (class-conditional, or "Mondrian", conformal).
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>The Full Production Pipeline</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
-  <p>Deploy the credit scoring model as a production pipeline: persist to DataFlow, monitor for drift, generate a Model Card.</p>
+  <p>
+    Take the credit model to production the way Exercise 3.8 does: a
+    calibrated model, decisions at the cost-optimal threshold, a registry
+    with a rollback path, persisted predictions, a drift monitor, a model
+    card built from measured numbers, and a readiness check that a human
+    signs off.
+  </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — Persist predictions to DataFlow.</span>
-    <pre><code class="language-python">predictions = model.predict_proba(X_prod)[:, 1]
-for cust_id, prob in zip(customer_ids, predictions):
-    await db.express.create(Prediction,
-        customer_id=cust_id, probability=prob,
-        model_version=1)</code></pre>
+    <span class="step-label">Step 1 — Calibrate, then decide at t* = 0.130.</span>
+    <p>
+      Train the LightGBM through <code>TrainingPipeline</code>, calibrate it
+      on held-out training rows with <code>TrainingPipeline.calibrate</code>
+      (Lesson 3.5), and decline when the calibrated default probability is
+      at least $t^* = c_{FP}/(c_{FP} + c_{FN}) = 1500/11500 \approx 0.130$.
+      Calibration comes first, because $t^*$ is only valid on honest
+      probabilities.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2 — Set up drift monitoring.</span>
-    <pre><code class="language-python">monitor = DriftMonitor(spec=DriftSpec(
-    features=["income", "age", "credit_score"],
-    psi_threshold=0.15, ks_alpha=0.05,
-    check_interval="daily",
-))
-report = monitor.check(df_train, df_prod)</code></pre>
+    <span class="step-label">Step 2 — Register, promote, and keep a rollback target.</span>
+    <pre><code class="language-python">async def promote_and_rollback(registry, name, new_version, old_version):
+    # A new version starts in "staging"; promote it once its gate passes
+    await registry.promote_model(name, new_version, "production",
+                                 reason="readiness gates passed")
+    # Rollback: retire the bad version, bring the previous one back
+    # through staging (archived -> staging -> production)
+    await registry.promote_model(name, new_version, "archived",
+                                 reason="AUC dropped after release")
+    await registry.promote_model(name, old_version, "staging",
+                                 reason="rollback candidate")
+    await registry.promote_model(name, old_version, "production",
+                                 reason="rollback")
+    return await registry.get_model(name, stage="production")</code></pre>
+    <p>
+      There is no <code>registry.promote</code>; every stage change is a
+      <code>promote_model(name, version, target_stage, reason=...)</code>
+      call, so the reason for each move is recorded. Promoting a new
+      version to production automatically moves the previous production
+      version to <code>archived</code> — that archived version is your
+      rollback target.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 3 — Add conformal prediction intervals.</span>
-    <pre><code class="language-python">residuals = np.abs(y_cal - model.predict(X_cal))
-q90 = np.quantile(residuals, 0.90)
-# Each prediction now has a 90% interval</code></pre>
+    <span class="step-label">Step 3 — Persist predictions and monitor drift.</span>
+    <p>
+      Score each batch, write the scores with DataFlow
+      (<code>db.express.create("Prediction", {...})</code>, absolute SQLite
+      path), and run <code>DriftMonitor.check_drift</code> against the
+      training reference, with the monitor on its own database file and KS
+      threshold 0.001. Write each check to a <code>DriftCheck</code> table
+      so the alert has an audit trail.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 4 — Generate Model Card.</span>
-    <p>Document: model details, intended use, training data, evaluation metrics, fairness findings (from 3.6), limitations, and monitoring thresholds.</p>
+    <span class="step-label">Step 4 — Conformal sets for the uncertain cases.</span>
+    <p>
+      Use the split-conformal recipe above with $\alpha = 0.10$. Applicants
+      whose set is {default, repay} — about 6% here — go to a human
+      underwriter instead of an automatic decision.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — Model card from measured numbers.</span>
+    <p>
+      Fill the nine Mitchell sections from the evaluation run itself: test
+      AUC-ROC, AUC-PR and Brier, the threshold 0.130 and its cost matrix,
+      per-group disparate impact, TPR/FPR and calibration for race, gender
+      and age band (Lesson 3.6), the drift thresholds, and the known
+      limitations. Never type a number into the card that the code did
+      not compute.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6 — Readiness: 11 computed gates plus human sign-off.</span>
+    <p>
+      Exercise 3.8 turns the deployment checklist into 11 boolean gates,
+      each an expression over evidence:
+    </p>
+    <ol>
+      <li>Test AUC-ROC meets the 0.70 policy floor.</li>
+      <li>Calibrated: Brier beats the base-rate forecast.</li>
+      <li>Conformal coverage within 2 points of 90%.</li>
+      <li>The model card exists.</li>
+      <li>The card describes <em>this</em> model (its AUC matches the live model's).</li>
+      <li>The card reports race, gender and age fairness.</li>
+      <li>Four-fifths rule passes for race and gender.</li>
+      <li>Calibrated within every group (gap under 0.02).</li>
+      <li>The drift monitor is quiet on clean data and alarms on a shift.</li>
+      <li>Reproducible: the live registry model equals the retrained model.</li>
+      <li>A rollback target (an archived version) exists.</li>
+    </ol>
+    <p>
+      A missing piece of evidence fails its gate; a gate written as
+      <code>True</code> checks nothing. What code cannot decide is listed
+      separately for <strong>human sign-off</strong>. The failing age-band
+      disparate-impact screen from Lesson 3.6 goes to the model-risk owner,
+      who either accepts the trade-off in writing or blocks the release.
+      Deployment needs all 11 gates green <em>and</em> that signature.
+    </p>
   </div>
 </div>
 
@@ -283,7 +499,7 @@ q90 = np.quantile(residuals, 0.90)
 
 <div class="callout warning">
   <span class="label">⚠ Mistake 3: Point predictions without uncertainty</span>
-  <p>"The predicted price is $450,000" is less useful than "The predicted price is $450,000 with a 90% interval of [$420,000, $480,000]". Conformal prediction provides this for free.</p>
+  <p>"This applicant will default with probability 0.73" hides how sure the model is. A conformal prediction set — {default}, {repay}, or {default, repay} when the model cannot tell at the chosen error rate — makes the uncertainty explicit and tells you which cases to route to a human. It costs one held-out calibration set.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -296,21 +512,21 @@ q90 = np.quantile(residuals, 0.90)
 
 <div class="try-it">
   <h3>🎯 Exercise B — Drift injection</h3>
-  <p>Take the training data, shift one feature by 2 standard deviations, and run DriftMonitor. Verify that PSI and KS correctly detect the injected drift.</p>
+  <p>Take the test data, shift one feature by 2 standard deviations, and run DriftMonitor against the training reference. Verify that PSI and KS flag the shifted feature and only that feature. Then shift it by 0.2 standard deviations: which of the two statistics still fires, and why?</p>
 </div>
 
 <div class="try-it">
   <h3>🎯 Exercise C — Full production pipeline</h3>
-  <p>Build the complete production pipeline: train, persist to DataFlow, calibrate, register in ModelRegistry, set up DriftMonitor, generate Model Card, add conformal prediction intervals.</p>
+  <p>Build the complete production pipeline: train, calibrate, register in ModelRegistry, persist predictions with DataFlow, set up DriftMonitor (its own database file), generate the Model Card from measured results, and add conformal prediction sets. Finish with a readiness check whose every gate is computed from evidence.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Cross-References</h2>
 
 <p class="xref">
-  DataFlow replaces the CSV output from 1.8 with database persistence.
-  DriftMonitor extends DataExplorer's compare() from 1.7 to continuous
-  production monitoring. Model Cards incorporate fairness findings from
+  DataFlow replaces CSV outputs with database persistence. DriftMonitor
+  turns the one-off distribution comparisons of <code>DataExplorer</code>
+  in Module 1 into continuous production monitoring. Model Cards incorporate fairness findings from
   3.6. Conformal prediction uses the calibration concepts from 3.5.
   The full pipeline ties together every lesson in Module 3.
 </p>
@@ -318,17 +534,19 @@ q90 = np.quantile(residuals, 0.90)
 <div class="reflection">
 <h2>Reflection</h2>
 <p>
-  You have completed Module 3 and the entire Foundation Certificate. You
-  can engineer features, train every major supervised model, evaluate with
+  You have completed Module 3. You can engineer features, train every major supervised model, evaluate with
   proper metrics, explain with SHAP, audit for fairness, orchestrate
   workflows, search hyperparameters, register models, persist to
   databases, monitor for drift, and document with Model Cards. This is
   the complete supervised ML pipeline from data to production.
 </p>
 <p>
-  The Advanced Certificate (Modules 4-6) builds on this foundation:
-  unsupervised learning, deep learning, NLP, LLMs, reinforcement learning,
-  and AI governance.
+  Module 4 completes the Foundation Certificate with unsupervised machine
+  learning: clustering and mixture models, dimensionality reduction,
+  anomaly detection, association rules, topic modelling, recommender
+  systems and a first look at neural networks. The Advanced Certificate then covers deep
+  learning and computer vision (Module 5) and language models, agents,
+  alignment and governance (Module 6).
 </p>
 </div>
 

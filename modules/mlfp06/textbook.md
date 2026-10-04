@@ -2401,163 +2401,254 @@ You should now be able to:
 
 This is the last lesson of the MLFP programme. Everything you have learned converges here: data pipelines from Module 1, statistics from Module 2, the ML pipeline from Module 3, unsupervised learning from Module 4, deep learning architectures from Module 5, and LLMs, agents, and governance from Module 6.
 
-In this lesson you will deploy a complete, governed AI system using Nexus — Kailash's multi-channel deployment platform. The system will be accessible via API, CLI, and MCP simultaneously. It will have authentication, drift monitoring, and governance enforcement in production. This is not a toy — it is the architecture of a real production AI application.
+In this lesson you will deploy a complete, governed AI system using Nexus — Kailash's multi-channel deployment platform. One registered handler is served as a REST API, a CLI command and an MCP tool. It has authentication, rate limiting, CORS, governance enforcement and drift monitoring. This is not a toy — it is the architecture of a real production AI application.
 
 ## Core Concepts
 
 ### FOUNDATIONS: Nexus multi-channel deployment
 
-Nexus deploys a single codebase to three interfaces simultaneously:
+Nexus exposes one handler on three interfaces:
 
-- **API:** REST endpoints for programmatic access.
-- **CLI:** command-line interface for operators.
-- **MCP:** Model Context Protocol for AI agent access.
+- **API:** REST endpoint (`POST /workflows/<name>/execute`) for programmatic access.
+- **CLI:** `nexus execute <name>` for operators.
+- **MCP:** an MCP tool other AI agents can discover and call.
+
+A handler is an ordinary `async` function registered with `app.handler_extract(name, func)`; Nexus derives the input schema from its parameters. Functionality is added with **plugins** (`app.add_plugin(...)`): `NexusAuthPlugin` adds JWT authentication, role-based access and rate limiting; CORS is configured on the app itself.
 
 ```python
-from nexus import Nexus
-from kailash.workflow.builder import WorkflowBuilder
+import os
+import secrets
+from kailash.trust.auth.jwt import JWTConfig
+from kailash.trust.rate_limit.config import RateLimitConfig
+from nexus import Nexus, NexusAuthPlugin
+from starlette.requests import Request
 
-# 1. Describe the workload as a Kailash workflow (built once, reused
-#    across channels). Nexus requires a *built* Workflow — registering
-#    a bare async function is not supported.
-predict_wf = WorkflowBuilder()
-predict_wf.add_node(
-    "PythonCodeNode",
-    "predict",
-    {"code": "result = model.predict(parameters['data'])"},
-)
+# Never hardcode a signing secret: read it from the environment
+jwt_config = JWTConfig(secret=os.environ.get("MLFP_JWT_SECRET") or secrets.token_urlsafe(48),
+                       algorithm="HS256")
 
-# 2. Register the built workflow. Nexus exposes it as API + CLI + MCP
-#    automatically — same handler, three channels.
-app = Nexus()
-app.register("predict", predict_wf.build())
-# app.start()   # omitted in the tutorial; uncomment to serve on :8000
+app = Nexus(api_port=8000,
+            cors_origins=["https://intranet.example.sg"],   # CORS allow-list
+            enable_durability=False)
+app.add_plugin(NexusAuthPlugin(
+    jwt=jwt_config,                                          # 401 without a valid token
+    rate_limit=RateLimitConfig(requests_per_minute=10, burst_size=5),   # 429 when exceeded
+))
+
+async def echo_role(question: str, request: Request) -> dict:
+    """Return the caller's verified role (set by the JWT middleware)."""
+    return {"question": question, "roles": list(request.state.user.roles)}
+
+app.handler_extract("echo_role", echo_role, description="Echo the caller's role")
+# app.start()   # serve API on :8000 (CLI and MCP from the same registration)
 ```
+
+A request to the API passes through layers, outermost first: rate limit (429), JWT (401 for a missing, forged or expired token), then your handler. The JWT layer is HTTP middleware: CLI and MCP callers are authenticated differently, so do not assume the 401 behaviour carries over to them.
 
 ### FOUNDATIONS: Authentication and authorisation
 
-Nexus owns **authentication** (who are you?). PACT owns **authorisation** (what may you do?). The canonical pattern is to attach Nexus's JWT/session middleware to identify the caller, then call `engine.verify_action(role_address, action, context)` inside the workflow node to decide whether the authenticated caller can perform the requested action.
+Nexus owns **authentication** (who are you?). PACT owns **authorisation** (what may you do?). The handler reads the role from the *verified* token — never from the request body, where any client could write `"role": "admin"` — maps it to a PACT address, and asks `engine.verify_action(...)` before doing any work. A governance refusal is returned as a normal response marked `blocked: true` with the reason; the 401 comes from the JWT layer before the handler runs.
 
 ```python
-from nexus import Nexus
+import httpx
+from kailash.trust.auth.jwt import JWTValidator
 
-app = Nexus()                         # JWT middleware configured in the
-                                       # project's nexus settings
-app.register("predict", predict_wf.build())
-app.register("deploy", deploy_wf.build())
+# Your identity provider issues tokens; in the exercise we play that role
+token = JWTValidator(jwt_config).create_access_token("analyst1", roles=["qa"])
 
-# Inside the PythonCodeNode body (pseudo-code):
-#   caller_role = parameters["auth"]["role_address"]   # from Nexus middleware
-#   verdict = engine.verify_action(
-#       role_address=caller_role,
-#       action="deploy",
-#       context={"data_classification": "restricted"},
-#   )
-#   if not verdict.allowed:
-#       raise PermissionError(verdict.reason)
+transport = httpx.ASGITransport(app=app.fastapi_app)   # in-process, no network port
+async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    ok = await client.post("/workflows/echo_role/execute",
+                           headers={"Authorization": f"Bearer {token}"},
+                           json={"inputs": {"question": "Who am I?"}})
+    anonymous = await client.post("/workflows/echo_role/execute",
+                                  json={"inputs": {"question": "Who am I?"}})
+print(ok.status_code, ok.json()["outputs"]["handler"])   # 200 {'question': 'Who am I?', 'roles': ['qa']}
+print(anonymous.status_code)                              # 401
 ```
 
 ### FOUNDATIONS: Full platform integration
 
-The complete stack:
+The complete stack, with the module where you first met each piece:
 
-1. **Train** a model with `TrainingPipeline`.
-2. **Persist** to database with `DataFlow`.
-3. **Wrap** in an agent with `Kaizen`.
-4. **Govern** the agent with `PACT`.
-5. **Deploy** with `Nexus`.
-6. **Monitor** with `DriftMonitor`.
+| Step | Package          | Purpose                                     | Met in |
+| ---- | ---------------- | ------------------------------------------- | ------ |
+| 1    | kailash-ml       | Train and register a model                  | M3     |
+| 2    | kailash-dataflow | Persist data and results                    | M3     |
+| 3    | kailash-align    | Fine-tune and register an adapter           | 6.2–6.3 |
+| 4    | kailash-kaizen   | Wrap the model in an agent                  | 6.5–6.6 |
+| 5    | kailash-pact     | Govern the agent                            | 6.7    |
+| 6    | kailash-nexus    | Deploy on API + CLI + MCP                   | 6.8    |
+| 7    | kailash-ml       | Monitor inputs for drift (`DriftMonitor`)   | M3.8, 6.8 |
+
+Exercise 6.8 runs this chain for the module's QA system: it loads the adapters trained in Exercises 6.2 and 6.3 (`ex_8/01`), builds a three-tier governed stack (`ex_8/02`), serves it through Nexus with JWT auth, rate limiting and CORS (`ex_8/03`), monitors question drift and debugs agent runs (`ex_8/04`), and writes a compliance audit (`ex_8/05`).
+
+### FOUNDATIONS: Production monitoring with DriftMonitor
+
+`DriftMonitor` (Lesson 3.8) compares each production batch with a stored reference distribution, per feature, with PSI and the KS test. It persists references and reports through a `ConnectionManager`, so it is constructed with a connection and a tenant id, and its methods are `async`. For an LLM service, monitor features of the *inputs* — question length, language, topic — because the model's own weights do not change while the questions do.
+
+```python
+import numpy as np
+import polars as pl
+from pathlib import Path
+from kailash.db.connection import ConnectionManager
+from kailash_ml import DriftMonitor
+
+conn = ConnectionManager(f"sqlite:///{Path('drift.db').resolve()}")   # absolute sqlite path
+await conn.initialize()
+monitor = DriftMonitor(conn, tenant_id="mlfp_demo", psi_threshold=0.2)
+
+rng = np.random.default_rng(0)
+reference = pl.DataFrame({"question_length": rng.normal(60, 15, 1_000)})
+await monitor.set_reference_data("capstone_qa_model", reference, ["question_length"])
+
+for name, mean_length in [("same distribution", 60), ("longer questions", 90)]:
+    batch = pl.DataFrame({"question_length": rng.normal(mean_length, 15, 300)})
+    report = await monitor.check_drift("capstone_qa_model", batch)
+    psi = report.feature_results[0].psi
+    print(f"{name}: drift={report.overall_drift_detected} "
+          f"severity={report.overall_severity} PSI={psi:.3f}")
+# same distribution: drift=False severity=none PSI=0.038
+# longer questions: drift=True severity=severe PSI=5.063
+await conn.close()
+```
+
+(The data here are synthetic, to make the two cases unambiguous; Exercise 6.8 uses question lengths from the QA traffic.) The usual PSI reading is: below 0.1 stable, 0.1–0.2 moderate, above 0.2 act — investigate, and retrain or re-tune if the shift persists.
 
 ### FOUNDATIONS: Debugging agent reasoning
 
-When a multi-agent system produces unexpected output, you need to trace the reasoning chain:
+When an agent gives a wrong answer, you need the chain of steps that produced it: which tools it called, with what arguments, what came back, and where it went in circles. The course Observatory's agent lens captures a real run of a Delegate as a trace:
 
 ```python
-result = agent.run("Analyse sales data", return_trace=True)
-for step in result.trace:
-    print(f"Thought: {step.thought}")
-    print(f"Action: {step.action}")
-    print(f"Observation: {step.observation}")
+from shared.mlfp06.diagnostics import LLMObservatory
+
+obs = LLMObservatory()
+trace = await obs.agent.capture_run(agent, "Which flat type costs most?", run_id="debug_1")
+for event in trace.events:                         # token / tool_start / tool_end / complete / error ...
+    print(event.kind, event.tool or "", (event.content or event.error or "")[:60])
+print(obs.agent.tool_usage("debug_1"))             # calls per tool
+print(obs.agent.detect_loops("debug_1"))           # repeated identical tool calls
+
+for record in governed.audit.to_list()[-5:]:       # governance decisions: the supervisor's chain
+    print(record["record_type"], record["action"])
 ```
 
-## Worked Example: Deploying the M6 System
+`agent` is the tool-using Delegate from Lesson 6.5 and `governed` any `GovernedSupervisor` from Lesson 6.7.
+
+| Symptom                | Likely cause                                   |
+| ---------------------- | ---------------------------------------------- |
+| Agent loops            | Ambiguous goal, or no tool can produce the answer |
+| Wrong tool selected    | Tool descriptions too similar                  |
+| Answer without tool use | Tools not registered (a bare list of functions) |
+| Governance blocked     | Action missing from the role's envelope        |
+| Turn ceiling reached   | Too many retries; simplify the task            |
+| Incoherent reasoning   | Context window overflow                        |
+
+### FOUNDATIONS: Testing agentic systems
+
+Test five things, cheapest first: each **tool** returns the right output for known input (plain unit tests, no LLM); **governance** blocks what it should (Lesson 6.7's tests, no LLM); **bounds** hold (the run stops at its turn ceiling); **tool selection** is right for representative prompts; and **end-to-end** answers are correct on a small labelled set. The last two need the model, so they assert on the trace, not the prose:
 
 ```python
-from nexus import Nexus
-from pact import GovernanceEngine, load_org_yaml
-from kaizen_agents import GovernedSupervisor
-from kailash.workflow.builder import WorkflowBuilder
-from kailash_ml import DriftMonitor, ModelRegistry
+import pytest
 
-# 1. Load the trained model
-registry = ModelRegistry()
-model = registry.load("hdb_predictor", stage="production")
-
-# 2. Set up governance from the org definition
-loaded = load_org_yaml("hdb_org.yaml")
-engine = GovernanceEngine(loaded.org_definition)
-
-governed_agent = GovernedSupervisor(
-    model="gpt-4o-mini",
-    budget_usd=5.00,
-    tools=["predict", "explain"],
-    data_clearance="restricted",
-)
-
-# 3. Set up drift monitoring
-monitor = DriftMonitor(reference_data=training_data)
-
-# 4. Describe the predict workload as a workflow. The governance check,
-#    the model call, and the drift check all live inside the node so the
-#    single workflow is uniformly enforced on every channel.
-predict_wf = WorkflowBuilder()
-predict_wf.add_node(
-    "PythonCodeNode",
-    "predict",
-    {
-        "code": """
-verdict = engine.verify_action(
-    role_address=parameters['auth']['role_address'],
-    action='predict',
-    context={'data_classification': 'restricted'},
-)
-if not verdict.allowed:
-    raise PermissionError(verdict.reason)
-
-prediction = model.predict(parameters['data'])
-drift_report = monitor.check(parameters['data'])
-if drift_report.psi > 0.25:
-    print(f'WARNING: Major drift detected (PSI={drift_report.psi:.3f})')
-result = {'prediction': prediction, 'drift_status': drift_report.status}
-"""
-    },
-)
-
-health_wf = WorkflowBuilder()
-health_wf.add_node(
-    "PythonCodeNode",
-    "health",
-    {"code": "result = {'status': 'healthy', 'model_version': model.version}"},
-)
-
-# 5. Deploy with Nexus. One registration, three channels (API + CLI + MCP).
-app = Nexus()
-app.register("predict", predict_wf.build())
-app.register("health", health_wf.build())
-# app.start()   # serve on the configured port
+@pytest.mark.asyncio
+async def test_agent_uses_grouping_tool():
+    obs = LLMObservatory()
+    await obs.agent.capture_run(make_delegate(tools=tools, max_turns=8),
+                                "Which flat type is most expensive?", run_id="t1")
+    used = obs.agent.tool_usage("t1")
+    assert "mean_price_by" in used["tool"].to_list()
+    assert obs.agent.detect_loops("t1").height == 0
 ```
+
+### FOUNDATIONS: Inference optimisation for serving (brief)
+
+- **KV-cache and continuous batching** (Lesson 6.1) are what serving engines are built around.
+- **FlashAttention** computes exact attention in tiles that stay in fast on-chip memory, avoiding the full $n \times n$ attention matrix in GPU memory: faster and far less memory for long contexts, same result.
+- **vLLM** is an open-source serving engine with PagedAttention (the KV-cache managed in pages, like virtual memory) and continuous batching; it serves many concurrent users from one GPU. Ollama (llama.cpp underneath) targets single-machine and laptop use with quantised GGUF models.
+- **Quantisation** (Lesson 6.2) trades a little quality for 2–4× less memory.
+
+### FOUNDATIONS: Multimodal LLMs (awareness)
+
+Vision-language models (open ones such as LLaVA, and commercial assistants) feed image patches through a vision encoder into the language model's token stream, so the same transformer answers questions about images, charts and documents. Everything in this module — prompting, RAG, agents, governance and deployment — applies unchanged; the input simply contains images as well as text.
+
+## Worked Example: Deploying the Governed QA System
+
+This is the shape of `ex_8/02`–`ex_8/03`, built from the shared capstone helpers: three governance tiers (qa: public clearance, $1; admin: confidential, $10; audit: secret, $50), each a `GovernedSupervisor`, behind one Nexus handler.
+
+```python
+import os
+import secrets
+from kailash.trust.auth.jwt import JWTConfig
+from kailash.trust.rate_limit.config import RateLimitConfig
+from nexus import Nexus, NexusAuthPlugin
+from starlette.requests import Request
+from shared.mlfp06.ex_8 import build_capstone_stack, compile_capstone_governance, handle_qa
+
+# 1. Governance: org + envelopes, then one governed supervisor per tier
+engine, loaded_org = compile_capstone_governance()
+agents_by_role, tiers = build_capstone_stack(engine)
+for tier in tiers:
+    print(f"{tier.role:6s} {tier.address}  ${tier.budget_usd:>5.1f}  {tier.clearance}")
+
+# 2. The one handler: role from the VERIFIED token, then PACT, then the tier's agent
+async def serve_qa(question: str, request: Request) -> dict:
+    roles = list(getattr(request.state.user, "roles", None) or [])
+    role = next((r for r in roles if r in agents_by_role), "")
+    return await handle_qa(question, role=role, agents_by_role=agents_by_role, engine=engine)
+    # handle_qa refuses an unknown role, returns {"blocked": True, ...} on a
+    # blocked verdict, and otherwise runs the tier's supervisor on local Ollama
+
+# 3. Deploy: JWT + rate limit plugin, CORS allow-list, one registration -> 3 channels
+jwt_config = JWTConfig(secret=os.environ.get("MLFP_JWT_SECRET") or secrets.token_urlsafe(48),
+                       algorithm="HS256")
+app = Nexus(api_port=8000, cors_origins=["https://intranet.example.sg"], enable_durability=False)
+app.add_plugin(NexusAuthPlugin(jwt=jwt_config,
+                               rate_limit=RateLimitConfig(requests_per_minute=10, burst_size=5)))
+app.handler_extract("capstone_serve_qa", serve_qa, description="Governed capstone QA")
+# app.start()
+
+# 4. Governance check per tier, before any model call
+qa_address = next(t.address for t in tiers if t.role == "qa")
+print(engine.verify_action(qa_address, "update_model").level)      # blocked
+print(engine.verify_action(qa_address, "generate_answer").level)   # auto_approved
+```
+
+Add the drift monitor from the previous section to the handler (record each question's length, check a batch every N requests) and you have the full loop: authenticate → authorise → answer → monitor.
 
 ## Try It Yourself
 
-**Drill 1.** Deploy the HDB predictor via Nexus. Test it via all three channels: API (curl/httpx), CLI, and MCP.
+**Drill 1.** Deploy the governed QA handler via Nexus and call the API channel in-process with valid, missing and forged tokens.
 
-**Drill 2.** Add RBAC authentication. Verify that unauthenticated requests are rejected with 401 and unauthorised requests with 403.
+**Solution:** reuse the worked example's `app` and the in-process client from the authentication section. Issue tokens with `JWTValidator(jwt_config).create_access_token(user, roles=[...])`; a forged token is one signed with a *different* secret. Expect 200 for valid tokens and 401 for missing or forged ones. The CLI (`nexus execute capstone_serve_qa`) and MCP (`workflow_capstone_serve_qa`) channels come from the same registration; `ex_8/03` registers them but only exercises the API channel in-process.
 
-**Drill 3.** Integrate DriftMonitor. Send data that triggers a drift warning (e.g., data from a different time period). Verify the warning is logged.
+**Drill 2.** Verify that unauthenticated requests are rejected with 401, and that an authenticated caller asking for an action outside its tier is refused by governance.
 
-**Drill 4.** Add governance enforcement at the Nexus level. Verify that an analyst can predict but cannot deploy, and an admin can do both.
+**Solution:** the 401 is the JWT layer (Drill 1). The refusal is not an HTTP error: `handle_qa` returns `{"blocked": True, "verdict": ..., "role": ...}` with status 200. Test both, and also send a qa token with `{"role": "audit"}` in the body — the answer must still come from the qa tier, because the role is read from the signed token.
 
-**Drill 5.** Generate a complete audit trail for a request that flows through: authentication -> governance check -> prediction -> drift monitoring -> response. Every step should be logged.
+**Drill 3.** Integrate DriftMonitor. Send a batch that should trigger drift (for example, much longer questions) and verify the report says so.
+
+**Solution:** the DriftMonitor block above is the pattern. Use real question lengths from the QA data as the reference (`question.str.len_chars()` on the questions you served), then a batch of long, multi-part questions. Assert `report.overall_drift_detected` on the shifted batch and `not report.overall_drift_detected` on a held-out sample of the reference distribution — a drift test that cannot fail proves nothing.
+
+**Drill 4.** Add governance enforcement at the Nexus level. Verify that the qa tier can answer but cannot update the model, and the admin tier can do both.
+
+**Solution:**
+
+```python
+admin_address = next(t.address for t in tiers if t.role == "admin")
+for address, action, expected in [(qa_address, "generate_answer", True),
+                                  (qa_address, "update_model", False),
+                                  (admin_address, "generate_answer", True),
+                                  (admin_address, "update_model", True)]:
+    v = engine.verify_action(address, action)
+    assert v.allowed == expected, (address, action, v.level, v.reason)
+```
+
+Then call `handle_qa(question, role="qa", agents_by_role=agents_by_role, engine=engine, action="update_model")` and check it returns `blocked: True` without running the model.
+
+**Drill 5.** Generate a complete audit trail for one request that flows through authentication → governance check → answer → drift monitoring → response. Every step should be logged.
+
+**Solution:** log one structured record per layer, keyed by a request id: the JWT result (user and roles from `request.state.user`, or the 401), the `verify_action` verdict (address, action, level, reason), the supervisor's audit records for the run (`agents_by_role[role].audit.to_list()`, with `verify_chain()`), the drift report for the batch the question joined, and the response status. `ex_8/05_compliance_audit.py` assembles exactly this kind of report.
 
 ## Cross-References
 
@@ -2570,10 +2661,10 @@ app.register("health", health_wf.build())
 You should now be able to:
 
 - Deploy a complete AI system with Nexus (API + CLI + MCP).
-- Implement authentication and authorisation.
+- Authenticate callers with JWT in Nexus and authorise every request with PACT inside the handler.
 - Integrate drift monitoring in production.
 - Enforce governance at the deployment level.
-- Debug agent reasoning chains.
+- Debug agent reasoning chains from captured traces, and test agentic systems from tools up to end-to-end.
 
 This is the end of the MLFP programme. You started in Module 1 not knowing what a variable was. You are ending Module 6 having deployed a governed, multi-channel AI system that trains models, aligns them with human preferences, grounds them in retrieved knowledge, coordinates multiple specialist agents, enforces access controls, monitors for drift, and serves predictions via API, CLI, and MCP simultaneously.
 
@@ -2593,7 +2684,7 @@ Module 6 covered the complete journey from a trained model to a governed product
 | 6.2    | Fine-Tuning      | LoRA, adapters, PEFT landscape        |
 | 6.3    | Alignment        | DPO, GRPO, Bradley-Terry              |
 | 6.4    | RAG              | Retrieval-augmented generation        |
-| 6.5    | Agents           | ReAct, tool use, cost budgets         |
+| 6.5    | Agents           | ReAct, tool use, turn and cost bounds |
 | 6.6    | Multi-Agent      | Orchestration, MCP, memory            |
 | 6.7    | Governance       | PACT D/T/R, operating envelopes       |
 | 6.8    | Capstone         | Nexus deployment, full integration    |
@@ -2629,7 +2720,9 @@ The programme is complete. The learning continues.
 
 **Bradley-Terry model.** A probabilistic model for pairwise preferences: $P(y_w \succ y_l) = \sigma(r(y_w) - r(y_l))$.
 
-**Budget cascading.** Allocating cost budgets from parent agents to child agents, ensuring each operates within its allocation.
+**Budget cascading.** Allocating cost budgets from parent agents to child agents: each child's envelope cap is at most its parent's, and a ledger tracks what each child has spent.
+
+**Clearance level.** PACT's confidentiality ladder, lowest to highest: public < restricted < confidential < secret < top_secret.
 
 **Chain-of-thought (CoT).** A prompting technique that instructs the model to reason step by step before answering.
 
@@ -2639,15 +2732,13 @@ The programme is complete. The learning continues.
 
 **D/T/R addressing.** PACT's three-part access control structure: Department, Team, Role.
 
-**Delegate.** Kaizen's API for structured LLM interaction with cost tracking.
+**Delegate.** Kaizen's streaming LLM interface (text, tool calls, token usage). M6 builds every Delegate with `make_delegate()`, which points it at local Ollama.
 
 **Dense retrieval.** Finding similar documents using vector embeddings and cosine similarity.
 
 **DPO (Direct Preference Optimization).** An alignment method that bypasses the reward model by deriving a loss function directly from preference data.
 
-**Enforcement mode.** How PACT handles governance violations: warn (log but allow), block (deny), or audit (log for review).
-
-**Fail-closed.** A governance policy where access is denied by default if the governance check fails or is unavailable.
+**Fail-open default.** In the installed PACT (0.14.1), a role with no attached envelope, or an address not in the organisation, is auto-approved. Deny paths exist only where an envelope is attached; the opposite policy — deny unless explicitly permitted — is called fail-closed.
 
 **Few-shot prompting.** Providing examples in the prompt to guide the model's output format and quality.
 
@@ -2655,7 +2746,7 @@ The programme is complete. The learning continues.
 
 **GovernanceEngine.** PACT's core component that compiles organisational structures and evaluates access requests.
 
-**GRPO (Group Relative Policy Optimization).** An alignment method that scores multiple completions relative to the group mean, used in DeepSeek-R1.
+**GRPO (Group Relative Policy Optimization).** A policy-gradient alignment method that scores several completions per prompt, normalises each reward by its group's mean and standard deviation, and optimises a clipped objective with a KL penalty. Introduced in DeepSeekMath (2024), later used for DeepSeek-R1.
 
 **HyDE (Hypothetical Document Embeddings).** A RAG technique that generates a hypothetical answer and uses its embedding for retrieval.
 
@@ -2671,13 +2762,13 @@ The programme is complete. The learning continues.
 
 **Model merging.** Combining multiple fine-tuned model weights (TIES, DARE, SLERP, task arithmetic).
 
-**Monotonic tightening.** The principle that operating envelopes can only become stricter, never looser.
+**Monotonic tightening.** The principle that operating envelopes can only become stricter, never looser, down the delegation tree; checked by `RoleEnvelope.validate_tightening`.
 
 **Nexus.** Kailash's multi-channel deployment platform (API + CLI + MCP simultaneously).
 
 **Operating envelope.** Defined boundaries for what an agent can do, enforced by PACT.
 
-**PACT.** Policy, Access, Controls, Trust. Kailash's governance framework for AI systems.
+**PACT.** The Terrene Foundation's governance framework for AI agent organisations (`kailash-pact`): D/T/R addressing, operating envelopes, clearances, `verify_action` verdicts and audit chains.
 
 **GovernedSupervisor.** A two-layer agent from `kaizen_agents` that plans the task while a caller-supplied `execute_node` callback runs the LLM. The envelope (budget, action surface, clearance) is attached at construction and enforced on every step. This is the modern pact-governed agent entry point.
 
@@ -2713,6 +2804,10 @@ The programme is complete. The learning continues.
 
 **Tool use.** An agent's ability to invoke external functions (APIs, databases, code execution) based on reasoning.
 
+**ToolRegistry.** Kaizen's registry of tools a Delegate may call: name, description, JSON-schema parameters and an async executor. A plain list of functions registers nothing.
+
+**Verdict level.** The outcome of PACT's `verify_action`: `auto_approved`, `flagged`, `held` or `blocked`; `.allowed` is true for the first two.
+
 **Zero-shot prompting.** Providing only a task description with no examples.
 
 ---
@@ -2723,7 +2818,9 @@ The programme is complete. The learning continues.
 
 - Brown, T., et al. "Language Models are Few-Shot Learners." _NeurIPS_, 2020. The GPT-3 paper introducing few-shot prompting.
 - Wei, J., et al. "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models." _NeurIPS_, 2022.
-- Wang, X., et al. "Self-Consistency Improves Chain of Thought Reasoning." _ICLR_, 2023.
+- Wang, X., et al. "Self-Consistency Improves Chain of Thought Reasoning in Language Models." _ICLR_, 2023.
+- Kojima, T., et al. "Large Language Models are Zero-Shot Reasoners." _NeurIPS_, 2022. The "Let's think step by step" paper.
+- Hoffmann, J., et al. "Training Compute-Optimal Large Language Models." _NeurIPS_, 2022. The Chinchilla scaling law.
 
 **On fine-tuning**
 
@@ -2742,6 +2839,8 @@ The programme is complete. The learning continues.
 
 - Lewis, P., et al. "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks." _NeurIPS_, 2020. The original RAG paper.
 - Gao, L., et al. "Precise Zero-Shot Dense Retrieval without Relevance Labels." _ACL_, 2023. The HyDE paper.
+- Cormack, G., Clarke, C., and Büttcher, S. "Reciprocal Rank Fusion Outperforms Condorcet and Individual Rank Learning Methods." _SIGIR_, 2009.
+- Es, S., et al. "RAGAS: Automated Evaluation of Retrieval Augmented Generation." _EACL (demonstrations)_, 2024.
 
 **On AI agents**
 
@@ -2750,8 +2849,8 @@ The programme is complete. The learning continues.
 
 **On AI governance**
 
-- The Terrene Foundation. _PACT: Policy, Access, Controls, Trust — A Governance Framework for AI Agent Organizations._ 2024.
-- Mitchell, M., et al. "Model Cards for Model Reporting." \*FAT\*\*, 2019.
+- Terrene Foundation. `kailash-pact` package documentation (the PACT governance framework used in Lesson 6.7).
+- Mitchell, M., et al. "Model Cards for Model Reporting." _FAT\*_, 2019.
 
 **On production ML systems**
 

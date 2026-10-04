@@ -1,6 +1,6 @@
 # Module 5 — Deep Learning: Architectures for Vision, Sequence, and Generation
 
-> *"Every architecture is a hypothesis about the structure of the world."*
+> _"Every architecture is a hypothesis about the structure of the world."_
 
 This chapter is where the training toolkit from Lesson 4.8 meets specialised neural architectures. In Module 4 you built a feedforward network from scratch and understood that hidden layers are automated feature engineering with error feedback. Now you will see how different architectures impose different structural biases on that feature learning — biases that make learning dramatically more efficient for specific data types.
 
@@ -55,24 +55,24 @@ Same structure as all previous modules: Why This Matters, Core Concepts, Mathema
 
 The three-layer depth markers continue:
 
-| Marker | Audience | How to Read It |
-|---|---|---|
-| **FOUNDATIONS:** | Practitioner with M4 | Architecture intuition, PyTorch code, practical advice. |
-| **THEORY:** | Intermediate | Full derivations, loss function analysis, convergence arguments. |
-| **ADVANCED:** | Masters / researcher | Paper references, frontier results, open problems. |
+| Marker           | Audience             | How to Read It                                                   |
+| ---------------- | -------------------- | ---------------------------------------------------------------- |
+| **FOUNDATIONS:** | Practitioner with M4 | Architecture intuition, PyTorch code, practical advice.          |
+| **THEORY:**      | Intermediate         | Full derivations, loss function analysis, convergence arguments. |
+| **ADVANCED:**    | Masters / researcher | Paper references, frontier results, open problems.               |
 
 **Estimated reading time per lesson:**
 
-| Lesson | Title | Reading | Exercise | Total |
-|---|---|---|---|---|
-| 5.1 | Autoencoders | 110 min | 70 min | ~3h |
-| 5.2 | CNNs and Computer Vision | 120 min | 75 min | ~3h 15m |
-| 5.3 | RNNs and Sequence Models | 120 min | 70 min | ~3h 10m |
-| 5.4 | Transformers | 130 min | 80 min | ~3h 30m |
-| 5.5 | Generative Models — GANs and Diffusion | 120 min | 70 min | ~3h 10m |
-| 5.6 | Graph Neural Networks | 100 min | 60 min | ~2h 40m |
-| 5.7 | Transfer Learning | 100 min | 65 min | ~2h 45m |
-| 5.8 | Reinforcement Learning | 130 min | 80 min | ~3h 30m |
+| Lesson | Title                                  | Reading | Exercise | Total   |
+| ------ | -------------------------------------- | ------- | -------- | ------- |
+| 5.1    | Autoencoders                           | 110 min | 70 min   | ~3h     |
+| 5.2    | CNNs and Computer Vision               | 120 min | 75 min   | ~3h 15m |
+| 5.3    | RNNs and Sequence Models               | 120 min | 70 min   | ~3h 10m |
+| 5.4    | Transformers                           | 130 min | 80 min   | ~3h 30m |
+| 5.5    | Generative Models — GANs and Diffusion | 120 min | 70 min   | ~3h 10m |
+| 5.6    | Graph Neural Networks                  | 100 min | 60 min   | ~2h 40m |
+| 5.7    | Transfer Learning                      | 100 min | 65 min   | ~2h 45m |
+| 5.8    | Reinforcement Learning                 | 130 min | 80 min   | ~3h 30m |
 
 Total: roughly 25 hours. Lesson 5.4 (Transformers) and 5.8 (Reinforcement Learning) are the densest.
 
@@ -210,9 +210,40 @@ def vae_loss(x, x_hat, mu, logvar):
 
 ### ADVANCED: Additional autoencoder variants
 
+Exercise 1 builds ten variants on Fashion-MNIST. The four above are the core; the rest are worth knowing by name and by the one idea each adds:
+
 - **Sparse autoencoder:** adds an L1 penalty on hidden activations, encouraging most neurons to be inactive. Learns sparse, interpretable features.
-- **Contractive autoencoder:** adds a penalty on the Frobenius norm of the Jacobian of the encoder, making the representation robust to small input perturbations.
-- **$\beta$-VAE:** scales the KL term by $\beta > 1$ to encourage disentangled latent factors — each latent dimension captures a single factor of variation.
+- **Contractive autoencoder** (Rifai et al., 2011): adds the per-sample penalty $\lambda \, \|\partial \mathbf{z} / \partial \mathbf{x}\|_F^2$ — the squared Frobenius norm of the encoder's Jacobian _at that input_. It makes the code insensitive to small input perturbations. Because the Jacobian depends on which ReLUs are active for this particular image, it is **not** the same as L2 weight decay on the encoder weights (a squared-weight sum does not depend on the input at all).
+- **Stacked autoencoder:** several encoder/decoder layers, historically trained one layer at a time; today simply a deep autoencoder trained end to end.
+- **Recurrent autoencoder:** an LSTM/GRU encoder summarises a sequence into a vector and an RNN decoder reconstructs it — the same bottleneck idea for sequences (Lesson 5.3).
+- **Contractive VAE:** a VAE with the contractive Jacobian penalty added to the ELBO. Do not abbreviate it "CVAE" — that acronym conventionally means _Conditional_ VAE (a VAE whose encoder and decoder also receive a class label).
+- **$\beta$-VAE:** scales the KL term by $\beta > 1$ to encourage disentangled latent factors — each latent dimension tends to capture a single factor of variation.
+
+The contractive penalty is cheap to compute exactly with `torch.func`: `jacrev` differentiates the encoder for one sample, and `vmap` does it for every sample in the batch (this is how Exercise 1's contractive variant computes it):
+
+```python
+import torch
+from torch.func import jacrev, vmap
+
+def contractive_penalty(encoder, xb):
+    """Mean over the batch of ||dz/dx||_F^2, the encoder Jacobian at each input."""
+    jac = vmap(jacrev(encoder))(xb)          # (batch, latent_dim, input_dim)
+    return jac.pow(2).sum(dim=(1, 2)).mean()
+
+ae = VanillaAutoencoder(input_dim=784, latent_dim=16)
+xb = torch.rand(8, 784)
+loss = nn.functional.mse_loss(ae(xb), xb) + 1e-3 * contractive_penalty(ae.encoder, xb)
+loss.backward()   # the penalty is differentiable, so it trains the encoder
+```
+
+| Variant                 | Use it when                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| Vanilla / undercomplete | You want a compact non-linear code (non-linear PCA).                          |
+| Denoising               | Inputs are noisy, or you want features robust to corruption.                  |
+| Sparse                  | You want a few interpretable, active features per input.                      |
+| Contractive             | Similar inputs must map to similar codes (smooth latent space).               |
+| Convolutional           | The data is an image — keep spatial structure.                                |
+| VAE / $\beta$-VAE       | You need to _generate_ new samples or want a smooth, sampleable latent space. |
 
 ## Mathematical Foundations
 
@@ -224,122 +255,274 @@ $$\text{KL}(q \| p) = -\frac{1}{2} \sum_{j=1}^{d} \left(1 + \log \sigma_j^2 - \m
 
 This has a closed-form solution, so no sampling is needed for the KL term — only the reconstruction term requires sampling (via reparameterisation).
 
-## The Kailash Engine: ModelVisualizer (latent space plots)
+## The Kailash Engine: ModelVisualizer (training curves and latent plots)
 
-```python
-from kailash_ml import ModelVisualizer
+`ModelVisualizer` is kailash-ml's plotting engine. Module 5 uses two of its methods, both of which return an interactive Plotly figure:
 
-viz = ModelVisualizer()
-fig = viz.scatter(latent_df, x="z1", y="z2", color="digit_label",
-                  title="VAE Latent Space — MNIST")
-```
+- `viz.training_history(metrics, x_label="Epoch", y_label="Value")` — `metrics` is a dict of metric name → list of per-epoch values. Use it for every loss curve in this module.
+- `viz.scatter(data, x, y, color=None, title=None)` — `data` is a polars DataFrame. Use it for latent spaces and embeddings.
 
-## Worked Example: Four Autoencoders on Fashion-MNIST
+It has no heatmap, image-grid or "latent scatter" method; for images use matplotlib's `imshow`. The worked example below ends with both calls.
+
+## Worked Example: A VAE on Fashion-MNIST (the Exercise 1 data)
+
+Exercise 1 trains its autoencoders on Fashion-MNIST with a 16-dimensional latent space for 10 epochs; this example uses the same data folder and settings. `get_device()` picks Apple MPS, CUDA or CPU automatically — there is no `torch.cuda.is_available()` branch anywhere in this module.
 
 ```python
 import torch
 import torch.nn as nn
+import polars as pl
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
+from kailash_ml import ModelVisualizer
+from shared.kailash_helpers import get_device
 
-transform = transforms.Compose([transforms.ToTensor()])
-train_data = datasets.FashionMNIST(root="./data", train=True, download=True, transform=transform)
+device = get_device()
+DATA_DIR = "data/mlfp05/fashion_mnist"           # the folder Exercise 1 downloads into
+to_tensor = transforms.ToTensor()                 # pixels in [0, 1]: matches Sigmoid + BCE
+train_data = datasets.FashionMNIST(DATA_DIR, train=True, download=True, transform=to_tensor)
+test_data = datasets.FashionMNIST(DATA_DIR, train=False, download=True, transform=to_tensor)
 train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
+test_loader = DataLoader(test_data, batch_size=512)
+CLASSES = ["T-shirt", "Trouser", "Pullover", "Dress", "Coat",
+           "Sandal", "Shirt", "Sneaker", "Bag", "Boot"]
 
-# Train VAE
-vae = VAE(input_dim=784, latent_dim=16)
+LATENT_DIM, EPOCHS = 16, 10
+vae = VAE(input_dim=784, latent_dim=LATENT_DIM).to(device)
 optimizer = torch.optim.Adam(vae.parameters(), lr=1e-3)
 
-for epoch in range(20):
-    total_loss = 0
+history = []
+for epoch in range(EPOCHS):
+    vae.train()
+    total = 0.0
     for batch, _ in train_loader:
-        batch = batch.view(-1, 784)
+        batch = batch.view(-1, 784).to(device)
         x_hat, mu, logvar = vae(batch)
-        loss = vae_loss(batch, x_hat, mu, logvar)
+        loss = vae_loss(batch, x_hat, mu, logvar)   # summed over the batch
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        total_loss += loss.item()
-    print(f"Epoch {epoch}: loss = {total_loss / len(train_data):.4f}")
+        total += loss.item()
+    history.append(total / len(train_data))         # negative ELBO per image, in nats
+    print(f"epoch {epoch + 1}: -ELBO per image = {history[-1]:.1f}")
 
-# Generate new images by sampling from the latent space
+# Generate NEW images: decode samples from the prior N(0, I)
+vae.eval()
 with torch.no_grad():
-    z_sample = torch.randn(16, 16)
-    generated = vae.decoder(z_sample).view(-1, 1, 28, 28)
+    z = torch.randn(16, LATENT_DIM, device=device)
+    generated = vae.decoder(z).view(-1, 1, 28, 28).cpu()
+print(generated.shape)                              # torch.Size([16, 1, 28, 28])
+
+# Latent space of 512 test images (first two of the 16 dimensions)
+with torch.no_grad():
+    xb, yb = next(iter(test_loader))
+    mu, _ = vae.encode(xb.view(-1, 784).to(device))
+latent_df = pl.DataFrame({
+    "z1": mu[:, 0].cpu().numpy(),
+    "z2": mu[:, 1].cpu().numpy(),
+    "label": [CLASSES[i] for i in yb.tolist()],
+})
+viz = ModelVisualizer()
+fig_loss = viz.training_history({"-ELBO per image": history}, x_label="Epoch", y_label="nats")
+fig_latent = viz.scatter(latent_df, x="z1", y="z2", color="label",
+                         title="VAE latent space (Fashion-MNIST test images)")
 ```
 
+What to look for: the per-image negative ELBO falls steeply in the first epoch and then flattens; the decoded prior samples look like blurry but recognisable garments (VAE samples are blurrier than GAN samples — Lesson 5.5); and in the latent scatter, visually distinct classes such as trousers and footwear occupy their own regions while shirts, pullovers and coats overlap. Two of sixteen dimensions show only part of the structure — Drill 3 trains a 2-D latent space so you can see all of it.
+
 ## Try It Yourself
+
+The drills reuse `device`, `train_loader`, `test_loader`, `EPOCHS`, `VAE`, `vae_loss` and `ModelVisualizer` from the worked example.
 
 **Drill 1.** Implement a vanilla autoencoder with latent dimension 32 and train it on Fashion-MNIST. Compute reconstruction error on the test set. Visualise 10 original images alongside their reconstructions.
 
 **Solution:**
+
 ```python
-ae = VanillaAutoencoder(784, 32)
-optimizer = torch.optim.Adam(ae.parameters(), lr=1e-3)
-for epoch in range(20):
-    for batch, _ in train_loader:
-        batch = batch.view(-1, 784)
-        x_hat = ae(batch)
-        loss = nn.functional.mse_loss(x_hat, batch)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+import matplotlib.pyplot as plt
+
+def add_noise(x, sigma):
+    return torch.clamp(x + sigma * torch.randn_like(x), 0, 1) if sigma else x
+
+def train_ae(model, epochs=EPOCHS, noise=0.0):
+    """Train a flat autoencoder with MSE; with noise > 0 it becomes a denoising AE."""
+    model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    for _ in range(epochs):
+        model.train()
+        for batch, _ in train_loader:
+            clean = batch.view(-1, 784).to(device)
+            loss = nn.functional.mse_loss(model(add_noise(clean, noise)), clean)
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+    return model
+
+def test_mse(model, noise=0.0):
+    """Mean squared error per pixel against the CLEAN test images."""
+    model.eval()
+    total, n = 0.0, 0
+    with torch.no_grad():
+        for batch, _ in test_loader:
+            clean = batch.view(-1, 784).to(device)
+            total += nn.functional.mse_loss(model(add_noise(clean, noise)), clean,
+                                            reduction="sum").item()
+            n += clean.numel()
+    return total / n
+
+ae = train_ae(VanillaAutoencoder(784, 32))
+print(f"test MSE per pixel: {test_mse(ae):.4f}")
+
+xb, _ = next(iter(test_loader))
+with torch.no_grad():
+    recon = ae(xb[:10].view(-1, 784).to(device)).view(-1, 28, 28).cpu()
+fig, axes = plt.subplots(2, 10, figsize=(12, 2.6))
+for i in range(10):
+    axes[0, i].imshow(xb[i, 0], cmap="gray")
+    axes[1, i].imshow(recon[i], cmap="gray")
+    axes[0, i].axis("off")
+    axes[1, i].axis("off")
+axes[0, 0].set_title("original", loc="left")
+axes[1, 0].set_title("reconstruction", loc="left")
+plt.show()
 ```
+
+Reconstructions keep each garment's silhouette and overall brightness but lose fine texture (prints, stitching): an MSE-trained 32-number code averages away detail it cannot store.
 
 **Drill 2.** Implement a denoising autoencoder. Add Gaussian noise ($\sigma = 0.3$) to the input during training. Compare reconstruction quality with the vanilla autoencoder. Does the DAE produce sharper reconstructions?
 
 **Solution:**
-```python
-def add_noise(x, sigma=0.3):
-    return torch.clamp(x + sigma * torch.randn_like(x), 0, 1)
 
-# During training:
-noisy_batch = add_noise(batch)
-x_hat = ae(noisy_batch)
-loss = nn.functional.mse_loss(x_hat, batch)  # compare with clean input
+```python
+dae = train_ae(VanillaAutoencoder(784, 32), noise=0.3)   # noisy input, clean target
+for name, model in [("vanilla", ae), ("denoising", dae)]:
+    print(f"{name:>9}: clean input {test_mse(model):.4f} | "
+          f"noisy input (sigma=0.3) {test_mse(model, noise=0.3):.4f}")
 ```
+
+On noisy inputs the DAE's error is lower than the vanilla AE's — the vanilla model faithfully reconstructs much of the noise it was never taught to remove. On clean inputs the vanilla AE is clearly better, because it trained on exactly that input distribution. So the honest answer to "sharper?" is no: both are trained with MSE and both blur. The DAE's gain is robustness — its code ignores perturbations that do not change the garment.
 
 **Drill 3.** Train a VAE with latent dimension 2. Visualise the 2D latent space, colouring each point by its Fashion-MNIST label. Do the classes separate? Generate images by traversing the latent space in a grid from $(-3, -3)$ to $(3, 3)$.
 
 **Solution:**
+
 ```python
-vae_2d = VAE(784, 2)
-# Train as before, then:
+vae_2d = VAE(784, 2).to(device)
+opt = torch.optim.Adam(vae_2d.parameters(), lr=1e-3)
+for _ in range(EPOCHS):
+    vae_2d.train()
+    for batch, _ in train_loader:
+        batch = batch.view(-1, 784).to(device)
+        loss = vae_loss(batch, *vae_2d(batch))      # vae_2d returns (x_hat, mu, logvar)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+
+vae_2d.eval()
+mus, labels = [], []
 with torch.no_grad():
-    for batch, labels in test_loader:
-        mu, _ = vae_2d.encode(batch.view(-1, 784))
-        # Plot mu[:, 0] vs mu[:, 1], coloured by labels
+    for batch, y in test_loader:
+        mu, _ = vae_2d.encode(batch.view(-1, 784).to(device))
+        mus.append(mu.cpu())
+        labels.extend(CLASSES[i] for i in y.tolist())
+mus = torch.cat(mus)
+df_2d = pl.DataFrame({"z1": mus[:, 0].numpy(), "z2": mus[:, 1].numpy(), "label": labels})
+fig = ModelVisualizer().scatter(df_2d, x="z1", y="z2", color="label",
+                                title="2-D VAE latent space (10,000 test images)")
+
+# Latent traversal: decode a 15 x 15 grid of z values from (-3, -3) to (3, 3)
+grid = torch.linspace(-3, 3, 15)
+z = torch.cartesian_prod(grid, grid).to(device)               # (225, 2)
+with torch.no_grad():
+    tiles = vae_2d.decoder(z).view(15, 15, 28, 28).cpu()
+canvas = tiles.permute(0, 2, 1, 3).reshape(15 * 28, 15 * 28)  # rows: z1, columns: z2
+plt.figure(figsize=(7, 7))
+plt.imshow(canvas, cmap="gray")
+plt.axis("off")
+plt.show()
 ```
 
-**Drill 4.** Implement a convolutional autoencoder using `nn.Conv2d` and `nn.ConvTranspose2d`. Compare its reconstruction quality with the fully connected VAE on Fashion-MNIST images.
+The classes separate only partly. Trousers and the three footwear classes (sandal, sneaker, boot) form fairly distinct regions; pullovers, coats and especially shirts overlap heavily, because two numbers cannot hold everything that distinguishes them. The traversal shows smooth morphing between neighbouring garment types — the KL term is what makes every point in the grid decode to something plausible.
+
+**Drill 4.** Implement a convolutional autoencoder using `nn.Conv2d` and `nn.ConvTranspose2d`, with the same 16-number bottleneck as the worked example. Compare its reconstruction error with a fully connected autoencoder of the same latent size.
 
 **Solution:**
+
 ```python
 class ConvAutoencoder(nn.Module):
-    def __init__(self):
+    def __init__(self, latent_dim=16):
         super().__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 16, 3, stride=2, padding=1), nn.ReLU(),
-            nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
+            nn.Conv2d(1, 16, 3, stride=2, padding=1), nn.ReLU(),    # 16 x 14 x 14
+            nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),   # 32 x 7 x 7
+            nn.Flatten(), nn.Linear(32 * 7 * 7, latent_dim),         # the bottleneck
         )
         self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 32 * 7 * 7), nn.ReLU(),
+            nn.Unflatten(1, (32, 7, 7)),
             nn.ConvTranspose2d(32, 16, 3, stride=2, padding=1, output_padding=1), nn.ReLU(),
             nn.ConvTranspose2d(16, 1, 3, stride=2, padding=1, output_padding=1), nn.Sigmoid(),
         )
 
     def forward(self, x):
         return self.decoder(self.encoder(x))
+
+conv_ae = ConvAutoencoder().to(device)
+print(conv_ae(torch.rand(2, 1, 28, 28, device=device)).shape)   # torch.Size([2, 1, 28, 28])
+
+opt = torch.optim.Adam(conv_ae.parameters(), lr=1e-3)
+for _ in range(EPOCHS):
+    conv_ae.train()
+    for batch, _ in train_loader:
+        batch = batch.to(device)                     # keep the (B, 1, 28, 28) image shape
+        loss = nn.functional.mse_loss(conv_ae(batch), batch)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+
+conv_ae.eval()
+with torch.no_grad():
+    sq = sum(nn.functional.mse_loss(conv_ae(b.to(device)), b.to(device), reduction="sum").item()
+             for b, _ in test_loader)
+fc_ae = train_ae(VanillaAutoencoder(784, 16))
+n_params = lambda m: sum(p.numel() for p in m.parameters())
+print(f"conv AE: {n_params(conv_ae):,} params, test MSE per pixel {sq / (len(test_data) * 784):.4f}")
+print(f"FC AE:   {n_params(fc_ae):,} params, test MSE per pixel {test_mse(fc_ae):.4f}")
 ```
 
-**Drill 5.** Implement the $\beta$-VAE variant. Train with $\beta = 1, 4, 10$ and observe the effect on the latent space structure. Higher $\beta$ should produce more disentangled representations (smoother latent space, more separated clusters) at the cost of worse reconstruction.
+Keep the bottleneck equal when you compare: without the `Linear` layer the code would be $32 \times 7 \times 7 = 1{,}568$ numbers — more than the 784 input pixels — and the "autoencoder" could simply copy its input. At equal latent size the two reach similar error (in a short run the fully connected model can even be slightly ahead), but the convolutional model does it with 61,329 parameters against the fully connected model's 410,912 — about 7× fewer — because its filters are shared across positions. That parameter efficiency is what lets convolutional models scale to larger images.
+
+**Drill 5.** Implement the $\beta$-VAE variant. Train with $\beta = 1, 4, 10$ and observe the effect on the latent space and the reconstructions.
 
 **Solution:**
+
 ```python
 def beta_vae_loss(x, x_hat, mu, logvar, beta=4.0):
     recon = nn.functional.binary_cross_entropy(x_hat, x, reduction="sum")
     kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
     return recon + beta * kl
+
+for beta in [1.0, 4.0, 10.0]:
+    model = VAE(784, LATENT_DIM).to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    for _ in range(EPOCHS):
+        for batch, _ in train_loader:
+            batch = batch.view(-1, 784).to(device)
+            loss = beta_vae_loss(batch, *model(batch), beta=beta)
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+    model.eval()
+    with torch.no_grad():
+        xb = next(iter(test_loader))[0].view(-1, 784).to(device)
+        x_hat, mu, logvar = model(xb)
+        recon = nn.functional.binary_cross_entropy(x_hat, xb, reduction="sum").item() / len(xb)
+        kl_per_dim = (-0.5 * (1 + logvar - mu.pow(2) - logvar.exp())).mean(dim=0)
+    active = int((kl_per_dim > 0.05).sum())
+    print(f"beta={beta:>4}: recon {recon:.1f} nats/image, active latent dims {active}/{LATENT_DIM}")
 ```
+
+As $\beta$ grows, reconstruction error rises (blurrier images) and the number of *active* latent dimensions falls: dimensions whose KL is near zero have collapsed onto the prior and carry no information about the input. The dimensions that survive tend to encode broad factors (garment type, overall size and brightness) more independently — that is the disentanglement $\beta$-VAE trades reconstruction for. Higher $\beta$ does not make the class clusters "more separated"; it makes the code more compressed.
 
 ## Cross-References
 
@@ -510,6 +693,7 @@ for epoch in range(30):
 **Drill 1.** Compute the output size at each layer of the FashionCNN using the formula. Verify by printing tensor shapes during a forward pass.
 
 **Solution:**
+
 ```python
 x = torch.randn(1, 1, 28, 28)
 for layer in model.features:
@@ -520,6 +704,7 @@ for layer in model.features:
 **Drill 2.** Add an SE block after the second convolutional layer. Compare training curves with and without SE blocks. Does the SE block improve final accuracy?
 
 **Solution:**
+
 ```python
 class SEBlock(nn.Module):
     def __init__(self, channels, reduction=16):
@@ -538,6 +723,7 @@ class SEBlock(nn.Module):
 **Drill 3.** Implement Mixup augmentation. Train with and without Mixup for 30 epochs. Compare test accuracy and calibration (plot reliability diagrams).
 
 **Solution:**
+
 ```python
 def mixup(x, y, alpha=0.2):
     lam = torch.distributions.Beta(alpha, alpha).sample()
@@ -550,6 +736,7 @@ def mixup(x, y, alpha=0.2):
 **Drill 4.** Export the trained model to ONNX and load it back. Verify that predictions match between the PyTorch model and the ONNX model on 100 test samples.
 
 **Solution:**
+
 ```python
 torch.onnx.export(model, torch.randn(1, 1, 28, 28), "fashion_cnn.onnx")
 import onnxruntime as ort
@@ -560,6 +747,7 @@ session = ort.InferenceSession("fashion_cnn.onnx")
 **Drill 5.** Visualise the learned filters of the first convolutional layer. What patterns do they detect (edges, textures, gradients)? Compare filters from a trained model versus a randomly initialised model.
 
 **Solution:**
+
 ```python
 filters = model.features[0].weight.data
 # Plot each filter as a 3x3 grayscale image
@@ -685,6 +873,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 **Drill 1.** Implement a character-level LSTM for text generation. Train on a corpus of Singapore Straits Times headlines. Generate 10 new headlines by sampling from the model's output distribution.
 
 **Solution:**
+
 ```python
 # Build character vocabulary, convert text to sequences of indices
 # Train LSTM to predict next character given previous characters
@@ -694,6 +883,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 **Drill 2.** Compare LSTM and GRU on the stock price prediction task. Which has more parameters? Which converges faster? Which achieves lower test MSE?
 
 **Solution:**
+
 ```python
 lstm_params = sum(p.numel() for p in lstm_model.parameters())
 gru_params = sum(p.numel() for p in gru_model.parameters())
@@ -703,6 +893,7 @@ print(f"LSTM: {lstm_params:,}, GRU: {gru_params:,}")
 **Drill 3.** Add gradient clipping with max_norm = 1.0. Monitor the gradient norm during training. How often does clipping activate? Does it improve final performance?
 
 **Solution:**
+
 ```python
 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 ```
@@ -710,6 +901,7 @@ torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 **Drill 4.** Visualise attention weights for a specific prediction. Which time steps does the model attend to most? Do the attention patterns make sense for stock price prediction (e.g., attending to recent days more than distant ones)?
 
 **Solution:**
+
 ```python
 with torch.no_grad():
     lstm_out, _ = model.lstm(sample_input)
@@ -720,6 +912,7 @@ with torch.no_grad():
 **Drill 5.** Implement a multi-layer LSTM with residual connections between layers. Compare with a standard multi-layer LSTM. Does the residual connection improve training on longer sequences (length 100+)?
 
 **Solution:**
+
 ```python
 class ResidualLSTM(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_layers):
@@ -846,11 +1039,11 @@ where $\mu$ and $\sigma^2$ are computed over the feature dimension, not the batc
 
 ### FOUNDATIONS: Transformer variants
 
-| Model | Architecture | Pre-training | Strength |
-|---|---|---|---|
-| **BERT** | Encoder only | Masked language modelling | NLU tasks (classification, NER, QA) |
-| **GPT** | Decoder only | Next token prediction | Generation, few-shot learning |
-| **T5** | Encoder-decoder | Text-to-text | Unified framework for all NLP tasks |
+| Model    | Architecture    | Pre-training              | Strength                            |
+| -------- | --------------- | ------------------------- | ----------------------------------- |
+| **BERT** | Encoder only    | Masked language modelling | NLU tasks (classification, NER, QA) |
+| **GPT**  | Decoder only    | Next token prediction     | Generation, few-shot learning       |
+| **T5**   | Encoder-decoder | Text-to-text              | Unified framework for all NLP tasks |
 
 ## The Kailash Engine: ModelVisualizer (attention visualisation)
 
@@ -906,6 +1099,7 @@ optimizer = optim.AdamW(model.classifier.parameters(), lr=2e-5)
 **Drill 1.** Implement scaled dot-product attention from scratch (no PyTorch modules, just matrix operations). Verify the output shape is correct for batch size 4, sequence length 20, and dimension 128.
 
 **Solution:**
+
 ```python
 B, L, D = 4, 20, 128
 x = torch.randn(B, L, D)
@@ -919,6 +1113,7 @@ assert out.shape == (B, L, D)
 **Drill 2.** Demonstrate the $\sqrt{d_k}$ effect empirically. Compute attention weights with and without scaling for $d_k = 512$. Show that without scaling, the attention distribution is peakier (higher max, lower entropy).
 
 **Solution:**
+
 ```python
 Q, K = torch.randn(1, 10, 512), torch.randn(1, 10, 512)
 scores_unscaled = Q @ K.transpose(-2, -1)
@@ -934,6 +1129,7 @@ print(f"Scaled max attn: {attn_scaled.max():.4f}")
 **Drill 3.** Fine-tune BERT for text classification on a small dataset (e.g., 1000 labelled sentences). Compare accuracy when (a) only the classifier head is trained, (b) the last 2 transformer layers are also unfrozen.
 
 **Solution:**
+
 ```python
 # (a) Freeze all BERT layers, train classifier only
 # (b) Unfreeze last 2 layers:
@@ -944,6 +1140,7 @@ for param in model.bert.encoder.layer[-2:].parameters():
 **Drill 4.** Compare the BERT fine-tuned model with the LSTM baseline from Lesson 5.3 on the same text classification task. Report accuracy and training time.
 
 **Solution:**
+
 ```python
 # Run both models on same train/test split, measure accuracy and wall time
 ```
@@ -951,6 +1148,7 @@ for param in model.bert.encoder.layer[-2:].parameters():
 **Drill 5.** Implement sinusoidal positional encoding from scratch. Visualise the encoding matrix as a heatmap. Verify that the dot product between position $p$ and $p+k$ is a function of $k$ only (compute for several values of $p$ and $k$).
 
 **Solution:**
+
 ```python
 def sinusoidal_pe(max_len, d_model):
     pe = torch.zeros(max_len, d_model)
@@ -1082,6 +1280,7 @@ class Discriminator(nn.Module):
 **Drill 1.** Implement the full DCGAN training loop with alternating generator and discriminator updates. Train for 50 epochs and visualise generated images at epochs 1, 10, 25, and 50.
 
 **Solution:**
+
 ```python
 G = Generator(); D = Discriminator()
 opt_G = torch.optim.Adam(G.parameters(), lr=2e-4, betas=(0.5, 0.999))
@@ -1107,6 +1306,7 @@ for epoch in range(50):
 **Drill 2.** Implement WGAN with gradient penalty. Compare training stability with the original DCGAN (plot discriminator and generator losses over epochs).
 
 **Solution:**
+
 ```python
 # WGAN critic loss: D(real).mean() - D(fake).mean() + gp
 # WGAN generator loss: -D(fake).mean()
@@ -1115,6 +1315,7 @@ for epoch in range(50):
 **Drill 3.** Compute FID between generated and real Fashion-MNIST images. How does FID change over training epochs?
 
 **Solution:**
+
 ```python
 from pytorch_fid import fid_score
 # Save real and generated images to directories
@@ -1124,6 +1325,7 @@ from pytorch_fid import fid_score
 **Drill 4.** Implement conditional generation: given a class label, generate an image of that class. Modify the generator to take both $z$ and a one-hot class label as input.
 
 **Solution:**
+
 ```python
 class ConditionalGenerator(nn.Module):
     def __init__(self, latent_dim=100, n_classes=10):
@@ -1254,13 +1456,13 @@ Training a model from scratch on a small dataset often leads to overfitting. Tra
 
 ### FOUNDATIONS: Architecture selection guide
 
-| Data Type | Best Architecture | When to Transfer |
-|---|---|---|
-| Images | CNN / ViT | Always (ImageNet pre-trained) |
-| Text | Transformer | Always (BERT/GPT pre-trained) |
-| Sequences | LSTM / Transformer | Sometimes (domain-specific) |
-| Graphs | GNN | Rarely (task-specific) |
-| Tabular | Gradient boosting | Never (train from scratch) |
+| Data Type | Best Architecture  | When to Transfer              |
+| --------- | ------------------ | ----------------------------- |
+| Images    | CNN / ViT          | Always (ImageNet pre-trained) |
+| Text      | Transformer        | Always (BERT/GPT pre-trained) |
+| Sequences | LSTM / Transformer | Sometimes (domain-specific)   |
+| Graphs    | GNN                | Rarely (task-specific)        |
+| Tabular   | Gradient boosting  | Never (train from scratch)    |
 
 ### FOUNDATIONS: ONNX export and InferenceServer
 
@@ -1364,13 +1566,13 @@ PPO handles continuous action spaces and is the algorithm used in RLHF (Reinforc
 
 ### FOUNDATIONS: Five algorithms, five applications
 
-| Algorithm | Action Space | Application |
-|---|---|---|
-| DQN | Discrete | Customer churn prevention |
-| DDPG | Continuous | Manufacturing control |
-| SAC | Continuous | Dynamic pricing |
-| A2C | Discrete/Continuous | Resource allocation |
-| PPO | Discrete/Continuous | Supply chain optimisation |
+| Algorithm | Action Space        | Application               |
+| --------- | ------------------- | ------------------------- |
+| DQN       | Discrete            | Customer churn prevention |
+| DDPG      | Continuous          | Manufacturing control     |
+| SAC       | Continuous          | Dynamic pricing           |
+| A2C       | Discrete/Continuous | Resource allocation       |
+| PPO       | Discrete/Continuous | Supply chain optimisation |
 
 ```python
 import gymnasium as gym
@@ -1476,16 +1678,16 @@ You should now be able to:
 
 Module 5 covered every major deep learning architecture. You built eight types of neural networks, each exploiting a different structural assumption about the data:
 
-| Architecture | Assumption | Data Type | Lesson |
-|---|---|---|---|
-| Autoencoder | Compression | Any (unsupervised) | 5.1 |
-| CNN | Spatial locality | Images, grids | 5.2 |
-| RNN/LSTM | Temporal dependency | Sequences, time series | 5.3 |
-| Transformer | Any-to-any attention | Sequences, text, images | 5.4 |
-| GAN | Adversarial competition | Generation | 5.5 |
-| GNN | Graph structure | Networks, molecules | 5.6 |
-| Transfer Learning | Reuse | Small datasets | 5.7 |
-| RL | Interaction | Decision-making | 5.8 |
+| Architecture      | Assumption              | Data Type               | Lesson |
+| ----------------- | ----------------------- | ----------------------- | ------ |
+| Autoencoder       | Compression             | Any (unsupervised)      | 5.1    |
+| CNN               | Spatial locality        | Images, grids           | 5.2    |
+| RNN/LSTM          | Temporal dependency     | Sequences, time series  | 5.3    |
+| Transformer       | Any-to-any attention    | Sequences, text, images | 5.4    |
+| GAN               | Adversarial competition | Generation              | 5.5    |
+| GNN               | Graph structure         | Networks, molecules     | 5.6    |
+| Transfer Learning | Reuse                   | Small datasets          | 5.7    |
+| RL                | Interaction             | Decision-making         | 5.8    |
 
 The common thread: every architecture learns features from data via backpropagation, using the DL training toolkit from Lesson 4.8. What changes is the structural bias — convolutions for spatial patterns, recurrence for temporal patterns, attention for relevance patterns, message passing for graph patterns.
 
@@ -1648,47 +1850,47 @@ Module 6 will take you from trained models to production LLM applications: promp
 
 **On autoencoders and VAEs**
 
-- Kingma, D., and Welling, M. "Auto-Encoding Variational Bayes." *ICLR*, 2014. The original VAE paper.
-- Doersch, C. "Tutorial on Variational Autoencoders." *arXiv:1606.05908*, 2016.
+- Kingma, D., and Welling, M. "Auto-Encoding Variational Bayes." _ICLR_, 2014. The original VAE paper.
+- Doersch, C. "Tutorial on Variational Autoencoders." _arXiv:1606.05908_, 2016.
 
 **On CNNs**
 
-- He, K., et al. "Deep Residual Learning for Image Recognition." *CVPR*, 2016. The ResNet paper.
-- Hu, J., Shen, L., and Sun, G. "Squeeze-and-Excitation Networks." *CVPR*, 2018. The SE block paper.
-- Dosovitskiy, A., et al. "An Image is Worth 16x16 Words." *ICLR*, 2021. The Vision Transformer paper.
+- He, K., et al. "Deep Residual Learning for Image Recognition." _CVPR_, 2016. The ResNet paper.
+- Hu, J., Shen, L., and Sun, G. "Squeeze-and-Excitation Networks." _CVPR_, 2018. The SE block paper.
+- Dosovitskiy, A., et al. "An Image is Worth 16x16 Words." _ICLR_, 2021. The Vision Transformer paper.
 
 **On RNNs and LSTMs**
 
-- Hochreiter, S., and Schmidhuber, J. "Long Short-Term Memory." *Neural Computation*, 1997. The original LSTM paper.
-- Cho, K., et al. "Learning Phrase Representations using RNN Encoder-Decoder." *EMNLP*, 2014. The GRU paper.
+- Hochreiter, S., and Schmidhuber, J. "Long Short-Term Memory." _Neural Computation_, 1997. The original LSTM paper.
+- Cho, K., et al. "Learning Phrase Representations using RNN Encoder-Decoder." _EMNLP_, 2014. The GRU paper.
 
 **On transformers**
 
-- Vaswani, A., et al. "Attention Is All You Need." *NeurIPS*, 2017. The original transformer paper.
-- Devlin, J., et al. "BERT: Pre-training of Deep Bidirectional Transformers." *NAACL*, 2019.
+- Vaswani, A., et al. "Attention Is All You Need." _NeurIPS_, 2017. The original transformer paper.
+- Devlin, J., et al. "BERT: Pre-training of Deep Bidirectional Transformers." _NAACL_, 2019.
 - Radford, A., et al. "Language Models are Unsupervised Multitask Learners." OpenAI, 2019. The GPT-2 paper.
 
 **On GANs and generative models**
 
-- Goodfellow, I., et al. "Generative Adversarial Nets." *NeurIPS*, 2014. The original GAN paper.
-- Arjovsky, M., Chintala, S., and Bottou, L. "Wasserstein GAN." *ICML*, 2017.
-- Gulrajani, I., et al. "Improved Training of Wasserstein GANs." *NeurIPS*, 2017. WGAN-GP.
-- Ho, J., Jain, A., and Abbeel, P. "Denoising Diffusion Probabilistic Models." *NeurIPS*, 2020.
+- Goodfellow, I., et al. "Generative Adversarial Nets." _NeurIPS_, 2014. The original GAN paper.
+- Arjovsky, M., Chintala, S., and Bottou, L. "Wasserstein GAN." _ICML_, 2017.
+- Gulrajani, I., et al. "Improved Training of Wasserstein GANs." _NeurIPS_, 2017. WGAN-GP.
+- Ho, J., Jain, A., and Abbeel, P. "Denoising Diffusion Probabilistic Models." _NeurIPS_, 2020.
 
 **On GNNs**
 
-- Kipf, T., and Welling, M. "Semi-Supervised Classification with Graph Convolutional Networks." *ICLR*, 2017.
-- Hamilton, W., Ying, R., and Leskovec, J. "Inductive Representation Learning on Large Graphs." *NeurIPS*, 2017. GraphSAGE.
-- Velickovic, P., et al. "Graph Attention Networks." *ICLR*, 2018. GAT.
+- Kipf, T., and Welling, M. "Semi-Supervised Classification with Graph Convolutional Networks." _ICLR_, 2017.
+- Hamilton, W., Ying, R., and Leskovec, J. "Inductive Representation Learning on Large Graphs." _NeurIPS_, 2017. GraphSAGE.
+- Velickovic, P., et al. "Graph Attention Networks." _ICLR_, 2018. GAT.
 
 **On reinforcement learning**
 
-- Sutton, R., and Barto, A. *Reinforcement Learning: An Introduction.* MIT Press, 2018. The definitive textbook. Free online at `incompleteideas.net/book/the-book.html`.
-- Mnih, V., et al. "Human-level control through deep reinforcement learning." *Nature*, 2015. DQN.
-- Schulman, J., et al. "Proximal Policy Optimization Algorithms." *arXiv:1707.06347*, 2017.
+- Sutton, R., and Barto, A. _Reinforcement Learning: An Introduction._ MIT Press, 2018. The definitive textbook. Free online at `incompleteideas.net/book/the-book.html`.
+- Mnih, V., et al. "Human-level control through deep reinforcement learning." _Nature_, 2015. DQN.
+- Schulman, J., et al. "Proximal Policy Optimization Algorithms." _arXiv:1707.06347_, 2017.
 
 **On transfer learning**
 
-- Zhuang, F., et al. "A Comprehensive Survey on Transfer Learning." *Proceedings of the IEEE*, 2020.
+- Zhuang, F., et al. "A Comprehensive Survey on Transfer Learning." _Proceedings of the IEEE_, 2020.
 
 ---

@@ -2053,9 +2053,9 @@ The beauty of XGBoost's formulation is that you can plug in any twice-differenti
 
 ## Why This Matters
 
-A Singapore bank deployed a fraud detection model in 2020. The model was reported to have **99.6% accuracy**. Management was delighted. The model went live. A week later, the fraud team called: "We haven't caught a single fraudster."
+Picture a bank's fraud team (an illustrative composite; the numbers are chosen to make the point). Their new fraud detection model was reported to have **99.6% accuracy**. Management was delighted. The model went live. A week later, the fraud team called: "We haven't caught a single fraudster."
 
-The base rate of fraud in the dataset was 0.4%. A model that predicted "no fraud" for every transaction would achieve 99.6% accuracy — exactly what the model was doing. Accuracy is a catastrophic metric for imbalanced problems because the majority class dominates the score. The bank swapped to area under the precision-recall curve (AUC-PR). Their 99.6% accuracy model's AUC-PR was 0.09 — worse than random for the problem that actually mattered.
+The base rate of fraud in the dataset was 0.4%. A model that predicted "no fraud" for every transaction would achieve 99.6% accuracy — exactly what the model was doing. Accuracy is a catastrophic metric for imbalanced problems because the majority class dominates the score. The bank swapped to area under the precision-recall curve (AUC-PR). Their 99.6% accuracy model's AUC-PR was 0.09. A random ranking scores the base rate, 0.004, so 0.09 is better than random — but far too low to be useful: most of the transactions it ranked highest were legitimate.
 
 The bank's second lesson was calibration. They asked the model for "high-risk" transactions (predicted probability > 0.8) and expected 80% of those to actually be fraud. In reality, only 34% were. The model ranked transactions correctly but its probabilities were meaningless. They learned about **Platt scaling** and recalibrated the model. After calibration, a transaction with `p = 0.8` was fraud about 78% of the time. The business could finally set thresholds based on probabilities.
 
@@ -2143,12 +2143,12 @@ Treat SMOTE as one tool in the kit, not as a silver bullet.
 
 Cost-sensitive learning is often a better choice than SMOTE because it does not create synthetic samples — it just tells the model that mistakes on the minority class are expensive. The model adjusts its decision boundary accordingly.
 
-**Business cost matrix.** Sometimes the cost of false positives and false negatives is known explicitly. For the Singapore credit scoring case in MLFP03 ex_5, the cost matrix is:
+**Business cost matrix.** Sometimes the cost of false positives and false negatives is known explicitly. For the credit-scoring case in Exercise 5, the (illustrative) cost matrix is:
 
-| Actual \ Predicted | Predicted default  | Predicted good |
-| ------------------ | ------------------ | -------------- |
-| Actual default     | cost = 0 (blocked) | $10,000 (loss) |
-| Actual good        | $100 (lost biz)    | cost = 0       |
+| Actual \ Predicted | Predicted default (decline)       | Predicted good (approve)     |
+| ------------------ | --------------------------------- | ---------------------------- |
+| Actual default     | cost = 0 (loss avoided)           | S$10,000 (missed default, FN) |
+| Actual good        | S$1,500 (good customer lost, FP)  | cost = 0                     |
 
 The optimal threshold is then chosen to minimise expected cost, not to maximise F1 or accuracy. The math:
 
@@ -2157,7 +2157,7 @@ Expected cost(t) = FN_cost * P(y=1) * (1 - recall(t))
                  + FP_cost * P(y=0) * (1 - specificity(t))
 ```
 
-Sweep the threshold `t`, compute expected cost, pick the `t` that minimises it. For a 100:1 cost ratio, the optimal threshold is usually well below 0.5 — you want to raise alarms on suspicious borderline cases because missing a real default costs far more than a false alarm.
+Sweep the threshold `t`, compute expected cost, pick the `t` that minimises it. When a missed default costs more than six times a lost customer, the optimal threshold is well below 0.5 — you decline borderline applications because missing a real default costs far more than a false alarm. If the model's probabilities are calibrated, you do not even need the sweep: the optimum is `t* = c_FP / (c_FP + c_FN) = 1,500 / 11,500 ≈ 0.130` (derived in the Deeper Dive below).
 
 ### Focal Loss
 
@@ -2185,13 +2185,13 @@ FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
 
 This is the full form used in RetinaNet and many modern detection systems.
 
-**Deriving the gradient.** At its simplest, focal loss reshapes the loss surface. Let `p = sigmoid(z)`. The focal loss gradient with respect to the logit `z` is:
+**Deriving the gradient.** Let `z` be the logit, `s = +1` if `y = 1` and `s = -1` if `y = 0`, so that `p_t = sigmoid(s * z)`. Differentiating `FL = -(1 - p_t)^gamma * log(p_t)` with the chain rule (`dp_t/dz = s * p_t * (1 - p_t)`) gives
 
 ```
-dFL/dz = (1 - p)^gamma * (gamma * p * log(p) + p - y)
+dFL/dz = s * (1 - p_t)^gamma * (gamma * p_t * log(p_t) - (1 - p_t))
 ```
 
-Compared to cross-entropy's gradient `p - y`, focal loss scales the gradient by `(1 - p)^gamma`, shrinking easy-example gradients. Hard examples — where `p` is far from `y` — retain most of their gradient.
+For `y = 1` this is `(1 - p)^gamma * (gamma * p * log(p) + p - 1)`; for `y = 0` it is `p^gamma * (p - gamma * (1 - p) * log(1 - p))`. With `gamma = 0` both collapse to cross-entropy's gradient `p - y`. The factor `(1 - p_t)^gamma` is what shrinks the gradient of easy examples (`p_t` near 1); hard examples (`p_t` small) keep most of theirs. Exercise 5 implements exactly this as a custom LightGBM objective.
 
 ### Probability Calibration
 
@@ -2205,22 +2205,25 @@ Why does this matter? Because decisions depend on probabilities, not rankings. I
 
 Most models are not naturally calibrated:
 
-- **Random forests** are poorly calibrated because they vote among trees; the proportion of trees voting yes is not a probability estimate.
-- **SVMs** produce scores, not probabilities. Raw scores need to be mapped to probabilities.
-- **Neural networks** tend to be over-confident — they assign probabilities too close to 0 or 1.
-- **Boosted trees** are often reasonably calibrated but benefit from post-hoc adjustment.
+- **Random forests** average many trees, and averaging rarely produces values near 0 or 1, so their probabilities tend to be pulled toward the middle — under-confident at the extremes.
+- **SVMs** produce margin scores, not probabilities. Raw scores need to be mapped to probabilities.
+- **Naive Bayes** multiplies feature likelihoods as if they were independent, which pushes probabilities toward 0 and 1 — over-confident.
+- **Modern neural networks** also tend to be over-confident (Guo et al., 2017).
+- **Gradient-boosted trees trained on log loss** are usually close to calibrated out of the box. What breaks them is what you do to them: class weights, `scale_pos_weight` and SMOTE all shift the predicted probabilities away from the true rates (the worked example measures this).
 
-**Brier score** measures calibration plus accuracy:
+Classic boosting with exponential loss (AdaBoost) is different: Niculescu-Mizil and Caruana (2005) found it pushes predictions away from 0 and 1, producing the sigmoid-shaped reliability curve that Platt scaling corrects.
+
+**Brier score** — a proper scoring rule that mixes calibration *and* discrimination:
 
 ```
 BS = (1/N) * Sum_i (p_i - y_i)^2
 ```
 
-A lower Brier score is better. A perfectly calibrated model has Brier score equal to `p * (1 - p)` where `p` is the base rate. The Brier score can be decomposed into calibration, resolution, and uncertainty components (Murphy, 1973), but the headline number is enough for most practical purposes.
+A lower Brier score is better; 0 means every prediction was exactly right (a perfect predictor, not merely a calibrated one). The constant forecast "everyone has the base-rate probability `p`" is perfectly calibrated yet scores `p * (1 - p)` — about `0.129 × 0.871 ≈ 0.112` on the credit data. A calibrated model that also *discriminates* scores lower. Murphy (1973) split the score into three parts, `BS = reliability − resolution + uncertainty`: only the reliability term measures calibration, so a lower Brier score does not by itself prove better calibration. Read the reliability diagram (below) alongside it.
 
 ### Platt Scaling
 
-Platt (1999) proposed the simplest calibration method: fit a logistic regression on the model's output scores.
+Platt (1999) proposed the simplest calibration method: fit a sigmoid — a one-input logistic regression — to the model's output scores.
 
 Let `s_i` be the model's raw score for observation `i`. Fit:
 
@@ -2230,7 +2233,7 @@ p_i = 1 / (1 + exp(A * s_i + B))
 
 on a held-out calibration set, using the true labels. This is a one-dimensional logistic regression with two parameters `A` and `B`.
 
-Platt scaling works well when the miscalibration follows a sigmoid shape — which is the case for SVMs and often for boosted trees on moderate-to-large datasets. It fails when the miscalibration is non-monotonic or has a different functional form.
+Platt scaling works well when the miscalibration follows a sigmoid shape — the classic case is SVM margins and AdaBoost-style boosting. It fails when the miscalibration has a different shape, for example the curved distortion a heavily class-weighted model produces; isotonic regression handles that.
 
 ### Isotonic Regression
 
@@ -2260,147 +2263,206 @@ A perfectly calibrated model lies on the diagonal `y = x`. Deviations tell you h
 - **Above the diagonal**: model under-predicts. It says 30% but 45% are actually positive.
 - **Below the diagonal**: model over-predicts. It says 70% but only 50% are actually positive.
 
-An S-shape (low bins below the diagonal, high bins above) indicates over-confidence — the model pushes probabilities too far toward 0 and 1. This is typical of neural networks and boosted trees. The fix is Platt scaling, which is an inverse sigmoid.
+Two shapes are worth recognising:
 
-## Kailash Engine: Metrics, Sampling, and Calibration
+- **Over-confident** (an inverted S): low bins sit *above* the diagonal and high bins *below* it. The model pushes probabilities too far toward 0 and 1 — when it says 5% the true rate is 15%, when it says 95% the true rate is 80%. Typical of Naive Bayes and modern neural networks.
+- **Under-confident** (an S): low bins sit *below* the diagonal and high bins *above* it. The model squeezes probabilities toward the middle. Typical of random forests and AdaBoost-style boosting; Platt's sigmoid fit is designed for this shape.
 
-```python
-from kailash_ml import TrainingPipeline
-from sklearn.calibration import CalibratedClassifierCV
-import lightgbm as lgb
+A curve lying entirely below the diagonal is neither: it is **uniform over-prediction** — every probability is too high. That is exactly what class weighting does to a booster, as the worked example shows.
 
-base = lgb.LGBMClassifier(class_weight="balanced", random_state=42)
-calibrated = CalibratedClassifierCV(base, method="sigmoid", cv=5)
+## Kailash Engine: Calibration with TrainingPipeline.calibrate
 
-pipeline = TrainingPipeline(
-    model=calibrated,
-    cv_strategy="stratified_kfold",
-    cv_folds=5,
-    scoring=["average_precision", "brier_score", "roc_auc"],
-)
-result = pipeline.fit(X_train, y_train)
-```
+`TrainingPipeline.calibrate(model, X_val, y_val, method=...)` wraps an already-fitted classifier in a calibration map: `method="sigmoid"` is Platt scaling, `method="isotonic"` is isotonic regression. It is a coroutine (run it with `asyncio.run` or `await`), it needs no model registry (`TrainingPipeline(feature_store=None, registry=None)` is enough), and it expects the calibration rows as a polars `DataFrame` with the feature names plus a polars `Series` of labels. The worked example below shows the exact call.
 
-`CalibratedClassifierCV(method="sigmoid")` is Platt scaling. `method="isotonic"` is isotonic regression. `cv=5` means the calibration is done via 5-fold CV to avoid using training data twice.
+The rule that makes calibration honest: **the calibration rows must be rows the model never trained on.** A model's predictions on its own training rows are over-confident, so a calibrator fitted there learns the wrong map. The worked example holds back 20% of the development rows for this (16,000 rows — plenty for isotonic regression), and the test rows stay untouched until the final report.
 
 ## Worked Example: Imbalanced Credit Scoring
 
-Following MLFP03 ex_5:
+Following Exercise 5. The split is the same as Lesson 3.4, except the second slice of the development rows is now the **calibration** set:
 
 ```python
 import numpy as np
 import polars as pl
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import (
-    average_precision_score, roc_auc_score, brier_score_loss,
-    precision_recall_curve, f1_score,
-)
-from sklearn.calibration import CalibratedClassifierCV, calibration_curve
-from imblearn.over_sampling import SMOTE
-import lightgbm as lgb
-
+from kailash_ml import PreprocessingPipeline
+from kailash_ml.interop import to_sklearn_input
 from shared import MLFPDataLoader
-loader = MLFPDataLoader()
-credit = loader.load("mlfp02", "credit_scoring.parquet")
 
-X = credit.drop("default").to_numpy()
-y = credit.select("default").to_series().to_numpy()
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, stratify=y, random_state=42,
+credit = (
+    MLFPDataLoader().load("mlfp02", "sg_credit_scoring.parquet")
+    .drop("customer_id", "future_default_indicator")   # identifier + planted leak (Lesson 3.1)
+    .sample(fraction=1.0, shuffle=True, seed=42)
 )
+test_df, dev_df = credit.head(20_000), credit.tail(80_000)
+pipe = PreprocessingPipeline()
+fitted = pipe.setup(dev_df, target="default", train_size=0.8, seed=42, normalize=False,
+                    categorical_encoding="ordinal", imputation_strategy="median")
+feature_names = [c for c in fitted.train_data.columns if c != "default"]
 
-print(f"Train positive rate: {y_train.mean():.3f}")
-print(f"Test positive rate: {y_test.mean():.3f}")
+
+def to_xy(frame):
+    X, y, _ = to_sklearn_input(frame, feature_columns=feature_names, target_column="default")
+    return X, y.astype(int)
+
+
+X_train, y_train = to_xy(fitted.train_data)       # 64,000 rows: fit
+X_cal, y_cal = to_xy(fitted.test_data)           # 16,000 rows: calibration and threshold checks
+X_test, y_test = to_xy(pipe.transform(test_df))  # 20,000 rows: final report only
 ```
 
 **Baseline (no imbalance handling):**
 
 ```python
-base = lgb.LGBMClassifier(random_state=42)
+import lightgbm as lgb
+from sklearn.metrics import (
+    accuracy_score, average_precision_score, brier_score_loss, f1_score, roc_auc_score,
+)
+
+base = lgb.LGBMClassifier(n_estimators=300, learning_rate=0.05, num_leaves=31, random_state=42, verbose=-1)
 base.fit(X_train, y_train)
 p_base = base.predict_proba(X_test)[:, 1]
+pred_base = (p_base >= 0.5).astype(int)
 
-print(f"Baseline AP:       {average_precision_score(y_test, p_base):.3f}")
-print(f"Baseline ROC-AUC:  {roc_auc_score(y_test, p_base):.3f}")
-print(f"Baseline Brier:    {brier_score_loss(y_test, p_base):.4f}")
-print(f"Baseline accuracy: {(p_base > 0.5).astype(int).mean():.3f}")
+print(f"Baseline AP {average_precision_score(y_test, p_base):.3f}  "
+      f"ROC-AUC {roc_auc_score(y_test, p_base):.3f}  Brier {brier_score_loss(y_test, p_base):.4f}")
+print(f"Accuracy at 0.5: {accuracy_score(y_test, pred_base):.3f} "
+      f"(always 'repay' scores {1 - y_test.mean():.3f});  F1 at 0.5: {f1_score(y_test, pred_base):.3f}")
 ```
+
+The ranking is decent — AP about 0.37 and ROC-AUC about 0.79 — and the Brier score (about 0.097) beats the base-rate forecast's 0.112. But look at the threshold-0.5 numbers: accuracy 0.873 against 0.869 for a model that approves everyone, and F1 of 0.18. At 0.5 the model flags almost nobody. Accuracy hides that; F1 exposes it; and as you will see, the right fix is the threshold, not the model.
 
 **SMOTE:**
 
 ```python
-smote = SMOTE(random_state=42)
-X_sm, y_sm = smote.fit_resample(X_train, y_train)
+from imblearn.over_sampling import SMOTE
 
-smote_model = lgb.LGBMClassifier(random_state=42)
+X_sm, y_sm = SMOTE(random_state=42).fit_resample(X_train, y_train)
+smote_model = lgb.LGBMClassifier(n_estimators=300, learning_rate=0.05, random_state=42, verbose=-1)
 smote_model.fit(X_sm, y_sm)
 p_smote = smote_model.predict_proba(X_test)[:, 1]
-print(f"SMOTE AP: {average_precision_score(y_test, p_smote):.3f}")
+print(f"SMOTE AP {average_precision_score(y_test, p_smote):.3f}  Brier {brier_score_loss(y_test, p_smote):.4f}")
+
+synthetic = X_sm[len(X_train):]
+age = feature_names.index("age")
+print(f"Synthetic rows with a non-integer age: {np.mean(synthetic[:, age] % 1 != 0):.1%}")
 ```
 
-Notice: SMOTE often improves AP slightly but **ruins calibration**. The Brier score after SMOTE is usually worse than the baseline because the model is trained on synthetic class proportions that do not match deployment.
+A surprise: SMOTE changes almost nothing here — AP and Brier match the baseline to three decimals. The second print explains why. SMOTE interpolates between real defaulters, so about 94% of its 47,000 synthetic applicants have a fractional age (and fractional counts of credit lines, dependents, late payments) — values no real applicant has. A booster learns that "fractional age" means "synthetic, therefore default", and on real applicants it falls back to what it learned from the real rows. SMOTE did not teach the model anything about real defaulters; it taught it to spot fabricated rows. Always inspect what SMOTE generates.
 
 **Cost-sensitive learning:**
 
 ```python
-cs_model = lgb.LGBMClassifier(scale_pos_weight=y_train.sum() / (len(y_train) - y_train.sum()),
-                              random_state=42)
-cs_model.fit(X_train, y_train)
-p_cs = cs_model.predict_proba(X_test)[:, 1]
-print(f"Cost-sensitive AP: {average_precision_score(y_test, p_cs):.3f}")
+pos_rate = y_train.mean()
+weighted = lgb.LGBMClassifier(
+    n_estimators=300, learning_rate=0.05, random_state=42, verbose=-1,
+    scale_pos_weight=(1 - pos_rate) / pos_rate,   # n_negative / n_positive ≈ 6.75
+)
+weighted.fit(X_train, y_train)
+p_w = weighted.predict_proba(X_test)[:, 1]
+print(f"Weighted AP {average_precision_score(y_test, p_w):.3f}  Brier {brier_score_loss(y_test, p_w):.4f}  "
+      f"mean p {p_w.mean():.3f} vs default rate {y_test.mean():.3f}")
 ```
 
-**Threshold optimisation from cost matrix:**
+`scale_pos_weight` multiplies the loss of every defaulter by `n_negative / n_positive` (about 6.75), so a missed default hurts the model about as much in total as all the negatives. The ranking barely moves (AP about 0.37), but the probabilities do: the average predicted default probability jumps to about 0.37 against a true rate of about 0.13, and the Brier score almost doubles (about 0.174). A weighted model's outputs are no longer probabilities.
+
+**Calibrate on the held-out rows, then choose the threshold:**
 
 ```python
-fp_cost = 100
-fn_cost = 10000
+import asyncio
+from sklearn.calibration import calibration_curve
+from kailash_ml import TrainingPipeline
 
-thresholds = np.linspace(0.01, 0.99, 99)
-expected_costs = []
-for t in thresholds:
-    preds = (p_cs >= t).astype(int)
-    fn = np.sum((preds == 0) & (y_test == 1))
-    fp = np.sum((preds == 1) & (y_test == 0))
-    expected_costs.append(fn * fn_cost + fp * fp_cost)
+tp = TrainingPipeline(feature_store=None, registry=None)
+calibrated = asyncio.run(tp.calibrate(
+    weighted,
+    pl.DataFrame(X_cal, schema=feature_names, orient="row"),
+    pl.Series("default", y_cal),
+    method="isotonic",
+))
+p_cal = calibrated.predict_proba(X_test)[:, 1]
+print(f"Calibrated Brier {brier_score_loss(y_test, p_cal):.4f}  mean p {p_cal.mean():.3f}")
 
-optimal_t = thresholds[np.argmin(expected_costs)]
-print(f"Optimal threshold: {optimal_t:.2f}")
-print(f"Minimum cost: ${min(expected_costs):,.0f}")
+for label, p in [("weighted, raw", p_w), ("weighted, calibrated", p_cal)]:
+    frac_pos, mean_pred = calibration_curve(y_test, p, n_bins=10, strategy="quantile")
+    print(f"{label:21s}", " ".join(f"{m:.2f}->{f:.2f}" for m, f in zip(mean_pred, frac_pos)))
 ```
 
-For a 100:1 cost ratio, the optimal threshold is usually around 0.15–0.25, much lower than the default 0.5.
+The two reliability rows tell the story. The raw weighted model lies entirely below the diagonal — it says 0.81 where the observed default rate is 0.43, 0.38 where it is 0.10: uniform over-prediction. After isotonic calibration every bin is within about 0.02 of the diagonal, the mean prediction is back at 0.129, and the Brier score returns to about 0.098. (Isotonic regression maps ranges of scores to the same value, which costs a little AP — about 0.36 here.) Calibrating the weighted booster is not double counting: the weights changed how the trees were grown; the calibration map then restores the probabilities to the real default rate.
 
-**Post-hoc calibration (Platt scaling):**
+Now the threshold. With calibrated probabilities the cost-optimal threshold follows from the cost matrix alone, `t* = c_FP / (c_FP + c_FN)`. Check it on the calibration rows — never the test rows — and only then report the test cost:
 
 ```python
-cal_model = CalibratedClassifierCV(lgb.LGBMClassifier(random_state=42),
-                                    method="sigmoid", cv=5)
-cal_model.fit(X_train, y_train)
-p_cal = cal_model.predict_proba(X_test)[:, 1]
-print(f"Calibrated Brier: {brier_score_loss(y_test, p_cal):.4f}")
+C_FN, C_FP = 10_000, 1_500             # illustrative costs in S$, as in Exercise 5
+t_star = C_FP / (C_FP + C_FN)          # 0.130
 
-# Calibration curve
-frac_pos, mean_pred = calibration_curve(y_test, p_cal, n_bins=10)
-for mp, fp in zip(mean_pred, frac_pos):
-    print(f"  pred={mp:.2f} -> actual={fp:.2f}")
+
+def total_cost(y, p, t):
+    pred = (p >= t).astype(int)
+    return C_FN * np.sum((pred == 0) & (y == 1)) + C_FP * np.sum((pred == 1) & (y == 0))
+
+
+grid = np.linspace(0.02, 0.60, 59)
+p_cal_rows = calibrated.predict_proba(X_cal)[:, 1]
+best_t = grid[np.argmin([total_cost(y_cal, p_cal_rows, t) for t in grid])]
+print(f"t* from the formula {t_star:.3f}; best threshold on the calibration rows {best_t:.2f}")
+
+for label, p, t in [
+    ("calibrated, default 0.5", p_cal, 0.5),
+    ("calibrated, t*", p_cal, t_star),
+    ("RAW weighted, t* (wrong)", p_w, t_star),
+]:
+    print(f"{label:25s} test cost S${total_cost(y_test, p, t):>12,.0f}   flagged {np.mean(p >= t):.1%}")
 ```
 
-After Platt scaling, the Brier score should improve by 5–15% relative to the uncalibrated baseline, and the calibration curve should lie closer to the diagonal.
+The empirical search on the calibration rows lands on 0.13, exactly the formula's answer. On the 20,000 test applicants the illustrative costs come out at about S$24.0 million with the default 0.5 threshold (it flags 2% of applicants and misses most defaults), about S$14.9 million at `t*` on calibrated probabilities (it flags about 30%), and about S$20.4 million if you apply `t*` to the *uncalibrated* weighted probabilities — which flags 78% of applicants. The formula is only as good as the probabilities you feed it: weighting moves the boundary once, and a threshold derived for calibrated probabilities moves it again. Use **either** class weights followed by calibration, **or** an unweighted model — and then the Bayes threshold.
+
+### Stacking and Blending
+
+Two cheap ways to combine models you already have:
+
+- **Blending** averages the base models' predicted probabilities (a soft vote), optionally weighted.
+- **Stacking** trains a *meta-model* — usually a logistic regression — to combine the base models' predictions. The meta-model must learn from **out-of-fold** predictions; trained on in-sample predictions, it learns to trust whichever base model overfits most.
+
+Kailash's `EnsembleEngine` does both. Each call refits clones of your base models on an internal 80% of the frame you pass and reports metrics on the remaining 20%. In kailash-ml 2.2 the base models must already be fitted when you pass them in (an engine quirk), and the frame you pass must contain only training rows:
+
+```python
+from kailash_ml import EnsembleEngine
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+n = 10_000                                      # a training subsample keeps this quick
+X_s, y_s = X_train[:n], y_train[:n]
+train_frame = pl.DataFrame(X_s, schema=feature_names, orient="row").with_columns(pl.Series("default", y_s))
+
+base_models = [
+    lgb.LGBMClassifier(n_estimators=200, learning_rate=0.05, random_state=42, verbose=-1).fit(X_s, y_s),
+    make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000)).fit(X_s, y_s),
+    RandomForestClassifier(n_estimators=100, min_samples_leaf=20, random_state=42).fit(X_s, y_s),
+]
+engine = EnsembleEngine()
+stacked = engine.stack(base_models, train_frame, target="default",
+                       meta_model_class="sklearn.linear_model.LogisticRegression", fold=5)
+blended = engine.blend(base_models, train_frame, target="default", method="soft")
+print(f"stacked AUC {stacked.metrics['auc']:.3f}   blended AUC {blended.metrics['auc']:.3f}")
+for model in base_models:
+    print(f"  {type(model).__name__:22s} calibration-row AUC {roc_auc_score(y_cal, model.predict_proba(X_cal)[:, 1]):.3f}")
+```
+
+On this run the stacked and blended ensembles both score an AUC of about 0.77 on the engine's internal holdout, while the three base models score about 0.77 (LightGBM), 0.80 (logistic regression) and 0.79 (forest) on the calibration rows. (The two sets of numbers come from different rows and slightly different training sizes, so compare them loosely.) The honest reading: combining models bought nothing here. Ensembles help when the base models make *different* mistakes; on this data a plain logistic regression already ranks applicants as well as anything else, the three models largely agree, and there is little left to combine. Always compare an ensemble against its best single member on the same rows before paying for its complexity. Module 4 returns to `EnsembleEngine` for blending anomaly scores.
 
 ## Try It Yourself
 
 **Exercise A (easy).** Plot the reliability diagram for both the uncalibrated and calibrated models on the credit dataset. Which one lies closer to the diagonal?
 
-**Exercise B (medium).** Sweep `fp_cost` from $10 to $10,000 (keeping `fn_cost = $10,000`). For each cost ratio, compute the optimal threshold and the expected cost. Plot the optimal threshold vs the cost ratio. What shape is the curve?
+**Exercise B (medium).** Sweep `fp_cost` from S$10 to S$10,000 (keeping `fn_cost = S$10,000`). For each cost ratio, find the cost-minimising threshold on the calibration rows and compare it with `c_FP / (c_FP + c_FN)`. Plot the optimal threshold vs the cost ratio. What shape is the curve?
 
 **Exercise C (hard).** Implement focal loss as a custom LightGBM objective function. Train with `gamma in {0, 0.5, 1, 2, 5}` and compare to cross-entropy. Does focal loss improve AP on this dataset?
 
 ## Cross-References
 
 - **Module 2, Lesson 2.2** Sampling and the role of the sample mean — appears here as base-rate in the cost analysis.
-- **Lesson 3.2** Bias-variance — over-confidence in predictions is a variance symptom.
+- **Lesson 3.2** Cross-validation and held-out data — calibration and threshold choices are fitted on held-out rows for the same reason.
 - **Lesson 3.4** Gradient boosting — the models we are calibrating.
 - **Forward link:** Lesson 3.8 will use the Brier score as a production monitoring signal.
 
@@ -2412,7 +2474,7 @@ For a rare-positive problem, ROC is misleading. FPR = FP / (FP + TN). The denomi
 
 PR curves do not have this problem. Precision = TP / (TP + FP). Adding false positives directly hurts precision. If your model is predicting lots of positives that are actually negatives, PR will show it immediately.
 
-**Rule of thumb:** if the positive class is below 10%, prefer AUC-PR (average precision) over ROC-AUC. Above 10%, both are fine.
+**Rule of thumb:** if the positive class is below about 20%, report AUC-PR (average precision) alongside — or instead of — ROC-AUC, and always quote the base rate next to it (a random ranking's AP equals the base rate). Above that, both are informative.
 
 ## Deeper Dive: Isotonic Regression by Pool-Adjacent-Violators
 
@@ -2441,7 +2503,7 @@ Solving:
 p > c_FP / (c_FP + c_FN)
 ```
 
-For `c_FP = 100` and `c_FN = 10000`, the optimal threshold is `100 / 10100 = 0.0099`. Anyone with predicted default probability above 1% should be flagged. This is a much lower threshold than the default 0.5, and it is the _principled_ answer given the cost matrix.
+For Exercise 5's illustrative costs, `c_FP = S$1,500` and `c_FN = S$10,000`, the optimal threshold is `1,500 / 11,500 ≈ 0.130`. Any applicant with a calibrated default probability above 13% should be declined. This is a much lower threshold than the default 0.5, and it is the _principled_ answer given the cost matrix. (The derivation needs only calibrated probabilities and the two costs; class balance does not enter — with equal costs it gives 0.5 whatever the base rate.)
 
 Of course, this assumes the classifier is calibrated. If the classifier is over-confident (probabilities too close to 0 or 1), the threshold derived from the cost matrix will be wrong. This is why calibration and thresholding are inseparable.
 
@@ -2462,9 +2524,9 @@ Of course, this assumes the classifier is calibrated. If the classifier is over-
 
 ## Why This Matters
 
-In November 2019, a major credit card company faced public outcry when users discovered that women were systematically given lower credit limits than men with equivalent financial profiles — including cases where married couples with shared finances received dramatically different limits. When asked to explain, the company said: "The algorithm is proprietary, and none of our engineers can explain individual decisions." Within a week, the New York Department of Financial Services opened an investigation. The brand damage was severe.
+In November 2019, a major credit card company faced public outcry when users discovered that women were systematically given lower credit limits than men with equivalent financial profiles — including cases where married couples with shared finances received dramatically different limits. Customers reported that when they asked why, customer-service staff could not explain individual decisions beyond pointing to "the algorithm". Within days, the New York Department of Financial Services opened an investigation. Its 2021 report found no unlawful discrimination against women applicants — but it criticised how poorly the decisions had been explained to customers, and the reputational damage had already been done.
 
-The problem was not just the disparity (though that was serious). It was the absence of an explanation. A model that cannot justify its decisions cannot be defended, corrected, or trusted. For consumer-facing ML — credit, hiring, healthcare, criminal justice — explainability is no longer optional. In Singapore, the Monetary Authority (MAS) requires that credit decisions affecting consumers be explainable under the Code of Consumer Banking Practice. The Personal Data Protection Act (PDPA) gives individuals the right to request an explanation of automated decisions that significantly affect them.
+The problem was not just the disparity (though that was serious). It was the absence of an explanation. A model that cannot justify its decisions cannot be defended, corrected, or trusted. For consumer-facing ML — credit, hiring, healthcare, criminal justice — explainability is no longer optional. In Singapore, the Monetary Authority of Singapore's FEAT principles (Fairness, Ethics, Accountability and Transparency, 2018) ask financial institutions to make AI-driven decisions such as credit decisions fair and explainable, and the industry Veritas initiative publishes assessment methods for doing so. FEAT is guidance, not a statute — but a lender that cannot explain its model to a customer, an auditor or its own risk committee has a problem whatever the law says.
 
 This lesson gives you two tools for explainability (SHAP and LIME) and one framework for fairness (the impossibility theorem). You will learn:
 
@@ -2553,7 +2615,7 @@ LIME (Ribeiro et al., 2016) takes a different approach. To explain a prediction 
 
 LIME's pros: works for any model, any data type (text, images, tabular). Visualisations are intuitive. Cons: explanations are local only (no global importance summary), sensitive to the perturbation strategy, and less theoretically grounded than SHAP.
 
-**LIME vs SHAP in practice.** For tabular models, SHAP with TreeSHAP is strictly better: exact, fast, principled. For image and text models where perturbations are the only option, both SHAP and LIME use sampling; SHAP has better theory but LIME's intuitive output is sometimes preferred for stakeholder communication.
+**LIME vs SHAP in practice.** For tree-based tabular models, TreeSHAP is usually the better choice: exact, fast and axiomatically grounded (though, like every attribution method, its values describe the model, not causes, and are harder to read when features are strongly correlated). For image and text models where perturbations are the only option, both SHAP and LIME use sampling; SHAP has better theory but LIME's intuitive output is sometimes preferred for stakeholder communication.
 
 ### Fairness: The Impossibility Theorem
 
@@ -2563,19 +2625,25 @@ Suppose you have a credit scoring model and two groups `A` and `B` (say, by ethn
 - **Equalized odds**: true positive rate and false positive rate should be equal across groups. `P(y_hat = 1 | y = 1, G = A) = P(y_hat = 1 | y = 1, G = B)` and similarly for `y = 0`.
 - **Calibration parity**: predicted probabilities should be equally reliable across groups. `P(y = 1 | p_hat = p, G = A) = P(y = 1 | p_hat = p, G = B) = p`.
 
-These all sound reasonable. The problem: **when the base rate of the positive outcome differs across groups, you cannot satisfy all three simultaneously**. This is the impossibility theorem (Chouldechova, 2017; Kleinberg et al., 2016).
+These all sound reasonable. The problem: **when the base rate of the positive outcome differs across groups, these criteria clash pairwise — in general no two of them can hold together**, the exceptions being degenerate models (a perfect predictor, or one that ignores the data). This is the impossibility theorem (Chouldechova, 2017; Kleinberg, Mullainathan and Raghavan, 2016). It is not "pick any two of three"; it is "pick one, and measure what you give up on the others".
 
-**Sketch of the argument.** Consider two groups with different base rates. Suppose the model is calibrated (calibration parity holds). Then within each group, among the people with predicted probability `p`, exactly fraction `p` are actually positive. Now count: the false positive rate is `FP / (FP + TN)`. Calibration forces this ratio to follow the base rate. If base rates differ, so do FPRs. So equalized odds fails. Symmetric arguments show that enforcing equalized odds breaks calibration.
-
-The theorem is a mathematical fact: you must choose. If two groups have genuinely different base rates, you cannot have a model that is both calibrated and has equal error rates. You must pick which fairness criterion matters most for your application and accept that others will be violated.
-
-**Disparate impact ratio**. A common regulatory measure:
+**Sketch of the argument (calibration vs equalized odds).** For a yes/no decision in a group with base rate `p`, Chouldechova's identity links the error rates to the precision `PPV`:
 
 ```
-DIR = P(y_hat = 1 | G = minority) / P(y_hat = 1 | G = majority)
+FPR = p / (1 - p) * (1 - PPV) / PPV * TPR
 ```
 
-US employment law's "four-fifths rule" says DIR must be at least 0.8. Singapore's Tripartite Guidelines on Fair Employment Practices apply similar principles. If DIR is below 0.8, the model is potentially subject to disparate impact claims and needs to be either justified (a business necessity) or mitigated.
+Suppose two groups receive equally reliable decisions (equal `PPV`, the threshold-level version of calibration) and equal `TPR`. Then the identity forces their `FPR`s to differ whenever their base rates `p` differ — so equalized odds fails. Run the argument the other way and equal error rates force unequal `PPV`. Demographic parity clashes with both for a similar reason: if base rates differ, equal positive-prediction rates are only possible if the predictions are wrong at different rates in the two groups.
+
+The theorem is a mathematical fact: you must choose. You must pick which fairness criterion matters most for your application, say why, and report how the others behave.
+
+**Disparate impact ratio**. A common screening measure, computed on the favourable outcome (for credit, *approval*):
+
+```
+DIR_g = P(approved | G = g) / max_h P(approved | G = h)
+```
+
+The "four-fifths rule" (flag any group whose ratio is below 0.8) comes from the US EEOC Uniform Guidelines on Employee Selection Procedures (1978) — an employment-law screening heuristic that credit fairness audits widely borrow as a rule of thumb. Singapore has no equivalent numeric threshold. A ratio below 0.8 is a signal to investigate, then either justify the difference (for example, a genuine difference in repayment risk) or mitigate it — a decision for people with accountability, not for the engineer alone.
 
 ### Fairness as Engineering
 
@@ -2588,135 +2656,212 @@ Fairness is not a property you can assume — it must be measured, reported, and
 
 Mitigation is not always appropriate. If the base rates are different because of genuine differences in risk (say, group A has a genuinely higher default rate for economic reasons), forcing demographic parity means denying loans to qualified members of group B. That may be a worse outcome than the original disparity. Fairness is a policy choice, not a technical one — engineers measure and report, stakeholders decide.
 
-## Kailash Engine: ModelVisualizer with SHAP
+## Kailash Engine: TrainingPipeline for the Model, `shap` for the Explanations
 
-```python
-import shap
-from kailash_ml import ModelVisualizer
+Exercise 6 trains the credit model through `TrainingPipeline` (Lesson 3.3), loads the registered artefact back from the `ModelRegistry`, and explains *that* artefact — so the explanation is guaranteed to describe the model that would be deployed. The explanations themselves come from the open-source `shap` library (`shap.TreeExplainer`) and, for LIME, from `lime`.
 
-explainer = shap.TreeExplainer(trained_model)
-shap_values = explainer.shap_values(X_test)
-
-# Global: summary plot
-shap.summary_plot(shap_values, X_test, feature_names=feature_names)
-
-# Local: waterfall
-shap.plots.waterfall(shap.Explanation(
-    values=shap_values[0],
-    base_values=explainer.expected_value,
-    data=X_test[0],
-    feature_names=feature_names,
-))
-```
+`ModelVisualizer` draws the evaluation charts used across this module — `roc_curve`, `precision_recall_curve`, `calibration_curve`, `confusion_matrix` — and a `feature_importance` chart. Be careful with the last one: for a LightGBM model it plots the model's built-in importance (how often each feature is used to split), **not** SHAP values. Split counts and mean |SHAP| often rank features differently; label your charts with what they actually show.
 
 ## Worked Example: SHAP and Fairness Audit on Credit Scoring
 
-Following MLFP03 ex_6:
+Following Exercise 6. The split is the Lesson 3.4 split; the model is a LightGBM trained and registered through `TrainingPipeline`:
 
 ```python
+import asyncio
+import pickle
+from pathlib import Path
+
 import numpy as np
 import polars as pl
-import shap
-import lightgbm as lgb
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import roc_auc_score
+from kailash.db import ConnectionManager
+from kailash_ml import ModelRegistry, PreprocessingPipeline, TrainingPipeline
+from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+from kailash_ml.interop import to_sklearn_input
+from kailash_ml.types import FeatureField, FeatureSchema
 from shared import MLFPDataLoader
 
-loader = MLFPDataLoader()
-credit = loader.load("mlfp02", "credit_scoring.parquet")
+credit = (
+    MLFPDataLoader().load("mlfp02", "sg_credit_scoring.parquet")
+    .drop("customer_id", "future_default_indicator")   # identifier + planted leak (Lesson 3.1)
+    .sample(fraction=1.0, shuffle=True, seed=42)
+)
+test_df, dev_df = credit.head(20_000), credit.tail(80_000)
+pipe = PreprocessingPipeline()
+fitted = pipe.setup(dev_df, target="default", train_size=0.8, seed=42, normalize=False,
+                    categorical_encoding="ordinal", imputation_strategy="median")
+feature_names = [c for c in fitted.train_data.columns if c != "default"]
 
-# Keep a protected attribute for the fairness audit
-protected_col = "gender"  # one of the columns in the dataset
-
-feature_cols = [c for c in credit.columns if c not in ("default",)]
-X = credit.select(feature_cols).to_numpy()
-y = credit.select("default").to_series().to_numpy()
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, stratify=y, random_state=42,
+dev = pl.concat([fitted.train_data, fitted.test_data]).with_columns(
+    pl.int_range(0, 80_000, dtype=pl.Int64).alias("application_id")
+)
+X_test, y_test, _ = to_sklearn_input(pipe.transform(test_df), feature_columns=feature_names,
+                                     target_column="default")
+y_test = y_test.astype(int)
+schema = FeatureSchema(
+    name="credit_input",
+    features=[FeatureField(f, "float64") for f in feature_names],
+    entity_id_column="application_id",
 )
 
-model = lgb.LGBMClassifier(n_estimators=500, learning_rate=0.05, random_state=42)
-model.fit(X_train, y_train)
+
+async def train_and_load():
+    conn = ConnectionManager(f"sqlite:///{Path('mlfp03_models.db').resolve()}")
+    await conn.initialize()
+    try:
+        registry = ModelRegistry(conn)
+        result = await TrainingPipeline(feature_store=None, registry=registry).train(
+            data=dev,
+            schema=schema,
+            model_spec=ModelSpec(
+                model_class="lightgbm.LGBMClassifier",
+                framework="lightgbm",
+                hyperparameters={"n_estimators": 300, "learning_rate": 0.05, "num_leaves": 31,
+                                 "random_state": 42, "verbose": -1},
+            ),
+            eval_spec=EvalSpec(metrics=["auc"], split_strategy="holdout", test_size=0.2),
+            experiment_name="credit_default_explained",
+        )
+        # The registry stores a pickle. Unpickling runs code: load only artefacts you trained.
+        artefact = await registry.load_artifact("credit_default_explained", result.model_version.version)
+        return pickle.loads(artefact), result.metrics
+    finally:
+        await conn.close()
+
+
+model, holdout_metrics = asyncio.run(train_and_load())
+print("engine holdout:", holdout_metrics)
 ```
 
-**Compute TreeSHAP values:**
+**Compute TreeSHAP values — in log-odds.** For a boosted classifier, TreeSHAP explains the model's raw output, the **log-odds** of default, not the probability. Calling the explainer returns an `Explanation` object holding the values, the base value and the data:
 
 ```python
-explainer = shap.TreeExplainer(model)
-shap_values = explainer.shap_values(X_test)
+import shap
 
-# Verify the additivity property
-predictions = model.predict(X_test, raw_score=True)
-sums = explainer.expected_value + shap_values.sum(axis=1)
-assert np.allclose(predictions, sums, atol=1e-4), "SHAP additivity violated"
-print("SHAP additivity verified: phi sum + baseline == raw model output")
+explainer = shap.TreeExplainer(model)
+sv = explainer(X_test)                     # Explanation: sv.values has shape (20000, 33)
+sv.feature_names = feature_names
+
+# Efficiency axiom: base value + contributions = the model's raw log-odds output
+log_odds = model.predict(X_test, raw_score=True)
+gap = np.abs(sv.base_values + sv.values.sum(axis=1) - log_odds).max()
+print(f"largest additivity gap: {gap:.1e}")   # ~1e-14: exact, as TreeSHAP promises
 ```
+
+The additivity check passes to machine precision **in log-odds**. Compare the sum with `predict_proba` instead and it fails — probabilities are a sigmoid of the log-odds, and a sigmoid of a sum is not a sum of sigmoids. Convert to a probability only at the very end of an explanation.
 
 **Global importance ranking:**
 
 ```python
-mean_abs_shap = np.abs(shap_values).mean(axis=0)
-order = np.argsort(-mean_abs_shap)
-print("Top 10 features by mean |SHAP|:")
-for idx in order[:10]:
-    print(f"  {feature_cols[idx]:30s} {mean_abs_shap[idx]:.4f}")
+mean_abs = np.abs(sv.values).mean(axis=0)
+for i in np.argsort(-mean_abs)[:6]:
+    print(f"  {feature_names[i]:28s} mean |SHAP| = {mean_abs[i]:.3f} log-odds")
 ```
 
-**Local explanation for one customer:**
+The top of the list is `months_employed`, `debt_to_income`, `credit_age_years`, `payment_history_score`, `credit_utilization` and `employment_years` — features a credit officer would recognise. (Had you kept `future_default_indicator`, it would dwarf all of them; a SHAP ranking topped by a single overwhelming feature is another leak alarm.) `shap.plots.beeswarm(sv)` draws the summary plot.
+
+**Local explanation for one applicant:**
 
 ```python
 i = 0
-print(f"\nCustomer {i}: predicted probability = {model.predict_proba(X_test[[i]])[0, 1]:.3f}")
-print(f"Baseline (expected): {1 / (1 + np.exp(-explainer.expected_value)):.3f}")
-
-contribs = [(feature_cols[j], X_test[i, j], shap_values[i, j])
-            for j in range(len(feature_cols))]
-contribs.sort(key=lambda t: -abs(t[2]))
-
-print("Top 5 features for this prediction:")
-for name, value, phi in contribs[:5]:
-    direction = "↑" if phi > 0 else "↓"
-    print(f"  {direction} {name:25s}  value={value:.2f}  phi={phi:+.3f}")
+p_i = model.predict_proba(X_test[[i]])[0, 1]
+print(f"base value {sv.base_values[i]:+.2f} log-odds -> f(x) {log_odds[i]:+.2f} log-odds "
+      f"-> p(default) = {p_i:.3f}")
+for j in np.argsort(-np.abs(sv.values[i]))[:5]:
+    print(f"  {feature_names[j]:25s} value={X_test[i, j]:>10.2f}  phi={sv.values[i, j]:+.3f}")
+# shap.plots.waterfall(sv[i]) draws the same story as a waterfall chart
 ```
 
-**Fairness audit:**
+For the first test applicant the contributions move the prediction from the base value (about −2.50 log-odds, the model's average) to about −2.97 log-odds, a default probability of about 0.05. Each `phi` is a push in log-odds; the waterfall chart stacks them.
+
+**Fairness audit.** A credit model's favourable outcome is *approval*, so the audit compares approval rates. Decline when the probability exceeds the Lesson 3.5 threshold `t* = 0.130` (this unweighted booster's probabilities are close to calibrated), and audit the three protected attributes in the data — race, gender and age band — decoded from the pipeline's ordinal codes:
 
 ```python
-protected_idx = feature_cols.index(protected_col)
-group_values = X_test[:, protected_idx].astype(int)
+T_STAR = 1_500 / (1_500 + 10_000)
+p = model.predict_proba(X_test)[:, 1]
+decline = (p >= T_STAR).astype(int)
+codes = fitted.transformers["ordinal_mappings"]
 
-for g in np.unique(group_values):
-    mask = group_values == g
-    auc = roc_auc_score(y_test[mask], model.predict_proba(X_test[mask])[:, 1])
-    positive_rate = model.predict(X_test[mask]).mean()
-    base_rate = y_test[mask].mean()
-    print(f"Group {g}: n={mask.sum()}, base rate={base_rate:.3f}, "
-          f"predicted positive rate={positive_rate:.3f}, AUC={auc:.3f}")
 
-# Disparate impact ratio
-pos_rates = {g: model.predict(X_test[group_values == g]).mean() for g in np.unique(group_values)}
-minority = min(pos_rates, key=pos_rates.get)
-majority = max(pos_rates, key=pos_rates.get)
-dir_ratio = pos_rates[minority] / pos_rates[majority]
-print(f"Disparate impact ratio: {dir_ratio:.3f}  (threshold: 0.80)")
-if dir_ratio < 0.8:
-    print("  WARNING: model may violate disparate impact four-fifths rule")
+def group_labels(attr):
+    col = X_test[:, feature_names.index(attr)]
+    if attr == "age":
+        return np.select([col < 35, col < 50, col < 65], ["21-34", "35-49", "50-64"], default="65+")
+    to_label = {code: label for label, code in codes[attr].items()}
+    return np.array([to_label.get(int(c), "unknown") for c in col])
+
+
+for attr in ["race", "gender", "age"]:
+    g = group_labels(attr)
+    approval = {k: 1 - decline[g == k].mean() for k in np.unique(g)}
+    best = max(approval.values())
+    print(f"--- {attr}")
+    for k in np.unique(g):
+        m = g == k
+        print(f"  {k:8s} n={m.sum():6,d}  default rate {y_test[m].mean():.3f}  mean p {p[m].mean():.3f}  "
+              f"approve {approval[k]:.3f}  DI {approval[k] / best:.2f}  "
+              f"TPR {decline[m & (y_test == 1)].mean():.2f}  FPR {decline[m & (y_test == 0)].mean():.2f}")
 ```
 
-**Mean SHAP by group for a protected feature:**
+Read the three blocks together:
+
+- **Race and gender** pass the four-fifths screen comfortably (every disparate impact ratio is 0.97 or above), and error rates are similar across groups.
+- **Age fails, badly.** Applicants aged 21–34 are approved about 26% of the time against about 99% for those 65 and over — a ratio of about 0.26. Their true default rate is also about ten times higher (about 0.25 vs 0.025), and the model's average prediction tracks each band's default rate closely (mean `p` 0.25 vs 0.02). So the model is **calibrated within every age band**, yet it fails demographic parity and has wildly unequal error rates (the youngest band's FPR is about 0.69, the oldest band's about 0.01).
+
+That is the impossibility theorem in your own data: with base rates this different, calibration, equal error rates and equal approval rates cannot all hold, and no amount of tuning will make them. What to do — accept the age effect as genuine risk, use age-specific thresholds, remove age and its proxies, or change the product — is a policy decision. The engineer's job is to measure it, document it in the model card (Lesson 3.8), and route it to the people accountable for the decision, such as a risk committee. Exercise 6, which uses a class-weighted model with its own threshold, reaches the same verdict: race (0.94) and gender (0.96) pass, the youngest age band fails.
+
+**Mean SHAP by group:**
 
 ```python
-for g in np.unique(group_values):
-    mask = group_values == g
-    mean_shap_per_feature = shap_values[mask].mean(axis=0)
-    top = np.argsort(-np.abs(mean_shap_per_feature))[:5]
-    print(f"\nGroup {g}: top 5 features by mean SHAP")
-    for j in top:
-        print(f"  {feature_cols[j]:25s} mean phi={mean_shap_per_feature[j]:+.4f}")
+ages = group_labels("age")
+for band in ["21-34", "65+"]:
+    mean_phi = sv.values[ages == band].mean(axis=0)
+    top = np.argsort(-np.abs(mean_phi))[:3]
+    print(band, [(feature_names[j], round(float(mean_phi[j]), 3)) for j in top])
 ```
 
-A striking difference in feature contributions between groups is evidence that the model is using different "reasoning" for different populations — sometimes an early warning of disparate impact, sometimes an honest reflection of true differences. Investigation is required.
+Group-level SHAP shows *how* the model reaches its age-band differences — whether through `age` itself or through correlated features such as `months_employed` and `credit_age_years`, which a young applicant cannot have much of. That is the proxy problem: dropping the `age` column would not remove the effect.
+
+### ALE: Accumulated Local Effects
+
+A **partial dependence plot (PDP)** answers "what does the model predict, on average, as feature `x_j` varies?" by setting `x_j` to each value for *every* row and averaging. When features are correlated this asks impossible questions: set `months_employed` to 400 months for a 22-year-old and you are averaging predictions for applicants who cannot exist.
+
+**ALE** (Apley and Zhu, 2020) fixes this by only ever asking local questions. Split the range of `x_j` into intervals at its quantiles `z_0 < z_1 < ... < z_K`. For the rows whose `x_j` actually falls in interval `k`, measure how the prediction changes as `x_j` moves from the interval's lower edge to its upper edge, holding everything else at the row's real values:
+
+```
+delta_k = mean over rows in interval k of [ f(x with x_j = z_k) - f(x with x_j = z_{k-1}) ]
+ALE_j(z_k) = Sum_{m <= k} delta_m          (then centred so its average over the data is 0)
+```
+
+Because each row is only nudged within its own interval, ALE never evaluates the model on unrealistic combinations. It is fast (one pass per interval) and, for a model of the form `f = g(x_j) + h(other features)`, it recovers `g` exactly up to a constant.
+
+```python
+def ale_1d(predict, X, j, n_bins=10):
+    edges = np.unique(np.quantile(X[:, j], np.linspace(0, 1, n_bins + 1)))
+    bins = np.clip(np.searchsorted(edges, X[:, j], side="left") - 1, 0, len(edges) - 2)
+    deltas, counts = np.zeros(len(edges) - 1), np.zeros(len(edges) - 1)
+    for k in range(len(edges) - 1):
+        rows = X[bins == k]
+        if len(rows) == 0:
+            continue
+        lo, hi = rows.copy(), rows.copy()
+        lo[:, j], hi[:, j] = edges[k], edges[k + 1]
+        deltas[k], counts[k] = np.mean(predict(hi) - predict(lo)), len(rows)
+    ale = np.concatenate([[0.0], np.cumsum(deltas)])
+    centre = np.sum((ale[:-1] + ale[1:]) / 2 * counts) / counts.sum()
+    return edges, ale - centre
+
+
+j = feature_names.index("debt_to_income")
+edges, ale = ale_1d(lambda A: model.predict(A, raw_score=True), X_test[:5_000], j)
+for z, a in zip(edges, ale):
+    print(f"  debt_to_income = {z:5.2f}   ALE = {a:+.3f} log-odds")
+```
+
+The curve rises with `debt_to_income`: moving from the lowest to the highest decile adds roughly the amount printed between the first and last rows to the log-odds of default, *holding the applicant's other attributes at realistic values*. Compare it with `sklearn.inspection.partial_dependence` on the same feature; where the two disagree, correlation between `debt_to_income` and other features is distorting the PDP.
+
+**Drill.** Compute the ALE curve for `age`. Then compute the PDP for `age` with `sklearn.inspection.partial_dependence(model, X_test[:5_000], [feature_names.index("age")], kind="average")`. Which one shows the larger effect of age, and why?
+
+*Solution sketch.* Age is strongly correlated with `months_employed`, `employment_years` and `credit_age_years`. The PDP sets a 22-year-old's age to 70 while keeping their short employment history, and sets a 70-year-old's age to 22 while keeping their long history — combinations that do not occur — so part of the effect it shows belongs to the employment features. ALE moves age only within narrow intervals among applicants who really have that age, so it isolates the model's response to age itself; expect the two curves to differ in size, and trust ALE's version when features are correlated.
 
 ## Try It Yourself
 
@@ -4101,10 +4246,10 @@ Sum_i phi_i = f(all) - f(none)
 **Disparate impact ratio:**
 
 ```
-DIR = P(y_hat=1 | G=minority) / P(y_hat=1 | G=majority)
+DIR_g = P(approved | G=g) / max_h P(approved | G=h)
 ```
 
-Four-fifths rule: `DIR >= 0.8`.
+Four-fifths screen (US EEOC guideline, borrowed as a rule of thumb): investigate any group with `DIR < 0.8`.
 
 **PSI:**
 

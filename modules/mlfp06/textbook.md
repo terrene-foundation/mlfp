@@ -1158,17 +1158,30 @@ You should now be able to:
 
 ## Why This Matters
 
-LLMs have a knowledge cutoff — they do not know about events after their training data ends. They hallucinate — they generate confident, plausible-sounding text that is factually wrong. RAG (Retrieval-Augmented Generation) solves both problems by grounding LLM responses in retrieved documents. Instead of relying on parametric memory (what the model learned during training), RAG uses non-parametric memory (a searchable document store) to provide relevant context.
+LLMs have a knowledge cutoff — they do not know about events after their training data ends. They hallucinate — they generate confident, plausible-sounding text that is factually wrong. RAG (Retrieval-Augmented Generation) addresses both problems by grounding LLM responses in retrieved documents. Instead of relying on parametric memory (what the model learned during training), RAG uses non-parametric memory (a searchable document store) to provide relevant context. It reduces hallucination rather than eliminating it: the model can still ignore or misread the context, which is why RAG is always evaluated.
 
 ## Core Concepts
 
 ### FOUNDATIONS: The RAG pipeline
 
 1. **Chunk** documents into manageable pieces (paragraphs, sentences, or semantic units).
-2. **Embed** each chunk using a sentence embedding model, producing dense vectors.
-3. **Index** the vectors in a vector database for fast nearest-neighbour search.
-4. **Retrieve** relevant chunks given a query (dense, sparse, or hybrid retrieval).
+2. **Embed** each chunk using an embedding model, producing dense vectors.
+3. **Index** the vectors (and, for sparse retrieval, the terms) for fast search.
+4. **Retrieve** relevant chunks given a query (dense, sparse, or hybrid retrieval), optionally **re-rank** them.
 5. **Generate** a response using the retrieved chunks as context.
+
+**The course corpus.** Exercise 6.4 uses 1,000 documents sampled from the open `neural-bridge/rag-dataset-12000` dataset, loaded with `shared.mlfp06.ex_4.load_rag_corpus()`. Each row has a `section` id, a `text` (a web passage of 600–7,300 characters, 3,400 on average), and a `question` and `answer` generated from that passage. The same table is therefore both the retrieval corpus and a labelled evaluation set: for question $i$, the relevant document is document $i$. The passages are general web text on many topics, not Singapore policy documents.
+
+### FOUNDATIONS: Chunking strategies
+
+Exercise 6.4 (`ex_4/01`) implements four chunkers:
+
+- **Fixed-size:** every $n$ characters, with an overlap (say 100 characters) so a sentence cut at a boundary appears whole in one of the two chunks.
+- **Sentence:** group whole sentences up to a size limit — never cuts mid-sentence.
+- **Paragraph:** split on blank lines, merging very short paragraphs.
+- **Semantic:** split where the topic changes (headings, transition phrases, or a drop in embedding similarity between neighbouring sentences).
+
+Smaller chunks give more precise matches and fit more of them in the prompt, but can split an answer from the sentence that explains it; larger chunks keep context together but dilute the embedding and cost more prompt tokens. Overlap trades index size for robustness at boundaries.
 
 ### THEORY: BM25 — sparse retrieval
 
@@ -1176,7 +1189,7 @@ BM25 (from Lesson 4.6) scores documents using term frequency with saturation and
 
 $$\text{BM25}(q, d) = \sum_{t \in q} \text{idf}(t) \cdot \frac{f_{t,d} (k_1 + 1)}{f_{t,d} + k_1 (1 - b + b \cdot |d|/|d_{\text{avg}}|)}$$
 
-BM25 is fast, interpretable, and excels at exact keyword matching. It fails on semantic queries ("What are the rules for HDB ownership?" will not match a document about "public housing eligibility criteria" unless the exact words overlap).
+with typical $k_1 = 1.5$ (how quickly repeated terms stop adding score) and $b = 0.75$ (how strongly long documents are penalised). BM25 is fast, interpretable, and excels at exact keyword matching — names, codes, rare terms. It fails on paraphrase ("What are the rules for HDB ownership?" will not match a document about "public housing eligibility criteria" unless the words overlap).
 
 ### THEORY: Cosine similarity — dense retrieval
 
@@ -1184,71 +1197,288 @@ Dense retrieval embeds both the query and documents as dense vectors, then finds
 
 $$\text{sim}(\mathbf{q}, \mathbf{d}) = \frac{\mathbf{q} \cdot \mathbf{d}}{\|\mathbf{q}\| \|\mathbf{d}\|}$$
 
-Dense retrieval captures semantic similarity ("HDB ownership" matches "public housing eligibility") but can miss exact terms.
+The course embeds with `nomic-embed-text` (768 dimensions) on local Ollama through `make_embedder()`. Dense retrieval captures semantic similarity ("HDB ownership" matches "public housing eligibility") but can miss exact terms such as product codes. A raw dot product equals the cosine only when the vectors are normalised to unit length; otherwise long vectors win regardless of direction.
 
 ### FOUNDATIONS: Hybrid retrieval
 
-Combine BM25 and dense retrieval using reciprocal rank fusion:
+Combine BM25 and dense retrieval using reciprocal rank fusion (Cormack et al., 2009):
 
 $$\text{RRF}(d) = \sum_{r \in \text{rankers}} \frac{1}{k + \text{rank}_r(d)}$$
 
-where $k$ is a constant (typically 60). This captures both exact keyword matches and semantic similarity.
+where $k$ is a constant (typically 60). RRF uses ranks, not scores, so it needs no calibration between BM25's unbounded scores and cosine similarities in $[-1, 1]$. A document ranked well by both retrievers rises to the top.
+
+### FOUNDATIONS: Re-ranking
+
+First-stage retrievers are *bi-encoders*: query and document are embedded separately, which makes search fast but approximate. A **cross-encoder** reads the query and a candidate document together and outputs one relevance score — much more accurate, but too slow to run over the whole corpus. The standard pattern is to retrieve 20–50 candidates cheaply and re-rank them:
+
+```python
+from sentence_transformers import CrossEncoder
+
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")   # downloads once
+scores = reranker.predict([(query, doc) for doc in candidates])
+top3 = [candidates[i] for i in scores.argsort()[::-1][:3]]
+```
+
+Exercise 6.4 (`ex_4/05`) uses the local LLM as the cross-encoder instead (it scores each query–passage pair 0–10), which needs no extra model but is slower.
 
 ### FOUNDATIONS: RAGAS evaluation
 
-RAGAS provides four metrics for RAG quality:
+The RAGAS framework (Es et al., 2024) defines four metrics for RAG quality, each scored in $[0, 1]$:
 
-- **Faithfulness:** is the answer supported by the retrieved context?
+- **Faithfulness:** is every claim in the answer supported by the retrieved context?
 - **Answer relevance:** does the answer address the question?
 - **Context relevance:** are the retrieved chunks relevant to the question?
-- **Context recall:** did the retrieval find all relevant information?
+- **Context recall:** does the retrieved context contain the information in the reference answer?
+
+Exercise 6.4 computes all four with an LLM judge on local Ollama (`compute_ragas_metrics` in `ex_4/05`), one judge prompt per metric. Retrieval itself is measured without any LLM: **hit@k** (here equal to recall@k, since each question has one relevant document) is the fraction of questions whose source document appears in the top $k$.
 
 ### ADVANCED: HyDE (Hypothetical Document Embeddings)
 
-Generate a hypothetical answer to the query (even if wrong), embed it, and use that embedding for retrieval. The intuition: the hypothetical answer is more semantically similar to the actual relevant documents than the short query is.
+Generate a hypothetical answer to the query (even if wrong), embed it, and use that embedding for retrieval (Gao et al., 2023). The intuition: a passage-shaped answer is closer in embedding space to real passages than a short question is. It costs one extra LLM call per query, and it can hurt when the model's guess pulls retrieval towards the wrong topic — measure it, do not assume it.
 
-## Worked Example: RAG on Singapore Policy Documents
+### ADVANCED: Advanced RAG patterns
+
+- **Metadata filtering:** filter chunks by source, date, department or language *before* the similarity search. A question about 2024 rules should never retrieve a 2019 circular, however similar its wording.
+- **Multi-hop retrieval:** retrieve, read, form a follow-up query, retrieve again — for questions whose answer spans two documents ("Which company acquired the startup founded by X?"). The follow-up query is a reasoning step, which is why Lesson 6.5 builds multi-hop question answering on HotpotQA as an agent loop.
+- **Document summarisation (hierarchical retrieval):** index one summary per document; retrieve the document by its summary first, then search only that document's chunks. This keeps long documents findable when no single chunk resembles the question.
+
+### FOUNDATIONS: Kaizen RAG agents
+
+Kaizen ships ready-made agents for the two most common patterns. `RAGResearchAgent` keeps its own vector store (local sentence-transformer embeddings) and retrieves-then-answers in one call; `MemoryAgent` remembers earlier turns per session. Both run on local Ollama, and their `run()` is synchronous.
 
 ```python
-from sentence_transformers import SentenceTransformer
-import numpy as np
+from kaizen_agents.agents import MemoryAgent, RAGResearchAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL
 
-# 1. Chunk documents
-def chunk_text(text, chunk_size=500, overlap=100):
-    words = text.split()
-    chunks = []
-    for i in range(0, len(words), chunk_size - overlap):
-        chunk = " ".join(words[i:i + chunk_size])
-        chunks.append(chunk)
+rag = RAGResearchAgent(llm_provider="ollama", model=DEFAULT_CHAT_MODEL, top_k_documents=3)
+rag.add_document("d1", "Refund policy", "Refunds are accepted within 30 days of purchase.")
+out = rag.run(query="How long is the refund window?")
+print(out["answer"], out["sources"], out["confidence"])
+
+mem = MemoryAgent(llm_provider="ollama", model=DEFAULT_CHAT_MODEL)
+mem.run("I handle motor insurance claims.", session_id="u42")
+reply = mem.run("Which claims do I handle?", session_id="u42")
+print(reply["response"])
+```
+
+Use them for quick prototypes; build the pipeline yourself (as in the exercise) when you need control over chunking, hybrid retrieval, re-ranking and evaluation.
+
+## Worked Example: Dense RAG on the Course Corpus
+
+```python
+import re
+from shared.mlfp06.ex_4 import (DenseVectorStore, embed_many, generate_embedding,
+                                load_rag_corpus, rag_answer)
+
+def chunk_sentence(text: str, max_chunk_chars: int = 500) -> list[str]:
+    """Group whole sentences into chunks of at most ~max_chunk_chars."""
+    chunks, current = [], ""
+    for sent in re.split(r"(?<=[.!?])\s+", text):
+        if current and len(current) + len(sent) + 1 > max_chunk_chars:
+            chunks.append(current.strip())
+            current = sent
+        else:
+            current = f"{current} {sent}" if current else sent
+    if current.strip():
+        chunks.append(current.strip())
     return chunks
 
-# 2. Embed chunks
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
-chunk_embeddings = embedder.encode(chunks)
+corpus = load_rag_corpus().head(200)          # 200 documents keep embedding quick
 
-# 3. Retrieve
-def retrieve(query, top_k=5):
-    query_embedding = embedder.encode([query])
-    similarities = np.dot(chunk_embeddings, query_embedding.T).flatten()
-    top_indices = np.argsort(similarities)[-top_k:][::-1]
-    return [chunks[i] for i in top_indices]
+# 1. Chunk, remembering each chunk's source document
+chunks, owner = [], []
+for doc_id, text in zip(corpus["section"], corpus["text"]):
+    for chunk in chunk_sentence(text, max_chunk_chars=500):
+        chunks.append(chunk)
+        owner.append(doc_id)
 
-# 4. Generate
-context = "\n".join(retrieve("What are the HDB eligibility criteria?"))
-prompt = f"Based on the following context, answer the question.\n\nContext: {context}\n\nQuestion: What are the HDB eligibility criteria?"
+# 2-3. Embed with nomic-embed-text on Ollama and index
+store = DenseVectorStore()
+vectors = await embed_many(chunks)
+for chunk_id, (chunk, doc_id, vector) in enumerate(zip(chunks, owner, vectors)):
+    store.add(chunk, vector, meta={"doc_id": doc_id, "chunk_id": chunk_id})
+
+# 4. Retrieve for a question whose source document we know
+question, gold_doc = corpus["question"][0], corpus["section"][0]
+hits = store.search(await generate_embedding(question), top_k=5)
+print("source document retrieved:", gold_doc in [h["metadata"]["doc_id"] for h in hits])
+
+# 5. Generate a grounded answer and compare with the reference
+context = "\n\n".join(h["text"] for h in hits)
+print(await rag_answer(question, context))
+print("reference:", corpus["answer"][0])
 ```
+
+Run the retrieval step over many questions, not one: a single query proves nothing about a retriever. Drill 1 does exactly that.
 
 ## Try It Yourself
 
-**Drill 1.** Implement BM25 retrieval from scratch. Compare it with dense retrieval on 20 Singapore policy questions. Which performs better on keyword-heavy queries? On semantic queries?
+**Drill 1.** Implement BM25 retrieval from scratch. Evaluate it with hit@1 and hit@5 on 100 of the corpus questions, then compare with dense retrieval on the same questions. Which wins on keyword-heavy questions? On paraphrased ones?
+
+**Solution:** the BM25 class below follows `ex_4/03` (same tokeniser, smoothed IDF, $k_1 = 1.5$, $b = 0.75$); `chunk_sentence` is the one from the worked example. Chunk hits are collapsed to their source document before scoring.
+
+```python
+import math
+import re
+from collections import Counter
+
+class BM25:
+    def __init__(self, documents: list[str], k1: float = 1.5, b: float = 0.75):
+        self.k1, self.b = k1, b
+        self.tokens = [re.findall(r"\w+", d.lower()) for d in documents]
+        self.lengths = [len(t) for t in self.tokens]
+        self.avgdl = sum(self.lengths) / len(documents)
+        self.tf = [Counter(t) for t in self.tokens]
+        df = Counter(term for toks in self.tokens for term in set(toks))
+        n = len(documents)
+        self.idf = {t: math.log((n - d + 0.5) / (d + 0.5) + 1) for t, d in df.items()}
+
+    def search(self, query: str, top_k: int = 5) -> list[tuple[int, float]]:
+        terms = re.findall(r"\w+", query.lower())
+        scores = []
+        for i, tf in enumerate(self.tf):
+            norm = self.k1 * (1 - self.b + self.b * self.lengths[i] / self.avgdl)
+            s = sum(self.idf.get(t, 0.0) * tf[t] * (self.k1 + 1) / (tf[t] + norm)
+                    for t in terms if t in tf)
+            scores.append((i, s))
+        return sorted(scores, key=lambda x: x[1], reverse=True)[:top_k]
+
+def hit_at_k(ranked_chunk_ids, owner, gold_doc, k):
+    docs = []
+    for i in ranked_chunk_ids:              # collapse chunks to documents
+        if owner[i] not in docs:
+            docs.append(owner[i])
+    return gold_doc in docs[:k]
+
+corpus = load_rag_corpus()                  # all 1,000 documents
+chunks, owner = [], []
+for doc_id, text in zip(corpus["section"], corpus["text"]):
+    for chunk in chunk_sentence(text, 500):
+        chunks.append(chunk)
+        owner.append(doc_id)
+bm25 = BM25(chunks)
+
+eval_rows = corpus.head(100)
+for k in (1, 5):
+    hits = sum(hit_at_k([i for i, _ in bm25.search(q, 50)], owner, gold, k)
+               for q, gold in zip(eval_rows["question"], eval_rows["section"]))
+    print(f"BM25 hit@{k} = {hits / 100:.2f}")
+# BM25 hit@1 = 0.92
+# BM25 hit@5 = 0.97
+```
+
+BM25 is very strong here (measured: hit@1 0.92, hit@5 0.97 over 8,219 chunks) because the questions were generated from their passages and reuse their words. For the dense side, embed all chunks with `embed_many`, rank with `DenseVectorStore.search`, and compute the same hit@k. Then read the questions BM25 misses: they are the paraphrased ones, and that is where dense retrieval earns its place. On real user questions, which rarely copy the document's wording, the gap usually narrows or reverses.
 
 **Drill 2.** Implement hybrid retrieval using reciprocal rank fusion. Does it outperform both BM25 and dense retrieval individually?
 
-**Drill 3.** Evaluate your RAG system using RAGAS. Compute faithfulness and context relevance for 10 questions.
+**Solution:**
 
-**Drill 4.** Implement HyDE. Compare retrieval quality (recall@5) with and without HyDE.
+```python
+def reciprocal_rank_fusion(rankings: list[list[int]], k: int = 60) -> list[int]:
+    """Fuse ranked lists of chunk ids; returns chunk ids by fused score."""
+    scores: dict[int, float] = {}
+    for ranking in rankings:
+        for rank, chunk_id in enumerate(ranking, start=1):
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (k + rank)
+    return sorted(scores, key=scores.get, reverse=True)
 
-**Drill 5.** Vary the chunk size (100, 250, 500, 1000 words) and overlap (0%, 20%, 50%). How do these parameters affect retrieval quality and answer quality?
+async def hybrid_ids(question: str, depth: int = 50) -> list[int]:
+    sparse = [i for i, _ in bm25.search(question, depth)]
+    q_emb = await generate_embedding(question)
+    dense = [h["metadata"]["chunk_id"] for h in dense_store.search(q_emb, depth)]
+    return reciprocal_rank_fusion([sparse, dense])
+```
+
+`dense_store` is a `DenseVectorStore` built exactly as in the worked example, but over the same 1,000-document `chunks` list as `bm25`, so chunk ids match. Score `hybrid_ids` with `hit_at_k` exactly as in Drill 1. Hybrid usually matches the better of the two and fixes some of each one's misses; when one retriever is already near the ceiling (as BM25 is on this corpus), the gain is small.
+
+**Drill 3.** Evaluate your RAG system using RAGAS-style metrics. Compute faithfulness and context relevance for 10 questions.
+
+**Solution:** follow `compute_ragas_metrics` in `ex_4/05`: for each question, retrieve, generate with `rag_answer`, then ask the judge one question per metric and parse a number in $[0, 1]$.
+
+```python
+import re
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+
+judge = make_delegate(temperature=0.0)
+
+async def judge_score(prompt: str) -> float | None:
+    text, _usage, _secs = await run_delegate_text(judge, prompt + "\nOutput ONLY a number between 0.0 and 1.0.")
+    match = re.search(r"\d*\.?\d+", text)
+    value = float(match.group()) if match else None
+    return value if value is not None and 0.0 <= value <= 1.0 else None   # None = judge failed
+
+async def evaluate(question: str) -> dict:
+    hits = store.search(await generate_embedding(question), top_k=3)
+    context = "\n\n".join(h["text"] for h in hits)
+    answer = await rag_answer(question, context)
+    return {
+        "faithfulness": await judge_score(
+            f"Is every claim in the answer supported by the context?\n\n"
+            f"Context: {context[:1500]}\n\nAnswer: {answer}"),
+        "context_relevance": await judge_score(
+            f"How relevant is this context to the question?\n\n"
+            f"Question: {question}\n\nContext: {context[:1500]}"),
+    }
+
+results = [await evaluate(q) for q in corpus["question"].head(10)]
+```
+
+Average each metric over the questions where the judge returned a valid number, and report the failures separately rather than counting them as zero.
+
+**Drill 4.** Implement HyDE. Compare retrieval quality (hit@5) with and without HyDE.
+
+**Solution:**
+
+```python
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+
+writer = make_delegate(temperature=0.0)
+
+async def hyde_search(question: str, top_k: int = 5) -> list[dict]:
+    passage, _usage, _secs = await run_delegate_text(
+        writer, f"Write a short paragraph that would answer this question:\n{question}")
+    return store.search(await generate_embedding(passage), top_k=top_k)
+
+hyde_hits, plain_hits = 0, 0
+for q, gold in zip(corpus["question"].head(50), corpus["section"].head(50)):
+    hyde_docs = {h["metadata"]["doc_id"] for h in await hyde_search(q)}
+    plain_docs = {h["metadata"]["doc_id"] for h in store.search(await generate_embedding(q), 5)}
+    hyde_hits += gold in hyde_docs
+    plain_hits += gold in plain_docs
+print(f"dense hit@5 {plain_hits / 50:.2f} vs HyDE hit@5 {hyde_hits / 50:.2f}")
+```
+
+Compare like with like: the same questions, the same store, the same $k$. On this corpus the questions already share vocabulary with their passages, so HyDE has little room to help and can hurt; it pays off on short, vague or jargon-free questions.
+
+**Drill 5.** Vary the chunk size (250, 500, 1,000 and 2,000 characters) and measure BM25 hit@1 and hit@5. How does chunk size affect retrieval quality?
+
+**Solution:** reuse `chunk_sentence`, `BM25`, `hit_at_k` and `eval_rows` from above.
+
+```python
+for size in [250, 500, 1000, 2000]:
+    chunks, owner = [], []
+    for doc_id, text in zip(corpus["section"], corpus["text"]):
+        for chunk in chunk_sentence(text, size):
+            chunks.append(chunk)
+            owner.append(doc_id)
+    bm25 = BM25(chunks)
+    h1 = sum(hit_at_k([i for i, _ in bm25.search(q, 50)], owner, g, 1)
+             for q, g in zip(eval_rows["question"], eval_rows["section"]))
+    h5 = sum(hit_at_k([i for i, _ in bm25.search(q, 50)], owner, g, 5)
+             for q, g in zip(eval_rows["question"], eval_rows["section"]))
+    print(f"{size:>5} chars  {len(chunks):>6} chunks  hit@1={h1 / 100:.2f}  hit@5={h5 / 100:.2f}")
+```
+
+Measured on the course corpus (1,000 documents, first 100 questions):
+
+| Chunk size (chars) | Chunks | hit@1 | hit@5 |
+| ------------------ | ------ | ----- | ----- |
+| 250                | 16,511 | 0.88  | 0.98  |
+| 500                | 8,219  | 0.92  | 0.97  |
+| 1,000              | 4,143  | 0.92  | 0.97  |
+| 2,000              | 2,222  | 0.93  | 0.99  |
+
+Very small chunks lose hit@1: a single short sentence that happens to share the question's words can outrank the right passage. Beyond 500 characters, document-level retrieval barely changes — but every retrieved chunk now costs four times the prompt tokens at 2,000 characters, and the generator must find the answer in a longer context. Retrieval quality is only half of the chunk-size decision; answer quality and prompt cost (Drill 3) are the other half.
 
 ## Cross-References
 
@@ -1258,7 +1488,7 @@ prompt = f"Based on the following context, answer the question.\n\nContext: {con
 
 ## Reflection
 
-You should now be able to build a complete RAG pipeline, compare retrieval methods, and evaluate with RAGAS.
+You should now be able to build a complete RAG pipeline, choose a chunking strategy, compare sparse, dense and hybrid retrieval with hit@k on a labelled question set, re-rank candidates, evaluate answers with RAGAS-style metrics, and decide when HyDE, metadata filtering, multi-hop retrieval or a ready-made Kaizen RAG agent is the right tool.
 
 ---
 

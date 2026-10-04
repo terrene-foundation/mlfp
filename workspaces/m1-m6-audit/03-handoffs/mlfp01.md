@@ -47,3 +47,13 @@ For the textbook (S3) and notes (S4) shards — follow the corrected slides:
 - ex_8 Task 8 comment still says setup() learns from train only (X-PP) — fix in the X-PP integration pass; recheck its hourly range (X-NUM).
 - Lesson 1.8 REST examples need network; live counts labelled as examples.
 - Raw area vs price r = 0.47; on cleaned data r = 0.91.
+
+---
+# Additions from the assessment shard (S5, merged b0496003)
+- Deck + lesson assessment slides: FIVE tasks, 20/20/15/20/25 marks (taxi data contract; HDB features + MRT/school join;
+  calendar-aligned trends; DataExplorer profile/clean/justify; PreprocessingPipeline + charts), goals not steps, grader
+  computes ground truth from raw data and reruns on unseen variants. (Integration fixes the deck slide.)
+- Spec 1.x end-of-module assessment line ("Quiz") → "five coding tasks" (P5).
+- Data facts: 3,298 HDB records sold before lease start (age unknown), 94 of them with no remaining lease; MRT table has
+  one row per station per line (interchanges repeat); 4 town-months have no sales.
+- REST extraction not assessed (graders offline).

@@ -37,3 +37,9 @@ Verified in dataflow/core/engine.py (~l.9272): `file_path = db_url.replace("sqli
   absolute path too (M2 2.8 slide). Known sites: shared/mlfp02/ex_8.py FEATURE_STORE_URL; grep `DataFlow(` repo-wide.
 - Upstream: kailash-dataflow bug (relative sqlite paths).
 - Also: the data loader finds data/ only when run from the repo root — integration runs start at the root.
+
+## X-DATA: data-quality issues in shipped datasets (owner / S6 decision)
+- data/mlfp01/hdb_resale.parquet: impossible prices (107 at S$10, 144 at S$9M), negative remaining-lease ages,
+  letter-O typos in storey_range ("O4 TO 06"). M1 teaches them as planted defects; M2/M4 clean them ad hoc.
+  Decide: keep as deliberate teaching defects (and make every downstream module clean them the same way via one
+  shared cleaner) or ship a clean variant for M2+.

@@ -42,3 +42,9 @@
 - 4.1: ClusteringEngine on real customers K=3, silhouette 0.182. 4.3: 5 components → 90% variance, 6 → 95% (7 features). 4.4: LOF masking (ring AUC 0.22 at k=20 vs 0.89 at k=50); DriftMonitor is PSI/KS (M3.8), not an anomaly detector. 4.6: BERTopic visualize_heatmap; UMAP ~5 dims; embed model from TOPIC_EMBED_MODEL. 4.8: runnable numpy network on HDB (MSE 107 → 26.4).
 - ModelVisualizer has NO scree helper — plot cumulative_variance with plotly.
 - Note: 4.5 slide + ex_5 call mlxtend via `.to_pandas()` at the call boundary (no `import pandas`) — owner may want to rule on this vs the polars-only mandate.
+
+---
+# Additions from the textbook shard (S3a, merged 1af0941d)
+- Lesson pages (S3b) align: 4.1 3,000-customer sample, K=3, silhouette 0.182; 4.3 5 comps → 92.2%, 6 → 98.0% (slides' "90%/95%" thresholds consistent); 4.4 credit-application benchmark; 4.6 AG News; 4.7 300×120 ratings, ALS RMSE 0.557.
+- Honest results: from-scratch net ≈ linear regression (R² 0.860 both); equal-weight blend < LOF alone; Apriori faster than FP-Growth on this small data.
+- BERTopic verified with TOPIC_EMBED_MODEL=all-MiniLM-L6-v2 (40 topics, 25% outliers).

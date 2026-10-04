@@ -51,7 +51,7 @@ You will find that Module 3 is long because the pipeline is long. Every lesson i
 By the end of Module 3, you will have built a complete, production-ready ML system for (synthetic) Singapore credit default prediction. Along the way you will:
 
 - Engineer point-in-time features from multi-table ICU records, and screen the credit data for a planted leak column (`future_default_indicator`) that a careless pipeline would happily train on.
-- Train, tune, and calibrate a gradient-boosted model. On the leak-free credit data expect an ROC-AUC of roughly 0.78 and an average precision of roughly 0.37–0.38 on a 12.9% default rate — about three times what a random ranking achieves. (With the leak column left in, the same model reports an AUC above 0.99: a number that should make you suspicious, not proud.)
+- Train, tune, and calibrate a gradient-boosted model. On the leak-free credit data expect an ROC-AUC of roughly 0.78–0.80 and an average precision of roughly 0.37–0.38 on a 12.9% default rate — about three times what a random ranking achieves. (With the leak column left in, the same model reports an AUC above 0.99: a number that should make you suspicious, not proud.)
 - Compare five model families (linear, SVM, KNN, Naive Bayes, trees) and three boosting libraries (XGBoost, LightGBM, CatBoost) against one another with a consistent evaluation protocol.
 - Explain individual and global predictions using SHAP with the four-axiom Shapley foundation.
 - Measure fairness across protected attributes using disparate impact, equalized odds, and calibration parity, and document trade-offs via the impossibility theorem.
@@ -88,7 +88,7 @@ The investigation revealed a single feature: `days_since_last_payment_reminder`.
 
 The bank rebuilt the model with 87 features, none of which referenced post-application events. Validation AUC dropped to 0.78. Live AUC held at 0.76 — far below the leaked version's validation score, but a model that actually worked on the applications it was built for. The credit losses it prevented came not from a better algorithm but from better features.
 
-You will meet the same trap in this module's own data: the synthetic credit table carries a column, `future_default_indicator`, that was recorded after the loan outcome was known. Leave it in and a gradient-boosted model scores an AUC above 0.99; take it out and the honest AUC is about 0.78.
+You will meet the same trap in this module's own data: the synthetic credit table carries a column, `future_default_indicator`, that was recorded after the loan outcome was known. Leave it in and a gradient-boosted model scores an AUC above 0.99; take it out and the honest AUC is about 0.78–0.80.
 
 This lesson is about feature engineering — the activity that more than any other distinguishes an ML project that works in production from one that looks impressive on a slide deck. You will learn:
 
@@ -1602,7 +1602,7 @@ Prune the subtree with the smallest `alpha_eff`. Repeat. This produces a sequenc
 
 ## Why This Matters
 
-Between 2015 and 2020, XGBoost won more Kaggle competitions than every other algorithm combined. When LightGBM appeared, it matched XGBoost on accuracy while training five to ten times faster. When CatBoost appeared, it handled categorical features natively without the one-hot explosion that plagued the other two. Today, if you are building a tabular model and you are not trying at least one gradient boosting library, you are leaving accuracy on the table.
+From 2015 onwards XGBoost became the default winning tool for tabular competitions — its authors report that 17 of the 29 winning solutions published on Kaggle's blog in 2015 used it (Chen & Guestrin, 2016). When LightGBM appeared, it matched XGBoost on accuracy while training markedly faster on large data. When CatBoost appeared, it handled categorical features natively without the one-hot explosion that plagued the other two. Today, if you are building a tabular model and you are not trying at least one gradient boosting library, you are leaving accuracy on the table.
 
 Gradient boosting is the dominant algorithm on tabular data. It deserves its own lesson not just because it is popular, but because understanding it unlocks a cluster of important ideas: second-order optimisation, regularised tree learning, histogram-based splitting, and the long-running debate between accuracy and speed.
 
@@ -1657,10 +1657,10 @@ For squared error loss, `l(y, F) = (1/2)(y - F)^2`, so `g_i = -(y_i - F_{m-1}(x_
 The update rule is:
 
 ```
-F_m(x) = F_{m-1}(x) - eta * h_m(x)
+F_m(x) = F_{m-1}(x) + eta * h_m(x)
 ```
 
-where `h_m` is a decision tree fit to the negative gradients, and `eta` is the learning rate (typically 0.01 to 0.1). Small `eta` with many trees usually outperforms large `eta` with few trees, because it allows finer corrections.
+where `h_m` is a decision tree fit to the **negative** gradients `-g_i` (for squared error, the residuals `y_i - F_{m-1}(x_i)`), and `eta` is the learning rate. The tree already points downhill, so it is **added**: a step along the negative gradient is gradient descent in function space. Typical values of `eta` are 0.01 to 0.1. Small `eta` with many trees usually outperforms large `eta` with few trees, because it allows finer corrections.
 
 ## Mathematical Foundations: XGBoost's Second-Order Derivation
 
@@ -1763,7 +1763,7 @@ Gain = (1/2) * [ G_L^2 / (H_L + lambda) + G_R^2 / (H_R + lambda) - (G_L + G_R)^2
 
 Notice the structure:
 
-- `G_j^2 / (H_j + lambda)` measures how much "pull" each leaf has. Leaves with large absolute gradient (lots of error) and small hessian (model is uncertain) contribute more.
+- `G_j^2 / (H_j + lambda)` measures how much "pull" each leaf has. Leaves with a large summed gradient (lots of error pointing the same way) contribute more. A small hessian means the loss is flat in that region — for log-loss `h = p(1 - p)`, which is smallest when the model is already **confident** (`p` near 0 or 1) and largest at `p = 0.5` — so a confident-but-wrong leaf gets a large weight `-G/(H + lambda)`; `lambda` keeps that weight from exploding.
 - `lambda` in the denominator shrinks the gain; it is the L2 regularisation on leaf weights.
 - `gamma` is a flat tax per split; it controls tree size directly.
 
@@ -1787,7 +1787,7 @@ LightGBM (Ke et al., 2017) is XGBoost's faster cousin. It introduces two key inn
 
 ### Histogram-Based Split Finding
 
-XGBoost's exact split finding considers every unique feature value as a candidate split point. For a feature with `n` unique values, that is `n - 1` candidates. Across `d` features and `n` samples, the cost per tree is `O(n * d)`.
+Exact greedy split finding — XGBoost's original `tree_method="exact"` — considers every unique feature value as a candidate split point (after sorting). Modern XGBoost defaults to a histogram method too, so the speed gap between the libraries is smaller than it once was. For a feature with `n` unique values, that is `n - 1` candidates. Across `d` features and `n` samples, the cost per tree is `O(n * d)`.
 
 LightGBM discretises each feature into a fixed number of bins (default 255). Instead of considering every unique value, it considers only the bin boundaries. This reduces the cost to `O(bins * d)`, which is constant in `n`. Histogram construction itself is `O(n)`, but it is a much simpler scan.
 
@@ -1801,12 +1801,12 @@ The GOSS recipe:
 
 1. Sort samples by absolute gradient in descending order.
 2. Keep the top `a%` (e.g., 20%) — these are the "important" samples with large gradients.
-3. Randomly sample `b%` (e.g., 10%) of the remaining samples.
+3. From the remaining `(1 - a) × N` samples, randomly draw `b × N` — note that `b` is a fraction of the **full** dataset (e.g. `b = 0.1` means 10% of all rows).
 4. When computing split gains, upweight the small-gradient samples by a factor of `(1 - a) / b` to compensate for subsampling.
 
-This preserves the expected value of the split gain while using only `a + b` fraction of the data. Typical settings (a = 0.2, b = 0.1) cut the data used per split to 30% with minimal accuracy loss.
+This preserves the expected value of the gradient sums while using only an `a + b` fraction of the data. Typical settings (a = 0.2, b = 0.1) cut the data used per split to 30% with minimal accuracy loss.
 
-The upweighting factor `(1 - a) / b` is crucial. It ensures that the expected sum of gradients in the sampled set equals the sum in the full set, making the split gains unbiased estimators.
+The upweighting factor `(1 - a) / b` is crucial. It ensures that the expected sum of gradients in the sampled set equals the sum in the full set, so the gradient statistics behind each split gain are unbiased (the gain itself, a ratio of squares, is approximately so).
 
 ### Leaf-Wise Tree Growth
 
@@ -1842,146 +1842,103 @@ For high-cardinality categorical features (zip codes, SKUs, user IDs), CatBoost 
 
 On most benchmarks, the three are within 1 AUC point of each other when properly tuned. The choice is about engineering ergonomics, not accuracy.
 
-## Kailash Engine: TrainingPipeline and AutoMLEngine
+## Kailash Engine: TrainingPipeline (and Where AutoMLEngine Fits)
 
-Kailash's `AutoMLEngine` wraps all three gradient boosting libraries behind a single interface, handling cross-validation, early stopping, and hyperparameter search. For simple use cases, `TrainingPipeline` is enough.
+`TrainingPipeline` (Lesson 3.3) trains any of the three boosters — the `ModelSpec` just names it, for example `ModelSpec(model_class="lightgbm.LGBMClassifier", framework="lightgbm", hyperparameters={...})`. Exercises 6–8 train their LightGBM credit model exactly this way, and Lesson 3.7 wraps the same call in a workflow node and a hyperparameter search.
 
-```python
-from kailash_ml import TrainingPipeline
-import lightgbm as lgb
+For a head-to-head comparison of libraries with early stopping, however, you need control the engine does not expose (an `eval_set` per library, library-specific early-stopping arguments), so the worked example below calls XGBoost, LightGBM and CatBoost directly and keeps the evaluation protocol identical by hand.
 
-pipeline = TrainingPipeline(
-    model=lgb.LGBMClassifier(
-        n_estimators=500,
-        learning_rate=0.05,
-        num_leaves=31,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        reg_lambda=1.0,
-        reg_alpha=0.0,
-        random_state=42,
-    ),
-    cv_strategy="stratified_kfold",
-    cv_folds=5,
-    scoring=["roc_auc", "average_precision", "log_loss"],
-)
-
-result = pipeline.fit(X_train, y_train)
-```
-
-For more automation, `AutoMLEngine` will iterate over multiple model families and hyperparameters:
-
-```python
-from kailash_ml import AutoMLEngine
-
-automl = AutoMLEngine(
-    model_families=["xgboost", "lightgbm", "catboost"],
-    metric="average_precision",
-    time_budget_seconds=600,
-)
-best = automl.fit(X_train, y_train)
-print(f"Best family: {best.family}, AP = {best.score:.3f}")
-```
+`AutoMLEngine` sits one level higher: it runs a governed search over model families and hyperparameters, with cost tracking and an audit trail, given a search space and a trial function. It is built for automated, budgeted retraining rather than for a first comparison, and no Module 3 exercise uses it; learn the manual comparison first so you can judge what an automated search reports.
 
 ## Worked Example: Credit Scoring with Three Boosters
 
-Following MLFP03 ex_4, we train XGBoost, LightGBM, and CatBoost on the Singapore credit scoring dataset and compare their performance.
+Following Exercise 4, we train XGBoost, LightGBM and CatBoost on the Singapore credit-scoring data and compare them. Three splits keep the comparison honest: **train** rows fit the trees, **validation** rows decide when to stop adding trees and which library wins, and **test** rows are used once at the end. Early stopping on the test set would quietly tune on it, and its score would no longer be honest.
 
 ```python
-import numpy as np
 import polars as pl
-import time
-import xgboost as xgb
-import lightgbm as lgb
-from catboost import CatBoostClassifier
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import (
-    average_precision_score, roc_auc_score, log_loss, brier_score_loss,
-)
+from kailash_ml import PreprocessingPipeline
+from kailash_ml.interop import to_sklearn_input
 from shared import MLFPDataLoader
 
-loader = MLFPDataLoader()
-credit = loader.load("mlfp02", "credit_scoring.parquet")
-
-feature_cols = [c for c in credit.columns if c != "default"]
-X = credit.select(feature_cols).drop_nulls().to_numpy()
-y = credit.select("default").to_series().to_numpy()[:len(X)]
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
+credit = (
+    MLFPDataLoader().load("mlfp02", "sg_credit_scoring.parquet")
+    .drop("customer_id", "future_default_indicator")   # identifier + planted leak (Lesson 3.1)
+    .sample(fraction=1.0, shuffle=True, seed=42)
 )
+test_df, dev_df = credit.head(20_000), credit.tail(80_000)   # hold out test rows first
+
+pipe = PreprocessingPipeline()                                 # imputation + ordinal codes fitted on dev rows
+fitted = pipe.setup(dev_df, target="default", train_size=0.8, seed=42, normalize=False,
+                    categorical_encoding="ordinal", imputation_strategy="median")
+feature_names = [c for c in fitted.train_data.columns if c != "default"]
+
+
+def to_xy(frame):
+    X, y, _ = to_sklearn_input(frame, feature_columns=feature_names, target_column="default")
+    return X, y.astype(int)
+
+
+X_train, y_train = to_xy(fitted.train_data)       # 64,000 rows: fit
+X_val, y_val = to_xy(fitted.test_data)           # 16,000 rows: early stopping and model choice
+X_test, y_test = to_xy(pipe.transform(test_df))  # 20,000 rows: touched once, at the end
+print(len(feature_names), "features;", f"default rate {y_train.mean():.3f}")
 ```
 
-Train XGBoost:
+Thirty-three features remain, and 12.9% of applicants default. Tree models need no scaling (`normalize=False`); the categoricals are ordinal-encoded so all three libraries see identical inputs. Now train each booster with a generous tree budget and let early stopping on the validation rows choose the number of trees:
 
 ```python
-start = time.perf_counter()
-xgb_model = xgb.XGBClassifier(
-    n_estimators=500,
-    learning_rate=0.05,
-    max_depth=6,
-    reg_lambda=1.0,
-    reg_alpha=0.0,
-    gamma=0.0,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    eval_metric="aucpr",
-    random_state=42,
-)
-xgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
-xgb_time = time.perf_counter() - start
+import time
 
-p_xgb = xgb_model.predict_proba(X_test)[:, 1]
-print(f"XGBoost:   AP = {average_precision_score(y_test, p_xgb):.3f}  "
-      f"AUC = {roc_auc_score(y_test, p_xgb):.3f}  "
-      f"LogLoss = {log_loss(y_test, p_xgb):.3f}  "
-      f"time = {xgb_time:.1f}s")
+import lightgbm as lgb
+import xgboost as xgb
+from catboost import CatBoostClassifier
+from sklearn.metrics import average_precision_score, log_loss, roc_auc_score
+
+boosters = {
+    "XGBoost": xgb.XGBClassifier(
+        n_estimators=2000, learning_rate=0.05, max_depth=6, reg_lambda=1.0,
+        subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
+        early_stopping_rounds=50, random_state=42,
+    ),
+    "LightGBM": lgb.LGBMClassifier(
+        n_estimators=2000, learning_rate=0.05, num_leaves=31, subsample=0.8,
+        subsample_freq=1, colsample_bytree=0.8, reg_lambda=1.0, random_state=42, verbose=-1,
+    ),
+    "CatBoost": CatBoostClassifier(
+        iterations=2000, learning_rate=0.05, depth=6, l2_leaf_reg=3.0,
+        early_stopping_rounds=50, random_seed=42, verbose=False,
+    ),
+}
+
+fitted_models = {}
+for name, model in boosters.items():
+    start = time.perf_counter()
+    if name == "LightGBM":
+        model.fit(X_train, y_train, eval_set=[(X_val, y_val)],
+                  callbacks=[lgb.early_stopping(50, verbose=False)])
+    elif name == "XGBoost":
+        model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
+    else:
+        model.fit(X_train, y_train, eval_set=(X_val, y_val))
+    p_val = model.predict_proba(X_val)[:, 1]
+    fitted_models[name] = model
+    print(f"{name:9s} val AUC {roc_auc_score(y_val, p_val):.3f}  val AP {average_precision_score(y_val, p_val):.3f}  "
+          f"log loss {log_loss(y_val, p_val):.3f}  ({time.perf_counter() - start:.1f}s)")
 ```
 
-Train LightGBM:
+Measured on validation, the three are practically tied: ROC-AUC about 0.795–0.797, average precision about 0.375–0.379, log loss about 0.314. Average precision of 0.38 against a base rate of 0.129 is roughly a threefold lift over random ranking. Early stopping halted every library after a few hundred trees or fewer — well short of the 2,000 allowed. Training time differs far more than accuracy: on a laptop XGBoost and LightGBM take seconds, CatBoost several times longer.
+
+Only now touch the test set, once, with the library chosen on validation:
 
 ```python
-start = time.perf_counter()
-lgb_model = lgb.LGBMClassifier(
-    n_estimators=500,
-    learning_rate=0.05,
-    num_leaves=31,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    reg_lambda=1.0,
-    random_state=42,
-)
-lgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)])
-lgb_time = time.perf_counter() - start
-
-p_lgb = lgb_model.predict_proba(X_test)[:, 1]
-print(f"LightGBM:  AP = {average_precision_score(y_test, p_lgb):.3f}  "
-      f"AUC = {roc_auc_score(y_test, p_lgb):.3f}  "
-      f"time = {lgb_time:.1f}s")
+best = max(fitted_models,
+           key=lambda n: average_precision_score(y_val, fitted_models[n].predict_proba(X_val)[:, 1]))
+p_test = fitted_models[best].predict_proba(X_test)[:, 1]
+print(f"Chosen on validation: {best}. "
+      f"Test AUC {roc_auc_score(y_test, p_test):.3f}, test AP {average_precision_score(y_test, p_test):.3f}")
 ```
 
-Train CatBoost:
-
-```python
-start = time.perf_counter()
-cat_model = CatBoostClassifier(
-    iterations=500,
-    learning_rate=0.05,
-    depth=6,
-    l2_leaf_reg=1.0,
-    random_seed=42,
-    verbose=False,
-)
-cat_model.fit(X_train, y_train)
-cat_time = time.perf_counter() - start
-
-p_cat = cat_model.predict_proba(X_test)[:, 1]
-print(f"CatBoost:  AP = {average_precision_score(y_test, p_cat):.3f}  "
-      f"AUC = {roc_auc_score(y_test, p_cat):.3f}  "
-      f"time = {cat_time:.1f}s")
-```
-
-Typical results on the credit dataset: all three achieve AP between 0.55 and 0.62 (the baseline rate is 0.12, so these are substantial lifts). LightGBM is usually the fastest. CatBoost is slowest on numeric-only features but wins when categoricals dominate.
+The test numbers (AUC about 0.80, AP about 0.38) agree with validation, which is what you expect when no decision was made on the test rows. With differences this small, the honest conclusion is "the three libraries are equivalent on this data; choose on speed and engineering fit". Compare that with the leaky version: train the same LightGBM with `future_default_indicator` left in and test AUC jumps above 0.99 — a result that should send you looking for a leak, not reaching for a celebration.
 
 ### Computing Split Gain by Hand
 
@@ -2023,7 +1980,7 @@ These are the raw score contributions each leaf adds to its samples. The actual 
 
 **Exercise B (medium).** Pick one feature from the credit dataset and build a partial dependence curve by hand: sweep the feature across 20 values, for each value set the feature in the entire validation set to that value and record the mean predicted probability. Plot. Interpret the shape.
 
-**Exercise C (hard).** Implement a minimal gradient booster. Using scikit-learn's `DecisionTreeRegressor(max_depth=3)` as the base learner, write a loop that fits 100 trees sequentially, each on the negative gradient of squared error loss. Compare the resulting predictions with scikit-learn's `GradientBoostingRegressor` with the same settings. They should agree to high precision.
+**Exercise C (hard).** Implement a minimal gradient booster. Using scikit-learn's `DecisionTreeRegressor(max_depth=3)` as the base learner, write a loop that fits 100 trees sequentially, each on the negative gradient of squared error loss. Compare the resulting predictions with scikit-learn's `GradientBoostingRegressor` with the same settings (`learning_rate`, `max_depth=3`, `n_estimators=100`). They should agree closely; small differences come from its default `criterion="friedman_mse"` split score.
 
 ## Cross-References
 
@@ -2039,7 +1996,7 @@ Boosting updates `F_m = F_{m-1} + eta * f_m(x)`. The learning rate `eta` (typica
 
 Small `eta` means each tree corrects only a fraction of the residual. The next tree still sees substantial error. More trees are needed, but the final model is more robust because no single tree dominates. Think of `eta` as a regulariser: it prevents the model from over-committing to any one direction too quickly.
 
-Empirically, `eta = 0.05` with `n_estimators = 500` nearly always outperforms `eta = 0.5` with `n_estimators = 50`. The rule of thumb: halve `eta`, double `n_estimators`. Stop when validation loss no longer improves (early stopping).
+Empirically, `eta = 0.05` with `n_estimators = 500` usually outperforms `eta = 0.5` with `n_estimators = 50`. The rule of thumb: halve `eta`, double `n_estimators`. Stop when validation loss no longer improves (early stopping).
 
 ## Deeper Dive: Early Stopping
 

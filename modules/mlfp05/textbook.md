@@ -1381,6 +1381,37 @@ for name, body in [("plain 4-layer", nn.LSTM(n_in, 64, num_layers=4, batch_first
 
 Look at two things: how quickly each model's validation loss settles, and the gradient norms. The skip connections give every layer an identity path — in our run the residual stack's median gradient norm was about twice the plain stack's (1.17 against 0.54), i.e. more signal reached the parameters, and its best validation MSE was slightly lower (1.624 against 1.645). But on a near-random-walk target both models end close to the no-change baseline — a better optimiser cannot extract signal that is not there. The residual design pays off on long sequences that *do* contain learnable structure (Drill 1's text is one).
 
+**Drill 6.** Put the `SpatialAttention` module in front of the LSTM so the features of each day can inform one another before the sequence model sees them. Train it on the 20-day windows and inspect which feature pairs the heads link.
+
+**Solution:**
+
+```python
+class SpatialStockLSTM(StockLSTM):
+    def __init__(self, n_features, hidden_dim=64, horizon=HORIZON):
+        super().__init__(n_features, hidden_dim, horizon)
+        self.spatial = SpatialAttention(n_features)
+
+    def forward(self, x):
+        x, self.feature_weights = self.spatial(x)          # keep the (B, T, F, F) weights
+        return super().forward(x)
+
+X_va, y_va = windows(split - SEQ_LEN, len(z))             # back to 20-day windows
+torch.manual_seed(0)
+spatial_model = SpatialStockLSTM(len(FEATURES))
+curve, _ = fit(spatial_model)
+print(f"spatial + temporal attention: best val MSE {min(curve):.3f} (baseline {baseline:.3f})")
+
+spatial_model.eval()
+with torch.no_grad():
+    spatial_model(X_va.to(device))
+links = spatial_model.feature_weights.mean(dim=(0, 1)).cpu()      # average over windows and days
+for i, name in enumerate(FEATURES):
+    j = int(links[i].argmax())
+    print(f"{name:>14} attends most to {FEATURES[j]:<14} (weight {links[i, j]:.2f})")
+```
+
+Expect no reliable accuracy gain on this near-random-walk target — the point of the drill is the mechanism. The averaged weight matrix shows, for each feature, which other features its updated value draws on; uniform rows (every weight near $1/5$) mean the module found nothing worth mixing. On problems with genuinely interacting inputs (sensor arrays, many related series) this is where spatial attention earns its place.
+
 ## Cross-References
 
 - **Lesson 4.8** introduced backpropagation through layers. BPTT (Backpropagation Through Time) is the same algorithm unrolled through time steps.
@@ -3319,7 +3350,7 @@ def ppo_continuous(env_id="Pendulum-v1", updates=150, steps=2048, epochs=10, min
 ac, episode_returns = ppo_continuous()
 ```
 
-A random policy on Pendulum scores roughly $-1{,}200$ per episode; a well-trained one reaches about $-200$ or better (the pendulum held upright). Learning on this task is slow at first — the agent must discover swinging up before holding steady — so expect the first tens of updates to look flat. The exact path depends on the seed; compare runs on the mean of the last few episodes.
+A random policy on Pendulum scores roughly $-1{,}200$ per episode (we measured $-1{,}195$ over 20 episodes); a well-trained policy reaches a few hundred below zero or better, with the pendulum held upright. Learning on this task is slow at first — the agent must discover swinging up before holding steady. In a 40-update check (about 82,000 steps) the mean return of the last ten episodes moved from about $-1{,}270$ to $-870$, with plenty of noise along the way; the default 150 updates (about 300,000 steps) give it room to go much further. The exact path depends on the seed; compare runs on the mean of the last few episodes.
 
 ## Try It Yourself
 

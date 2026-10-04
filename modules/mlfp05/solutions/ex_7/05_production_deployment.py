@@ -222,7 +222,9 @@ export_result = bridge.export(
     serving_adapter,
     "torch",
     output_path=onnx_path,
-    sample_input=torch.randn(1, N_PIXELS),
+    # TWO rows: a 1-row trace fixes the batch dimension at 1, and the server
+    # predicts batches of 8 below
+    sample_input=torch.randn(2, N_PIXELS),
 )
 print(
     f"  OnnxBridge.export: success={export_result.success} "

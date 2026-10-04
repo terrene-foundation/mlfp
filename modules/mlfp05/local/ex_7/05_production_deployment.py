@@ -229,7 +229,8 @@ bridge = OnnxBridge()
 # TODO: Export the adapter with OnnxBridge
 # Hint: bridge.export(model, framework, output_path=..., sample_input=...) —
 #   the framework string for PyTorch modules is "torch", and the sample
-#   input is ONE flat row of N_PIXELS random values
+#   input is TWO flat rows of N_PIXELS random values (a 1-row trace fixes
+#   the batch dimension at 1, and the server predicts batches of 8 below)
 export_result = ____
 print(
     f"  OnnxBridge.export: success={export_result.success} "

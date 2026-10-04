@@ -38,8 +38,11 @@
   of deep learning. In this lesson you derive scaled dot-product
   attention from scratch with <code>torch.einsum</code>, understand why
   we divide by $\sqrt{d_k}$, implement multi-head attention, add
-  sinusoidal positional encoding, and assemble a working Transformer
-  encoder for sequence classification.
+  sinusoidal positional encoding, assemble a working Transformer
+  encoder for sequence classification, then meet the decoder (masked
+  self‑attention and cross‑attention) and the Vision Transformer.
+  Exercise 4 applies all of this to real AG News headlines, ending with
+  fine‑tuning a pre‑trained BERT.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -263,9 +266,10 @@ def scaled_dot_product_attention(q, k, v, mask=None):
 <h2>Positional Encoding</h2>
 
 <p>
-  Self-attention is <em>permutation invariant</em> — shuffle the
-  sequence and you get the same attention scores (with rows and columns
-  permuted). But in language, order matters: "dog bites man" is not
+  Self-attention is <em>permutation‑equivariant</em> (order‑blind) —
+  shuffle the input tokens and the outputs are shuffled the same way;
+  nothing else changes. After mean‑pooling, the result is fully
+  order‑invariant. But in language, order matters: "dog bites man" is not
   "man bites dog". The Transformer injects position information by
   <strong>adding</strong> a position vector to each token embedding.
 </p>
@@ -285,6 +289,13 @@ def scaled_dot_product_attention(q, k, v, mask=None):
   </div>
 </div>
 
+<p>
+  The frequency of dimension pair $i$ is $10000^{-2i/d}$: at $i = 0$ it
+  is 1 radian per position, the fastest, and it falls towards
+  $10^{-4}$ as $i \to d/2$. So the <strong>low dimensions oscillate
+  fastest</strong> and encode fine, local position, while the high
+  dimensions oscillate slowly and encode coarse, global position.
+</p>
 <p>
   The particular choice gives every position a unique fingerprint that
   can be computed deterministically (no parameters), extrapolated beyond
@@ -344,7 +355,10 @@ def scaled_dot_product_attention(q, k, v, mask=None):
             d_model=d_model, nhead=n_heads, dim_feedforward=128,
             batch_first=True, norm_first=True,
         )
-        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=n_layers)
+        # enable_nested_tensor=False: the fast path does not support
+        # norm_first=True and would only warn about it
+        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=n_layers,
+                                             enable_nested_tensor=False)
         self.head = nn.Linear(d_model, n_classes)
 
     def forward(self, tokens):
@@ -368,6 +382,67 @@ def scaled_dot_product_attention(q, k, v, mask=None):
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Decoder: Masked Self-Attention and Cross-Attention</h2>
+
+<p>
+  The encoder reads a whole sequence at once. A <strong>decoder</strong>
+  <em>generates</em> a sequence one token at a time, so it must never
+  peek at tokens it has not produced yet. The original Transformer
+  decoder block has three sub‑layers, each wrapped in a residual
+  connection and layer norm:
+</p>
+<ol>
+  <li><strong>Masked (causal) self‑attention</strong> over the target
+      tokens generated so far. A lower‑triangular mask sets every score
+      for a <em>future</em> position to $-\infty$ before the softmax, so
+      position $t$ attends only to positions $\le t$. This is what lets
+      the decoder train on all positions in parallel (teacher forcing)
+      while behaving exactly as it will at generation time.</li>
+  <li><strong>Cross‑attention</strong>: the queries come from the
+      decoder, the keys and values from the <em>encoder's output</em>.
+      Each target position asks "which source positions matter for me
+      now?" — in translation, which input words to translate next.</li>
+  <li>The same position‑wise <strong>feed‑forward network</strong> as
+      the encoder.</li>
+</ol>
+<p>
+  Both kinds of attention are the <code>scaled_dot_product_attention</code>
+  function from earlier — only the mask and the source of $K, V$ change:
+</p>
+<pre><code class="language-python">torch.manual_seed(0)
+B, L_src, L_tgt, d = 2, 6, 4, 8
+enc_out = torch.randn(B, L_src, d)          # encoder output ("memory")
+dec_in  = torch.randn(B, L_tgt, d)          # target tokens so far
+
+causal = torch.tril(torch.ones(L_tgt, L_tgt))          # 1 = may attend
+_, w_self = scaled_dot_product_attention(dec_in, dec_in, dec_in, mask=causal)
+print(w_self[0].round(decimals=2))                     # upper triangle is exactly 0
+
+out, w_cross = scaled_dot_product_attention(dec_in, enc_out, enc_out)  # Q: decoder; K, V: encoder
+print(w_cross.shape)                                   # torch.Size([2, 4, 6])</code></pre>
+<p>
+  Row $t$ of <code>w_self</code> spreads its weight over positions
+  $0 \ldots t$ only (row 0 puts all its weight on itself). The
+  cross‑attention matrix is $L_\text{tgt} \times L_\text{src}$ — one
+  distribution over the source sentence for each target position.
+  PyTorch packages the whole block as
+  <code>nn.TransformerDecoderLayer</code>; note that its masks use the
+  opposite convention from ours ($-\infty$ or <code>True</code> marks a
+  <em>blocked</em> position):
+</p>
+<pre><code class="language-python">import torch.nn as nn
+
+layer = nn.TransformerDecoderLayer(d_model=d, nhead=2, dim_feedforward=16, batch_first=True)
+tgt_mask = nn.Transformer.generate_square_subsequent_mask(L_tgt)   # 0 on/below diagonal, -inf above
+print(layer(dec_in, enc_out, tgt_mask=tgt_mask).shape)            # torch.Size([2, 4, 8])</code></pre>
+<p>
+  A <strong>decoder‑only</strong> model (GPT) simply drops the
+  cross‑attention sub‑layer: masked self‑attention plus FFN, stacked,
+  trained to predict the next token. An encoder–decoder model (T5,
+  Whisper) keeps all three.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
 <h2>Transformer Variants: BERT, GPT, T5, ViT</h2>
 
 <table>
@@ -379,18 +454,93 @@ def scaled_dot_product_attention(q, k, v, mask=None):
     <tr><td><strong>GPT</strong></td><td>Decoder only (causal mask)</td><td>Next-token prediction</td><td>Generation, chat, completion</td></tr>
     <tr><td><strong>T5</strong></td><td>Encoder + decoder</td><td>Span corruption (text-to-text)</td><td>Translation, summarisation, QA</td></tr>
     <tr><td><strong>ViT</strong></td><td>Encoder on image patches</td><td>Supervised image classification</td><td>Vision</td></tr>
-    <tr><td><strong>Whisper</strong></td><td>Encoder-decoder on audio</td><td>Speech recognition</td><td>Transcription</td></tr>
+    <tr><td><strong>Whisper</strong></td><td>Encoder-decoder on audio</td><td>seq2seq: next transcript token given the audio</td><td>Transcription, speech translation</td></tr>
   </tbody>
 </table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Vision Transformers (ViT)</h2>
+
+<p>
+  ViT (Dosovitskiy et al., 2020) asks: what if an image were just a
+  sequence? Cut it into fixed‑size patches, flatten and linearly embed
+  each patch into a token, prepend a learned <code>[CLS]</code> token,
+  add learned position embeddings, and run a standard Transformer
+  <em>encoder</em>. The class is read from the final <code>[CLS]</code>
+  vector. A convolution whose kernel size and stride both equal the patch
+  size is exactly "cut into patches and apply the same linear map to
+  each":
+</p>
+<pre><code class="language-python">class PatchEmbed(nn.Module):
+    def __init__(self, img=32, patch=8, in_ch=3, d=64):
+        super().__init__()
+        self.proj = nn.Conv2d(in_ch, d, kernel_size=patch, stride=patch)  # one token per patch
+        n = (img // patch) ** 2                                           # 16 patches
+        self.cls = nn.Parameter(torch.zeros(1, 1, d))
+        self.pos = nn.Parameter(torch.randn(1, n + 1, d) * 0.02)          # learned positions
+
+    def forward(self, x):                                  # (B, 3, 32, 32)
+        t = self.proj(x).flatten(2).transpose(1, 2)        # (B, 16, d)
+        cls = self.cls.expand(x.size(0), -1, -1)           # (B, 1, d)
+        return torch.cat([cls, t], dim=1) + self.pos       # (B, 17, d)
+
+class TinyViT(nn.Module):
+    def __init__(self, n_classes=10, d=64):
+        super().__init__()
+        self.patches = PatchEmbed(d=d)
+        layer = nn.TransformerEncoderLayer(d, nhead=4, dim_feedforward=128,
+                                           batch_first=True, norm_first=True)
+        self.encoder = nn.TransformerEncoder(layer, num_layers=2, enable_nested_tensor=False)
+        self.head = nn.Linear(d, n_classes)
+
+    def forward(self, x):
+        h = self.encoder(self.patches(x))
+        return self.head(h[:, 0])                          # classify from [CLS]
+
+imgs = torch.randn(4, 3, 32, 32)                           # e.g. a CIFAR-10-sized batch
+print(PatchEmbed()(imgs).shape)                            # torch.Size([4, 17, 64])
+print(TinyViT()(imgs).shape)                               # torch.Size([4, 10])</code></pre>
+<p>
+  Everything after the patch embedding is the encoder you already built.
+  The trade‑off with CNNs is <strong>inductive bias</strong>: a CNN
+  hard‑codes locality and translation equivariance, so it learns well
+  from small datasets; a ViT must learn those regularities from data, so
+  it typically needs large‑scale pre‑training (the original ViT used
+  ImageNet‑21k or a 300M‑image dataset) before it matches or beats
+  ResNets. For a small dataset like CIFAR‑10 trained from scratch, the
+  ResNet‑SE of Exercise 2 is the better choice; fine‑tuning a pre‑trained
+  ViT is how ViTs are used in practice (Lesson 5.7's transfer recipe).
+</p>
+<div class="try-it">
+  <h3>🎯 Drill — ViT sequence length</h3>
+  <p>
+    A standard ViT‑B/16 takes 224×224 images with 16×16 patches. How many
+    tokens does the encoder see, and how many entries does one head's
+    attention matrix have? What happens if you switch to 8×8 patches?
+  </p>
+  <details>
+    <summary>Solution</summary>
+    <p>
+      $(224/16)^2 = 14^2 = 196$ patches, plus <code>[CLS]</code> = 197
+      tokens, so each head's attention matrix is $197^2 = 38{,}809$
+      entries. With 8×8 patches: $28^2 + 1 = 785$ tokens and
+      $785^2 = 616{,}225$ entries — about 16× more, because attention
+      cost is quadratic in sequence length (Mistake 4 below). Halving the
+      patch size buys finer detail at roughly 16× the attention cost.
+    </p>
+  </details>
+</div>
 
 <div class="callout kailash">
   <span class="label">⚙ Kailash connection</span>
   <p>
-    <code>kailash_ml</code>'s <code>ModelVisualizer</code> can render
-    attention weight heatmaps — a $L \times L$ matrix showing which
-    tokens attended to which other tokens. This is the single most
-    useful diagnostic for understanding what a Transformer learned and
-    we return to it in Lesson 5.7 when we fine-tune BERT.
+    An attention map is an $L \times L$ matrix showing which tokens
+    attended to which — the most direct window into what a Transformer
+    learned. <code>ModelVisualizer</code> (kailash‑ml 2.2.2) has no
+    attention‑heatmap method, so Exercise 4 (file 05) extracts the
+    trained layer's weights itself and draws them with a plotly heatmap
+    (<code>shared/mlfp05/ex_4.py::create_attention_heatmap</code>). Step 4
+    below shows how to get the weights out.
   </p>
 </div>
 
@@ -400,29 +550,39 @@ def scaled_dot_product_attention(q, k, v, mask=None):
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Build and train a small Transformer encoder on a synthetic
-    majority-bit task: given a sequence of bits, output 1 if the
-    majority are 1, else 0. Simple enough to train in 10 seconds,
-    non-trivial enough to require attention (the model must count).
+    Train a small Transformer encoder on a <strong>synthetic</strong>
+    order‑dependent bit task: given 20 random bits, output 1 if the
+    <em>first half</em> holds more ones than the second half. The label
+    depends on <em>where</em> the ones are, not just how many, so a model
+    without positional encoding cannot solve it — we will measure that.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — data.</span>
+    <span class="step-label">Step 1 — data, with a held‑out test set.</span>
     <pre><code class="language-python">import torch, math
 import torch.nn as nn, torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+from shared.kailash_helpers import get_device
 
 torch.manual_seed(42)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = get_device()            # MPS / CUDA / CPU, picked automatically
 
-def make_dataset(n=3000, L=20):
+def make_dataset(n=4000, L=20):
     X = torch.randint(0, 2, (n, L))
-    y = (X.sum(dim=1) &gt; (L // 2)).long()
+    # 1 if the FIRST half holds more ones than the second half (ties -&gt; 0)
+    y = (X[:, :L // 2].sum(1) &gt; X[:, L // 2:].sum(1)).long()
     return X, y
 
 X, y = make_dataset()
 X, y = X.to(device), y.to(device)
-loader = DataLoader(TensorDataset(X, y), batch_size=64, shuffle=True)</code></pre>
+X_tr, y_tr, X_te, y_te = X[:3000], y[:3000], X[3000:], y[3000:]
+loader = DataLoader(TensorDataset(X_tr, y_tr), batch_size=64, shuffle=True)</code></pre>
+    <p>
+      Ties (equal counts in both halves) are labelled 0, which happens
+      with probability $\binom{20}{10}/2^{20} \approx 0.18$, so class 1
+      is about 41% of the data and always predicting 0 scores about 59%.
+      That majority‑class rate is the bar to beat.
+    </p>
   </div>
 
   <div class="step">
@@ -435,39 +595,51 @@ opt = torch.optim.Adam(model.parameters(), lr=1e-3)</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 3 — train.</span>
+    <span class="step-label">Step 3 — train and test.</span>
     <pre><code class="language-python">for epoch in range(20):
+    model.train()
     for xb, yb in loader:
         logits = model(xb)
         loss = F.cross_entropy(logits, yb)
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        opt.step()</code></pre>
+        opt.step()
+
+model.eval()
+with torch.no_grad():
+    acc = (model(X_te).argmax(1) == y_te).float().mean().item()
+print(f"test accuracy: {acc:.3f}")</code></pre>
     <p>
       Same gradient clipping as for RNNs — Transformers explode in
-      exactly the same way if you forget. Same optimiser, same loss,
-      same structure.
+      exactly the same way if you forget. On one run (about two minutes
+      on a laptop) this reached <strong>100%</strong> test accuracy. The
+      identical model with the <code>self.pos(...)</code> step removed
+      reached <strong>60.8%</strong> — exactly the majority‑class rate of
+      this test set: without positions, the mean‑pooled encoder sees only
+      how many ones there are, not which half they are in.
     </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 4 — inspect attention weights.</span>
-    <pre><code class="language-python">model.eval()
+    <pre><code class="language-python">layer = model.encoder.layers[0]
 with torch.no_grad():
-    test = X[:4]
-    attn_maps = []
-    def hook(module, inp, out):
-        # out is (attn_output, attn_weights)
-        attn_maps.append(out[1].cpu())
-    handle = model.encoder.layers[0].self_attn.register_forward_hook(hook)
-    _ = model(test)
-    handle.remove()
-print(attn_maps[0].shape)    # (B, L, L)</code></pre>
+    h = model.pos(model.embed(X_te[:4]))
+    h = layer.norm1(h)               # pre-norm layer: attention sees the normed input
+    _, w = layer.self_attn(h, h, h, need_weights=True,
+                           average_attn_weights=False)
+print(w.shape)                       # torch.Size([4, 4, 20, 20]) — (batch, head, query, key)</code></pre>
     <p>
-      PyTorch's built-in attention returns the attention matrix if you
-      hook it correctly. Plotting these matrices lets you see which
-      positions are attending to which — invaluable for debugging.
+      A forward hook on <code>self_attn</code> does <em>not</em> work
+      here: <code>nn.TransformerEncoderLayer</code> calls its attention
+      with <code>need_weights=False</code> for speed, so the hooked output
+      holds <code>None</code> instead of weights. Instead, rebuild the
+      layer's input (embedding + position, then <code>norm1</code>
+      because of <code>norm_first=True</code>) and call the trained
+      attention module yourself with <code>need_weights=True</code>.
+      Every row of <code>w</code> sums to 1. Exercise 4 (file 05) does the
+      same on real headlines and plots one head as a heatmap.
     </p>
   </div>
 </div>
@@ -479,8 +651,9 @@ print(attn_maps[0].shape)    # (B, L, L)</code></pre>
   <span class="label">⚠ Mistake 1: Forgetting positional encoding</span>
   <p>
     Without PE, a Transformer is a set classifier — it cannot
-    distinguish "dog bites man" from "man bites dog". Symptom: the
-    model gets stuck at ~50% on any task that depends on order. Fix:
+    distinguish "dog bites man" from "man bites dog". Symptom: on an
+    order‑dependent task the model is stuck at the majority‑class rate
+    (60.8% on the worked example's test set, versus 100% with PE). Fix:
     add sinusoidal or learned positional encoding to the embedding
     before the first encoder layer.
   </p>
@@ -525,9 +698,9 @@ print(attn_maps[0].shape)    # (B, L, L)</code></pre>
 <div class="try-it">
   <h3>🎯 Exercise A — Visualise attention heatmaps</h3>
   <p>
-    Train the <code>TinyTransformer</code> on the majority-bit task and
-    render the attention weight matrix from head 0 for a random batch
-    of 4 sequences. Look for patterns — e.g. does every position attend
+    Train the <code>TinyTransformer</code> on the first‑half‑vs‑second‑half
+    task, extract the weights as in Step 4, and render head 0 for 4 test
+    sequences as heatmaps (e.g. <code>plotly.express.imshow(w[0, 0].cpu())</code>). Look for patterns — e.g. does every position attend
     uniformly (bag-of-words behaviour), or does it focus on particular
     spots?
   </p>
@@ -539,7 +712,9 @@ print(attn_maps[0].shape)    # (B, L, L)</code></pre>
     Take a trained TinyTransformer with positional encoding. Shuffle
     the columns of a test input and run it through. Does accuracy drop?
     Now remove the positional encoding, retrain, and shuffle again. The
-    no-PE version should be shuffle-invariant.
+    no‑PE version's predictions should not change at all — its encoder
+    is permutation‑equivariant and the mean‑pool makes the output
+    invariant.
   </p>
 </div>
 
@@ -549,9 +724,21 @@ print(attn_maps[0].shape)    # (B, L, L)</code></pre>
     For <code>d_model=64, n_heads=4, n_layers=2, dim_feedforward=128</code>,
     compute the parameter count by hand (QKV projections per head,
     output projection, two FFN layers, layer norms). Compare with
-    <code>sum(p.numel() for p in model.parameters())</code>. Within a
-    few hundred?
+    <code>sum(p.numel() for p in model.encoder.parameters())</code>.
   </p>
+  <details>
+    <summary>Solution</summary>
+    <p>
+      Per layer: the fused Q, K, V projections $3(64 \cdot 64 + 64) =
+      12{,}480$ (the heads split $d_\text{model}$, so the head count does
+      not change this); output projection $64 \cdot 64 + 64 = 4{,}160$;
+      FFN $64 \cdot 128 + 128 + 128 \cdot 64 + 64 = 16{,}576$; two layer
+      norms $2 \cdot 2 \cdot 64 = 256$. Total $33{,}472$ per layer, so
+      <strong>66,944</strong> for two layers — exactly what
+      <code>model.encoder.parameters()</code> reports. (The embedding and
+      classification head are extra.)
+    </p>
+  </details>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -559,11 +746,11 @@ print(attn_maps[0].shape)    # (B, L, L)</code></pre>
 
 <p class="xref">
   Self-attention's weighted-sum idea started life as temporal attention
-  on LSTMs — previewed at the end of Lesson 5.3. Vision Transformers
-  (touched on in Lesson 5.2) apply the exact same encoder to sequences
-  of image patches. Lesson 5.7 fine-tunes a pre-trained BERT (a 12-layer
-  Transformer encoder) for a downstream classification task and shows
-  the ONNX export path. Module 6 builds LLMs and RAG systems on top of
+  on LSTMs — previewed at the end of Lesson 5.3. Vision Transformers,
+  introduced in one paragraph in Lesson 5.2, are covered in this lesson.
+  Exercise 4 (file 04) fine‑tunes a pre‑trained BERT (a 12‑layer
+  Transformer encoder) on AG News; Lesson 5.7 generalises that transfer
+  recipe and shows the ONNX export and serving path. Module 6 builds LLMs and RAG systems on top of
   the decoder-only Transformer (GPT family).
 </p>
 
@@ -594,7 +781,10 @@ print(attn_maps[0].shape)    # (B, L, L)</code></pre>
 <p>
   You derived scaled dot-product attention from scratch, understood why
   $\sqrt{d_k}$ matters, implemented multi-head attention, added
-  positional encoding, and trained a working Transformer encoder. That
+  positional encoding, trained a working Transformer encoder (and
+  measured what happens without positions), and saw how masked
+  self‑attention, cross‑attention and patch embeddings turn the same
+  block into GPT‑style decoders, encoder–decoders and ViTs. That
   is the single most important architecture in modern AI and you now
   know how it works end to end.
 </p>

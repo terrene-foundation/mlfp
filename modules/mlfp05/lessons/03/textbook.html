@@ -36,10 +36,13 @@
 <p class="lead">
   Convolutions handle grids; recurrent networks handle sequences. In this
   lesson you meet the vanilla RNN, then the Long Short-Term Memory (LSTM)
-  cell and its four gates, then the GRU. You will derive all six LSTM
-  gate equations, see why the cell state is a "gradient highway", and
-  train an LSTM on a synthetic financial time series that looks a lot
-  like an SGX stock price.
+  cell (three gates plus a candidate), then the GRU. You will derive
+  the six LSTM equations, see why the cell state is a "gradient
+  highway", compare RNN, GRU and LSTM on a small <strong>synthetic</strong>
+  price‑like series, then go deeper (stacked residual LSTMs, attention
+  over features) and see the technical indicators traders feed such
+  models. Exercise 3 applies the same models to real daily bars of the
+  Straits Times Index.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -226,10 +229,10 @@
   <line x1="70" y1="280" x2="720" y2="280" stroke="#94A3B8" stroke-width="1"/>
   <text x="40" y="285" font-family="JetBrains Mono" font-size="11" fill="#64748B">x_t, h_{t-1}</text>
 </svg>
-<figcaption>LSTM cell: the orange horizontal line is the cell-state highway. Four gates (red forget, blue input, green candidate, purple output) control what flows in and out.</figcaption>
+<figcaption>LSTM cell: the orange horizontal line is the cell-state highway. Three sigmoid gates (red forget, blue input, purple output) and the green tanh candidate control what flows in and out.</figcaption>
 </figure>
 
-<h3>All six gate equations</h3>
+<h3>Three gates + candidate: the six equations</h3>
 
 <p>
   Let $[h_{t-1}, x_t]$ denote the concatenation of the previous hidden
@@ -310,49 +313,67 @@ h_t &= (1 - z_t) \odot h_{t-1} + z_t \odot \tilde{h}_t
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    <code>ModelVisualizer</code> also knows how to plot sequence-model
-    outputs: prediction-vs-actual curves, forecast intervals, and rolling
-    error bands. You will use it every time you train a recurrent model
-    in Module 5.
+    <code>ModelVisualizer</code> has no sequence‑specific plots, but two
+    of its general methods cover what you need for a recurrent model:
+    <code>training_history({"RNN": [...], "LSTM": [...]})</code> overlays
+    loss curves, and <code>scatter(df, x="actual", y="predicted")</code>
+    on a polars frame shows forecast quality. Exercise 3's helpers
+    (<code>shared/mlfp05/ex_3.py</code>) use exactly these two. Forecast
+    intervals and rolling error bands are not built in — compute them
+    yourself in polars if you need them.
   </p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: LSTM on a synthetic price series</h2>
+<h2>Worked Example: RNN vs GRU vs LSTM on a synthetic series</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Build an LSTM that predicts the next value of a noisy sine-plus-trend
-    "price" series — a proxy for a stock on the Singapore Exchange.
-    Compare vanilla RNN vs LSTM vs GRU.
+    Predict the next value of a noisy two‑cycle <strong>synthetic</strong>
+    series (generated below, so it runs in a few minutes on a laptop),
+    and compare vanilla RNN, GRU and LSTM against the naive "next value =
+    last value" forecast. Exercise 3 does the same comparison on real
+    daily Straits Times Index bars (20 past days × Close, High, Low,
+    Volume → the next 5 closes).
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — synthetic series.</span>
-    <pre><code class="language-python">import torch
+    <span class="step-label">Step 1 — the (synthetic) series and a chronological split.</span>
+    <pre><code class="language-python">import numpy as np
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
-import numpy as np
+from shared.kailash_helpers import get_device
 
 torch.manual_seed(42)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+rng = np.random.default_rng(42)
+device = get_device()            # MPS / CUDA / CPU, picked automatically
 
 def make_series(n=2000, seq_len=50):
-    t = np.arange(n + seq_len).astype(np.float32)
-    trend = 0.002 * t
+    """SYNTHETIC series: a 25-step and an 8-step cycle plus Gaussian noise (std 0.1)."""
+    t = np.arange(n + seq_len, dtype=np.float32)
     season = 0.5 * np.sin(2 * np.pi * t / 25) + 0.3 * np.sin(2 * np.pi * t / 8)
-    noise = 0.1 * np.random.randn(len(t)).astype(np.float32)
-    series = trend + season + noise
-    X = np.stack([series[i:i+seq_len] for i in range(n)])         # (n, L)
-    y = series[seq_len:seq_len+n]                                 # (n,)
-    return X[..., None], y                                        # (n, L, 1)
+    noise = 0.1 * rng.standard_normal(len(t)).astype(np.float32)
+    series = season + noise
+    X = np.stack([series[i:i + seq_len] for i in range(n)])   # (n, L)
+    y = series[seq_len:seq_len + n]                           # (n,)  next value
+    return X[..., None], y                                    # (n, L, 1)
 
 X_np, y_np = make_series()
 X = torch.from_numpy(X_np).to(device)
 y = torch.from_numpy(y_np).to(device)
-loader = DataLoader(TensorDataset(X, y), batch_size=64, shuffle=True)</code></pre>
+split = 1600                     # first 1,600 windows train, last 400 validate — never shuffle across time
+train_loader = DataLoader(TensorDataset(X[:split], y[:split]), batch_size=64, shuffle=True)
+X_val, y_val = X[split:], y[split:]</code></pre>
+    <p>
+      Splitting by time, not at random, is essential for sequences:
+      neighbouring windows overlap by 49 of 50 values, so a random split
+      would put near‑copies of every validation window in the training
+      set. The noise has standard deviation 0.1, so no model can beat an
+      MSE of about $0.1^2 = 0.01$ — the <em>noise floor</em>.
+    </p>
   </div>
 
   <div class="step">
@@ -360,46 +381,40 @@ loader = DataLoader(TensorDataset(X, y), batch_size=64, shuffle=True)</code></pr
     <pre><code class="language-python">class LSTMRegressor(nn.Module):
     def __init__(self, input_size=1, hidden_size=32, num_layers=2):
         super().__init__()
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=0.1,
-        )
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers,
+                            batch_first=True, dropout=0.1)
         self.head = nn.Linear(hidden_size, 1)
 
     def forward(self, x):
-        out, (h_n, c_n) = self.lstm(x)      # out: (B, L, H)
-        last = out[:, -1, :]                # take final time step
+        out, _ = self.lstm(x)               # out: (B, L, H)
+        last = out[:, -1, :]                # final time step
         return self.head(last).squeeze(-1)  # (B,)</code></pre>
     <p>
-      <code>nn.LSTM</code> implements all six gate equations above for
+      <code>nn.LSTM</code> implements all six equations above for
       you. <code>batch_first=True</code> makes the expected input shape
       $(B, L, F)$ instead of the older $(L, B, F)$ convention. We take
       the output at the last time step as our regression head input.
+      (<code>dropout=0.1</code> applies between the two stacked layers.)
     </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 3 — train with gradient clipping.</span>
-    <pre><code class="language-python">model = LSTMRegressor().to(device)
-opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-history = []
-
-for epoch in range(30):
-    running = 0.0
-    for xb, yb in loader:
-        pred = model(xb)
-        loss = F.mse_loss(pred, yb)
-        opt.zero_grad()
-        loss.backward()
-        # ★ gradient clipping — essential for recurrent networks
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        opt.step()
-        running += loss.item() * xb.size(0)
-    history.append(running / len(loader.dataset))
-print(f"Final LSTM MSE: {history[-1]:.5f}")</code></pre>
+    <span class="step-label">Step 3 — train with gradient clipping, score on validation.</span>
+    <pre><code class="language-python">def fit(model, epochs=30):
+    model = model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    for epoch in range(epochs):
+        model.train()
+        for xb, yb in train_loader:
+            loss = F.mse_loss(model(xb), yb)
+            opt.zero_grad()
+            loss.backward()
+            # ★ gradient clipping — essential for recurrent networks
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            opt.step()
+    model.eval()
+    with torch.no_grad():
+        return F.mse_loss(model(X_val), y_val).item()</code></pre>
     <p>
       The star line is <code>clip_grad_norm_</code>. It rescales the
       gradient vector so its L2 norm never exceeds 1.0. Without it,
@@ -410,25 +425,48 @@ print(f"Final LSTM MSE: {history[-1]:.5f}")</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 4 — GRU and vanilla RNN baselines.</span>
+    <span class="step-label">Step 4 — GRU and vanilla RNN, and the naive baseline.</span>
     <pre><code class="language-python">class GRURegressor(LSTMRegressor):
-    def __init__(self, **kw):
-        super().__init__(**kw)
-        self.lstm = nn.GRU(**{**dict(input_size=1, hidden_size=32,
-                                     num_layers=2, batch_first=True, dropout=0.1)})
+    def __init__(self, hidden_size=32, num_layers=2):
+        super().__init__(hidden_size=hidden_size, num_layers=num_layers)
+        self.lstm = nn.GRU(1, hidden_size, num_layers, batch_first=True, dropout=0.1)
 
 class RNNRegressor(LSTMRegressor):
-    def __init__(self, **kw):
-        super().__init__(**kw)
-        self.lstm = nn.RNN(input_size=1, hidden_size=32, num_layers=2,
-                           batch_first=True, nonlinearity='tanh')</code></pre>
+    def __init__(self, hidden_size=32, num_layers=2):
+        super().__init__(hidden_size=hidden_size, num_layers=num_layers)
+        self.lstm = nn.RNN(1, hidden_size, num_layers, batch_first=True, dropout=0.1)
+
+naive = F.mse_loss(X_val[:, -1, 0], y_val).item()     # "next = last"
+print(f"naive: {naive:.4f}")
+for name, cls in [("RNN", RNNRegressor), ("GRU", GRURegressor), ("LSTM", LSTMRegressor)]:
+    torch.manual_seed(0)
+    print(f"{name}: val MSE {fit(cls()):.4f}")</code></pre>
     <p>
-      Subclassing with the same head; only the recurrent core differs.
-      You should observe: vanilla RNN struggles to get below a modest
-      plateau; GRU and LSTM both converge to noticeably lower MSE. On
-      longer sequences (seq_len > 100), the vanilla RNN gap becomes
-      dramatic.
+      Same head; only the recurrent core is swapped
+      (<code>forward</code> discards the returned state, which is a tuple
+      for the LSTM and a tensor for the others). On our runs the naive
+      forecast scored 0.055 and all three recurrent models reached
+      0.011–0.012 (the LSTM figure is from CPU — see the device note),
+      essentially the 0.01 noise floor. The vanilla RNN did
+      <em>not</em> struggle here — and that is a lesson in itself: the
+      longest cycle is 25 steps and the last few values already pin down
+      the phase, so nothing has to be remembered for long. The gates earn
+      their keep when the target depends on inputs far back in the
+      window; Exercise B below builds such a task.
     </p>
+    <div class="callout warning">
+      <span class="label">⚠ Device note (observed with torch 2.12 on Apple MPS)</span>
+      <p>
+        On an Apple‑silicon MPS device, this two‑layer
+        <code>nn.LSTM</code> with <code>dropout=0.1</code> reached only
+        0.15 validation MSE after 30 epochs (0.087 after 60) — worse than
+        the naive forecast — while the identical code on CPU reached
+        0.011, and on MPS with <code>dropout=0.0</code> it reached 0.012.
+        The GRU and RNN were unaffected. If your LSTM lags the GRU by an
+        order of magnitude on MPS, set the inter‑layer dropout to 0 or
+        run on CPU. Exercise 3's LSTMs are single‑layer without dropout.
+      </p>
+    </div>
   </div>
 
   <div class="step">
@@ -456,6 +494,168 @@ class RNNRegressor(LSTMRegressor):
       Transformer generalises and takes to its logical conclusion.
     </p>
   </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Going Deeper: Stacked LSTMs and Spatial Attention</h2>
+
+<p>
+  Two upgrades take a recurrent model beyond a single layer reading a
+  single signal. Both reappear, unchanged, as ingredients of the
+  Transformer block in Lesson 5.4.
+</p>
+
+<h3>Multi‑layer LSTMs with residual connections</h3>
+<p>
+  <code>nn.LSTM(num_layers=2)</code> already <em>stacks</em> LSTMs: layer
+  2 reads the hidden states of layer 1, so lower layers can pick up
+  short‑range patterns and upper layers longer‑range ones. Beyond two or
+  three layers, plain stacks train badly for the same optimisation
+  reason plain CNNs did in Lesson 5.2. The fix is the same as ResNet's:
+  add each layer's output to its input, then normalise.
+</p>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+
+class ResidualLSTM(nn.Module):
+    """A stack of LSTMs; each layer adds its output to its input, then LayerNorm."""
+    def __init__(self, d, n_layers=3):
+        super().__init__()
+        self.lstms = nn.ModuleList(nn.LSTM(d, d, batch_first=True) for _ in range(n_layers))
+        self.norms = nn.ModuleList(nn.LayerNorm(d) for _ in range(n_layers))
+
+    def forward(self, x):                      # (B, T, d)
+        for lstm, norm in zip(self.lstms, self.norms):
+            out, _ = lstm(x)
+            x = norm(x + out)                  # residual + norm
+        return x
+
+proj = nn.Linear(4, 32)                        # 4 raw features -&gt; width 32
+x = torch.randn(8, 20, 4)                      # 8 windows x 20 days x 4 features
+h = ResidualLSTM(32)(proj(x))
+print(h.shape)                                 # torch.Size([8, 20, 32])</code></pre>
+<p>
+  The residual needs input and output widths to match, which is why the
+  raw features are first projected to width 32 — the same role as the
+  1×1 shortcut convolution in a ResNet.
+</p>
+
+<h3>Spatial (feature) attention</h3>
+<p>
+  The temporal attention in Step 5 asks <em>which time steps</em>
+  matter. <strong>Spatial attention</strong> asks <em>which input
+  features relate to each other</em> — for a stock window, does the
+  day's high‑low range carry information about volume? Treat each
+  feature's 20‑day history as one token and let multi‑head attention
+  learn feature‑to‑feature weights:
+</p>
+<pre><code class="language-python">class FeatureAttention(nn.Module):
+    """Spatial attention: each of the F features is a token; heads relate features."""
+    def __init__(self, T, d=32, heads=4):
+        super().__init__()
+        self.embed = nn.Linear(T, d)           # embed each feature's T-step history
+        self.mha = nn.MultiheadAttention(d, num_heads=heads, batch_first=True)
+
+    def forward(self, x):                      # x: (B, T, F)
+        tokens = self.embed(x.transpose(1, 2)) # (B, F, d)
+        z, w = self.mha(tokens, tokens, tokens)  # w: (B, F, F), averaged over heads
+        return z, w
+
+z, w = FeatureAttention(T=20)(x)
+print(z.shape, w.shape)                        # torch.Size([8, 4, 32]) torch.Size([8, 4, 4])
+print(w[0].sum(dim=-1))                        # every row sums to 1</code></pre>
+<p>
+  The $(F, F)$ weight matrix is directly interpretable: row $i$ says how
+  much feature $i$ draws on each other feature. Each of the four heads
+  can learn a different relationship; <code>nn.MultiheadAttention</code>
+  averages the heads' weights by default. Lesson 5.4 derives
+  multi‑head attention properly. In practice the feature summaries $z$
+  are concatenated with, or fed into, the temporal model.
+</p>
+
+<div class="try-it">
+  <h3>🎯 Drill — what does depth cost?</h3>
+  <p>
+    Count the parameters of <code>ResidualLSTM(32, n_layers=3)</code> and
+    of a plain <code>nn.LSTM(32, 32, num_layers=3)</code>. How many extra
+    parameters do the residual connections add?
+  </p>
+  <details>
+    <summary>Solution</summary>
+    <pre><code class="language-python">n_res = sum(p.numel() for p in ResidualLSTM(32, n_layers=3).parameters())
+n_plain = sum(p.numel() for p in nn.LSTM(32, 32, num_layers=3).parameters())
+print(n_plain, n_res, n_res - n_plain)        # 25344 25536 192</code></pre>
+    <p>
+      Each LSTM layer has $4\,(d\cdot d + d\cdot d + 2d) = 8{,}448$
+      parameters for $d = 32$ (four blocks of input weights, recurrent
+      weights and two bias vectors), so three layers have 25,344. The
+      residual additions are free; the only extra parameters are the
+      three LayerNorms' scale and shift, $3 \times 2 \times 32 = 192$.
+      Depth with residuals costs almost nothing in parameters — its cost
+      is compute and sequential latency.
+    </p>
+  </details>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Technical Indicators as Sequence Features</h2>
+
+<p>
+  Exercise 3 feeds the model four raw daily features of the Straits Times
+  Index (Close, High, Low, Volume), z‑scored on the training period. Price
+  forecasters often add <strong>technical indicators</strong> —
+  hand‑crafted summaries of recent price action. They are a natural
+  extension to the exercise (not part of its feature set). Three classics:
+</p>
+<ul>
+  <li><strong>RSI (14)</strong> — relative strength index:
+      $100 - 100/(1 + \text{avg gain}/\text{avg loss})$ over 14 days.
+      Near 70+ is conventionally "overbought", near 30− "oversold".</li>
+  <li><strong>MACD</strong> — the 12‑day minus the 26‑day exponential
+      moving average of the close: positive when short‑term momentum is
+      above the longer trend.</li>
+  <li><strong>Bollinger position</strong> — where the close sits inside
+      the band of 20‑day mean ± 2 standard deviations (−1 = lower band,
+      +1 = upper band).</li>
+</ul>
+<pre><code class="language-python">import polars as pl
+
+sti = pl.read_parquet("data/mlfp05/stocks/STI.parquet").sort("Date")   # Exercise 3's cached STI bars
+
+delta = pl.col("Close").diff()
+gain = delta.clip(lower_bound=0).rolling_mean(14)
+loss = (-delta).clip(lower_bound=0).rolling_mean(14)
+ema12 = pl.col("Close").ewm_mean(span=12, adjust=False)
+ema26 = pl.col("Close").ewm_mean(span=26, adjust=False)
+mid = pl.col("Close").rolling_mean(20)
+sd = pl.col("Close").rolling_std(20)
+
+feats = sti.with_columns(
+    rsi_14=100 - 100 / (1 + gain / loss),
+    macd=ema12 - ema26,
+    bb_pos=(pl.col("Close") - mid) / (2 * sd),
+).drop_nulls()
+print(feats.height)                                    # 3729 (of 3748 days)
+print(feats.select("Date", "Close", "rsi_14", "macd", "bb_pos").tail(1))</code></pre>
+<p>
+  On the cached data (2010–2024, 3,748 trading days) the first 19 rows
+  are lost to the 20‑day warm‑up, leaving 3,729. On the last day,
+  30 December 2024, the STI closed at 3,795.7 with RSI ≈ 50.2, MACD ≈
+  +13.2 and Bollinger position ≈ +0.19 — neutral momentum, slightly above
+  its 20‑day mean. (This RSI uses simple 14‑day means; Wilder's original
+  uses exponential smoothing, so charting packages may differ slightly.)
+</p>
+<div class="callout warning">
+  <span class="label">⚠ Indicators are not free skill</span>
+  <p>
+    Every indicator is a deterministic function of past prices the model
+    already sees, so it adds no new information — only a convenient
+    summary. Compute indicators on the full series <em>before</em>
+    windowing (they look only backwards, so this leaks nothing), but fit
+    the z‑score on the training period only. And daily index prices are
+    close to a random walk: always compare against "tomorrow = today"
+    before claiming an indicator helps.
+  </p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -545,8 +745,9 @@ class RNNRegressor(LSTMRegressor):
   <p>
     Backprop-through-time stores activations for every step. A seq_len
     of 1000 with a hidden size of 512 and batch 32 can eat many GBs.
-    Truncated BPTT (reset gradients every $k$ steps) is the fix when
-    memory bites.
+    Truncated BPTT — call <code>h = h.detach()</code> on the carried
+    hidden state every $k$ steps, so gradients flow back at most $k$
+    steps — is the fix when memory bites.
   </p>
 </div>
 
@@ -564,11 +765,15 @@ class RNNRegressor(LSTMRegressor):
 </div>
 
 <div class="try-it">
-  <h3>🎯 Exercise B — Change the sequence length</h3>
+  <h3>🎯 Exercise B — Make memory matter</h3>
   <p>
-    Retrain the LSTM on sequence lengths 10, 50, 100, 200. At what
-    length does final MSE stop improving? At what length does the
-    vanilla RNN break completely?
+    Change the task so it needs long memory: make every input window
+    pure white noise, and make the target the input value $k$ steps
+    <em>before</em> the end of the window. Now the last few values carry
+    no hint. Train RNN, GRU and LSTM for $k = 5, 20, 45$. Predict first,
+    then check: at which $k$ does each model's validation MSE stop
+    beating "predict the mean"? This is the vanishing‑gradient problem
+    made visible.
   </p>
 </div>
 
@@ -601,11 +806,14 @@ class RNNRegressor(LSTMRegressor):
 <h2>Reflection</h2>
 <p>
   In 60 minutes you built vanilla RNN, LSTM, and GRU regressors; derived
-  all six LSTM gate equations; explained why the cell state acts as a
-  gradient highway; applied gradient clipping as standard practice; and
-  added a temporal attention head to an LSTM. You compared the three on
-  a synthetic financial time series and saw the vanilla RNN struggle on
-  longer sequences while LSTM and GRU converged reliably.
+  the six LSTM equations (three gates plus a candidate); explained why
+  the cell state acts as a gradient highway; applied gradient clipping
+  as standard practice; added a temporal attention head; stacked LSTMs
+  with residual connections; let multi‑head attention relate input
+  features; and computed RSI, MACD and Bollinger features on real STI
+  data. You compared the three recurrent cores on a synthetic series
+  against the naive "next = last" baseline — the bar every forecaster
+  must clear.
 </p>
 <p>
   Lesson 5.4 takes the attention idea and makes it the <em>only</em>

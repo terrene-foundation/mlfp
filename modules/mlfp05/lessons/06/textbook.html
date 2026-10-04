@@ -37,11 +37,12 @@
   Not all data fits neatly into grids (images) or sequences (text). Social
   networks, molecular structures, knowledge graphs, and supply chains are
   naturally <strong>graphs</strong> — nodes connected by edges. Today you learn
-  three architectures — GCN, GraphSAGE, and GAT — that extend neural networks
+  four architectures — GCN, GraphSAGE, GAT and GIN — that extend neural networks
   to graph-structured data using <em>message passing</em>: each node updates
   its representation by aggregating information from its neighbours. You implement
-  graph classification on molecular data using <code>torch_geometric</code> and
-  visualise learned node embeddings to see what GNNs discover.
+  graph classification on a public molecular benchmark using
+  <code>torch_geometric</code> and visualise learned node embeddings to see
+  what GNNs discover.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -49,12 +50,12 @@
 
 <p>
   Singapore's MRT network is a graph: stations are nodes, rail connections are
-  edges, and passenger flow is a signal on that graph. DBS Bank's fraud detection
-  system models transactions as a graph — accounts are nodes, transfers are edges,
-  and suspicious patterns emerge as unusual subgraph structures. NUS chemistry
-  researchers model molecules as graphs — atoms are nodes, bonds are edges, and
-  predicting molecular properties (toxicity, solubility, drug efficacy) is a
-  graph classification task.
+  edges, and passenger flow is a signal on that graph. A bank's fraud team can
+  model transactions as a graph — accounts are nodes, transfers are edges, and
+  suspicious patterns (rings of accounts passing money in a loop, say) emerge as
+  unusual subgraph structures. Chemists model molecules as graphs — atoms are
+  nodes, bonds are edges, and predicting molecular properties (toxicity,
+  solubility, drug efficacy) is a graph classification task.
 </p>
 
 <p>
@@ -278,8 +279,12 @@
 <h3>GraphSAGE — inductive learning</h3>
 
 <p>
-  GCN is <strong>transductive</strong>: it requires the full graph at training
-  time and cannot generalise to unseen nodes. GraphSAGE (Hamilton et al., 2017)
+  GCN as originally trained is <strong>transductive</strong>: the model is
+  trained on one fixed graph (all nodes present, only some labelled) and the
+  degree normalisation is computed from that graph, so adding new nodes means
+  recomputing over the changed graph. (The <code>GCNConv</code> operator itself
+  can be applied to new graphs — that is how the worked example below
+  classifies unseen molecules.) GraphSAGE (Hamilton et al., 2017)
   is <strong>inductive</strong>: it learns an aggregation function that works on
   any node, even new ones not seen during training. This is essential for
   dynamic graphs where new users or products appear daily.
@@ -354,7 +359,53 @@ $$ \mathbf{h}_i^{(l+1)} = \sigma\Bigl(\sum_{j \in \mathcal{N}(i)} \alpha_{ij}\, 
   </p>
 </div>
 
-<h3>Comparison: GCN vs GraphSAGE vs GAT</h3>
+<h3>GIN — as expressive as message passing gets</h3>
+<p>
+  The Graph Isomorphism Network (Xu et al., 2019) starts from a question:
+  can a GNN tell two different graphs apart? Message‑passing GNNs are at
+  most as powerful as the Weisfeiler–Lehman (WL) graph‑isomorphism test,
+  and they reach that bound only if their aggregation is
+  <em>injective</em> — different neighbourhoods must give different
+  results. Mean and max aggregation are not injective (a node with
+  neighbours $\{a, a\}$ looks the same as one with $\{a\}$), but a
+  <strong>sum</strong> followed by an MLP can be:
+</p>
+<div class="annotated-equation">
+  $$ \mathbf{h}_v^{(l+1)} = \text{MLP}^{(l)}\Bigl((1 + \epsilon)\,\mathbf{h}_v^{(l)} + \sum_{u \in \mathcal{N}(v)} \mathbf{h}_u^{(l)}\Bigr) $$
+  <div class="annotations">
+    <span>sum — keeps neighbour <em>counts</em></span>
+    <span>$\epsilon$ — fixed or learned self‑weight</span>
+    <span>MLP — a universal function approximator</span>
+  </div>
+</div>
+<p>
+  For graph classification GIN also reads out with a sum
+  (<code>global_add_pool</code>), so a molecule with two nitro groups is
+  distinguishable from one with one. In <code>torch_geometric</code> this
+  is <code>GINConv(mlp)</code>; the worked example below compares it with
+  GCN and GAT.
+</p>
+
+<div class="try-it">
+  <h3>Drill — why the sum?</h3>
+  <p>
+    Node $v$ has two neighbours with features $[1, 0]$ and $[1, 0]$; node
+    $w$ has one neighbour with feature $[1, 0]$. Compute the mean, max and
+    sum aggregations for both. Which aggregator can tell $v$ from $w$?
+  </p>
+  <details>
+    <summary>Solution</summary>
+    <p>
+      Mean: $[1, 0]$ for both. Max: $[1, 0]$ for both. Sum: $[2, 0]$ for
+      $v$ and $[1, 0]$ for $w$. Only the sum separates them — mean and max
+      discard how <em>many</em> neighbours share a feature, which is exactly
+      the information that distinguishes, say, a carbon bonded to two
+      oxygens from one bonded to a single oxygen.
+    </p>
+  </details>
+</div>
+
+<h3>Comparison: GCN vs GraphSAGE vs GAT vs GIN</h3>
 
 <figure class="diagram">
 <svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
@@ -406,14 +457,14 @@ $$ \mathbf{h}_i^{(l+1)} = \sigma\Bigl(\sum_{j \in \mathcal{N}(i)} \alpha_{ij}\, 
 </figure>
 
 <table>
-  <thead><tr><th>Feature</th><th>GCN</th><th>GraphSAGE</th><th>GAT</th></tr></thead>
+  <thead><tr><th>Feature</th><th>GCN</th><th>GraphSAGE</th><th>GAT</th><th>GIN</th></tr></thead>
   <tbody>
-    <tr><td>Neighbour weighting</td><td>Fixed (degree normalised)</td><td>Fixed (mean/max/LSTM)</td><td>Learned (attention)</td></tr>
-    <tr><td>Inductive?</td><td>No (transductive)</td><td>Yes</td><td>Yes</td></tr>
-    <tr><td>Large graphs</td><td>Full matrix multiply</td><td>Sampling-based</td><td>Sparse attention</td></tr>
-    <tr><td>Flexibility</td><td>Low</td><td>Medium</td><td>High</td></tr>
-    <tr><td>Parameters</td><td>Fewest</td><td>Moderate</td><td>Most</td></tr>
-    <tr><td>Best for</td><td>Static, small graphs</td><td>Dynamic, large graphs</td><td>Heterogeneous edges</td></tr>
+    <tr><td>Neighbour weighting</td><td>Fixed (degree normalised)</td><td>Fixed (mean/max/LSTM)</td><td>Learned (attention)</td><td>Sum (keeps counts) + MLP</td></tr>
+    <tr><td>Inductive?</td><td>Transductive as originally trained</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td>Large graphs</td><td>Full‑graph propagation</td><td>Sampling-based</td><td>Sparse attention</td><td>Full neighbourhood sums</td></tr>
+    <tr><td>Expressive power</td><td>Below 1‑WL</td><td>Below 1‑WL (mean/max)</td><td>Below 1‑WL</td><td>Equal to 1‑WL (the maximum for message passing)</td></tr>
+    <tr><td>Parameters (worked example)</td><td>4,802</td><td>—</td><td>19,266</td><td>13,122</td></tr>
+    <tr><td>Best for</td><td>Static, small graphs</td><td>Dynamic, large graphs</td><td>Neighbours of unequal importance</td><td>Graph classification (molecules)</td></tr>
   </tbody>
 </table>
 
@@ -501,10 +552,12 @@ $$ \mathbf{h}_i^{(l+1)} = \sigma\Bigl(\sum_{j \in \mathcal{N}(i)} \alpha_{ij}\, 
 <div class="callout kailash">
   <span class="label">Kailash Engine</span>
   <p>
-    While GNN training uses <code>torch_geometric</code> directly (Kailash ML
-    does not wrap graph-specific architectures), you can use
-    <code>ModelVisualizer</code> to visualise learned node embeddings via
-    t-SNE or UMAP projections. This reveals whether the GNN has learned
+    GNN training uses <code>torch_geometric</code> (or plain PyTorch, as in
+    Exercise 6) directly — kailash‑ml does not wrap graph architectures. To
+    inspect learned node embeddings, project them to 2‑D yourself (PCA with
+    <code>torch.pca_lowrank</code>, as below, or t‑SNE/UMAP) and pass the
+    coordinates to <code>ModelVisualizer.scatter</code> as a polars frame;
+    the visualiser plots, it does not project. This reveals whether the GNN has learned
     meaningful representations — nodes of the same class should cluster together
     in the embedding space.
   </p>
@@ -516,33 +569,41 @@ $$ \mathbf{h}_i^{(l+1)} = \sigma\Bigl(\sum_{j \in \mathcal{N}(i)} \alpha_{ij}\, 
 <div class="worked-example">
   <h3>Goal</h3>
   <p>
-    Classify molecules in the MUTAG dataset (188 molecules, binary labels:
-    mutagenic or not) using a 2-layer GCN. Then compare with a GAT and
-    visualise the learned node embeddings.
+    Classify molecules in the public MUTAG benchmark (188 small molecules,
+    each labelled mutagenic or not) with a 2‑layer GCN, a GAT and a GIN,
+    choosing each model's epoch on a validation set and reporting accuracy
+    on held‑out molecules. Exercise 6 does <em>node</em> classification on
+    the Cora citation graph with dense hand‑written layers; this example
+    shows the <code>torch_geometric</code> layers and graph
+    classification.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1. Load the dataset.</span>
+    <span class="step-label">Step 1. Load and split the dataset.</span>
     <pre><code class="language-python">import torch
 import torch.nn.functional as F
 from torch_geometric.datasets import TUDataset
 from torch_geometric.loader import DataLoader
 
-dataset = TUDataset(root='/tmp/MUTAG', name='MUTAG')
-print(f"Graphs: {len(dataset)}")
-print(f"Classes: {dataset.num_classes}")
-print(f"Node features: {dataset.num_features}")
-# → Graphs: 188, Classes: 2, Node features: 7
+torch.manual_seed(42)
+dataset = TUDataset(root="/tmp/MUTAG", name="MUTAG").shuffle()   # downloads once (~100 KB)
+print(len(dataset), dataset.num_classes, dataset.num_features)  # 188 2 7
 
-# Train/test split
-train_dataset = dataset[:150]
-test_dataset = dataset[150:]
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=32)</code></pre>
+train_ds, val_ds, test_ds = dataset[:120], dataset[120:150], dataset[150:]
+train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
+val_loader = DataLoader(val_ds, batch_size=64)
+test_loader = DataLoader(test_ds, batch_size=64)</code></pre>
+    <p>
+      The seven node features are a one‑hot atom type (C, N, O, F, I, Cl,
+      Br). The dataset is stored sorted by label, so shuffle before
+      splitting. With this seed the 38 test molecules are 21 mutagenic and
+      17 not, so always guessing "mutagenic" scores 55%. Graphs this small
+      train in seconds on the CPU, which is what we use here.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2. Build a 2-layer GCN for graph classification.</span>
+    <span class="step-label">Step 2. A 2‑layer GCN for graph classification.</span>
     <pre><code class="language-python">from torch_geometric.nn import GCNConv, global_mean_pool
 
 class GCN(torch.nn.Module):
@@ -552,129 +613,129 @@ class GCN(torch.nn.Module):
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
         self.classifier = torch.nn.Linear(hidden_channels, out_channels)
 
-    def forward(self, data):
-        x, edge_index, batch = data.x, data.edge_index, data.batch
-
-        # Message passing layers
+    def embed(self, x, edge_index):                  # node embeddings (message passing)
         x = F.relu(self.conv1(x, edge_index))
         x = F.dropout(x, p=0.3, training=self.training)
-        x = F.relu(self.conv2(x, edge_index))
+        return F.relu(self.conv2(x, edge_index))
 
-        # Graph-level pooling (critical for graph classification)
-        x = global_mean_pool(x, batch)  # [num_graphs, hidden_channels]
-
-        # Classification head
-        return self.classifier(x)
-
-model = GCN(dataset.num_features, 64, dataset.num_classes)</code></pre>
+    def forward(self, data):
+        x = self.embed(data.x, data.edge_index)
+        x = global_mean_pool(x, data.batch)          # [num_graphs, hidden] — critical for graph tasks
+        return self.classifier(x)</code></pre>
     <p>
-      Note <code>global_mean_pool(x, batch)</code>: this averages all node
-      embeddings within each graph to produce a single graph-level vector.
-      The <code>batch</code> tensor tells the pooling layer which nodes
-      belong to which graph (torch_geometric batches multiple graphs into
-      one large disconnected graph for efficiency).
+      Note <code>global_mean_pool(x, data.batch)</code>: this averages all
+      node embeddings within each graph to produce a single graph‑level
+      vector. The <code>batch</code> tensor tells the pooling layer which
+      nodes belong to which graph (torch_geometric batches multiple graphs
+      into one large disconnected graph for efficiency).
     </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 3. Train and evaluate.</span>
-    <pre><code class="language-python">optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-
-def train():
-    model.train()
-    total_loss = 0
-    for data in train_loader:
-        optimizer.zero_grad()
-        out = model(data)
-        loss = F.cross_entropy(out, data.y)
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item() * data.num_graphs
-    return total_loss / len(train_dataset)
-
-def test(loader):
+    <span class="step-label">Step 3. Train, select on validation, test once.</span>
+    <pre><code class="language-python">@torch.no_grad()
+def accuracy(model, loader):
     model.eval()
-    correct = 0
-    for data in loader:
-        out = model(data)
-        pred = out.argmax(dim=1)
-        correct += (pred == data.y).sum().item()
+    correct = sum((model(d).argmax(1) == d.y).sum().item() for d in loader)
     return correct / len(loader.dataset)
 
-for epoch in range(1, 101):
-    loss = train()
-    train_acc = test(train_loader)
-    test_acc = test(test_loader)
-    if epoch % 20 == 0:
-        print(f"Epoch {epoch:3d} | Loss: {loss:.4f} | "
-              f"Train: {train_acc:.3f} | Test: {test_acc:.3f}")
+def fit(model, epochs=100):
+    opt = torch.optim.Adam(model.parameters(), lr=0.01)
+    best_val, best_state = -1.0, None
+    for epoch in range(epochs):
+        model.train()
+        for data in train_loader:
+            opt.zero_grad()
+            F.cross_entropy(model(data), data.y).backward()
+            opt.step()
+        val = accuracy(model, val_loader)
+        if val &gt; best_val:                         # keep the best epoch by VALIDATION accuracy
+            best_val, best_state = val, {k: v.clone() for k, v in model.state_dict().items()}
+    model.load_state_dict(best_state)
+    return best_val, accuracy(model, test_loader)   # test set touched exactly once
 
-# Typical output:
-# Epoch  20 | Loss: 0.4821 | Train: 0.787 | Test: 0.763
-# Epoch  40 | Loss: 0.3912 | Train: 0.840 | Test: 0.789
-# Epoch  60 | Loss: 0.3201 | Train: 0.873 | Test: 0.816
-# Epoch  80 | Loss: 0.2834 | Train: 0.893 | Test: 0.816
-# Epoch 100 | Loss: 0.2547 | Train: 0.913 | Test: 0.842</code></pre>
+torch.manual_seed(0)
+model = GCN(dataset.num_features, 64, dataset.num_classes)
+print(fit(model))                                   # (0.7, 0.684...) on our run</code></pre>
+    <p>
+      Choosing the epoch (or the architecture) by <em>test</em> accuracy
+      would leak the test set into model selection; the validation split
+      exists for exactly that choice.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 4. Compare GCN with GAT.</span>
-    <pre><code class="language-python">from torch_geometric.nn import GATConv
+    <span class="step-label">Step 4. Compare with GAT and GIN.</span>
+    <pre><code class="language-python">from torch_geometric.nn import GATConv, GINConv, global_add_pool
 
-class GAT(torch.nn.Module):
+class GAT(GCN):
     def __init__(self, in_channels, hidden_channels, out_channels, heads=4):
-        super().__init__()
+        super().__init__(in_channels, hidden_channels, out_channels)
         self.conv1 = GATConv(in_channels, hidden_channels, heads=heads)
         self.conv2 = GATConv(hidden_channels * heads, hidden_channels, heads=1)
-        self.classifier = torch.nn.Linear(hidden_channels, out_channels)
 
-    def forward(self, data):
-        x, edge_index, batch = data.x, data.edge_index, data.batch
-        x = F.relu(self.conv1(x, edge_index))
-        x = F.dropout(x, p=0.3, training=self.training)
-        x = F.relu(self.conv2(x, edge_index))
-        x = global_mean_pool(x, batch)
-        return self.classifier(x)
+def mlp(i, o):
+    return torch.nn.Sequential(torch.nn.Linear(i, o), torch.nn.ReLU(), torch.nn.Linear(o, o))
 
-gat_model = GAT(dataset.num_features, 64, dataset.num_classes)
-# Train similarly — GAT typically achieves 0.85-0.87 test accuracy on MUTAG</code></pre>
+class GIN(GCN):
+    def __init__(self, in_channels, hidden_channels, out_channels):
+        super().__init__(in_channels, hidden_channels, out_channels)
+        self.conv1 = GINConv(mlp(in_channels, hidden_channels))
+        self.conv2 = GINConv(mlp(hidden_channels, hidden_channels))
+
+    def forward(self, data):                         # GIN reads out with a SUM, not a mean
+        x = self.embed(data.x, data.edge_index)
+        return self.classifier(global_add_pool(x, data.batch))
+
+for name, cls in [("GCN", GCN), ("GAT", GAT), ("GIN", GIN)]:
+    torch.manual_seed(0)
+    m = cls(dataset.num_features, 64, dataset.num_classes)
+    val, test = fit(m)
+    print(f"{name}: val {val:.3f}  test {test:.3f}  params {sum(p.numel() for p in m.parameters())}")</code></pre>
     <p>
-      The GAT model uses <code>heads=4</code> in the first layer — four
-      independent attention mechanisms that each learn different neighbour
-      importance patterns. The second layer uses <code>heads=1</code> to
-      produce the final node embedding. Note that the input to the second
-      layer is <code>hidden_channels * heads</code> because multi-head
-      attention concatenates head outputs.
+      The GAT's first layer has four heads whose outputs are concatenated,
+      so the second layer takes <code>hidden_channels * heads</code>
+      inputs. On our run: GCN 68.4% test accuracy (4,802 parameters), GAT
+      71.1% (19,266), GIN 73.7% (13,122), against the 55% majority rate.
+      Repeating the whole split with four more seeds gave test accuracies
+      of 63–71% for GCN, 61–74% for GAT and 66–79% for GIN (means about
+      68%, 68% and 73%). With only 38 test molecules one molecule is 2.6
+      points, so differences of a few points between architectures are
+      noise; the consistent signals are that all three beat the majority
+      rate and that GIN's sum readout is at least as good as the others
+      here.
     </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 5. Visualise node embeddings.</span>
-    <pre><code class="language-python">from sklearn.manifold import TSNE
-import polars as pl
+    <pre><code class="language-python">import polars as pl
 from kailash_ml import ModelVisualizer
 
-# Extract node embeddings from the trained GCN (before pooling)
+ATOMS = ["C", "N", "O", "F", "I", "Cl", "Br"]          # MUTAG's one-hot node features
 model.eval()
-all_embeddings, all_labels = [], []
-for data in test_loader:
-    x = F.relu(model.conv1(data.x, data.edge_index))
-    x = F.relu(model.conv2(x, data.edge_index))
-    all_embeddings.append(x.detach())
-    all_labels.append(data.y.detach())
+with torch.no_grad():
+    batch = next(iter(test_loader))                    # all 38 test molecules (668 atoms)
+    h = model.embed(batch.x, batch.edge_index)         # (num_nodes, 64), before pooling
+    h = h - h.mean(dim=0)
+    _, _, V = torch.pca_lowrank(h, q=2, center=False)  # 2-D PCA projection
+    xy = h @ V[:, :2]
 
-embeddings = torch.cat(all_embeddings).numpy()
-labels = torch.cat(all_labels).numpy()
-
-# t-SNE projection to 2D
-tsne = TSNE(n_components=2, random_state=42)
-coords = tsne.fit_transform(embeddings[:500])  # Sample for speed
-
-# Visualise with ModelVisualizer
-viz = ModelVisualizer()
-viz.scatter_2d(coords, labels[:500],
-               title="GCN Node Embeddings (MUTAG)",
-               save_to="results/gcn_embeddings.png")</code></pre>
+nodes = pl.DataFrame({
+    "pc1": xy[:, 0].tolist(),
+    "pc2": xy[:, 1].tolist(),
+    "atom": [ATOMS[i] for i in batch.x.argmax(1).tolist()],
+})
+fig = ModelVisualizer().scatter(nodes, x="pc1", y="pc2", color="atom",
+                                title="GCN node embeddings, MUTAG test molecules")
+fig.write_html("/tmp/mutag_embeddings.html")</code></pre>
+    <p>
+      Colouring each atom's embedding by its element shows whether
+      message passing has mixed in neighbourhood information: atoms of the
+      same element in different chemical surroundings should spread out
+      rather than collapse onto one point per element. Exercise 6 makes
+      the same kind of plot for Cora papers, coloured by topic.
+    </p>
   </div>
 </div>
 
@@ -732,10 +793,14 @@ viz.scatter_2d(coords, labels[:500],
 <div class="try-it">
   <h3>Exercise A — Node classification</h3>
   <p>
-    Load the Cora citation dataset (<code>Planetoid</code> in torch_geometric).
-    Build a 2-layer GCN for node classification (predict the paper's topic
-    from its citation graph). Compare accuracy with a 2-layer GAT. Which
-    architecture performs better, and why?
+    Load the Cora citation dataset (<code>Planetoid</code> in torch_geometric,
+    the dataset Exercise 6 uses). Build a 2-layer <code>GCNConv</code> model
+    for node classification (predict the paper's topic from its citation
+    graph) using the dataset's standard <code>train_mask</code> /
+    <code>val_mask</code> / <code>test_mask</code>, selecting the epoch on
+    the validation mask. Compare accuracy with a 2-layer GAT and with
+    Exercise 6's dense implementations. Which performs better, and is the
+    gap larger than run‑to‑run noise?
   </p>
 </div>
 
@@ -762,11 +827,13 @@ viz.scatter_2d(coords, labels[:500],
 <div class="try-it">
   <h3>Exercise D — Singapore MRT graph</h3>
   <p>
-    Model the Singapore MRT network as a graph: stations are nodes with features
-    (daily ridership, number of exits, interchange status), edges are rail
-    connections with features (travel time, same-line or interchange). Predict
-    which stations are likely to be overcrowded during peak hours using node
-    classification.
+    Design (on paper) a GNN for the Singapore MRT network: stations are nodes
+    with features (daily ridership, number of exits, interchange status), edges
+    are rail connections with features (travel time, same‑line or interchange).
+    The task: predict which stations are likely to be overcrowded during peak
+    hours. Which GNN task type is this, which architecture would you start
+    with, and what labelled data would you need? (No MRT dataset ships with
+    the course — this is a design exercise.)
   </p>
 </div>
 
@@ -782,7 +849,7 @@ viz.scatter_2d(coords, labels[:500],
   learning — graph tasks are typically task-specific because graph structures
   vary dramatically across domains.
   <br>
-  <strong>M3 Feature Engineering:</strong> node features are the graph equivalent
+  <strong>M2 Feature Engineering:</strong> node features are the graph equivalent
   of tabular features. Everything you learned about feature scaling, encoding,
   and selection applies to node feature vectors.
   <br>

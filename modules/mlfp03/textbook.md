@@ -3653,7 +3653,7 @@ print(f"registered base model v{version}; calibrated model on evaluation rows:",
       {k: round(v, 4) for k, v in metrics.items()})
 ```
 
-@@S1@@
+On the 10,000 evaluation rows the calibrated model scores an AUC of about 0.79, average precision about 0.35, Brier about 0.098 and log loss about 0.33 — in line with Lessons 3.4 and 3.5, as it should be. The base booster sits in the registry as version 1 in `staging`; nothing here promotes it automatically.
 
 **Step 2: Conformal prediction sets.** The score of a row is one minus the probability the model gave to what actually happened. `q_hat` is the finite-sample-corrected quantile of those scores on the conformal-calibration rows:
 
@@ -3674,7 +3674,7 @@ print(f"q_hat = {q_hat:.3f}; coverage {covered.mean():.3f} (target >= {1 - ALPHA
       f"empty {np.mean(set_size == 0):.1%}")
 ```
 
-@@S2@@
+`q_hat` comes out at about 0.62. About 94% of evaluation applicants get a single-class set — a confident call, almost always "repay" — and about 6% get both classes, the cases to route to a human underwriter. Measured coverage is about 0.898 against a target of at least 0.90. That is not a broken guarantee: the guarantee is *marginal* — an average over random draws of the calibration and test rows — and with 10,000 evaluation rows a single run fluctuates by roughly ±0.003. Coverage far below target (say 0.85) would mean something is wrong, most often that the data stopped being exchangeable.
 
 **Step 3: Persist the evaluation with DataFlow.** A metric that only exists in a `print()` does not exist for an auditor:
 
@@ -3758,7 +3758,7 @@ async def monitor_batches():
 asyncio.run(monitor_batches())
 ```
 
-@@S4@@
+On the clean batch `income_sgd` has a PSI of about 0.001 and the monitor flags nothing; after the simulated shift its PSI jumps to about 2.6 and `DriftMonitor` flags `income_sgd` — and only `income_sgd`, because the Bonferroni-tightened KS threshold keeps the other 32 features from raising false alarms.
 
 **Step 5: Write the model card from measured evidence.** Every number in the card below is computed in this run — including the fairness analysis — and none is typed in by hand:
 
@@ -3798,7 +3798,7 @@ Path("model_card.json").write_text(json.dumps(model_card, indent=2))
 print("disparate impact by age band:", di_by_age)
 ```
 
-@@S5@@
+The fairness section is computed, not asserted: the approval-rate disparate impact by age band comes out at about 0.24, 0.66, 0.94 and 1.00 (youngest to oldest) — the same finding as Lesson 3.6 — and the card says so and names who must decide. A card that claimed `"fairness_audited": True` with a hand-typed ratio would be worse than no card, because it would look like evidence.
 
 **Step 6: Gate, register, and promote only with a human sign-off.** Production readiness is a set of checks computed from evidence, plus a decision by an accountable person. Exercise 8.5 computes eleven such gates; here are six:
 
@@ -3843,7 +3843,7 @@ mv = asyncio.run(register_and_maybe_promote())
 print(f"credit_scorer_calibrated v{mv.version} is in stage: {mv.stage}")
 ```
 
-@@S6@@
+All six gates pass on this run, the model is registered with its metrics and signature — and it stays in `staging`. `HUMAN_SIGN_OFF` is `False` because no code can sign off on a credit model: a person who has read the model card, including the age-band finding, must. When they do, `promote_model(..., "production", reason=...)` records who decided and why. Rolling back later is the Lesson 3.7 path: `archived → staging → production`.
 
 ## Try It Yourself
 

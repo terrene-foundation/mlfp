@@ -1,80 +1,71 @@
-# MLFP02 — Task 2: Hypothesis Testing, Bootstrap & CUPED
+# MLFP02 — Task 2: Experiment Read-out — Allocation, Power, Inference, CUPED
 
-**Weight**: 25 marks · **Difficulty**: Hard · **Dataset**: `data/mlfp02/experiment_data.parquet` (500,000 rows, 9 columns)
+**Weight**: 25 marks · **Outcomes**: 2.3 (bootstrap, hypothesis and permutation tests, multiple testing), 2.4 (power analysis, SRM, ExperimentTracker), 2.7 (CUPED)
+**Data**: `mlfp02/experiment_data.parquet` (same log as Task 1).
 
 ## Scenario
 
-You have the same e-commerce experiment as Task 1. The team now wants a
-rigorous read on whether `treatment_a` beats `control` on the continuous
-`metric_value`, with a confidence interval that survives a sceptic, plus a
-variance-reduction pass (CUPED) using the pre-experiment covariate. Finally,
-the company ran five tests at once and needs a correct multiple-testing
-verdict.
+The four-arm experiment was **designed** to send 40% of users to `control`,
+35% to `treatment_a`, 15% to `treatment_b` and 10% to `variant_c`. Product
+wants a decision on `treatment_a` versus `control`. Your read-out code will be
+re-run by the analytics platform on future experiments, so it must work on any
+log with this schema — including logs where something has gone wrong.
 
-Work the **control + treatment_a** cohort only.
+Business definitions and policy:
 
-Implement `solve() -> dict`.
+- A user **converts** when their order value (`metric_value`) is at least $50.
+- `pre_metric_value` was measured **before** assignment; every other numeric
+  column was measured during the experiment.
+- The allocation alarm fires when the allocation test gives p < 0.01.
+- Hypothesis tests are two-sided at the 5% level; family-wise and
+  false-discovery corrections both use 5%.
+- **Ship rule**: ship only if the allocation of the two arms being compared is
+  trustworthy _and_ the treatment's conversion rate is significantly higher
+  than control's.
 
-## Required computation
+## What to submit
 
-1. **Welch t-test** — `metric_value`, treatment_a vs control, unequal variances:
-   `welch_t, welch_p = scipy.stats.ttest_ind(t, c, equal_var=False)` (two-sided).
-   `mean_diff = mean(t) − mean(c)`. Build `t` and `c` as float numpy arrays in
-   file order.
-2. **Seeded percentile bootstrap** of `mean_diff` — follow this protocol
-   **exactly** (it is bit-reproducible and graded tightly):
+`starter.py` with these functions (signatures fixed):
 
-   ```python
-   rng = np.random.default_rng(2024)
-   diffs = np.empty(2000)
-   for b in range(2000):
-       bt = rng.choice(t, size=t.size, replace=True)   # treatment FIRST
-       bc = rng.choice(c, size=c.size, replace=True)   # control SECOND
-       diffs[b] = bt.mean() - bc.mean()
-   boot_ci_low, boot_ci_high = np.percentile(diffs, [2.5, 97.5])
-   ```
+| Function                                           | Returns                                                                                                                                                                                                                                  |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `srm_check(orders, design)`                        | dict: `chi2`, `p_value`, `srm` (bool alarm), `worst_arm` (the arm whose count deviates most from its design, relative to that arm's expected count's sampling noise). `design` maps every arm to its designed share.                     |
+| `sample_size_per_arm(baseline, mde, alpha, power)` | int: users per arm needed to detect an absolute conversion lift of `mde` over `baseline` with a two-sided test.                                                                                                                          |
+| `analyse_ab(orders, treatment, design)`            | dict (below) for `control` versus `treatment`                                                                                                                                                                                            |
+| `segment_tests(orders, treatment)`                 | dict: `p_values` (keyed `"<segment>                                                                                                                                                                                                      | <platform>"`, one conversion-lift test per subgroup), `bonferroni_significant`, `bh_significant` (sorted lists of the keys each correction declares significant) |
+| `log_to_tracker(results, store_url)`               | str: the run id of a **finished** Kailash `ExperimentTracker` run in the store at `store_url` that holds every numeric value of an `analyse_ab` result as a metric (same key names) and the decision as a run parameter named `decision` |
 
-3. **CUPED** — using `pre_metric_value` as covariate over the full cohort:
-   - `cuped_theta = Cov(metric, pre) / Var(pre)` with `ddof=1`
-   - `metric_adj = metric − theta · (pre − mean(pre))`
-   - `var_metric = Var(metric, ddof=1)`, `var_adj = Var(metric_adj, ddof=1)`
-   - `cuped_var_reduction = 1 − var_adj / var_metric`
-4. **CUPED-adjusted test** — re-run the Welch test on `metric_adj`
-   (treatment_a vs control): `welch_t_cuped`, `welch_p_cuped`. The adjusted
-   `|t|` must come out **larger** than the unadjusted `|t|`.
-5. **Multiple-testing correction** — over `MT_P_VALUES = [0.03, 0.012, 0.04,
-   0.65, 0.009]` at `alpha = 0.05`:
-   - `bonferroni_n_sig` = count of `p < alpha / m` (m = 5)
-   - `bh_n_sig` = Benjamini-Hochberg step-up count: sort the p-values, set
-     `threshold_i = alpha · i / m`, reject every hypothesis up to the largest
-     rank `i` with `p_(i) ≤ threshold_i`.
+`analyse_ab` keys:
 
-## Return contract — `dict` with these exact keys
+| Key                                                                                 | Meaning                                                                                                                                                                            |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pair_srm_p`                                                                        | allocation test of the two compared arms against their designed relative shares                                                                                                    |
+| `conv_control`, `conv_treatment`, `conv_lift`                                       | conversion rates and their difference (treatment − control)                                                                                                                        |
+| `conv_ci_low`, `conv_ci_high`, `conv_p`                                             | large-sample 95% CI and two-sided p-value for the lift                                                                                                                             |
+| `mean_diff`, `boot_ci_low`, `boot_ci_high`                                          | difference in mean order value and its 95% bootstrap percentile CI                                                                                                                 |
+| `perm_p`                                                                            | two-sided permutation-test p-value for `mean_diff`                                                                                                                                 |
+| `cuped_theta`, `cuped_var_reduction`, `cuped_diff`, `cuped_ci_low`, `cuped_ci_high` | CUPED adjustment of order value: the coefficient (one value estimated on both arms together), the fraction of order-value variance removed, the adjusted difference and its 95% CI |
+| `decision`                                                                          | `"SHIP"` or `"DO NOT SHIP"` under the ship rule                                                                                                                                    |
 
-```
-welch_t, welch_p, mean_diff, boot_ci_low, boot_ci_high,
-cuped_theta, var_metric, var_adj, cuped_var_reduction,
-welch_t_cuped, welch_p_cuped, bonferroni_n_sig (int), bh_n_sig (int)
-```
+## Acceptance criteria
 
-## Visible sanity checks
-
-- `boot_ci_low > 0` — the bootstrap CI excludes zero (significant uplift)
-- `0 < cuped_var_reduction < 1`
-- `abs(welch_t_cuped) > abs(welch_t)` — CUPED lowers the noise floor
-- `bh_n_sig >= bonferroni_n_sig` — BH is at least as powerful
-
-## Grading (12 automated checks, all must pass)
-
-return type is `dict` · all 13 keys · Welch test · mean diff · seeded bootstrap
-CI (tight) · CI excludes zero · CUPED theta · CUPED variances · CUPED reduction
-(in range) · CUPED-adjusted test · CUPED increases power · Bonferroni count ·
-BH count · BH ≥ Bonferroni.
+- The grader runs your functions on experiments **you have not seen**: random
+  subsets of this log, allocation tables with a deliberately faulty arm, a
+  log damaged by a tracking bug, and an experiment with no true effect. It
+  recomputes every answer itself.
+- Exact quantities (counts, rates, χ², CUPED θ to 2%) must match. Resampling
+  results are accepted within Monte-Carlo tolerance — use at least 2,000
+  resamples. Sample sizes must be within 3% of the normal-approximation
+  answer.
+- Each correction's significant set must be exactly what that procedure
+  implies for your p-values.
+- The decision must be right on every experiment, including the damaged one.
+- The tracker run is read back from the store; it must contain the grader's
+  reference values, not just any numbers.
 
 ## Rules
 
-- **Polars only** for data wrangling — no pandas. `numpy` / `scipy.stats` are
-  allowed for the statistics.
-- Load via `shared.MLFPDataLoader`.
-- The only randomness is the bootstrap, fixed by `np.random.default_rng(2024)`
-  and the exact resample order above. Match it precisely.
+- Polars for data handling (no pandas); numpy / scipy for statistics;
+  `kailash_ml.ExperimentTracker` for the record (it is async — see the
+  module 2 materials).
+- Allow ~1 minute for a full grading run (the tracker store start-up is slow).

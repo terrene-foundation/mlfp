@@ -1,236 +1,125 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Automated grader for MLFP02 Assessment Task 4 — Feature Engineering &
-Feature Store.
+"""Grader for MLFP02 Assessment Task 4 — Difference-in-Differences
+(instructor-side; not distributed to students).
 
-Usage:
-    python grader.py starter.py
-    python grader.py solution.py
+    python grader.py submission.py [--seed N]
 
-The grader independently re-derives the full admission-level feature table from
-the five raw ICU tables and compares the submission column-by-column (exact for
-ints / strings, tight tolerance for floats). All twelve checks must pass.
+The grader simulates fresh policy panels with SECRET true effects, numbers of
+periods, policy timing, group sizes (unbalanced across periods) and — for some
+panels — a planted pre-existing trend gap. The submission is graded against
+the planted truth and an independent reference computed on the same panel, so
+a hard-coded or formula-only answer cannot pass and an analysis that skips
+the parallel-trends / placebo diagnostics labels the broken panels wrong.
 """
 from __future__ import annotations
 
-import argparse
-import importlib.util
-import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import polars as pl
+import statsmodels.api as sm
 
-from shared import MLFPDataLoader
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from grading_harness import Checks, close, finalize, load_student_module, main  # noqa: E402
 
-DT_FMT = "%Y-%m-%d %H:%M:%S"
-
-FEATURE_COLUMNS = [
-    "admission_id",
-    "feature_timestamp",
-    "age",
-    "gender",
-    "bmi",
-    "diagnosis",
-    "icu_type",
-    "mean_heart_rate",
-    "mean_systolic_bp",
-    "min_spo2",
-    "max_temperature",
-    "n_vitals",
-    "n_labs",
-    "n_abnormal_labs",
-    "mean_creatinine",
-    "n_distinct_drugs",
-    "n_iv_meds",
-    "total_dose_mg",
-    "los_days",
-]
-_MEDIAN_IMPUTE = [
-    "age",
-    "bmi",
-    "mean_heart_rate",
-    "mean_systolic_bp",
-    "min_spo2",
-    "max_temperature",
-    "mean_creatinine",
-]
-_ZERO_IMPUTE_INT = ["n_vitals", "n_labs", "n_abnormal_labs", "n_distinct_drugs", "n_iv_meds"]
-_FLOAT_COLS = _MEDIAN_IMPUTE + ["total_dose_mg", "los_days"]
-_INT_COLS = _ZERO_IMPUTE_INT
-_STR_COLS = ["admission_id", "gender", "diagnosis", "icu_type"]
+WEIGHT = 15
 
 
-def _reference() -> pl.DataFrame:
-    loader = MLFPDataLoader()
-    adm = loader.load("mlfp02", "icu_admissions.parquet")
-    pat = loader.load("mlfp02", "icu_patients.parquet")
-    vit = loader.load("mlfp02", "icu_vitals.parquet")
-    labs = loader.load("mlfp02", "icu_labs.parquet")
-    meds = loader.load("mlfp02", "icu_medications.parquet")
-
-    base = adm.select(
-        "admission_id",
-        "patient_id",
-        "diagnosis",
-        "icu_type",
-        "los_days",
-        pl.col("admit_time").str.strptime(pl.Datetime, DT_FMT).alias("feature_timestamp"),
-    ).join(pat.select("patient_id", "age", "gender", "bmi"), on="patient_id", how="left")
-
-    vag = vit.group_by("admission_id").agg(
-        pl.col("heart_rate").mean().alias("mean_heart_rate"),
-        pl.col("systolic_bp").mean().alias("mean_systolic_bp"),
-        pl.col("spo2").min().alias("min_spo2"),
-        pl.col("temperature").max().alias("max_temperature"),
-        pl.len().alias("n_vitals"),
-    )
-    labs_parsed = labs.with_columns(
-        pl.col("value").cast(pl.Float64, strict=False).alias("val_num"),
-        pl.col("flag").str.to_lowercase().alias("flag_l"),
-    )
-    lag = labs_parsed.group_by("admission_id").agg(
-        pl.len().alias("n_labs"),
-        (pl.col("flag_l") == "abnormal").sum().alias("n_abnormal_labs"),
-        pl.col("val_num")
-        .filter(pl.col("test_name") == "Creatinine")
-        .mean()
-        .alias("mean_creatinine"),
-    )
-    meds_parsed = meds.with_columns(
-        pl.col("dose").str.extract(r"([0-9]+\.?[0-9]*)", 1).cast(pl.Float64).alias("dose_mg")
-    )
-    mag = meds_parsed.group_by("admission_id").agg(
-        pl.col("drug_name").n_unique().alias("n_distinct_drugs"),
-        (pl.col("route") == "IV").sum().alias("n_iv_meds"),
-        pl.col("dose_mg").sum().alias("total_dose_mg"),
-    )
-
-    ft = (
-        base.join(vag, on="admission_id", how="left")
-        .join(lag, on="admission_id", how="left")
-        .join(mag, on="admission_id", how="left")
-    )
-    ft = ft.with_columns(
-        pl.col("gender").fill_null("Unknown"),
-        pl.col("total_dose_mg").fill_null(0.0),
-        *[pl.col(col).fill_null(0).cast(pl.Int64) for col in _ZERO_IMPUTE_INT],
-        *[
-            pl.col(col).cast(pl.Float64).fill_null(pl.col(col).median())
-            for col in _MEDIAN_IMPUTE
-        ],
-    )
-    return ft.select(FEATURE_COLUMNS).sort("admission_id")
+def simulate(rng: np.random.Generator, violate: bool) -> tuple[pl.DataFrame, float]:
+    n_pre, n_post = int(rng.integers(5, 10)), int(rng.integers(3, 8))
+    effect = float(rng.uniform(-40_000, 40_000))
+    base_c, gap = rng.uniform(300_000, 500_000), rng.uniform(-80_000, 120_000)
+    trend, sd = rng.uniform(-3_000, 6_000), rng.uniform(40_000, 90_000)
+    extra = rng.choice([-1, 1]) * rng.uniform(9_000, 15_000) if violate else 0.0
+    frames = []
+    for t in range(n_pre + n_post):
+        post = int(t >= n_pre)
+        for g in (0, 1):
+            n = int(rng.integers(80, 260))
+            mean = base_c + g * gap + t * trend + g * t * extra + g * post * effect
+            frames.append(pl.DataFrame({"period": [t] * n, "treated": [g] * n, "post": [post] * n,
+                                        "y": rng.normal(mean, sd, size=n)}))
+    return pl.concat(frames).sample(fraction=1.0, shuffle=True, seed=int(rng.integers(1 << 31))), effect
 
 
-def load_student_module(path: Path):
-    spec = importlib.util.spec_from_file_location("student_task4", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+def _fit(y, cols, robust=False):
+    X = sm.add_constant(np.column_stack(cols))
+    fit = sm.OLS(y, X).fit(cov_type="HC1") if robust else sm.OLS(y, X).fit()
+    return fit.params[-1], fit.bse[-1], fit.pvalues[-1]
 
 
-def _floats_match(a: pl.Series, b: pl.Series, tol: float = 1e-6) -> bool:
+def reference(panel: pl.DataFrame) -> dict:
+    """Independent reference: regression forms of DiD, pre-trend and placebo
+    (interaction coefficient = last column)."""
+    def arr(df, c):
+        return df[c].to_numpy().astype(float)
+
+    y, g, p = arr(panel, "y"), arr(panel, "treated"), arr(panel, "post")
+    att, se_r, _ = _fit(y, [g, p, g * p], robust=True)
+    pre = panel.filter(pl.col("post") == 0)
+    yp, gp, tp = arr(pre, "y"), arr(pre, "treated"), arr(pre, "period")
+    slope, _, trend_p = _fit(yp, [tp, gp, gp * tp])
+    periods = sorted(pre["period"].unique().to_list())
+    fake = (tp >= periods[len(periods) // 2]).astype(float)
+    p_att, _, p_p = _fit(yp, [gp, fake, gp * fake], robust=True)
+    return {"att": float(att), "se_robust": float(se_r), "slope": float(slope), "trend_p": float(trend_p),
+            "placebo_att": float(p_att), "placebo_p": float(p_p)}
+
+
+def grade(path: Path, seed: int) -> dict:
+    checks = Checks()
     try:
-        return bool((a.cast(pl.Float64) - b.cast(pl.Float64)).abs().max() < tol)
-    except Exception:
-        return False
-
-
-def _ints_match(a: pl.Series, b: pl.Series) -> bool:
-    try:
-        return bool((a.cast(pl.Int64) == b.cast(pl.Int64)).all())
-    except Exception:
-        return False
-
-
-def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
-    try:
-        student = load_student_module(student_path)
+        st = load_student_module(path, "student_task4")
     except Exception as e:
-        score["error"] = f"Failed to import: {type(e).__name__}: {e}"
-        return score
-    if not hasattr(student, "solve"):
-        score["error"] = "Module does not define a solve() function"
-        return score
-    try:
-        r = student.solve()
-    except Exception as e:
-        score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
-        return score
+        return finalize(checks, WEIGHT, seed, f"Failed to import: {type(e).__name__}: {e}")
+    if not callable(getattr(st, "did_analysis", None)):
+        return finalize(checks, WEIGHT, seed, "Missing function: did_analysis")
+    rng = np.random.default_rng(seed)
 
-    c = score["checks"]
-    c["returns_dataframe"] = isinstance(r, pl.DataFrame)
-    if not c["returns_dataframe"]:
-        return _finalize(score)
+    panels = [simulate(rng, False), simulate(rng, False), simulate(rng, True), simulate(rng, True)]
+    names = ["att_estimate", "standard_error_and_ci", "ci_covers_truth", "pre_trend_test",
+             "placebo_test", "credibility_verdict"]
 
-    c["columns_exact"] = r.columns == FEATURE_COLUMNS
-    if not c["columns_exact"]:
-        return _finalize(score)
+    def run():
+        res = [st.did_analysis(p.clone()) for p, _ in panels]
+        refs = [reference(p) for p, _ in panels]
+        att_ok = all(close(r["att"], f["att"], rtol=1e-9, atol=1e-6) for r, f in zip(res, refs))
+        se_ok = all(
+            abs(float(r["se"]) / f["se_robust"] - 1) <= 0.15
+            and close(r["ci_low"], r["att"] - 1.959964 * r["se"], rtol=1e-3, atol=1.0)
+            and close(r["ci_high"], r["att"] + 1.959964 * r["se"], rtol=1e-3, atol=1.0)
+            for r, f in zip(res, refs)
+        )
+        # truth coverage on the two valid panels (fails for a CI that ignores the data)
+        cover = all(r["ci_low"] - f["se_robust"] <= eff <= r["ci_high"] + f["se_robust"]
+                    for r, f, (_, eff) in zip(res[:2], refs[:2], panels[:2]))
+        trend_ok = all(
+            close(r["pre_trend_slope_diff"], f["slope"], rtol=1e-6, atol=1e-6)
+            and (abs(float(r["pre_trend_p"]) - f["trend_p"]) <= 0.05 or float(r["pre_trend_p"]) < 1e-4 > f["trend_p"])
+            for r, f in zip(res, refs)
+        )
+        placebo_ok = all(
+            close(r["placebo_att"], f["placebo_att"], rtol=1e-9, atol=1e-6)
+            and abs(float(r["placebo_p"]) - f["placebo_p"]) <= 0.05
+            for r, f in zip(res, refs)
+        )
+        # verdict: valid panels are credible unless the reference diagnostics fire;
+        # violated panels must be flagged
+        verdict_ok = True
+        for r, f, k in zip(res, refs, range(4)):
+            want = f["trend_p"] >= 0.05 and f["placebo_p"] >= 0.05
+            borderline = min(abs(f["trend_p"] - 0.05), abs(f["placebo_p"] - 0.05)) < 0.02
+            if bool(r["credible"]) != want and not borderline:
+                verdict_ok = False
+        notes = f"student {[{k: round(float(v), 4) for k, v in r.items()} for r in res]}; reference {refs}; truth {[round(e) for _, e in panels]}"
+        return {n: (ok, notes) for n, ok in zip(names, [att_ok, se_ok, cover, trend_ok, placebo_ok, verdict_ok])}
 
-    ref = _reference()
-    c["row_count_8000"] = r.height == ref.height
-    c["sorted_by_admission_id"] = bool(r["admission_id"].is_sorted())
-    c["no_nulls_anywhere"] = sum(r[col].null_count() for col in r.columns) == 0
-    if not (c["row_count_8000"] and c["sorted_by_admission_id"]):
-        return _finalize(score)
-
-    c["feature_timestamp_dtype"] = r.schema.get("feature_timestamp") == pl.Datetime
-    try:
-        c["entity_keys_match"] = bool((r["admission_id"] == ref["admission_id"]).all())
-    except Exception:
-        c["entity_keys_match"] = False
-
-    # Demographics (median-imputed).
-    c["demographics_correct"] = _floats_match(r["age"], ref["age"], 1e-6) and _floats_match(
-        r["bmi"], ref["bmi"], 1e-6
-    )
-    # Vitals aggregates.
-    c["vitals_features_correct"] = (
-        _floats_match(r["mean_heart_rate"], ref["mean_heart_rate"], 1e-4)
-        and _floats_match(r["mean_systolic_bp"], ref["mean_systolic_bp"], 1e-4)
-        and _floats_match(r["min_spo2"], ref["min_spo2"], 1e-4)
-        and _floats_match(r["max_temperature"], ref["max_temperature"], 1e-4)
-        and _ints_match(r["n_vitals"], ref["n_vitals"])
-    )
-    # Labs aggregates (value parsing + flag normalisation + Creatinine pivot).
-    c["labs_features_correct"] = (
-        _ints_match(r["n_labs"], ref["n_labs"])
-        and _ints_match(r["n_abnormal_labs"], ref["n_abnormal_labs"])
-        and _floats_match(r["mean_creatinine"], ref["mean_creatinine"], 1e-4)
-    )
-    # Medication aggregates (dose parsing).
-    c["meds_features_correct"] = (
-        _ints_match(r["n_distinct_drugs"], ref["n_distinct_drugs"])
-        and _ints_match(r["n_iv_meds"], ref["n_iv_meds"])
-        and _floats_match(r["total_dose_mg"], ref["total_dose_mg"], 1e-4)
-    )
-    # Categorical features + label preserved exactly.
-    c["categoricals_and_label_correct"] = (
-        bool((r["gender"] == ref["gender"]).all())
-        and bool((r["diagnosis"] == ref["diagnosis"]).all())
-        and bool((r["icu_type"] == ref["icu_type"]).all())
-        and _floats_match(r["los_days"], ref["los_days"], 1e-9)
-    )
-
-    return _finalize(score)
-
-
-def _finalize(score: dict) -> dict:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
-    return score
+    checks.guarded(names, run)
+    return finalize(checks, WEIGHT, seed)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("student", type=Path)
-    args = parser.parse_args()
-    result = grade(args.student)
-    print(json.dumps(result, indent=2))
-    sys.exit(0 if result["passed"] else 1)
+    main(grade)

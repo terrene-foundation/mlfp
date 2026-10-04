@@ -39,10 +39,12 @@
   with an environment. The agent takes actions, receives rewards, and learns a
   policy that maximises cumulative reward. Today you derive the Bellman equations
   from first principles, implement DQN (Deep Q-Network) with a target network for
-  a discrete-action problem, implement PPO (Proximal Policy Optimization) with a
-  clipped objective for a continuous-action problem, build a custom Gymnasium
-  environment for Singapore supply chain optimisation, and understand the bridge
-  from PPO to RLHF — the technique that aligns LLMs with human preferences in M6.
+  a discrete-action customer‑churn problem, implement PPO (Proximal Policy
+  Optimization) with a clipped objective for a continuous‑action inventory
+  problem, build custom Gymnasium environments, meet A2C, DDPG and SAC, and
+  understand the bridge from PPO to RLHF — the technique that aligns LLMs with
+  human preferences in M6. (Exercise 8 hand‑writes DQN and PPO on
+  discrete‑action environments; this page adds the continuous case.)
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -51,12 +53,12 @@
 <p>
   Supervised learning needs a dataset: pairs of inputs and correct outputs.
   But many real-world problems have no "correct output" — only a reward signal
-  that tells you how well you did. A Singapore port authority wants to minimise
+  that tells you how well you did. A port operator wants to minimise
   container ship waiting time — there is no labelled dataset of optimal
   schedules, only the daily reality of ships, berths, cranes, and delays. A
-  DBS dynamic pricing engine needs to set interest rates that balance profit
-  and customer retention — the "correct" rate depends on market conditions that
-  change hourly.
+  bank's pricing team wants to set deposit rates that balance profit and
+  customer retention — the "correct" rate depends on market conditions and on
+  how customers react, which only shows up after the decision.
 </p>
 
 <p>
@@ -151,7 +153,7 @@
   </div>
   <div class="col">
     <h4>Policy-based (PPO)</h4>
-    <p>Learn $\pi(a|s)$ directly: a probability distribution over actions given state. Sample actions from the distribution. Works for <strong>continuous</strong> action spaces (any real number).</p>
+    <p>Learn $\pi(a|s)$ directly: a probability distribution over actions given state. Sample actions from the distribution. Works for <strong>discrete</strong> actions (a categorical distribution — Exercise 8's PPO) <em>and</em> <strong>continuous</strong> ones (e.g. a Normal distribution — Worked Example 1 below).</p>
     <p><em>Examples:</em> set an interest rate (any value in [0%, 15%]), control a robot arm (joint angles).</p>
   </div>
 </div>
@@ -221,9 +223,11 @@
 
 <p>
   In RLHF, the "environment" is a reward model that scores LLM outputs. The
-  "state" is the prompt. The "action" is the generated text. The "reward" is
-  the human preference score. PPO fine-tunes the LLM to maximise this reward
-  while staying close to the original policy. Understanding PPO here makes
+  "state" is the prompt plus the tokens generated so far. The "action" is the
+  next token — a choice from a discrete vocabulary. The "reward" is the reward
+  model's score of the finished response. PPO fine‑tunes the LLM to maximise
+  this reward, while a separate KL penalty to the original (SFT) model keeps
+  it from drifting too far. Understanding PPO here makes
   RLHF mechanical, not magical.
 </p>
 
@@ -328,6 +332,7 @@ class ReplayBuffer:
 
 class DQNAgent:
     def __init__(self, state_dim, action_dim, lr=1e-3, gamma=0.99):
+        self.action_dim = action_dim
         self.q_net = QNetwork(state_dim, action_dim)
         self.target_net = QNetwork(state_dim, action_dim)
         self.target_net.load_state_dict(self.q_net.state_dict())
@@ -337,27 +342,27 @@ class DQNAgent:
         self.epsilon = 1.0  # Exploration rate
 
     def select_action(self, state):
-        if random.random() < self.epsilon:
-            return random.randint(0, 1)  # Explore
+        if random.random() &lt; self.epsilon:
+            return random.randrange(self.action_dim)  # Explore: ANY action
         with torch.no_grad():
             q_values = self.q_net(torch.FloatTensor(state))
             return q_values.argmax().item()  # Exploit
 
     def train_step(self, batch_size=64):
-        if len(self.buffer.buffer) < batch_size:
+        if len(self.buffer.buffer) &lt; batch_size:
             return
         states, actions, rewards, next_states, dones = \
             self.buffer.sample(batch_size)
 
         # Current Q-values
-        q_values = self.q_net(states).gather(1, actions.unsqueeze(1))
+        q_values = self.q_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
 
         # Target Q-values (from frozen target network)
         with torch.no_grad():
             next_q = self.target_net(next_states).max(1)[0]
             targets = rewards + self.gamma * next_q * (1 - dones)
 
-        loss = nn.MSELoss()(q_values.squeeze(), targets)
+        loss = nn.functional.mse_loss(q_values, targets)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -393,10 +398,15 @@ class DQNAgent:
 
 <p>
   The probability ratio $r_t$ measures how much the new policy differs from the
-  old policy. If $r_t$ is too far from 1 (the policy changed too much), the
-  clipping prevents the objective from incentivising further change. This keeps
-  the policy update <strong>proximal</strong> — close to the old policy — which
-  prevents catastrophic forgetting.
+  old policy. If $r_t$ has already moved past $1 \pm \epsilon$ <em>in the
+  direction the advantage favours</em> (above $1+\epsilon$ when
+  $\hat{A}_t > 0$, below $1-\epsilon$ when $\hat{A}_t < 0$), the clipped term
+  is selected by the <code>min</code> and its gradient is zero, so there is no
+  incentive to move further. If the ratio has moved the <em>wrong</em> way
+  (say $r_t < 1-\epsilon$ with $\hat{A}_t > 0$), the unclipped term is
+  selected and the full gradient pulls it back. This keeps each policy update
+  <strong>proximal</strong> — close to the old policy — and prevents
+  destructively large updates.
 </p>
 
 <figure class="diagram">
@@ -428,7 +438,7 @@ class DQNAgent:
   <!-- Annotations -->
   <line x1="160" y1="180" x2="160" y2="50" stroke="#94A3B8" stroke-width="1" stroke-dasharray="3 3"/>
   <line x1="560" y1="180" x2="560" y2="50" stroke="#94A3B8" stroke-width="1" stroke-dasharray="3 3"/>
-  <text x="360" y="230" text-anchor="middle" font-size="10" fill="#64748B" font-style="italic">Within clip range: full gradient. Outside: gradient clipped to zero.</text>
+  <text x="360" y="230" text-anchor="middle" font-size="10" fill="#64748B" font-style="italic">Gradient is zero only past 1±ε in the direction the advantage favours.</text>
 </svg>
 <figcaption>PPO's clipped objective (green line) matches the unclipped objective (blue dashed) when the probability ratio is within $[1-\epsilon, 1+\epsilon]$, and flattens outside this range. This prevents the policy from changing too quickly.</figcaption>
 </figure>
@@ -522,174 +532,378 @@ from gymnasium import spaces
 import numpy as np
 
 class SupplyChainEnv(gym.Env):
-    """Singapore supply chain optimisation environment.
+    """Daily ordering for one product over a 90-day quarter (SYNTHETIC demand).
 
-    State: [inventory_level, demand_forecast, lead_time, days_remaining]
-    Action: order_quantity (continuous, 0 to 100 units)
-    Reward: -(holding_cost + stockout_penalty + order_cost)
+    State:  [inventory, yesterday's demand, days remaining]
+    Action: order quantity in [0, 30] units, delivered the same day (continuous)
+    Reward: -(holding + lost-sales penalty + ordering) cost, in S$100s
     """
-
-    def __init__(self):
+    def __init__(self, max_days=90):
         super().__init__()
-        # Continuous action: how much to order
-        self.action_space = spaces.Box(
-            low=0, high=100, shape=(1,), dtype=np.float32
-        )
-        # State: 4 continuous values
+        self.max_days = max_days
+        self.action_space = spaces.Box(low=0.0, high=30.0, shape=(1,), dtype=np.float32)
         self.observation_space = spaces.Box(
-            low=0, high=np.inf, shape=(4,), dtype=np.float32
+            low=np.array([0.0, 0.0, 0.0], dtype=np.float32),
+            high=np.array([np.inf, np.inf, max_days], dtype=np.float32),
         )
-        self.holding_cost_per_unit = 0.5   # SGD per unit per day
-        self.stockout_penalty = 10.0        # SGD per unit short
-        self.order_cost_per_unit = 2.0      # SGD per unit ordered
-        self.reset()
+        self.holding_cost = 0.5     # S$ per unit held overnight
+        self.lost_sale_cost = 10.0  # S$ per unit of demand we could not serve
+        self.order_cost = 2.0       # S$ per unit ordered
 
     def reset(self, seed=None, options=None):
-        super().reset(seed=seed)
-        self.inventory = 50.0
-        self.day = 0
-        self.max_days = 90  # One quarter
-        state = self._get_state()
-        return state, {}
+        super().reset(seed=seed)                                    # seeds self.np_random
+        self.inventory, self.last_demand, self.day = 50.0, 10.0, 0
+        return self._obs(), {}
 
     def step(self, action):
-        order_qty = float(np.clip(action[0], 0, 100))
+        order = float(np.clip(action[0], 0.0, 30.0))
+        demand = max(0.0, self.np_random.normal(10.0, 3.0))       # mean 10 units/day
+        available = self.inventory + order
+        sold = min(available, demand)
+        lost = demand - sold
+        self.inventory = available - sold                           # never negative: lost sales
+        self.last_demand, self.day = demand, self.day + 1
+        cost = self.holding_cost * self.inventory + self.lost_sale_cost * lost + self.order_cost * order
+        terminated = self.day &gt;= self.max_days                      # the quarter is over
+        return self._obs(), -cost / 100.0, terminated, False, {}
 
-        # Simulate demand (stochastic)
-        demand = np.random.normal(10, 3)  # Mean 10 units/day
-        demand = max(0, demand)
+    def _obs(self):
+        return np.array([self.inventory, self.last_demand, self.max_days - self.day], dtype=np.float32)
 
-        # Update inventory
-        self.inventory += order_qty - demand
-        self.day += 1
-
-        # Compute reward (negative cost)
-        holding = max(0, self.inventory) * self.holding_cost_per_unit
-        stockout = max(0, -self.inventory) * self.stockout_penalty
-        ordering = order_qty * self.order_cost_per_unit
-        reward = -(holding + stockout + ordering)
-
-        # Clamp inventory (cannot go below -20)
-        self.inventory = max(-20, self.inventory)
-
-        done = self.day >= self.max_days
-        state = self._get_state()
-        return state, reward, done, False, {}
-
-    def _get_state(self):
-        demand_forecast = 10.0  # Simple forecast
-        lead_time = 2.0         # Days until order arrives
-        days_remaining = self.max_days - self.day
-        return np.array([
-            self.inventory, demand_forecast,
-            lead_time, days_remaining
-        ], dtype=np.float32)</code></pre>
+env = SupplyChainEnv()
+obs, _ = env.reset(seed=0)
+print(env.observation_space.contains(obs))      # True — observations respect the declared space</code></pre>
+<p>
+  The five methods a Gymnasium environment needs: <code>__init__</code>
+  declares the <code>action_space</code> and <code>observation_space</code>;
+  <code>reset</code> starts an episode (calling <code>super().reset(seed=seed)</code>
+  seeds <code>self.np_random</code>, so episodes are reproducible);
+  <code>step</code> returns the 5‑tuple <code>(obs, reward, terminated,
+  truncated, info)</code>. <code>terminated</code> means the task itself
+  ended (the quarter is over, the customer churned); <code>truncated</code>
+  means an outside time limit cut the episode short. A training loop must
+  stop on <em>either</em>. Unmet demand is lost rather than back‑ordered,
+  so inventory never goes negative and every observation stays inside the
+  declared space.
+</p>
 
 <div class="callout kailash">
   <span class="label">Kailash Engine</span>
   <p>
-    Kailash ML's <code>RLTrainer</code> wraps common RL algorithms (DQN, PPO,
-    A2C, SAC) with a consistent API. You pass the Gymnasium environment and
-    training configuration; the engine handles replay buffers, target networks,
-    advantage estimation, and logging. For custom environments like the supply
-    chain above, <code>RLTrainer</code> provides the training loop while you
-    focus on the environment design and reward shaping.
+    kailash‑ml ships a production RL entry point,
+    <code>km.rl_train(env, algo="ppo", total_timesteps=..., hyperparameters={...})</code>
+    (algorithms include <code>"ppo"</code>, <code>"dqn"</code>,
+    <code>"a2c"</code>, <code>"sac"</code>, <code>"ddpg"</code>), and a class form,
+    <code>kailash_ml.rl.RLTrainer</code> with <code>RLTrainingConfig</code>
+    (there is no top‑level <code>kailash_ml.RLTrainer</code>). Both run on
+    Stable‑Baselines3, an optional extra (<code>pip install
+    kailash-ml[rl]</code>) that is <strong>not installed</strong> in the course
+    environment — calling <code>km.rl_train</code> there raises
+    <code>ImportError</code>. That is why this lesson and Exercise 8 write
+    DQN and PPO by hand: you see every moving part, and
+    <code>km.rl_train</code> is the path once you deploy.
   </p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: DQN for Customer Churn Prevention</h2>
+<h2>Worked Example 1: PPO for Continuous Ordering</h2>
 
 <div class="worked-example">
   <h3>Goal</h3>
   <p>
-    Build a DQN agent that decides monthly retention actions for Singapore telco
-    customers (3 discrete actions: no action, discount offer, personal call).
-    The agent observes customer state (tenure, monthly charges, contract type,
-    usage patterns) and receives reward +1 for retained customers and -5 for
-    churned customers.
+    Train a PPO agent with a <strong>continuous</strong> action (how many
+    units to order each day) on the synthetic <code>SupplyChainEnv</code>,
+    and compare it with the textbook inventory rule it should rediscover.
+    Runs in under a minute on a laptop CPU.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1. Define the environment.</span>
-    <pre><code class="language-python">class ChurnPreventionEnv(gym.Env):
-    """Each step = one month. Agent picks retention action per customer."""
+    <span class="step-label">Step 1. A Gaussian actor and a value critic.</span>
+    <pre><code class="language-python">import torch
+import torch.nn as nn
 
-    def __init__(self, customer_data):
+class ActorCritic(nn.Module):
+    """Gaussian policy for a 1-D continuous action + a state-value critic."""
+    def __init__(self, obs_dim=3, hidden=64):
         super().__init__()
-        self.action_space = spaces.Discrete(3)  # no_action, discount, call
-        self.observation_space = spaces.Box(
-            low=0, high=1, shape=(8,), dtype=np.float32
-        )
-        self.customers = customer_data
-        self.action_costs = [0, 5, 15]  # SGD per action
-        self.reset()
+        self.scale = torch.tensor([50.0, 20.0, 90.0])               # rough feature scales
+        self.actor = nn.Sequential(nn.Linear(obs_dim, hidden), nn.Tanh(), nn.Linear(hidden, 1))
+        self.critic = nn.Sequential(nn.Linear(obs_dim, hidden), nn.Tanh(), nn.Linear(hidden, 1))
+        self.log_std = nn.Parameter(torch.tensor([1.5]))            # std ~4.5 units at start
+
+    def dist(self, obs):
+        mean = 15.0 + 10.0 * self.actor(obs / self.scale)          # centred inside [0, 30]
+        return torch.distributions.Normal(mean, self.log_std.exp())
+
+    def value(self, obs):
+        return self.critic(obs / self.scale).squeeze(-1)</code></pre>
+    <p>
+      For a continuous action the policy outputs a <em>distribution</em> —
+      here a Normal with a learned mean and a learned (state‑independent)
+      standard deviation. Exploration comes from sampling it; as training
+      proceeds the standard deviation shrinks.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2. Collect a rollout, compute GAE advantages.</span>
+    <pre><code class="language-python">def collect(env, model, n_steps, seed):
+    obs_l, act_l, logp_l, rew_l, done_l, val_l = [], [], [], [], [], []
+    obs, _ = env.reset(seed=seed)
+    ep_returns, ep_ret = [], 0.0
+    for t in range(n_steps):
+        o = torch.as_tensor(obs)
+        with torch.no_grad():
+            d = model.dist(o)
+            a = d.sample()
+            logp, v = d.log_prob(a).sum(), model.value(o)
+        obs2, r, terminated, truncated, _ = env.step(a.numpy())     # env clips to [0, 30]
+        obs_l.append(o); act_l.append(a); logp_l.append(logp); val_l.append(v)
+        rew_l.append(r); done_l.append(terminated or truncated)
+        ep_ret += r
+        obs = obs2
+        if terminated or truncated:
+            ep_returns.append(ep_ret); ep_ret = 0.0
+            obs, _ = env.reset()
+    with torch.no_grad():
+        last_v = model.value(torch.as_tensor(obs))
+    return (torch.stack(obs_l), torch.stack(act_l), torch.stack(logp_l), torch.tensor(rew_l),
+            torch.tensor(done_l, dtype=torch.float32), torch.stack(val_l), last_v, ep_returns)
+
+def gae(rew, done, val, last_v, gamma=0.99, lam=0.95):
+    adv = torch.zeros_like(rew)
+    next_v, running = last_v, 0.0
+    for t in reversed(range(len(rew))):
+        nonterminal = 1.0 - done[t]
+        delta = rew[t] + gamma * next_v * nonterminal - val[t]     # TD error
+        running = delta + gamma * lam * nonterminal * running
+        adv[t] = running
+        next_v = val[t]
+    return adv, adv + val                                           # advantages, critic targets</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3. The clipped PPO update, and the training loop.</span>
+    <pre><code class="language-python">def ppo_update(model, opt, obs, act, old_logp, adv, ret, clip=0.2, epochs=10, batch=256):
+    adv = (adv - adv.mean()) / (adv.std() + 1e-8)                 # normalise advantages
+    for _ in range(epochs):
+        for idx in torch.randperm(len(obs)).split(batch):
+            d = model.dist(obs[idx])
+            ratio = (d.log_prob(act[idx]).sum(-1) - old_logp[idx]).exp()
+            surr = torch.min(ratio * adv[idx], ratio.clamp(1 - clip, 1 + clip) * adv[idx])
+            v_loss = (model.value(obs[idx]) - ret[idx]).pow(2).mean()
+            loss = -surr.mean() + 0.5 * v_loss - 0.001 * d.entropy().mean()
+            opt.zero_grad(); loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+            opt.step()
+
+torch.manual_seed(0)
+env = SupplyChainEnv()
+model = ActorCritic()
+opt = torch.optim.Adam(model.parameters(), lr=3e-4)
+for it in range(60):                                               # 60 x 2,048 steps
+    obs, act, logp, rew, done, val, last_v, ep_returns = collect(env, model, 2048, seed=it)
+    adv, ret = gae(rew, done, val, last_v)
+    ppo_update(model, opt, obs, act, logp, adv, ret)
+    if it % 10 == 0:
+        print(f"iter {it:2d}: mean episode return {np.mean(ep_returns):7.2f}")</code></pre>
+    <p>
+      <code>ratio.clamp(...)</code> and <code>torch.min</code> are the
+      clipped objective $L^{\text{CLIP}}$ term for term. On our run (12
+      seconds on CPU) the mean quarterly return rose from −190 (S$19,000
+      of cost per quarter under the random initial policy) to −21 by
+      iteration 50, and the policy's standard deviation shrank from 4.4 to
+      2.0 units.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4. Compare with the classical rule.</span>
+    <pre><code class="language-python">def run(policy, n=50, seed0=1000):
+    totals = []
+    for i in range(n):
+        obs, _ = env.reset(seed=seed0 + i)
+        total, done = 0.0, False
+        while not done:
+            obs, r, terminated, truncated, _ = env.step(policy(obs))
+            total += r
+            done = terminated or truncated
+        totals.append(total)
+    return np.mean(totals)
+
+ppo = lambda o: model.dist(torch.as_tensor(o)).mean.detach().numpy()     # act on the mean
+order_up_to = lambda S: (lambda o: np.array([max(0.0, S - o[0])], dtype=np.float32))
+print(run(ppo))                                                            # about -20.2
+print(max((run(order_up_to(S)), S) for S in range(8, 31, 2)))             # about (-20.1, 14)
+print(run(lambda o: np.array([10.0], dtype=np.float32)))                  # about -40.8</code></pre>
+    <p>
+      Inventory theory says the optimal policy for this problem is an
+      <strong>order‑up‑to</strong> rule: each day, order enough to bring
+      stock up to a level $S$. The best such rule on 50 test quarters
+      ($S = 14$) cost −20.1; the PPO policy cost −20.2 — essentially the
+      same — while "order the mean demand (10) every day" cost −40.8,
+      because it lets stock drift into lost sales. Probing the learned
+      policy shows why: it orders about 13 units at zero inventory, 10 at
+      5, 7 at 10 and nothing above about 22 — close to "order 14 minus what
+      you hold". PPO rediscovered the classical rule from rewards alone.
+    </p>
+  </div>
+</div>
+
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example 2: DQN for Customer Churn Prevention</h2>
+
+<div class="worked-example">
+  <h3>Goal</h3>
+  <p>
+    Train the DQN agent above on Exercise 8's <strong>hypothetical,
+    synthetic</strong> churn environment (file 03): each episode is one
+    customer over 30 days; each day the agent chooses among four discrete
+    retention actions, and the customer may churn. Then compare the learned
+    policy with simple fixed rules.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1. The environment (as in Exercise 8, file 03).</span>
+    <pre><code class="language-python">class ChurnPreventionEnv(gym.Env):
+    """State: [satisfaction, usage, months_active, support_tickets], all in [0, 1].
+    Actions: 0 nothing, 1 discount ($1), 2 support call ($0.50), 3 feature upgrade ($1.50).
+    Reward: +1 per day retained minus action cost, -5 on churn, +10 bonus for a full month."""
+
+    def __init__(self):
+        super().__init__()
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(4,), dtype=np.float32)
+        self.action_space = spaces.Discrete(4)
+        self.max_steps = 30
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        self.state = self.np_random.uniform(0.2, 0.8, size=(4,)).astype(np.float32)
+        self.step_count = 0
+        return self.state.copy(), {}
 
     def step(self, action):
-        # Compute churn probability (influenced by action)
-        base_churn_prob = self._base_churn_prob()
-        action_effect = [0, -0.15, -0.25][action]  # Discount/call reduces churn
-        churn_prob = max(0, min(1, base_churn_prob + action_effect))
+        self.step_count += 1
+        satisfaction, usage, tenure, tickets = self.state
+        cost = 0.0
+        if action == 1:                                   # discount
+            satisfaction, usage, cost = min(1.0, satisfaction + 0.1), min(1.0, usage + 0.05), 1.0
+        elif action == 2:                                 # support call
+            tickets, satisfaction, cost = max(0.0, tickets - 0.15), min(1.0, satisfaction + 0.05), 0.5
+        elif action == 3:                                 # feature upgrade
+            usage, cost = min(1.0, usage + 0.1), 1.5
+        satisfaction = float(np.clip(satisfaction - 0.02 + self.np_random.normal(0, 0.02), 0.0, 1.0))
+        usage = max(0.0, min(1.0, usage - 0.01 + self.np_random.normal(0, 0.02)))
+        tickets = max(0.0, min(1.0, tickets + 0.02 + self.np_random.normal(0, 0.01)))
+        tenure = min(1.0, tenure + 1.0 / self.max_steps)
+        self.state = np.array([satisfaction, usage, tenure, tickets], dtype=np.float32)
 
-        churned = np.random.random() < churn_prob
-        cost = self.action_costs[action]
-        reward = (-5 if churned else 1) - cost / 10  # Normalise cost
-
-        self.month += 1
-        done = self.month >= 12 or churned
-        return self._get_state(), reward, done, False, {}</code></pre>
+        churn_prob = max(0.0, 0.3 - satisfaction * 0.4 + tickets * 0.3)
+        terminated = bool(self.np_random.random() &lt; churn_prob)       # the customer left
+        reward = -5.0 if terminated else 1.0 - cost
+        truncated = self.step_count &gt;= self.max_steps                 # the month is over
+        if truncated and not terminated:
+            reward += 10.0                                              # retained all month
+        return self.state.copy(), reward, terminated, truncated, {}</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 2. Train the DQN agent.</span>
-    <pre><code class="language-python">env = ChurnPreventionEnv(customer_data)
-agent = DQNAgent(state_dim=8, action_dim=3)
+    <pre><code class="language-python">random.seed(0); np.random.seed(0); torch.manual_seed(0)
+env = ChurnPreventionEnv()
+agent = DQNAgent(state_dim=4, action_dim=4)
 
-for episode in range(1000):
-    state, _ = env.reset()
-    total_reward = 0
-
-    while True:
+for episode in range(400):
+    state, _ = env.reset(seed=episode)
+    total_reward, done = 0.0, False
+    while not done:
         action = agent.select_action(state)
-        next_state, reward, done, _, _ = env.step(action)
-        agent.buffer.push(state, action, reward, next_state, float(done))
+        next_state, reward, terminated, truncated, _ = env.step(action)
+        done = terminated or truncated                    # stop on EITHER
+        # bootstrap through a time-limit cut, not through a real ending
+        agent.buffer.push(state, action, reward, next_state, float(terminated))
         agent.train_step()
         total_reward += reward
         state = next_state
-        if done:
-            break
-
-    # Decay exploration
-    agent.epsilon = max(0.01, agent.epsilon * 0.995)
-
-    # Update target network periodically
+    agent.epsilon = max(0.05, agent.epsilon * 0.99)       # decay exploration
     if episode % 10 == 0:
-        agent.update_target()
-
+        agent.update_target()                             # refresh the target network
     if episode % 100 == 0:
-        print(f"Episode {episode}: reward={total_reward:.1f}, "
-              f"epsilon={agent.epsilon:.3f}")</code></pre>
+        print(f"Episode {episode}: reward={total_reward:.1f}, epsilon={agent.epsilon:.3f}")</code></pre>
+    <p>
+      Note the two different "done" signals: the loop stops on
+      <code>terminated or truncated</code>, but the replay buffer stores
+      only <code>terminated</code> as the end of the value chain — a month
+      that ended because the clock ran out is not a state with zero future
+      value. Training takes a few seconds.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 3. Evaluate the learned policy.</span>
-    <pre><code class="language-python"># Evaluate: what actions does the trained agent take?
-agent.epsilon = 0  # No exploration during evaluation
-state, _ = env.reset()
-actions_taken = []
+    <span class="step-label">Step 3. Evaluate against fixed rules.</span>
+    <pre><code class="language-python">def evaluate(policy, n=200, seed0=10_000):
+    totals, retained, counts = [], 0, np.zeros(4, dtype=int)
+    for i in range(n):
+        state, _ = env.reset(seed=seed0 + i)               # customers never seen in training
+        total, done, terminated = 0.0, False, False
+        while not done:
+            a = policy(state)
+            counts[a] += 1
+            state, r, terminated, truncated, _ = env.step(a)
+            total += r
+            done = terminated or truncated
+        totals.append(total)
+        retained += not terminated
+    return np.mean(totals), retained / n, counts / counts.sum()
 
-while True:
-    action = agent.select_action(state)
-    actions_taken.append(action)
-    state, _, done, _, _ = env.step(action)
-    if done:
-        break
-
-# Expected: agent uses discount offers for at-risk customers,
-# no action for loyal customers, and personal calls for
-# high-value customers about to churn.</code></pre>
+agent.epsilon = 0.0                                        # greedy for evaluation
+for name, policy in [("DQN", agent.select_action), ("do nothing", lambda s: 0),
+                     ("random", lambda s: random.randrange(4)), ("always call", lambda s: 2)]:
+    mean_r, kept, mix = evaluate(policy)
+    print(f"{name:12s} reward {mean_r:5.1f}  retained {kept:.0%}  action mix {np.round(mix, 2)}")</code></pre>
+    <p>
+      On 200 held‑out customers our run gave: DQN mean reward 11.0 with 46%
+      of customers retained for the month; "always call" 8.0 (42%); random
+      −1.1 (14%); "do nothing" −2.5 (0% — in this environment every
+      untreated customer eventually churns). The DQN's action mix was 40%
+      nothing, 16% discount, 44% support call and no feature upgrades: it
+      learned that the cheap support call is the most effective lever, and
+      that it pays to skip it when the customer is healthy. Two more seeds
+      gave 8.2 and 9.5 — the DQN matched or beat the best fixed rule each
+      time, by a modest margin.
+    </p>
   </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Beyond DQN and PPO: A2C, DDPG and SAC</h2>
+
+<p>
+  Five algorithms cover most applied deep RL. You have now implemented the
+  two most important; the other three are variations on the same
+  ingredients (and are available through <code>km.rl_train</code> once the
+  RL extra is installed).
+</p>
+<table>
+  <thead><tr><th>Algorithm</th><th>Family</th><th>Actions</th><th>Key idea</th></tr></thead>
+  <tbody>
+    <tr><td><strong>DQN</strong></td><td>Value‑based, off‑policy</td><td>Discrete</td><td>Q‑network + replay buffer + target network</td></tr>
+    <tr><td><strong>A2C</strong></td><td>Actor–critic, on‑policy</td><td>Both</td><td>Policy gradient weighted by the advantage $A = r + \gamma V(s') - V(s)$, from several parallel environments; PPO is A2C plus the clipped objective and several epochs per batch</td></tr>
+    <tr><td><strong>PPO</strong></td><td>Actor–critic, on‑policy</td><td>Both</td><td>Clipped ratio keeps each update proximal; the robust default</td></tr>
+    <tr><td><strong>DDPG</strong></td><td>Actor–critic, off‑policy</td><td>Continuous</td><td>A <em>deterministic</em> actor $\mu(s)$ trained to maximise a learned $Q(s, \mu(s))$, with replay and target networks — "DQN for continuous actions"; explores by adding noise to actions; sample‑efficient but brittle</td></tr>
+    <tr><td><strong>SAC</strong></td><td>Actor–critic, off‑policy</td><td>Continuous</td><td>A stochastic actor maximising reward <em>plus</em> policy entropy, $\mathbb{E}[\sum_t r_t + \alpha \mathcal{H}(\pi(\cdot \mid s_t))]$, with twin Q‑networks to curb over‑estimation; the usual first choice for continuous control when simulation is expensive</td></tr>
+  </tbody>
+</table>
+<p>
+  Rule of thumb: <strong>on‑policy</strong> methods (A2C, PPO) learn only
+  from data collected by the current policy — simple and stable, but they
+  need many environment steps. <strong>Off‑policy</strong> methods (DQN,
+  DDPG, SAC) learn from a replay buffer of old experience — far more
+  sample‑efficient, which matters when each step is a real customer or an
+  expensive simulation.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>The PPO → RLHF Bridge</h2>
@@ -704,10 +918,11 @@ while True:
     <tbody>
       <tr><td>Environment</td><td>Reward model (trained on human preferences)</td></tr>
       <tr><td>State</td><td>Prompt</td></tr>
-      <tr><td>Action</td><td>Generated text (token by token)</td></tr>
+      <tr><td>Action</td><td>The next token — a discrete choice from the vocabulary</td></tr>
       <tr><td>Policy</td><td>LLM ($\pi_\theta$)</td></tr>
       <tr><td>Reward</td><td>Reward model score</td></tr>
-      <tr><td>PPO clipping</td><td>KL penalty keeping LLM close to original</td></tr>
+      <tr><td>PPO clipping</td><td>Bounds each update relative to the previous policy $\pi_{\text{old}}$ (same role as in this lesson)</td></tr>
+      <tr><td>— (no RL analogue)</td><td>A separate KL penalty to the reference (SFT) model, added to the reward, keeps the LLM close to its original behaviour</td></tr>
     </tbody>
   </table>
   <p>
@@ -734,7 +949,7 @@ while True:
 </div>
 
 <div class="callout warning">
-  <span class="label">Mistake 2: No reward normalisation</span>
+  <span class="label">Mistake 2: No advantage normalisation</span>
   <p>
     PPO needs normalised advantages — subtract mean and divide by standard
     deviation. Without normalisation, advantages with large magnitude cause
@@ -779,10 +994,11 @@ while True:
 <div class="try-it">
   <h3>Exercise B — PPO for continuous control</h3>
   <p>
-    Implement a PPO agent for the supply chain environment defined above.
-    The action is continuous (order quantity). Train for 5,000 episodes. Plot
-    the average reward over time. What ordering policy does the agent learn?
-    Does it maintain a safety stock?
+    Change the supply chain environment so orders arrive after a two‑day
+    lead time (keep a queue of open orders and add "units on order" to the
+    state). Retrain the PPO agent from Worked Example 1. Does it still match
+    the best order‑up‑to rule (now applied to inventory <em>plus</em> units on
+    order)? How much higher is the best $S$, and why?
   </p>
 </div>
 
@@ -800,10 +1016,12 @@ while True:
 <div class="try-it">
   <h3>Exercise D — DQN vs PPO comparison</h3>
   <p>
-    Convert the churn prevention environment from discrete (DQN) to continuous
-    (retention_effort from 0 to 1, converted to action type). Train both DQN
-    (discretised) and PPO (continuous) on the same task. Compare convergence
-    speed, final reward, and policy interpretability.
+    Give the churn environment a continuous action: a retention budget in
+    $[0, 1.5]$ dollars per day that raises satisfaction in proportion to the
+    spend. Train the PPO agent of Worked Example 1 on it, and DQN on a
+    discretised version (0, 0.5, 1.0, 1.5). Compare convergence speed, final
+    reward on the same held‑out customers, and how easy each policy is to
+    explain to the retention team.
   </p>
 </div>
 
@@ -835,8 +1053,8 @@ while True:
 <div class="reflection">
 <h2>Reflection</h2>
 <p>
-  Module 5 is complete. You have now implemented every major deep learning
-  architecture: autoencoders (5.1), CNNs (5.2), RNNs (5.3), Transformers
+  Module 5 is complete. You have now worked through every major deep learning
+  family (implementing all but diffusion, which you toured): autoencoders (5.1), CNNs (5.2), RNNs (5.3), Transformers
   (5.4), GANs and diffusion (5.5), GNNs (5.6), transfer learning (5.7), and
   reinforcement learning (5.8). Each paradigm is optimised for a different
   data structure and learning signal — static labels, generated data, graph

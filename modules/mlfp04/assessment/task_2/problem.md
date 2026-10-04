@@ -1,77 +1,66 @@
-# MLFP04 — Task 2: Dimensionality Reduction & Anomaly Detection
+# MLFP04 — Task 2: Reduction, Embeddings and Anomaly Screening
 
-**Weight**: 25 marks · **Difficulty**: Hard · **Dataset**: deterministic synthetic
-sensor matrix (fixed seed `20260402`, 1,000 rows × 24 features — generated inside
-the task, no file needed)
+**Weight**: 20 marks · **Outcomes**: 4.3 (PCA, variance explained, loadings, non-linear embeddings), 4.4 (anomaly detection, combining detectors, what each detector cannot see)
+**Data**: `mlfp02/sg_credit_scoring.parquet` (real Singapore credit applications), loaded with `shared.MLFPDataLoader`. The grader draws its own secret samples and builds its own screening batches.
 
 ## Scenario
 
-A Singapore logistics operator streams 24 telemetry channels per delivery van.
-The channels are highly redundant — they are driven by just **three** latent
-factors (engine load, route congestion, driver behaviour) plus measurement
-noise, so the data really lives on a low-dimensional manifold. Buried in the
-fleet are **25 malfunctioning vans** whose telemetry sits far off that manifold.
-You must (a) prove the redundancy by compressing the 24 channels with PCA and
-(b) flag the off-manifold vans with an anomaly detector — all through
-kailash-ml engines.
+A lender's application-review team works with 20 numeric fields per
+application (listed in `starter.py`): ages and tenures in years, balances and
+loan amounts in S$, counts of credit lines and late payments, ratios such as
+credit utilisation and debt-to-income. Every frame you receive has an
+`application_id` column plus these 20 fields, **in no fixed column order**.
 
-Use **`DimReductionEngine`** (`from kailash_ml.engines.dim_reduction import DimReductionEngine`)
-for PCA and **`AnomalyDetectionEngine`**
-(`from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine`) for
-detection. Raw `sklearn` is not permitted.
+1. **How many dimensions does an application really have?** The team wants
+   the share of variance carried by each principal component and the smallest
+   number of components that keeps at least 90% of it. A component must not
+   be dominated by a field merely because of the unit it is recorded in. They
+   also want the direction of the first component (its loading on each field)
+   so they can name it.
+2. **A map for reviewers.** Reviewers want a 2-D picture of a batch in which
+   applications that are similar across all 20 fields sit next to each other.
+3. **Screening.** Before manual review, every application in a batch gets a
+   suspicion score. Fraud and data-entry problems in this book come in three
+   kinds, and the team needs all three ranked near the top:
+   - a single field keyed in absurdly high (fat-finger entry, inflated balance);
+   - a "synthetic identity": every field is copied from a different real
+     applicant, so each value looks normal but the combination does not;
+   - an application ring: a tight group of near-identical applications that
+     are unusual as a group.
 
-Implement `solve() -> dict`.
+   There are no fraud labels to train on.
 
-## Required pipeline
+## What to submit
 
-1. **Generate** the deterministic 24-feature matrix (helper given in starter).
-2. **Find the intrinsic dimensionality**: fit PCA at full rank
-   (`reduce(df, algorithm="pca", n_components=24)`), read
-   `explained_variance_ratio`, and compute the smallest number of components
-   whose **cumulative** explained variance reaches **≥ 0.90**. Call it
-   `n_components_90`.
-3. **Compress**: re-run `reduce(df, algorithm="pca", n_components=n_components_90)`
-   and read `reconstruction_error` off the `DimReductionResult`.
-4. **Detect anomalies**: run
-   `AnomalyDetectionEngine().detect(df, algorithm="isolation_forest",
-contamination=0.025)`. Read `scores` (higher = more anomalous), `labels`,
-   and `n_anomalies` off the `AnomalyResult`. Produce a binary
-   `anomaly_labels` list (1 = flagged anomaly, 0 = normal).
+`starter.py` with three functions (signatures fixed). Each receives a polars
+DataFrame of applications (`application_id` + the 20 fields).
 
-## Output contract — `solve()` returns a `dict` with exactly these keys
+| Function                          | Returns                                                                                                                                                                                                                         |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `component_profile(applications)` | dict: `explained_variance_ratio` (list, one per component, largest first, all 20), `n_components_90` (int), `pc1_loadings` (dict field → loading of the first component, a unit-length direction; the overall sign is free) |
+| `embed_2d(applications)`          | numpy array (n × 2), one row per application in row order                                                                                                                                                                       |
+| `anomaly_scores(applications)`    | list of floats, one per row in row order; higher = more suspicious                                                                                                                                                              |
 
-| Key                    | Type          | Meaning                                           |
-| ---------------------- | ------------- | ------------------------------------------------- |
-| `n_components_90`      | `int`         | components needed for ≥90% cumulative variance    |
-| `reconstruction_error` | `float`       | PCA reconstruction error at `n_components_90`     |
-| `anomaly_scores`       | `list[float]` | anomaly score per row (higher = more anomalous)   |
-| `anomaly_labels`       | `list[int]`   | 1 = flagged anomaly, 0 = normal, per row          |
-| `n_anomalies`          | `int`         | number of rows flagged (== sum of anomaly_labels) |
+## Acceptance criteria
 
-Both lists have length 1,000, in the generated row order.
-
-## Visible sanity checks
-
-- `result["n_components_90"] == 3` (the three latent factors are recovered — an
-  8× compression of the 24 channels)
-- `result["n_components_90"] < 24`
-- the anomaly detector ranks the 25 planted malfunctions near the top: the
-  grader checks **ROC-AUC of the scores vs the hidden anomaly flags ≥ 0.85**
-- `n_anomalies` is roughly 25 (≈ 2.5% contamination)
-
-## Grading (10 automated checks, all must pass)
-
-returns a dict · required keys present · `n_components_90 == 3` · compression is
-real (`< 24` features) · `reconstruction_error` matches the engine reference
-(within tolerance) and is positive · `anomaly_scores` length 1,000 ·
-`anomaly_labels` length 1,000 · **ROC-AUC of scores vs planted anomalies ≥ 0.85**
-· `n_anomalies` consistent (`== sum(labels)`, in `[10, 60]`) · flagged-set
-precision ≥ 0.5.
+- `component_profile` is checked on two secret samples (1,500–4,000
+  applications, shuffled columns) against the grader's own principal
+  components: every variance share within 0.002, the 90% component count
+  exact, every loading within 0.02.
+- `embed_2d` is checked on a secret sample of 1,000 applications: the
+  trustworthiness (10 neighbours) of your map with respect to the 20 fields
+  on a common scale must be at least 0.90.
+- `anomaly_scores` is checked on two secret batches of about 3,000 real
+  applications with 30 + 30 + 20 injected anomalies of the three kinds above.
+  ROC-AUC against the injection labels must be at least 0.85 for **each**
+  kind and at least 0.90 overall, on both batches.
+- Structural checks (framework use) earn marks only when the outcome checks
+  of the same part pass.
 
 ## Rules
 
-- **kailash-ml engines only** — `DimReductionEngine` + `AnomalyDetectionEngine`;
-  raw sklearn is blocked.
-- **Polars only** — no pandas.
-- Deterministic — keep the given seed and `contamination=0.025`.
-- The placeholder in `starter.py` fails grading by design.
+- Reduction and embedding run through kailash-ml `DimReductionEngine`; at
+  least one detector runs through kailash-ml `AnomalyDetectionEngine`. You
+  may add your own numpy scores.
+- Polars for data handling (no pandas). Your functions must work from their
+  arguments alone: refer to fields by name, never by position.

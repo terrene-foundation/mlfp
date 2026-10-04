@@ -35,10 +35,10 @@
   Until now you have built ML pipelines as sequential Python scripts. That
   works for prototyping — it does not work for production. This lesson
   introduces <code>WorkflowBuilder</code> to build ML pipelines as node
-  graphs with automatic error handling, <code>HyperparameterSearch</code>
-  to find optimal model configurations using Bayesian optimisation, and
-  <code>ModelRegistry</code> to version and promote models through the
-  deployment lifecycle.
+  graphs that the runtime executes in dependency order,
+  <code>HyperparameterSearch</code> to find good model configurations with
+  Bayesian optimisation, and <code>ModelRegistry</code> to version models
+  and promote them through the deployment lifecycle.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -49,8 +49,10 @@
   <p>
     <code>WorkflowBuilder</code> turns your ML pipeline into a directed
     graph of nodes connected by data edges. Each node is a self-contained
-    unit — load data, preprocess, train, evaluate — and the runtime
-    executes them in dependency order with error handling and retry logic.
+    unit — load data, preprocess, train, evaluate — and
+    <code>LocalRuntime</code> validates the graph and executes the nodes in
+    dependency order. Errors are not swallowed: a failing node makes the
+    run fail loudly instead of passing bad data downstream.
   </p>
 </div>
 
@@ -87,7 +89,7 @@
 
   <rect x="245" y="145" width="140" height="60" rx="8" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
   <text x="315" y="175" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#92400E">Promote?</text>
-  <text x="315" y="193" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">ConditionalNode</text>
+  <text x="315" y="193" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">SwitchNode</text>
 
   <line x1="245" y1="175" x2="185" y2="175" stroke="#22C55E" stroke-width="2" marker-end="url(#arr37a)"/>
   <text x="215" y="165" text-anchor="middle" font-family="Inter" font-size="10" fill="#22C55E">yes</text>
@@ -98,33 +100,113 @@
 
   <text x="315" y="230" text-anchor="middle" font-family="Inter" font-style="italic" font-size="10" fill="#64748B">no → log result, do not promote</text>
 </svg>
-<figcaption>A ML workflow as a node graph. The ConditionalNode gates promotion on evaluation metrics.</figcaption>
+<figcaption>An ML workflow as a node graph. A gate node computes the promotion verdict from the evaluation metrics and a SwitchNode routes the run to "register and promote" or to "hold".</figcaption>
 </figure>
 
-<pre><code class="language-python">from kailash import WorkflowBuilder, PythonCodeNode, ConditionalNode
+<p>
+  Three ideas are enough to read any Kailash workflow. Nodes are added by
+  <em>type name</em> with an id and a config dict:
+  <code>add_node("PythonCodeNode", "gate_check", {"code": ...})</code>.
+  Edges connect one node's named output to another's named input:
+  <code>add_connection(from_node, from_output, to_node, to_input)</code>.
+  And the runtime returns <code>(results, run_id)</code>, where
+  <code>results[node_id]</code> is that node's output dict. A
+  <code>PythonCodeNode</code> runs a few lines of inline code: its inputs
+  arrive as variables, and whatever it assigns to <code>result</code>
+  becomes its <code>"result"</code> output.
+</p>
 
-workflow = WorkflowBuilder("credit_scoring_pipeline")
+<p>
+  Here is the promotion gate from Exercise 3.7 as a self-contained
+  workflow. The test metrics come from the evaluation you ran earlier and
+  are passed in at execution time:
+</p>
 
-# Define nodes
-load_node = PythonCodeNode("load_data", code=load_data_fn)
-preprocess_node = PythonCodeNode("preprocess", code=preprocess_fn)
-train_node = PythonCodeNode("train", code=train_fn)
-eval_node = PythonCodeNode("evaluate", code=evaluate_fn)
-promote_node = ConditionalNode("promote_check",
-    condition=lambda ctx: ctx["auc"] > 0.85)
-register_node = PythonCodeNode("register", code=register_fn)
+<pre><code class="language-python">from kailash.runtime import LocalRuntime
+from kailash.workflow.builder import WorkflowBuilder
 
-# Connect
-workflow.connect(load_node, preprocess_node)
-workflow.connect(preprocess_node, train_node)
-workflow.connect(train_node, eval_node)
-workflow.connect(eval_node, promote_node)
-workflow.connect(promote_node, register_node, branch="yes")
+GATE_CODE = """
+min_ap = 2 * default_rate
+result = {'auc_roc': test_metrics['auc_roc'], 'auc_pr': test_metrics['auc_pr'],
+          'promote': test_metrics['auc_roc'] >= 0.75
+                     and test_metrics['auc_pr'] >= min_ap}
+"""
 
-# Execute
-from kailash import Runtime
-runtime = Runtime()
-result = runtime.execute(workflow.build())</code></pre>
+wf = WorkflowBuilder()
+wf.add_node("PythonCodeNode", "gate_check", {"code": GATE_CODE})
+wf.add_node("SwitchNode", "gate",
+            {"condition_field": "promote", "operator": "==", "value": True})
+wf.add_node("PythonCodeNode", "promote",
+            {"code": "result = dict(payload, stage='production')"})
+wf.add_node("PythonCodeNode", "hold",
+            {"code": "result = dict(payload, stage='staging')"})
+
+# add_connection(from_node, from_output, to_node, to_input)
+wf.add_connection("gate_check", "result", "gate", "input_data")
+wf.add_connection("gate", "true_output", "promote", "payload")
+wf.add_connection("gate", "false_output", "hold", "payload")
+
+# skip_branches: nodes on the branch the switch did NOT take are skipped
+with LocalRuntime(conditional_execution="skip_branches") as runtime:
+    results, run_id = runtime.execute(
+        wf.build(),
+        parameters={"gate_check": {
+            "test_metrics": {"auc_roc": 0.776, "auc_pr": 0.363},
+            "default_rate": 0.129}})
+
+print(results["promote"]["result"]["stage"])   # production
+print("hold" in results)                         # False: branch skipped</code></pre>
+
+<p>
+  With those metrics the gate passes (AUC 0.776 ≥ 0.75 and AP 0.363 ≥ 2 ×
+  0.129), so only <code>promote</code> runs. Feed it
+  <code>{"auc_roc": 0.70, "auc_pr": 0.20}</code> and only
+  <code>hold</code> runs. Exercise 3.7 builds the full pipeline the same
+  way, with custom nodes (registered with <code>@register_node()</code>) for
+  loading, preprocessing, training through <code>TrainingPipeline</code>,
+  evaluation and promotion. (kailash 2.44.1 also logs an "Error tracking
+  conditional execution performance" line in
+  <code>skip_branches</code> mode; it comes from an internal metrics hook
+  and the run itself is unaffected.)
+</p>
+
+<h3>Logic nodes: branching and merging</h3>
+
+<p>
+  <code>SwitchNode</code> is the branching node: it evaluates
+  <code>input_data[condition_field] &lt;operator&gt; value</code> and sends
+  <code>input_data</code> to <code>true_output</code> or
+  <code>false_output</code>. (There is no <code>ConditionalNode</code> in
+  Kailash.) <code>MergeNode</code> is its partner for <em>joining</em>
+  parallel branches: it combines up to five inputs
+  (<code>data1</code> … <code>data5</code>) into one
+  <code>merged_data</code> output. Use it after branches that both run — for
+  example a quality check and a fairness check that must both feed one
+  report:
+</p>
+
+<pre><code class="language-python">wf = WorkflowBuilder()
+wf.add_node("PythonCodeNode", "quality",
+            {"code": "result = {'auc_ok': test_metrics['auc_roc'] >= 0.75}"})
+wf.add_node("PythonCodeNode", "fairness",
+            {"code": "result = {'di_ok': min(di.values()) >= 0.8}"})
+wf.add_node("MergeNode", "checks", {"merge_type": "merge_dict"})
+wf.add_connection("quality", "result", "checks", "data1")
+wf.add_connection("fairness", "result", "checks", "data2")
+
+with LocalRuntime() as runtime:
+    results, _ = runtime.execute(wf.build(), parameters={
+        "quality": {"test_metrics": {"auc_roc": 0.776}},
+        "fairness": {"di": {"race": 0.96, "gender": 0.96, "age": 0.36}}})
+print(results["checks"]["merged_data"])   # {'auc_ok': True, 'di_ok': False}</code></pre>
+
+<p>
+  Do not put a <code>MergeNode</code> directly after a
+  <code>SwitchNode</code> to "re-join" the two branches: in
+  <code>skip_branches</code> mode one branch is skipped, its input never
+  arrives, and the merge node fails with "Required parameter 'data1' not
+  provided". Read the result of whichever branch ran instead, as above.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>HyperparameterSearch</h2>
@@ -132,10 +214,15 @@ result = runtime.execute(workflow.build())</code></pre>
 <p>
   Grid search tries every combination and is wasteful. Random search is
   better but uninformed. <strong>Bayesian optimisation</strong> builds a
-  surrogate model (Gaussian process) of the objective function and
-  chooses the next point to evaluate based on an acquisition function
-  (expected improvement). It finds good hyperparameters in far fewer
-  evaluations.
+  cheap surrogate model of the objective from the trials so far and uses
+  an acquisition rule (for example expected improvement) to choose the
+  next point, balancing exploration of uncertain regions against
+  exploitation of regions that already look good. The classic surrogate
+  is a Gaussian process. kailash-ml's <code>strategy="bayesian"</code> runs
+  Optuna's TPE sampler (Tree-structured Parzen Estimator), which models
+  "good" and "bad" regions as two densities instead. Either way, good
+  hyperparameters usually appear in tens of trials rather than
+  thousands.
 </p>
 
 <figure class="diagram">
@@ -161,29 +248,65 @@ result = runtime.execute(workflow.build())</code></pre>
   <text x="600" y="40" font-family="Inter" font-size="10" fill="#0D9488">surrogate</text>
   <text x="600" y="55" font-family="Inter" font-size="9" fill="#64748B">+ uncertainty</text>
 </svg>
-<figcaption>Bayesian optimisation: the surrogate model (solid green) approximates the true objective (dashed grey). The next evaluation point (gold) maximises expected improvement in the region of highest uncertainty.</figcaption>
+<figcaption>Bayesian optimisation with a Gaussian-process surrogate: the surrogate (solid green) approximates the true objective (dashed grey); the next evaluation point (gold) is where expected improvement is highest — a region that is both promising and uncertain.</figcaption>
 </figure>
 
-<pre><code class="language-python">from kailash_ml import HyperparameterSearch, SearchSpace, SearchConfig
+<pre><code class="language-python">import asyncio
+from pathlib import Path
+from kailash.db import ConnectionManager
+from kailash_ml import HyperparameterSearch, ModelRegistry, TrainingPipeline
+from kailash_ml.engines.hyperparameter_search import (
+    ParamDistribution, SearchConfig, SearchSpace)
+from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+from shared.mlfp03.ex_7 import prepare_credit_frames, credit_feature_schema
 
-space = SearchSpace({
-    "n_estimators": (100, 1000),
-    "max_depth": (3, 10),
-    "learning_rate": (0.01, 0.3, "log"),
-    "min_child_weight": (1, 10),
-})
+# dev: everything selection may touch; test: used once, at the end
+dev, test, feature_cols = prepare_credit_frames()
+schema = credit_feature_schema(feature_cols)
 
-config = SearchConfig(
-    method="bayesian",
-    n_trials=50,
-    metric="auc",
-    cv_folds=5,
-)
+space = SearchSpace(params=[
+    ParamDistribution("n_estimators", "int_uniform", low=100, high=800),
+    ParamDistribution("max_depth", "int_uniform", low=3, high=10),
+    ParamDistribution("learning_rate", "log_uniform", low=0.01, high=0.3),
+])
+config = SearchConfig(strategy="bayesian", n_trials=20,
+                      metric_to_optimize="auc", direction="maximize",
+                      register_best=False)
+base_spec = ModelSpec(model_class="lightgbm.LGBMClassifier",
+                      framework="lightgbm",
+                      hyperparameters={"random_state": 42, "verbose": -1})
 
-search = HyperparameterSearch(model_class="xgboost")
-best = search.run(X_train, y_train, space=space, config=config)
-print(f"Best AUC: {best.score:.4f}")
-print(f"Best params: {best.params}")</code></pre>
+# Absolute path: DataFlow-backed SQLite URLs must not be relative
+DB_URL = f"sqlite:///{Path('mlfp03_registry.db').resolve()}"
+
+async def run_search():
+    conn = ConnectionManager(DB_URL)
+    await conn.initialize()
+    try:
+        pipeline = TrainingPipeline(feature_store=None,
+                                    registry=ModelRegistry(conn))
+        search = HyperparameterSearch(pipeline=pipeline)
+        return await search.search(
+            data=dev, schema=schema, base_model_spec=base_spec,
+            search_space=space, config=config,
+            eval_spec=EvalSpec(metrics=["auc"], split_strategy="holdout",
+                               test_size=0.2),   # trials score a dev holdout
+            experiment_name="credit_hp_search")
+    finally:
+        await conn.close()
+
+result = asyncio.run(run_search())
+print(result.best_params, result.best_metrics["auc"])</code></pre>
+
+<p>
+  Every trial is a real <code>TrainingPipeline.train()</code> call scored on
+  the same seeded holdout of the <em>dev</em> frame, so the trials are
+  compared fairly and the test frame never influences the choice. There is
+  no built-in cross-validation in the search — if you want nested CV, you
+  write the outer loop yourself. <code>strategy</code> also accepts
+  <code>"grid"</code>, <code>"random"</code> and
+  <code>"successive_halving"</code>.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>ModelRegistry</h2>
@@ -191,30 +314,49 @@ print(f"Best params: {best.params}")</code></pre>
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    <code>ModelRegistry</code> versions every model, stores metadata
-    (metrics, hyperparameters, data lineage), and manages the lifecycle:
-    experiment → staging → production → retired.
+    <code>ModelRegistry</code> versions every model artefact, stores its
+    metrics (<code>MetricSpec</code>) and I/O contract
+    (<code>ModelSignature</code>), and tracks its stage. A newly registered
+    version starts in <code>staging</code>; the stages are
+    <code>staging</code> → <code>shadow</code> → <code>production</code> →
+    <code>archived</code>, and <code>promote_model</code> moves a version
+    between them with a recorded reason.
   </p>
 </div>
 
-<pre><code class="language-python">from kailash_ml import ModelRegistry, MetricSpec, ModelSignature
+<pre><code class="language-python">import pickle
+from kailash_ml.types import MetricSpec, ModelSignature
 
-registry = ModelRegistry()
+async def register_and_promote(model, test_auc, gate):
+    conn = ConnectionManager(DB_URL)
+    await conn.initialize()
+    try:
+        registry = ModelRegistry(conn)
+        mv = await registry.register_model(
+            "credit_scorer", pickle.dumps(model),
+            metrics=[MetricSpec(name="auc_roc", value=test_auc, split="test")],
+            signature=ModelSignature(
+                input_schema=schema,
+                output_columns=["default_probability"],
+                output_dtypes=["float64"], model_type="classifier"))
+        print(mv.version, mv.stage)            # e.g. 1 staging
+        if gate["promote"]:                     # computed, never assumed
+            await registry.promote_model(
+                "credit_scorer", mv.version, "production",
+                reason="AUC/AP gate passed on test")
+        return await registry.get_model_versions("credit_scorer")
+    finally:
+        await conn.close()</code></pre>
 
-# Register the best model
-registry.register(
-    name="credit_scorer",
-    model=best.model,
-    metrics=MetricSpec(auc=best.score, f1=best.f1),
-    signature=ModelSignature(
-        input_schema=X_train.schema,
-        output_schema={"probability": "Float64"},
-    ),
-    tags={"dataset": "credit_sg_v2", "author": "mlfp_capstone"},
-)
-
-# Promote to production
-registry.promote("credit_scorer", version=1, stage="production")</code></pre>
+<p>
+  There is no <code>registry.register</code> or
+  <code>registry.promote</code>: the methods are
+  <code>register_model</code>, <code>promote_model</code>,
+  <code>get_model(name, version)</code> /
+  <code>get_model(name, stage="production")</code> and
+  <code>get_model_versions</code>. All are coroutines, so they run inside
+  an <code>async</code> function, as here.
+</p>
 
 <figure class="diagram">
 <svg viewBox="0 0 720 160" class="illustration" xmlns="http://www.w3.org/2000/svg">
@@ -224,22 +366,22 @@ registry.promote("credit_scorer", version=1, stage="production")</code></pre>
     </marker>
   </defs>
   <rect x="20" y="40" width="130" height="60" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
-  <text x="85" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#3B82F6">Experiment</text>
-  <text x="85" y="88" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">v1, v2, v3...</text>
+  <text x="85" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#3B82F6">Staging</text>
+  <text x="85" y="88" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">new versions land here</text>
   <line x1="150" y1="70" x2="205" y2="70" stroke="#0D9488" stroke-width="2" marker-end="url(#arr37r)"/>
   <rect x="210" y="40" width="130" height="60" rx="8" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
-  <text x="275" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#92400E">Staging</text>
-  <text x="275" y="88" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">A/B test</text>
+  <text x="275" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#92400E">Shadow</text>
+  <text x="275" y="88" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">scores live traffic, unused</text>
   <line x1="340" y1="70" x2="395" y2="70" stroke="#0D9488" stroke-width="2" marker-end="url(#arr37r)"/>
   <rect x="400" y="40" width="130" height="60" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
   <text x="465" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#22C55E">Production</text>
   <text x="465" y="88" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">serving</text>
   <line x1="530" y1="70" x2="585" y2="70" stroke="#94A3B8" stroke-width="2" marker-end="url(#arr37r)"/>
   <rect x="590" y="40" width="110" height="60" rx="8" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
-  <text x="645" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#64748B">Retired</text>
-  <text x="645" y="88" text-anchor="middle" font-family="Inter" font-size="9" fill="#94A3B8">archived</text>
+  <text x="645" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#64748B">Archived</text>
+  <text x="645" y="88" text-anchor="middle" font-family="Inter" font-size="9" fill="#94A3B8">kept for audit</text>
 </svg>
-<figcaption>Model lifecycle: experiment → staging → production → retired. Each transition is gated by metrics and approval.</figcaption>
+<figcaption>Model lifecycle in kailash-ml's registry: staging → shadow → production → archived. Each promotion is a <code>promote_model</code> call with a reason, gated by metrics and approval.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -247,7 +389,7 @@ registry.promote("credit_scorer", version=1, stage="production")</code></pre>
 
 <div class="callout warning">
   <span class="label">⚠ Mistake 1: Grid search when Bayesian is available</span>
-  <p>Grid search with 5 hyperparameters at 5 values each = 3125 evaluations. Bayesian typically finds better results in 50.</p>
+  <p>Grid search with 5 hyperparameters at 5 values each = 3,125 evaluations, most of them in regions that are obviously poor. A Bayesian search usually finds a comparable or better configuration in tens of trials — but compare strategies on the same validation rows, and report only once on the test set.</p>
 </div>
 
 <div class="callout warning">
@@ -257,7 +399,7 @@ registry.promote("credit_scorer", version=1, stage="production")</code></pre>
 
 <div class="callout warning">
   <span class="label">⚠ Mistake 3: No conditional gate on promotion</span>
-  <p>Auto-promoting every model is dangerous. Always gate promotion on evaluation metrics — the ConditionalNode pattern.</p>
+  <p>Auto-promoting every model is dangerous. Always gate promotion on test metrics computed in the run — the gate node + SwitchNode pattern — and record the reason with <code>promote_model</code>.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -265,25 +407,25 @@ registry.promote("credit_scorer", version=1, stage="production")</code></pre>
 
 <div class="try-it">
   <h3>🎯 Exercise A — Build the workflow</h3>
-  <p>Build a credit scoring workflow with 5 nodes: load, preprocess, train, evaluate, conditional promotion. Execute it end-to-end.</p>
+  <p>Extend the gate workflow above into a credit scoring workflow with load, preprocess, train, evaluate, a gate node and a SwitchNode routing to promote or hold. Execute it end-to-end and check that exactly one branch ran.</p>
 </div>
 
 <div class="try-it">
   <h3>🎯 Exercise B — Bayesian search</h3>
-  <p>Run HyperparameterSearch with 50 trials on XGBoost. Compare the best result to a random search with 50 trials. Plot the convergence curve.</p>
+  <p>Run HyperparameterSearch on LightGBM with <code>strategy="bayesian"</code> and with <code>strategy="random"</code>, 20 trials each, on the same dev frame. Plot best-so-far AUC against trial number (<code>result.all_trials</code>) for both. Then score both winners once on the test frame.</p>
 </div>
 
 <div class="try-it">
   <h3>🎯 Exercise C — Model registry lifecycle</h3>
-  <p>Register 3 model versions. Promote the best to staging, then production. Verify that ModelRegistry tracks the lineage correctly.</p>
+  <p>Register 3 model versions (they start in staging). Promote the best to production, then simulate a rollback: archive it and bring the previous version back to production through staging (archived → staging → production), giving a reason at each step. List every version with <code>get_model_versions</code> and check the stages.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Cross-References</h2>
 
 <p class="xref">
-  WorkflowBuilder replaces the sequential script from 1.8. ConditionalNode
-  uses the evaluation metrics from 3.5 as gates. HyperparameterSearch
+  WorkflowBuilder replaces the sequential scripts of earlier modules. The
+  gate node and SwitchNode use the evaluation metrics from 3.5 as gates. HyperparameterSearch
   automates the tuning that was manual in 3.3 and 3.4. ModelRegistry
   formalises the model management that Lesson 3.8 will extend to
   production with DataFlow and DriftMonitor.

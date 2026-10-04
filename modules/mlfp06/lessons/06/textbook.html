@@ -743,81 +743,147 @@ print([i["agent_id"] for i in pool.read_relevant(agent_id="factual", tags=["norm
   <span class="label">Kailash Engine</span>
   <p>
     MCP (Model Context Protocol) is an open standard for exposing tools to AI
-    agents. <code>kailash-mcp</code> provides <code>MCPServer</code> — you
-    decorate functions with <code>@server.tool()</code> and they become
-    discoverable by any MCP client. Transport options: <strong>stdio</strong>
-    (local, for CLI agents) and <strong>HTTP/SSE</strong> (remote, for web
-    agents). This turns your ML pipeline into a service.
+    agents. <code>kailash-mcp</code> provides <code>MCPServer</code>: you
+    register plain Python functions with the <code>@server.tool()</code>
+    decorator (note the parentheses — it is a decorator factory), and the
+    server publishes each one with a JSON schema derived from its type hints
+    and docstring. The transport is chosen when you construct the server —
+    <code>transport="stdio"</code> for a local subprocess, or an HTTP / SSE
+    transport for remote clients — and <code>server.run()</code> takes no
+    arguments.
   </p>
 </div>
 
 <h3>Building an MCP server</h3>
 
-<pre><code class="language-python">from kailash_mcp import MCPServer, tool
+<p>
+  Exercise 6.4 exposes the SQuAD corpus and the Exercise 6.1 specialists as
+  three tools. Save this as a script; the client below launches it as a
+  subprocess:
+</p>
 
-server = MCPServer("ml-tools", version="1.0.0")
+<pre><code class="language-python"># mcp_server.py — run as: python mcp_server.py --serve-mcp
+import json
+import sys
+from typing import Literal
 
-@server.tool("explore")
-def explore_data(dataset: str) -> dict:
-    """Load and profile a dataset. Returns shape, columns, null counts."""
-    from shared import MLFPDataLoader
-    from kailash_ml import DataExplorer
+# On stdio, stdout carries the JSON-RPC frames and NOTHING else:
+# send every print() (including the corpus loader's) to stderr while serving.
+SERVE_MODE = "--serve-mcp" in sys.argv
+if SERVE_MODE:
+    _protocol_stdout, sys.stdout = sys.stdout, sys.stderr
 
-    loader = MLFPDataLoader()
-    df = loader.load("mlfp06", dataset)
-    explorer = DataExplorer()
-    profile = explorer.profile(df)
-    return {
-        "shape": list(df.shape),
-        "columns": df.columns,
-        "null_pct": profile.null_percentages,
-        "dtypes": {c: str(t) for c, t in df.schema.items()}
-    }
+from kailash_mcp import MCPServer
 
-@server.tool("train")
-def train_model(dataset: str, target: str, algorithm: str = "gradient_boosting") -> dict:
-    """Train a classification model. Returns accuracy, F1, and training time."""
-    from shared import MLFPDataLoader
-    from kailash_ml import TrainingPipeline
+from shared.mlfp06.ex_6 import build_specialists, load_squad_corpus, run_checked
 
-    loader = MLFPDataLoader()
-    df = loader.load("mlfp06", dataset)
-    pipeline = TrainingPipeline(algorithm=algorithm)
-    result = pipeline.fit(df, target=target)
-    return {
-        "accuracy": round(result.metrics["accuracy"], 4),
-        "f1_score": round(result.metrics["f1_score"], 4),
-        "training_time_s": round(result.training_time, 2)
-    }
+passages = load_squad_corpus()
+SPECIALISTS = dict(zip(("factual", "semantic", "structural"), build_specialists()))
 
-@server.tool("feature_importance")
-def get_feature_importance(dataset: str, target: str, top_n: int = 10) -> list:
-    """Return top-N most important features for the target variable."""
-    from kailash_ml import ModelVisualizer
-    viz = ModelVisualizer()
-    importance = viz.compute_importance(dataset, target)
-    return importance[:top_n]
+server = MCPServer(name="mlfp06-analysis-server", transport="stdio")
 
-# Run the server
-if __name__ == "__main__":
-    server.run(transport="stdio")  # or transport="sse" for HTTP</code></pre>
+
+@server.tool()
+def search_corpus(query: str, top_k: int = 3) -> str:
+    """Search the document corpus for passages matching a query.
+
+    Args:
+        query: Search query text.
+        top_k: Maximum results to return.
+    """
+    words = query.lower().split()
+    scored = [
+        (sum(w in row["text"].lower() for w in words), row)
+        for row in passages.iter_rows(named=True)
+    ]
+    hits = [f"[{r['title']}] {r['text'][:200]}..." for s, r in sorted(scored, key=lambda x: -x[0]) if s > 0]
+    return "\n\n".join(hits[:top_k]) or "No matches found."
+
+
+@server.tool()
+def get_corpus_stats() -> str:
+    """Get statistics about the available document corpus."""
+    return f"Corpus: {passages.height} passages, {passages['title'].n_unique()} unique topics"
+
+
+@server.tool()
+async def analyse_passage(
+    passage: str,
+    analysis_type: Literal["factual", "semantic", "structural"] = "factual",
+    question: str = "What are the key points of this passage?",
+) -> str:
+    """Analyse a passage with the factual, semantic, or structural specialist agent."""
+    result = await run_checked(SPECIALISTS[analysis_type], document=passage, question=question)
+    return json.dumps(result, default=str)
+
+
+if SERVE_MODE:
+    sys.stdout = _protocol_stdout
+    server.run()                 # serve over stdio until the client disconnects</code></pre>
+
+<p>
+  The third tool is the interesting one: an MCP tool can wrap a whole
+  <em>agent</em>, not just a lookup. Any MCP client now gets structured
+  factual, semantic or structural analysis without knowing Kaizen exists.
+</p>
+
+<h3>Calling it from an MCP client</h3>
+
+<pre><code class="language-python">import asyncio
+import sys
+
+from kailash_mcp import MCPClient
+
+SERVER = {
+    "transport": "stdio",
+    "command": sys.executable,
+    "args": ["mcp_server.py", "--serve-mcp"],
+}
+client = MCPClient()
+
+
+async def main() -> None:
+    # JSON-RPC "initialize" then "tools/list": what any external agent sees
+    tools = await client.discover_tools(SERVER, timeout=120)
+    for t in tools:
+        print(t["name"], t["parameters"].get("required", []))
+
+    # JSON-RPC "tools/call"
+    reply = await client.call_tool(SERVER, "search_corpus", {"query": "Normans", "top_k": 1}, timeout=120)
+    print(reply["success"], reply["content"][:120])
+
+
+asyncio.run(main())</code></pre>
+
+<p>
+  Discovery returns one schema per tool, generated from the type hints. For
+  <code>search_corpus</code> it is
+  <code>{"properties": {"query": {"type": "string"}, "top_k": {"type": "integer", "default": 3}}, "required": ["query"]}</code>
+  (titles omitted); the <code>Literal</code> hint on
+  <code>analysis_type</code> is published as an <code>enum</code> of the
+  three specialist names, so the server rejects
+  <code>analysis_type="sentiment"</code> before your handler runs —
+  Exercise 6.4 sends exactly that call to prove it.
+</p>
 
 <h3>MCP transport options</h3>
 
 <table>
-  <thead><tr><th>Transport</th><th>Protocol</th><th>Use case</th></tr></thead>
+  <thead><tr><th>Transport</th><th>How it is selected</th><th>Use case</th></tr></thead>
   <tbody>
-    <tr><td><code>stdio</code></td><td>Standard input/output</td><td>Local CLI agents, development, testing</td></tr>
-    <tr><td><code>sse</code></td><td>HTTP + Server-Sent Events</td><td>Remote agents, web applications, production</td></tr>
+    <tr><td><code>stdio</code></td><td><code>MCPServer(name, transport="stdio")</code> — the client starts the server as a subprocess</td><td>Local agents, IDE assistants, development, testing</td></tr>
+    <tr><td>HTTP / SSE</td><td><code>transport="http"</code> or <code>"sse"</code>, or the <code>enable_http_transport</code> / <code>enable_sse_transport</code> flags</td><td>Remote agents, web applications, shared services</td></tr>
   </tbody>
 </table>
 
 <p>
-  The MCP server exposes a <code>/tools</code> endpoint that returns the
-  schema of all registered tools. An MCP client (any agent framework that
-  speaks MCP) calls this endpoint to discover available tools, then calls
-  individual tools by name with JSON parameters. The agent never needs to know
-  how the tools are implemented — it only sees the schema.
+  MCP is JSON-RPC, not REST: there is no <code>/tools</code> URL. A client
+  discovers tools with the <code>tools/list</code> method and invokes one with
+  <code>tools/call</code>, sending JSON arguments that the server validates
+  against the published schema. On the stdio transport there is no HTTP
+  endpoint at all — the messages travel over the subprocess's stdin and
+  stdout. The agent never needs to know how a tool is implemented; it only
+  sees the schema.
 </p>
 
 <figure class="diagram">
@@ -828,12 +894,12 @@ if __name__ == "__main__":
   <rect x="40" y="50" width="200" height="80" rx="10" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
   <text x="140" y="75" text-anchor="middle" font-weight="700" font-size="12" fill="#3B82F6">MCP Client</text>
   <text x="140" y="95" text-anchor="middle" font-size="10" fill="#1E293B">Any agent framework</text>
-  <text x="140" y="110" text-anchor="middle" font-size="10" fill="#1E293B">(Kaizen, LangChain, ...)</text>
+  <text x="140" y="110" text-anchor="middle" font-size="10" fill="#1E293B">(Kaizen, IDE assistants, ...)</text>
 
   <!-- Protocol -->
   <rect x="280" y="65" width="160" height="50" rx="6" fill="#F0FDF4" stroke="#0D9488" stroke-width="2"/>
   <text x="360" y="85" text-anchor="middle" font-weight="600" font-size="11" fill="#0D9488">MCP Protocol</text>
-  <text x="360" y="102" text-anchor="middle" font-size="9" fill="#0D9488">stdio / HTTP+SSE</text>
+  <text x="360" y="102" text-anchor="middle" font-size="9" fill="#0D9488">JSON-RPC: stdio / HTTP+SSE</text>
   <line x1="245" y1="90" x2="275" y2="90" stroke="#0D9488" stroke-width="2"/>
   <line x1="445" y1="90" x2="475" y2="90" stroke="#0D9488" stroke-width="2"/>
 
@@ -841,7 +907,7 @@ if __name__ == "__main__":
   <rect x="480" y="50" width="200" height="80" rx="10" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
   <text x="580" y="75" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">MCP Server</text>
   <text x="580" y="95" text-anchor="middle" font-size="10" fill="#1E293B">kailash-mcp</text>
-  <text x="580" y="110" text-anchor="middle" font-size="10" fill="#1E293B">ML tools, data tools</text>
+  <text x="580" y="110" text-anchor="middle" font-size="10" fill="#1E293B">corpus + agent tools</text>
 
   <!-- Labels -->
   <text x="140" y="150" text-anchor="middle" font-size="9" fill="#64748B" font-style="italic">Discovers tools, calls them</text>

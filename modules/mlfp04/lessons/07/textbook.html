@@ -49,10 +49,12 @@
 <h2>Why This Matters</h2>
 
 <p>
-  Recommender systems generate a third of Amazon's revenue and 80% of
-  Netflix's viewing hours. Singapore's retail landscape — from Shopee
-  to FairPrice Online — runs on them. But the business value is not
-  the only reason they matter for this curriculum. Recommender systems
+  Recommenders decide much of what online shoppers and viewers see:
+  "customers also bought", "because you watched", a personalised home
+  page. For a marketplace with thousands of products, choosing which
+  handful to show each customer is a core commercial decision. But the
+  business value is not the only reason they matter for this
+  curriculum. Recommender systems
   sit at the exact transition between classical unsupervised ML and
   deep learning:
 </p>
@@ -115,28 +117,36 @@
   vectors are closest to the user vector.
 </p>
 
-<pre><code class="language-python">import polars as pl
-import numpy as np
+<pre><code class="language-python">import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Item features: TF-IDF of product descriptions
-item_features = tfidf_matrix  # shape (n_items, n_features)
+# Toy item features (rows = items; columns = e.g. "gaming", "portable", "budget")
+item_features = np.array([
+    [0.9, 0.1, 0.2],   # item 0: gaming laptop
+    [0.1, 0.9, 0.6],   # item 1: ultrabook
+    [0.8, 0.2, 0.1],   # item 2: gaming monitor
+    [0.2, 0.7, 0.9],   # item 3: budget tablet
+])
+purchased_indices = [0]                       # the user bought the gaming laptop
 
-# User profile: average of items they purchased
+# User profile: average of the items they purchased
 user_profile = item_features[purchased_indices].mean(axis=0)
 
-# Recommend: top-k most similar items
+# Recommend: unpurchased items ranked by similarity to the profile
 sims = cosine_similarity(user_profile.reshape(1, -1), item_features)[0]
-top_k = np.argsort(sims)[-10:][::-1]</code></pre>
+sims[purchased_indices] = -np.inf
+print(np.argsort(sims)[::-1][:2])             # [2 3]: the gaming monitor comes first</code></pre>
 
 <div class="callout foundations">
   <span class="label">🟢 Foundations</span>
   <p>
     Content-based filtering does not need other users' data. It works
-    even for brand-new users (no cold-start problem on the item side)
-    as long as you have item features. The downside: it cannot discover
-    surprising preferences — it only recommends more of what you
-    already like.
+    for brand-new <em>items</em> (no item cold-start) as long as they have
+    features. It does <em>not</em> solve the cold-start problem for a
+    brand-new <em>user</em>: with no purchases there is no profile to
+    compare against (the snippet above needs at least one purchased item).
+    The other downside: it cannot discover surprising preferences — it
+    only recommends more of what you already like.
   </p>
 </div>
 
@@ -218,9 +228,15 @@ top_k = np.argsort(sims)[-10:][::-1]</code></pre>
 
 <p>
   <strong>ALS (Alternating Least Squares)</strong> solves this by
-  alternating: fix $U$, solve for $V$ in closed form; fix $V$, solve
-  for $U$ in closed form. Each step is a standard least-squares
-  regression. Repeat until convergence.
+  alternating: fix $V$, solve for every user vector in closed form; fix
+  $U$, solve for every item vector. With $V_{\Omega_u}$ the rows of $V$ for
+  the items user $u$ rated and $\mathbf{r}_{u,\Omega_u}$ those ratings,
+  each user update is a ridge regression over the <em>observed</em> entries
+  only:
+  $\mathbf{u}_u = (V_{\Omega_u}^\top V_{\Omega_u} + \lambda I)^{-1} V_{\Omega_u}^\top \mathbf{r}_{u,\Omega_u}$,
+  and symmetrically for items. Each half-step solves its sub-problem
+  exactly, so the objective never increases. Repeat until it stops
+  improving.
 </p>
 
 <div class="callout theory">
@@ -243,9 +259,10 @@ top_k = np.argsort(sims)[-10:][::-1]</code></pre>
     (views, clicks, time-on-page). The user embedding becomes
     $\mathbf{u}_u + |N(u)|^{-1/2} \sum_{j \in N(u)} \mathbf{y}_j$,
     where $N(u)$ is the set of items the user interacted with and
-    $\mathbf{y}_j$ are implicit-factor vectors. This consistently
-    outperforms explicit-only models because most user behaviour is
-    implicit.
+    $\mathbf{y}_j$ are implicit-factor vectors (Koren, 2008). A user with
+    few ratings but many views is still placed sensibly, which is why
+    adding implicit signals typically improves accuracy over explicit-only
+    factorisation.
   </p>
 </div>
 
@@ -255,18 +272,26 @@ top_k = np.argsort(sims)[-10:][::-1]</code></pre>
   <strong>Explicit</strong> feedback (star ratings) is what users
   deliberately tell you. <strong>Implicit</strong> feedback (clicks,
   views, purchases, dwell time) is what they show you through
-  behaviour. Implicit data is 100x more abundant, always available,
-  and often more predictive. Modern production recommenders use
-  implicit feedback almost exclusively.
+  behaviour. Implicit data is usually far more abundant than ratings,
+  but noisier: a click is not a like, and "not clicked" is not "disliked".
+  The standard method for purely implicit data is weighted ALS on a
+  binary preference matrix with confidence weights (Hu, Koren and
+  Volinsky, 2008); many production recommenders rely mainly on implicit
+  signals.
 </p>
 
 <h3>Hybrid systems</h3>
 
 <p>
   Combine content-based features (item descriptions, metadata) with
-  collaborative signals (user-item interactions). Hybrids mitigate
-  the cold-start problem (new items have features but no interactions)
-  and improve coverage.
+  collaborative signals (user-item interactions). Common patterns: a
+  <em>weighted</em> hybrid ($\alpha \cdot \text{CF} + (1-\alpha) \cdot
+  \text{content}$, with $\alpha$ tuned on a validation split — never on the
+  test set); a <em>switching</em> hybrid (content for new items, CF
+  otherwise); and feature-augmented factorisation. Hybrids mitigate the
+  item cold-start problem (new items have features but no interactions)
+  and improve coverage. A brand-new user still needs a few interactions —
+  or a non-personalised fallback such as popularity.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -276,8 +301,12 @@ top_k = np.argsort(sims)[-10:][::-1]</code></pre>
   Pause and absorb this. Matrix factorisation <em>learns</em> user
   and item embeddings by <em>minimising reconstruction error</em>.
   The embeddings are not hand-crafted features — they are features
-  <em>discovered by optimisation</em>. This is the first time in the
-  curriculum that a loss function drives feature creation.
+  <em>discovered by optimisation</em>. K-means, PCA and NMF also minimised
+  objectives, but as summaries of a fully observed matrix. Matrix
+  factorisation is the first time a model is fitted iteratively to a
+  <em>partially observed</em> target — the ratings we have — judged by how
+  well it predicts the ratings we do not have, with its learned factors
+  reused as embeddings.
 </p>
 
 <p>
@@ -291,99 +320,168 @@ top_k = np.argsort(sims)[-10:][::-1]</code></pre>
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Kailash Integration</h2>
+<h2>The Kailash Engine: none — build it, then track it</h2>
 
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    Kailash's <code>AutoMLEngine</code> handles recommendation tasks
-    when configured with a collaborative filtering backend. The
-    <code>ModelVisualizer</code> can project learned user and item
-    embeddings into 2D for inspection — if the embeddings capture
-    meaningful structure, you will see user clusters (frequent buyers,
-    occasional browsers) and item clusters (electronics, groceries)
-    emerge without any labels.
+    kailash-ml has no recommender engine, and neither
+    <code>AutoMLEngine</code> nor <code>ModelVisualizer</code> has a
+    recommendation mode. Every method in this lesson is a few dozen lines of
+    NumPy, which is the point: you see exactly how the embeddings arise. In
+    production you would log each method's holdout metrics to the
+    <code>ExperimentTracker</code> (as Exercise 7 does) and, for very large
+    catalogues, use a dedicated open-source ALS library. Lesson 4.8 shows
+    the same idea — learn embeddings by minimising a loss — written as a
+    neural network and exported with <code>OnnxBridge</code>.
   </p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Singapore Retail</h2>
+<h2>Worked Example: An Electronics Marketplace Recommender</h2>
 
 <div class="worked-example">
   <h3>Goal</h3>
   <p>
-    Build three recommenders on Singapore retail data: content-based,
-    user-based CF, and matrix factorisation. Compare recommendation
-    quality and visualise learned embeddings.
+    The ratings are <strong>synthetic</strong>, generated by Exercise 7's
+    <code>build_rating_dataset()</code> for a fictional Singapore electronics
+    marketplace: 300 users, 120 products, explicit 1–5 star ratings, about
+    30% of user–item pairs observed. The generator follows a known model —
+    global mean + user bias + item bias + (user taste · item traits) with 5
+    hidden taste dimensions, plus noise — so we can check whether the
+    learned embeddings recover the truth. Thirty per cent of the observed
+    ratings are held out, and 10 brand-new products have <em>all</em> their
+    ratings in the holdout: cold-start items no collaborative method has
+    seen. Every item also has 8 content features (a noisy view of its
+    hidden traits, like a spec sheet).
   </p>
 
   <div class="step">
     <span class="step-label">Step 1.</span>
-    <p>Load and prepare the interaction matrix.</p>
-    <pre><code class="language-python">import polars as pl
-import numpy as np
-from shared import MLFPDataLoader
+    <p>Load the data and score the no-skill baselines every recommender must beat.</p>
+    <pre><code class="language-python">import numpy as np
+from shared.mlfp04.ex_7 import build_rating_dataset, print_baselines, print_method_scores
 
-loader = MLFPDataLoader()
-purchases = loader.load("mlfp04", "sg_retail_purchases.csv")
+data = build_rating_dataset()
+R_obs, R_train = data["R_observed"], data["R_train"]
+train_mask, holdout_mask = data["train_mask"], data["holdout_mask"]
+cold_items, item_features = data["cold_items"], data["item_features"]
+print(f"{R_train.shape[0]} users x {R_train.shape[1]} items; "
+      f"{int(cold_items.sum())} cold-start products")
 
-# Pivot to user-item matrix
-R = purchases.pivot(
-    on="product_id", index="user_id", values="rating"
-).fill_null(0).drop("user_id").to_numpy()</code></pre>
+baselines = print_baselines(R_train, train_mask, R_obs, holdout_mask)</code></pre>
+    <p>
+      The scorecard reports holdout RMSE, coverage (the share of holdout
+      pairs a method can score at all), precision@5 and mean average
+      precision (MAP). The global mean scores RMSE 1.03, the item mean
+      ("popularity") 0.97 with MAP 0.68, and random scores 1.60.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 2.</span>
-    <p>Implement ALS matrix factorisation from scratch.</p>
-    <pre><code class="language-python">def als(R, k=20, lam=0.1, n_iter=20):
-    m, n = R.shape
-    U = np.random.randn(m, k) * 0.01
-    V = np.random.randn(n, k) * 0.01
-    mask = (R > 0).astype(float)
+    <p>Content-based filtering from the item features.</p>
+    <pre><code class="language-python">def content_based(R, mask, features):
+    """Score items by cosine similarity between item features and a user taste profile."""
+    feats = features - features.mean(axis=0)
+    unit = feats / np.linalg.norm(feats, axis=1, keepdims=True)
+    preds = np.full(R.shape, np.nan)
+    for u in range(R.shape[0]):
+        rated = np.where(mask[u])[0]
+        if len(rated) &lt; 2:
+            continue                                   # a brand-new USER has no profile
+        dev = R[u, rated] - R[u, rated].mean()         # liked items pull, disliked items push
+        profile = dev @ unit[rated]
+        if np.linalg.norm(profile) &lt; 1e-10:
+            continue
+        cos = unit @ (profile / np.linalg.norm(profile))
+        preds[u] = R[u, rated].mean() + 2 * R[u, rated].std() * cos
+    return np.clip(preds, 1, 5)
 
-    for iteration in range(n_iter):
-        # Fix V, solve for U
-        for u in range(m):
-            idx = mask[u] > 0
-            V_u = V[idx]
-            r_u = R[u, idx]
-            U[u] = np.linalg.solve(
-                V_u.T @ V_u + lam * np.eye(k), V_u.T @ r_u
-            )
-        # Fix U, solve for V
-        for i in range(n):
-            idx = mask[:, i] > 0
-            U_i = U[idx]
-            r_i = R[idx, i]
-            V[i] = np.linalg.solve(
-                U_i.T @ U_i + lam * np.eye(k), U_i.T @ r_i
-            )
-        # Track loss
-        pred = U @ V.T
-        err = np.sum(mask * (R - pred) ** 2)
-        print(f"Iter {iteration+1}: MSE = {err / mask.sum():.4f}")
-
-    return U, V
-
-U, V = als(R, k=20)</code></pre>
+pred_cb = content_based(R_train, train_mask, item_features)
+m_cb = print_method_scores("Content-based", pred_cb, R_obs, holdout_mask)</code></pre>
+    <p>
+      Content-based filtering covers every item with features, including
+      the 10 new products (coverage 100%), and scores RMSE 0.95 and MAP 0.73 —
+      a modest gain on popularity. It cannot help a brand-new <em>user</em>:
+      with no ratings there is no profile. User-based and item-based
+      collaborative filtering (Exercises 7.2 and 7.3) do much better on the
+      pairs they can score (RMSE 0.77 and 0.82) but cannot score the cold
+      products at all, so their coverage is only about 77%. Always read
+      coverage next to accuracy.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3.</span>
-    <p>Visualise the learned embeddings.</p>
-    <pre><code class="language-python">from sklearn.manifold import TSNE
-import matplotlib.pyplot as plt
+    <p>Biased matrix factorisation with ALS, then check what the embeddings learned.</p>
+    <pre><code class="language-python">def als(R, mask, k=5, lam=5.0, n_iter=30, seed=42):
+    """Biased ALS: R[u, j] ~ mu + b_u + b_j + U[u] . V[j], each half-step a ridge regression."""
+    rng = np.random.default_rng(seed)
+    mu = float(R[mask].mean())
+    U, V = rng.normal(0, 0.1, (R.shape[0], k)), rng.normal(0, 0.1, (R.shape[1], k))
+    b_u, b_i = np.zeros(R.shape[0]), np.zeros(R.shape[1])
+    R0, penalty, losses = np.nan_to_num(R), lam * np.eye(k + 1), []
+    for _ in range(n_iter):
+        for u in range(R.shape[0]):                    # fix items, solve each user
+            js = np.where(mask[u])[0]
+            X = np.hstack([V[js], np.ones((len(js), 1))])
+            sol = np.linalg.solve(X.T @ X + penalty, X.T @ (R0[u, js] - mu - b_i[js]))
+            U[u], b_u[u] = sol[:k], sol[k]
+        for j in range(R.shape[1]):                    # fix users, solve each item
+            us = np.where(mask[:, j])[0]
+            if len(us) == 0:
+                continue                               # cold item: nothing to learn from
+            X = np.hstack([U[us], np.ones((len(us), 1))])
+            sol = np.linalg.solve(X.T @ X + penalty, X.T @ (R0[us, j] - mu - b_u[us]))
+            V[j], b_i[j] = sol[:k], sol[k]
+        fit = mu + b_u[:, None] + b_i[None, :] + U @ V.T
+        losses.append(float(((R0 - fit)[mask] ** 2).sum()
+                            + lam * ((U**2).sum() + (V**2).sum() + (b_u**2).sum() + (b_i**2).sum())))
+    preds = np.clip(mu + b_u[:, None] + b_i[None, :] + U @ V.T, 1, 5)
+    preds[:, mask.sum(axis=0) == 0] = np.nan
+    return preds, U, V, losses
 
-# Project item embeddings to 2D
-V_2d = TSNE(n_components=2, random_state=42).fit_transform(V)
+pred_als, U, V, losses = als(R_train, train_mask)
+print(f"regularised loss: {losses[0]:,.0f} -&gt; {losses[-1]:,.0f}")
+m_als = print_method_scores("ALS (k=5)", pred_als, R_obs, holdout_mask)
 
-plt.figure(figsize=(10, 8))
-plt.scatter(V_2d[:, 0], V_2d[:, 1], alpha=0.5, s=10)
-plt.title("Learned Item Embeddings (2D t-SNE)")
-plt.xlabel("Component 1")
-plt.ylabel("Component 2")
-plt.show()</code></pre>
+# Do the learned item embeddings recover the hidden traits?  (R^2 of a linear map)
+warm = ~cold_items
+Xw = np.c_[V[warm], np.ones(warm.sum())]
+coef, *_ = np.linalg.lstsq(Xw, data["V_true"][warm], rcond=None)
+resid = data["V_true"][warm] - Xw @ coef
+print(f"R^2 of true item traits explained by learned embeddings: "
+      f"{1 - resid.var() / data['V_true'][warm].var():.2f}")</code></pre>
+    <p>
+      The mean and the user and item biases absorb "this user rates
+      generously" and "this product is simply good", leaving the factors to
+      capture <em>taste</em>. Each half-step is an exact ridge-regression
+      solve over the <em>observed</em> entries only, so the regularised loss
+      never increases (about 4,190 → 3,360). ALS reaches a holdout RMSE of
+      0.56 — far better than every baseline and both neighbourhood methods —
+      but its coverage also stops at 77% because of the cold products. The
+      last lines are the pivot made visible: a linear map from the 5 learned
+      dimensions explains 96% of the variance of the 5 true trait
+      dimensions. Nobody told ALS what the traits were; they emerged from
+      minimising the reconstruction loss.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4.</span>
+    <p>Who can score the brand-new products?</p>
+    <pre><code class="language-python">cold_pairs = holdout_mask &amp; cold_items[None, :]
+for name, preds in [("Content-based", pred_cb), ("ALS", pred_als)]:
+    covered = cold_pairs &amp; ~np.isnan(preds)
+    print(f"{name:&lt;14} can score {int(covered.sum())} of {int(cold_pairs.sum())} cold-product ratings")</code></pre>
+    <p>
+      Only content-based filtering can say anything about the new products.
+      That is the case for a <strong>hybrid</strong>: collaborative signals
+      where history exists, content where it does not. Exercise 7.5 tunes the
+      blend weight on a validation split and measures its lift over each
+      component on the test split.
+    </p>
   </div>
 </div>
 
@@ -393,7 +491,8 @@ plt.show()</code></pre>
 <ol>
   <li><strong>Training on the full matrix.</strong> You must hold out test interactions. Evaluate on unseen user-item pairs, not the ones used for training.</li>
   <li><strong>Ignoring implicit data.</strong> Star ratings are rare; clicks are abundant. Weighting implicit feedback correctly is usually the biggest accuracy lever.</li>
-  <li><strong>Too many latent factors.</strong> $k = 20$ to $50$ is typical. Higher $k$ overfits sparse matrices and slows ALS convergence.</li>
+  <li><strong>Too many latent factors.</strong> Choose $k$ (and $\lambda$) on a validation split. Larger $k$ overfits sparse matrices and makes each ALS solve more expensive; in the worked example the generator has 5 hidden dimensions and $k = 5$ suffices.</li>
+  <li><strong>Reporting accuracy without coverage.</strong> A method that cannot score cold items can look accurate on the pairs it does score. Report coverage alongside RMSE and ranking metrics.</li>
   <li><strong>Missing the pivot insight.</strong> The point is not just "build a recommender" — it is "optimisation discovers features". If you leave this lesson thinking it was about recommendations, go back and re-read the pivot section.</li>
 </ol>
 
@@ -401,15 +500,25 @@ plt.show()</code></pre>
 <h2>Try It Yourself</h2>
 
 <div class="try-it">
-  <p><strong>Exercise 7.</strong></p>
+  <p><strong>Exercise 7</strong> (<code>modules/mlfp04/solutions/ex_7/</code>, five
+  scripts on the synthetic 300 × 120 ratings from the worked example,
+  scored against the global-mean, popularity and random baselines):</p>
   <ol>
-    <li>Build a content-based recommender using product descriptions (TF-IDF cosine similarity).</li>
-    <li>Build a user-based CF recommender using cosine similarity on the interaction matrix.</li>
-    <li>Implement ALS matrix factorisation with $k = 20$.</li>
-    <li>Compare recommendation quality (precision@10, NDCG@10).</li>
-    <li>Visualise user and item embeddings with t-SNE. Do meaningful clusters emerge?</li>
-    <li>Write one paragraph articulating the pivot: how does matrix factorisation relate to the Feature Engineering Spectrum?</li>
+    <li><code>01_content_based.py</code> — taste profiles from item features;
+      the method that can score brand-new products.</li>
+    <li><code>02_user_cf.py</code> — mean-centred user-based CF with a
+      neighbourhood size $k$.</li>
+    <li><code>03_item_cf.py</code> — item-based CF and why it cannot score items
+      nobody has rated.</li>
+    <li><code>04_matrix_factorisation.py</code> — biased ALS from scratch, its
+      monotone loss curve, and a check that the learned embeddings recover
+      the generator's hidden traits.</li>
+    <li><code>05_hybrid_evaluation.py</code> — a weighted hybrid with the weight
+      tuned on a validation split and its lift measured on the test split,
+      and the cold-start analysis.</li>
   </ol>
+  <p>Stretch: write one paragraph articulating the pivot — how does matrix
+  factorisation relate to the Feature Engineering Spectrum?</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -418,7 +527,7 @@ plt.show()</code></pre>
 <ul>
   <li><strong>Back to 4.3 PCA:</strong> PCA decomposes $X = U \Sigma V^T$. Matrix factorisation decomposes $R \approx U V^T$. Same low-rank insight.</li>
   <li><strong>Back to 4.5 Rules:</strong> association rules discover discrete co-occurrence patterns. Matrix factorisation discovers continuous latent structure in the same co-occurrence data.</li>
-  <li><strong>Back to 4.6 NMF:</strong> NMF factorises document-word. CF factorises user-item. Same factorisation, different data.</li>
+  <li><strong>Back to 4.6 NMF:</strong> NMF factorises a fully observed document-word matrix; CF factorises a mostly missing user-item matrix. The same low-rank idea, but CF must fit only the observed entries.</li>
   <li><strong>Forward to 4.8 (DL bridge):</strong> neural network hidden layers are embeddings learned by optimisation — the same idea generalised with non-linear activation functions.</li>
 </ul>
 

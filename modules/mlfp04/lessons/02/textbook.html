@@ -37,10 +37,11 @@
   customers sit somewhere between "high-value" and "average" — they belong
   70% to one segment and 30% to another. Today you will meet the
   <strong>Expectation-Maximisation (EM) algorithm</strong>, the twenty-line
-  procedure that powers Gaussian mixture models, hidden Markov models, topic
-  models, and half of classical machine learning. You will implement it
-  yourself, then watch sklearn's <code>GaussianMixture</code> do exactly the
-  same thing on real data.
+  procedure that fits Gaussian mixture models and, in variants, hidden Markov
+  models and topic models. You will implement it yourself on synthetic data,
+  check it against sklearn's <code>GaussianMixture</code>, and then use the
+  library version to find the "in-between" customers in the real e-commerce
+  data.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -237,10 +238,10 @@
 <pre><code class="language-python">import numpy as np
 from scipy.stats import multivariate_normal as mvn
 
-def em_gmm(X, K, max_iter=100, tol=1e-4):
+def em_gmm(X, K, max_iter=200, tol=1e-6, seed=0):
     N, D = X.shape
     # Random init: pick K data points as means, identity covariances, uniform mixing
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(seed)
     mu = X[rng.choice(N, size=K, replace=False)]
     Sigma = np.array([np.eye(D) for _ in range(K)])
     pi = np.full(K, 1.0 / K)
@@ -249,29 +250,31 @@ def em_gmm(X, K, max_iter=100, tol=1e-4):
     for iteration in range(max_iter):
         # E-step: responsibilities r_{nk}
         weighted = np.stack([pi[k] * mvn.pdf(X, mean=mu[k], cov=Sigma[k]) for k in range(K)], axis=1)
-        total = weighted.sum(axis=1, keepdims=True) + 1e-12
-        r = weighted / total                       # shape (N, K)
+        total = weighted.sum(axis=1, keepdims=True)   # p(x_n) under the current mixture
+        r = weighted / total                          # shape (N, K)
+
+        # Log-likelihood of the current parameters; stop when it no longer improves
+        new_log_lik = float(np.log(total).sum())
+        if new_log_lik - log_lik &lt; tol:
+            break
+        log_lik = new_log_lik
 
         # M-step: weighted mean, covariance, mixing
-        Nk = r.sum(axis=0)                         # effective count per cluster
+        Nk = r.sum(axis=0)                            # effective count per cluster
         pi = Nk / N
         mu = (r.T @ X) / Nk[:, None]
         for k in range(K):
             diff = X - mu[k]
-            Sigma[k] = (r[:, k:k+1] * diff).T @ diff / Nk[k]
-
-        # Log-likelihood and convergence check
-        new_log_lik = np.log(total + 1e-12).sum()
-        if abs(new_log_lik - log_lik) &lt; tol:
-            break
-        log_lik = new_log_lik
+            Sigma[k] = (r[:, k:k+1] * diff).T @ diff / Nk[k] + 1e-6 * np.eye(D)
 
     return pi, mu, Sigma, r, log_lik</code></pre>
 
 <p>
-  Twenty substantive lines. Compare against <code>sklearn.mixture.GaussianMixture</code>
-  — for well-conditioned data the implementations agree to within numerical
-  tolerance, which is the right way to validate your own EM.
+  Twenty substantive lines. The small $10^{-6} I$ added to each covariance
+  keeps it invertible if a component collapses onto a few points. Validate it
+  against <code>sklearn.mixture.GaussianMixture</code>: on well-conditioned
+  data, the best of a few restarts reaches the same log-likelihood as the
+  library (the worked example checks this).
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -315,10 +318,16 @@ def em_gmm(X, K, max_iter=100, tol=1e-4):
   A <strong>Mixture of Experts</strong> (MoE) generalises the mixture
   model by replacing the fixed $\pi_k$ with a <em>gating network</em>
   $g_k(\mathbf{x})$ that depends on the input — a different mixture for
-  every point. GPT-4 and other state-of-the-art large language models use
-  MoE layers to scale to trillions of parameters efficiently: for each
-  token, the gating network picks a few experts (typically 2 out of 8)
-  to run, saving compute while keeping capacity high.
+  every point. Some large language models use <em>sparse</em> MoE layers,
+  in which a learned router activates only the top few experts per token,
+  adding capacity without a proportional increase in compute. Mixtral 8x7B
+  is an openly documented example (Jiang et al., 2024): each feed-forward
+  block has 8 experts and every token is routed to the top 2. Because the
+  attention layers are shared, the model has about 46.7 billion parameters
+  in total (not $8 \times 7 = 56$ billion) but uses only about 12.9 billion
+  per token. (The architectures of several closed commercial models are
+  reported to use MoE, but they are not published, so treat such claims as
+  unverified.)
 </p>
 
 <div class="callout advanced">
@@ -333,27 +342,54 @@ def em_gmm(X, K, max_iter=100, tol=1e-4):
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>The Kailash Engine: reusing AutoMLEngine</h2>
+<h2>The Kailash Engine: ClusteringEngine with <code>algorithm="gmm"</code></h2>
 
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    The same <code>AutoMLEngine</code> from Lesson 4.1 includes GMM in its
-    clustering sweep. Pass <code>search_space=["kmeans", "gmm", "hdbscan"]</code>
-    and the engine will fit each, compute silhouette and BIC, and return
-    the winner. GMM is preferred when the silhouette is close across
-    methods and you need soft assignments for downstream decisions.
+    The same <code>ClusteringEngine</code> from Lesson 4.1 fits a Gaussian
+    mixture with <code>algorithm="gmm"</code>. It wraps scikit-learn's
+    <code>GaussianMixture</code> (the EM you derive in this lesson), passes
+    extra keyword arguments such as <code>covariance_type</code> straight
+    through, and returns the hard labels (each point's most probable
+    component) with BIC and AIC in <code>metrics</code>. It does
+    <em>not</em> return the responsibilities themselves: for those you call
+    <code>GaussianMixture.predict_proba</code> directly, as in Part B of the
+    worked example. Choosing $K$ is your job — loop over $K$ and compare
+    <code>metrics["bic"]</code>. (<code>AutoMLEngine</code> can drive that loop
+    as a governed search, exactly as in Lesson 4.1, with the GMM fit as its
+    trial function; it does not fit anything by itself.)
   </p>
 </div>
 
+<pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+from kailash_ml.engines.clustering import ClusteringEngine
+
+GMM_FEATURES = ["total_revenue", "avg_order_value",
+                "days_since_last_order", "customer_tenure_days"]
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X_gmm = customers.select(GMM_FEATURES).drop_nulls().sample(5000, seed=42)
+X_gmm = X_gmm.select((pl.all() - pl.all().mean()) / pl.all().std())
+
+gmm_fit = ClusteringEngine().fit(X_gmm, algorithm="gmm", n_clusters=3,
+                                 covariance_type="full")
+print(gmm_fit.n_clusters, round(gmm_fit.metrics["bic"]), round(gmm_fit.metrics["aic"]))</code></pre>
+
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Three Gaussians in 2D</h2>
+<h2>Worked Example: EM on Synthetic Data, Then Real Customers</h2>
+
+<h3>Part A: Does our EM recover known Gaussians?</h3>
+
+<p>
+  Part A uses <strong>synthetic</strong> data — 470 points drawn from three
+  known Gaussians — so we can check what EM recovers against the truth.
+</p>
 
 <pre><code class="language-python">import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
 
-# Generate 3 ground-truth Gaussians
+# Generate 3 ground-truth Gaussians (synthetic)
 rng = np.random.default_rng(0)
 means = np.array([[0, 0], [5, 5], [-3, 4]])
 covs = [np.eye(2) * 0.8, np.eye(2) * 1.2, np.eye(2) * 0.6]
@@ -362,25 +398,76 @@ X = np.vstack([
     rng.multivariate_normal(m, c, size=s) for m, c, s in zip(means, covs, sizes)
 ])
 
-# Fit our EM
-pi, mu, Sigma, r, ll = em_gmm(X, K=3)
-print(f"Log-likelihood: {ll:.2f}")
-print(f"Mixing:     {pi.round(3)}")
+# EM finds a LOCAL maximum: run it from 5 initialisations, keep the best
+fits = [em_gmm(X, K=3, seed=s) for s in range(5)]
+for s, f in enumerate(fits):
+    print(f"seed {s}: log-likelihood = {f[4]:.2f}")
+pi, mu, Sigma, r, ll = max(fits, key=lambda f: f[4])
+order = np.argsort(mu[:, 0])
+print("Means: ", mu[order].round(2).tolist())
+print("Mixing:", pi[order].round(3).tolist())
 
-# Cross-check with sklearn
+# Cross-check with sklearn (which also restarts and keeps the best)
 gm = GaussianMixture(n_components=3, random_state=0).fit(X)
-print(f"sklearn LL: {gm.score(X) * len(X):.2f}")
-print(f"sklearn π: {gm.weights_.round(3)}")</code></pre>
+print(f"sklearn log-likelihood: {gm.score(X) * len(X):.2f}")</code></pre>
 
 <p>
-  Both implementations should report log-likelihoods within 1% of each
-  other. The soft assignments <code>r</code> let you visualise
-  responsibility heat maps — points near cluster centres get high
-  responsibility for their cluster; points near boundaries get diffuse
-  responsibilities. Look at the points with
-  <code>r.max(axis=1) &lt; 0.6</code> — those are the "uncertain" customers,
-  and they are exactly the ones you should flag for manual review in a
-  real segmentation task.
+  Four of the five seeds reach a log-likelihood of −1730.01; seed 1 stops at
+  −1884.81, a local maximum where one component swallows two of the blobs.
+  Every run is monotone — the EM guarantee — but monotone only means "never
+  worse than the previous step", not "best possible"; keeping the best of
+  several restarts is exactly what sklearn's <code>n_init</code> does. The
+  best run recovers means of about $(-3.03, 3.93)$, $(-0.09, 0.02)$ and
+  $(4.97, 5.04)$ and mixing weights 0.256, 0.425 and 0.319 — the true values
+  are the three centres above and $120/470 = 0.255$, $200/470 = 0.426$,
+  $150/470 = 0.319$. sklearn reports the same −1730.01. On blobs this
+  well separated almost every point has a responsibility above 0.99 for one
+  component; the interesting soft assignments appear on real data.
+</p>
+
+<h3>Part B: Soft clustering of real customers</h3>
+
+<p>
+  Now fit a three-component GMM to all 50,000 e-commerce customers, using
+  the four continuous behaviour features. We leave out
+  <code>satisfaction_score</code> (1–5) and <code>num_returns</code> (0–6):
+  a full-covariance Gaussian can collapse onto a single integer value, its
+  variance along that axis shrinking towards zero and the likelihood growing
+  without bound — a "fit" to the integer grid, not to customer segments.
+  <code>churned</code> is an outcome and is never a feature.
+</p>
+
+<pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+
+GMM_FEATURES = ["total_revenue", "avg_order_value",
+                "days_since_last_order", "customer_tenure_days"]
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X_real = customers.select(GMM_FEATURES).drop_nulls().to_numpy().astype(np.float64)
+X_real = (X_real - X_real.mean(axis=0)) / X_real.std(axis=0)
+
+for k in range(2, 8):
+    bic = GaussianMixture(n_components=k, random_state=42).fit(X_real).bic(X_real)
+    print(f"K={k}  BIC={bic:,.0f}")
+
+gmm = GaussianMixture(n_components=3, covariance_type="full", random_state=42).fit(X_real)
+probs = gmm.predict_proba(X_real)          # the responsibilities r_nk
+confidence = probs.max(axis=1)
+n_boundary = int((confidence &lt; 0.7).sum())
+print(f"Mixing weights: {np.round(gmm.weights_, 3).tolist()}")
+print(f"{n_boundary} customers ({n_boundary / len(X_real):.1%}) have no component above 0.7")</code></pre>
+
+<p>
+  Two honest findings. First, BIC keeps falling all the way to $K = 7$
+  (from about 386,000 at $K=2$ to 331,000 at $K=7$): with 50,000 rows the
+  $p \log N$ penalty is small next to the likelihood gains, so BIC alone
+  will not hand you a "business-sized" $K$ — you choose the granularity the
+  decision needs and use BIC to compare candidates of similar size. Second,
+  at $K = 3$ about 5,600 customers (11.2%) have no component with a
+  responsibility above 0.7. These are the customers K-means would assign
+  with false certainty; the GMM says, in effect, "55% segment A, 40% segment
+  B". A boundary customer can receive a blend of both segments' offers, or be
+  excluded from a campaign whose targeting must be precise.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -405,23 +492,33 @@ print(f"sklearn π: {gm.weights_.round(3)}")</code></pre>
 <h2>Try It Yourself</h2>
 
 <div class="try-it">
-  <p><strong>Exercise 2.</strong> Implement <code>em_gmm</code> from the textbook
-  above and validate against sklearn on three datasets:</p>
+  <p><strong>Exercise 2</strong> (<code>modules/mlfp04/solutions/ex_2/</code>, four
+  scripts; <code>churned</code> is never a feature):</p>
   <ol>
-    <li>Synthetic 2D: three well-separated Gaussians (should converge in &lt; 20 iterations).</li>
-    <li>Synthetic 2D: three overlapping Gaussians (should show non-trivial responsibilities at boundaries).</li>
-    <li>The Singapore e-commerce customer data from Exercise 1 — fit GMM, report BIC for $K=2..10$, compare chosen $K$ to Exercise 1's silhouette answer.</li>
+    <li><code>01_em_from_scratch.py</code> — E-step with log-sum-exp, M-step,
+      a monotone log-likelihood curve, and a check against sklearn's
+      <code>GaussianMixture</code> on synthetic 2D data (the two agree to a
+      log-likelihood gap of about $10^{-8}$ per sample).</li>
+    <li><code>02_sklearn_gmm.py</code> — the same model through sklearn and
+      <code>ClusteringEngine(algorithm="gmm")</code>; a BIC/AIC sweep over $K$
+      on the customers, and why BIC is more conservative than AIC.</li>
+    <li><code>03_covariance_types.py</code> — full, tied, diag and spherical
+      covariances: parameter counts, how the types nest, and a BIC comparison.</li>
+    <li><code>04_mixture_of_experts.py</code> — soft assignments as confidence
+      (max-probability and entropy), boundary customers, and input-dependent
+      gating as the step from GMM to Mixture of Experts.</li>
   </ol>
-  <p>Stretch: use the responsibilities to identify customers with ambiguous membership ($\max_k r_{nk} &lt; 0.6$) and propose a policy for handling them.</p>
+  <p>Stretch: in the Part B code, count the customers with
+  $\max_k r_{nk} &lt; 0.6$ and propose a policy for handling them.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Cross-References</h2>
 
 <ul>
-  <li><strong>Back to Lesson 4.1:</strong> K-means is the special case of GMM where $\boldsymbol{\Sigma}_k = \sigma^2 I$ and you take the hard argmax of responsibilities. Every GMM is a generalisation of K-means.</li>
+  <li><strong>Back to Lesson 4.1:</strong> K-means is the limiting case of a GMM with equal mixing weights and a shared spherical covariance $\boldsymbol{\Sigma}_k = \sigma^2 I$ as $\sigma^2 \to 0$: the responsibilities become hard 0/1 assignments to the nearest centre. A GMM generalises K-means by learning the shapes, sizes and weights of the clusters.</li>
   <li><strong>Back to M2 (Bayesian thinking):</strong> The E-step is Bayes' rule applied to latent cluster assignment. The M-step is maximum likelihood on the complete data.</li>
-  <li><strong>Forward to Lesson 4.7 (THE PIVOT):</strong> Matrix factorisation also uses an iterative E/M-like alternation (Alternating Least Squares). The structural similarity is not a coincidence — both are coordinate ascent on a joint likelihood.</li>
+  <li><strong>Forward to Lesson 4.7 (THE PIVOT):</strong> Alternating Least Squares for matrix factorisation shares EM's <em>alternating</em> structure — fix one block of parameters, solve for the other — but it is not EM: there are no latent responsibilities, just a squared-error loss minimised block by block. Neural networks (Lesson 4.8) are trained by gradient descent, not EM.</li>
   <li><strong>Forward to M6 (LLMs):</strong> Mixture of Experts layers in large language models generalise classical GMMs. The gating network replaces the fixed $\pi_k$ with an input-dependent router.</li>
 </ul>
 
@@ -433,9 +530,10 @@ print(f"sklearn π: {gm.weights_.round(3)}")</code></pre>
   description "beautiful". It takes a problem that looks hopeless — fit a
   model with hidden variables — and reduces it to two steps, each of
   which is trivial, with a mathematical guarantee that the loop converges.
-  Once you see the pattern you will start recognising it everywhere:
-  hidden Markov models, latent Dirichlet allocation, the Baum-Welch
-  algorithm, probabilistic matrix factorisation. They are all EM.
+  Once you see the pattern you will recognise it in other latent-variable
+  models: hidden Markov models are fitted by the Baum-Welch algorithm, which
+  is EM, and latent Dirichlet allocation (Lesson 4.6) is commonly fitted by
+  variational EM, an approximate version of the same two-step loop.
 </p>
 
 <p>

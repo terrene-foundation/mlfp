@@ -37,9 +37,9 @@
   asks the opposite question: which points do not belong to any group?
   Today you will learn four methods — statistical (Z-score, IQR),
   Isolation Forest, and Local Outlier Factor — and the ensemble pattern
-  for blending their scores into a single trustworthy signal. By the end
-  you will be able to detect fraudulent financial transactions without
-  any labelled fraud examples.
+  for blending their scores. By the end you will be able to rank
+  suspicious credit applications without any labelled fraud examples, and
+  you will know why no single detector catches every kind of anomaly.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -201,9 +201,15 @@
   where $E(h(\mathbf{x}))$ is the average path length from root to the
   leaf containing $\mathbf{x}$ across all trees, $n$ is the sample size,
   and $c(n)$ is the expected path length of a random binary tree with $n$
-  leaves. $s$ is near 1 for strong anomalies, near 0.5 for normal
-  points, and below 0.5 if the point looks "more typical than average".
-  Typical threshold: $s > 0.6$ flags the point as anomalous.
+  leaves. Read the exponent $-E(h)/c(n)$: if a point is isolated in far
+  fewer splits than average, $E(h)/c(n)$ is close to 0, the exponent
+  approaches 0 and $s \to 1$ (anomalous); if $E(h) \approx c(n)$, the
+  exponent is about $-1$ and $s \approx 0.5$ (no evidence either way); if
+  $E(h) \gg c(n)$, the exponent is large and negative and $s \to 0$ (very
+  normal). In practice you rarely threshold $s$ directly: you rank by score
+  and flag the top fraction you can afford to review. Note that
+  scikit-learn's <code>decision_function</code> uses the opposite
+  orientation — <em>lower</em> means more anomalous.
 </p>
 
 <h3>LOF (Local Outlier Factor)</h3>
@@ -235,34 +241,42 @@
   its own neighbourhood.
 </p>
 
-<h3>Score blending and the EnsembleEngine</h3>
+<h3>Score blending</h3>
 
 <p>
   Each method catches different anomalies. Z-score catches tail events on
   individual features. Isolation Forest catches multivariate outliers.
-  LOF catches local density anomalies. Running all three and blending
-  the scores gives you a more robust detector than any single method.
+  LOF catches local density anomalies. Running several and blending
+  the scores protects you against relying on the one detector that is
+  blind to the kind of anomaly you actually have.
 </p>
 
 <p>
-  The blending pattern is: (1) convert each method's output to a
-  normalised score in $[0, 1]$; (2) average them (or take max, or
-  weighted sum); (3) apply a single threshold. The
-  <strong>EnsembleEngine</strong> in kailash-ml provides four modes —
-  <code>blend()</code>, <code>stack()</code>, <code>bag()</code>, and
-  <code>boost()</code> — for both classification and anomaly detection.
+  The blending pattern is: (1) put every detector on the same
+  <em>orientation</em> — higher = more anomalous (scikit-learn's
+  <code>IsolationForest.decision_function</code> and LOF's
+  <code>negative_outlier_factor_</code> are both <em>lower</em> = more
+  anomalous, so negate them); (2) put them on the same <em>scale</em> —
+  min-max to $[0, 1]$, or ranks; (3) average them (or take the max, or a
+  weighted sum) and apply a single threshold. Blending is insurance, not a
+  guarantee: an equal-weight blend can score <em>below</em> the best single
+  detector, because averaging in a weak detector dilutes a strong one (the
+  worked example shows this). If labelled cases exist, tune the weights on
+  one labelled sample and measure on another.
 </p>
 
-<pre><code class="language-python">from kailash_ml import EnsembleEngine
+<h3>The masking trap</h3>
 
-ensemble = EnsembleEngine()
-scores = {
-    "z_score": z_scores,
-    "iforest": iforest.decision_function(X),
-    "lof": -lof.negative_outlier_factor_,
-}
-blended = ensemble.blend(scores, normalise=True, agg="mean")
-anomalies = blended > 0.7</code></pre>
+<p>
+  LOF compares a point with its $k$ nearest neighbours. If anomalies arrive
+  as a <em>tight group</em> — say 40 near-identical applications from a
+  coordinated ring — and $k$ is smaller than the group, every member's
+  neighbours are the other members. Their local density matches their
+  neighbours' density, LOF is close to 1, and the whole group looks
+  normal. This is <strong>masking</strong>: LOF does <em>not</em> flag a
+  tight, dense cluster of frauds. The cure is a neighbourhood larger than
+  any plausible anomalous group, so it reaches the normal data around it.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Mathematical Foundations</h2>
@@ -298,96 +312,188 @@ anomalies = blended > 0.7</code></pre>
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>The Kailash Engine: EnsembleEngine and DriftMonitor</h2>
+<h2>The Kailash Engines: AnomalyDetectionEngine and EnsembleEngine</h2>
 
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    Two engines matter here. <strong>EnsembleEngine</strong> blends
-    multiple anomaly detectors (or classifiers) using a unified API.
-    <strong>DriftMonitor</strong> uses the same anomaly-detection
-    machinery in production to compare incoming data against a
-    reference distribution — "is today's data strangely different from
-    yesterday's?" This is how you turn an offline analysis into a
-    production monitoring signal. We will use DriftMonitor in M5 for
-    model-serving checks.
+    <strong>AnomalyDetectionEngine</strong> fits Isolation Forest, LOF or a
+    one-class SVM behind one <code>detect()</code> call. It flips
+    scikit-learn's sign convention so that a higher score always means
+    more anomalous, normalises the scores to $[0, 1]$ and applies the
+    contamination threshold; <code>labels</code> follow scikit-learn
+    ($-1$ = anomaly, $1$ = normal). <code>ensemble_detect()</code> runs
+    several detectors and combines them: <code>voting="score_average"</code>
+    averages the normalised scores (the blend above); the default
+    <code>"majority"</code> votes on the labels. Extra keyword arguments
+    such as <code>n_neighbors</code> pass through to the detector.
+  </p>
+  <p>
+    <strong>EnsembleEngine</strong> is a different tool. Its
+    <code>blend()</code>, <code>stack()</code>, <code>bag()</code> and
+    <code>boost()</code> combine <em>supervised</em> models:
+    <code>blend(models, data, target, weights=..., method="soft")</code>
+    votes fitted classifiers against a target column. It cannot blend
+    unsupervised anomaly scores — there is no target. It becomes useful once
+    analysts have labelled a review sample: a classifier trained on the
+    detector scores learns which detector to trust (Exercise 4.4).
+  </p>
+  <p>
+    <strong>DriftMonitor</strong> (Module 3, Lesson 3.8) is <em>not</em> an
+    anomaly detector. It tests whether a whole feature
+    <em>distribution</em> has shifted — population stability index,
+    Kolmogorov–Smirnov, Jensen–Shannon and chi-squared tests — rather than
+    scoring individual rows. "Is this application strange?" is anomaly
+    detection; "is this week's applicant population different from last
+    month's?" is drift monitoring.
   </p>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Detecting Fraud in Financial Transactions</h2>
-
 <pre><code class="language-python">import numpy as np
 import polars as pl
-from sklearn.ensemble import IsolationForest
+from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
+from shared.mlfp04.ex_4 import load_dataset
+
+X, y, cols, frame = load_dataset()     # standardised features; y used ONLY to evaluate
+X_df = pl.from_numpy(X, schema=cols)
+
+detector = AnomalyDetectionEngine()    # isolation_forest | lof | one_class_svm
+lof_res = detector.detect(X_df, algorithm="lof", contamination=0.01, n_neighbors=50)
+flagged = np.asarray(lof_res.labels) == -1
+print(f"LOF flagged {lof_res.n_anomalies} rows; {int(y[flagged].sum())} are injected anomalies")
+
+blend = detector.ensemble_detect(X_df, algorithms=["isolation_forest", "lof"],
+                                 contamination=0.01, voting="score_average")
+blend_scores = np.asarray(blend.combined_scores)   # normalised scores, averaged</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Anomalies in Credit Applications</h2>
+
+<p>
+  Real anomaly labels are rare, and a label made by thresholding a feature
+  ("fraud = top 1% of returns") makes every evaluation circular — the
+  detector that looks at that column wins by construction. Exercise 4
+  therefore follows the standard benchmark recipe: take 20,000
+  <strong>real</strong> applications from the course's Singapore
+  credit-scoring dataset (<code>mlfp02/sg_credit_scoring.parquet</code>, 20
+  numeric fields) as the normal population and inject 200 anomalies of
+  three known types, so the label comes from the injection, never from a
+  feature threshold:
+</p>
+
+<ul>
+  <li><strong>global</strong> (80) — a real application with one field pushed 5–8 standard deviations above the mean (a fat-finger entry);</li>
+  <li><strong>dependency</strong> (80) — every field copied from a <em>different</em> real application: a "synthetic identity" whose values are each plausible but whose combination is not;</li>
+  <li><strong>clustered</strong> (40) — a tight group of near-identical applications shifted 3 standard deviations on three fields: a coordinated application ring.</li>
+</ul>
+
+<p>The detectors never see the label; it is used only to score them.</p>
+
+<pre><code class="language-python">from sklearn.ensemble import IsolationForest
+from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.neighbors import LocalOutlierFactor
-from sklearn.preprocessing import StandardScaler
+from shared.mlfp04.ex_4 import auc_by_type
 
-from shared import MLFPDataLoader
+# Method 1: Z-score — the most extreme standardised field of each row
+z_scores = np.abs(X).max(axis=1)
 
-loader = MLFPDataLoader()
-tx = loader.load("mlfp04", "financial_transactions.parquet")
+# Method 2: Isolation Forest (negate decision_function: higher = more anomalous)
+iforest = IsolationForest(n_estimators=200, contamination=0.01, random_state=42).fit(X)
+iforest_scores = -iforest.decision_function(X)
 
-features = ["amount", "hour", "recipient_count_24h", "location_distance_km"]
-X = StandardScaler().fit_transform(
-    tx.drop_nulls(subset=features).select(features).to_numpy()
-)
-
-# Method 1: univariate Z-score on amount
-z = np.abs((X[:, 0] - X[:, 0].mean()) / X[:, 0].std())
-z_flag = z > 3
-
-# Method 2: Isolation Forest
-iforest = IsolationForest(contamination=0.01, random_state=42).fit(X)
-iforest_scores = -iforest.decision_function(X)  # higher = more anomalous
-
-# Method 3: LOF
-lof = LocalOutlierFactor(n_neighbors=20, contamination=0.01)
+# Method 3: LOF with a neighbourhood larger than any plausible ring
+lof = LocalOutlierFactor(n_neighbors=50, contamination=0.01)
 lof.fit_predict(X)
 lof_scores = -lof.negative_outlier_factor_
 
-# Blend the three into a single score
-def normalise(x):
-    return (x - x.min()) / (x.max() - x.min() + 1e-9)
+def normalise(scores):
+    return (scores - scores.min()) / (scores.max() - scores.min())
 
-blended = (normalise(z.astype(float)) + normalise(iforest_scores) + normalise(lof_scores)) / 3
-anomalies = blended > 0.7
+blended = (normalise(z_scores) + normalise(iforest_scores) + normalise(lof_scores)) / 3
 
-print(f"Flagged {anomalies.sum()} of {len(anomalies)} transactions "
-      f"({anomalies.mean():.2%}) as anomalous")</code></pre>
+for name, sc in [("Z-score", z_scores), ("Isolation Forest", iforest_scores),
+                 ("LOF (k=50)", lof_scores), ("Equal blend", blended)]:
+    top = sc &gt; np.quantile(sc, 0.99)   # flag the top 1%, about 202 rows
+    per_type = "  ".join(f"{t}={v:.2f}" for t, v in auc_by_type(frame, sc).items())
+    print(f"{name:&lt;17} AUC={roc_auc_score(y, sc):.3f}  AP={average_precision_score(y, sc):.3f}  "
+          f"hits in top 1%={int(y[top].sum()):&gt;3}  |  {per_type}")</code></pre>
+
+<table>
+  <thead><tr><th>Detector</th><th>AUC-ROC</th><th>Avg. precision</th><th>Injected in top 1%</th><th>AUC: global</th><th>dependency</th><th>clustered</th></tr></thead>
+  <tbody>
+    <tr><td>Z-score</td><td>0.81</td><td>0.15</td><td>61</td><td>1.00</td><td>0.55</td><td>0.97</td></tr>
+    <tr><td>Isolation Forest</td><td>0.77</td><td>0.03</td><td>3</td><td>0.78</td><td>0.67</td><td>0.98</td></tr>
+    <tr><td>LOF ($k = 50$)</td><td>0.97</td><td>0.63</td><td>121</td><td>1.00</td><td>0.98</td><td>0.89</td></tr>
+    <tr><td>Equal blend</td><td>0.91</td><td>0.19</td><td>56</td><td>0.99</td><td>0.80</td><td>0.97</td></tr>
+  </tbody>
+</table>
 
 <p>
-  The key pedagogical point: look at the overlap between the methods'
-  flags. Transactions caught by all three are almost certainly
-  anomalous. Transactions caught by only one method deserve human
-  review — the single flag might be a real signal or a quirk of that
-  specific detector. Blending gives you a confidence gradient you can
-  act on.
+  Read the table by column. The Z-score finds single-field extremes
+  (global ≈ 1.00) but is blind to synthetic identities (0.55, barely better
+  than chance) — no single field is unusual; LOF catches them (0.98) because
+  their <em>combination</em> of values is rare. Isolation Forest ranks the
+  injected anomalies above most applications (AUC 0.77) but almost never at
+  the very top — only 3 of its 202 highest-scoring rows are injected: real
+  credit data have heavy tails of genuinely extreme but legitimate
+  applications, and those are what it isolates first. "Statistically
+  unusual" and "the anomaly you are looking for" are different questions.
+  The equal blend's worst type (0.80) is far better than the Z-score's
+  0.55, but its overall AUC (0.91) is <em>below</em> LOF alone (0.97).
+</p>
+
+<p>Now the masking trap, directly:</p>
+
+<pre><code class="language-python">for k in (5, 20, 50):
+    lof_k = LocalOutlierFactor(n_neighbors=k).fit(X)
+    by_type = auc_by_type(frame, -lof_k.negative_outlier_factor_)
+    print(f"k={k:&lt;3} " + "  ".join(f"{t}={v:.2f}" for t, v in by_type.items()))</code></pre>
+
+<p>
+  All three settings catch the global and dependency anomalies. The ring is
+  the difference: AUC about 0.36 at $k = 5$ and <strong>0.22 at
+  $k = 20$</strong> — worse than random, LOF actively ranks the ring members
+  as <em>more</em> normal than real applications — and 0.89 at $k = 50$.
+  With 40 near-identical members, any $k$ below 40 finds only fellow
+  members as neighbours. The practical lesson: look at the overlap between
+  detectors, choose $k$ larger than any plausible coordinated group, and
+  send the top of each detector's list to human review.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Common Mistakes</h2>
 
 <ol>
-  <li><strong>Setting contamination too high.</strong> <code>contamination</code> tells Isolation Forest and LOF "approximately what fraction of the data should I flag". Setting it to 0.1 when your real anomaly rate is 0.001 forces the method to label many normal points as anomalies. Tune carefully and be honest about the base rate.</li>
+  <li><strong>Setting contamination too high.</strong> <code>contamination</code> tells Isolation Forest and LOF "approximately what fraction of the data should I flag". It only moves the threshold — the ranking of points is unchanged — so setting it to 0.1 when your real anomaly rate is 0.001 flags about 100 times too many points, nearly all of them normal. Set it from the base rate and the review capacity you actually have.</li>
   <li><strong>Using Z-score on skewed data.</strong> For revenue, session duration, basket size — anything right-skewed — use IQR or log-transform first.</li>
   <li><strong>Not standardising before multivariate methods.</strong> Same rule as clustering: scale-sensitive methods need standardised inputs.</li>
-  <li><strong>Treating anomaly scores as probabilities.</strong> They are not — different methods use different ranges and scales. Always normalise to $[0, 1]$ before blending or thresholding.</li>
+  <li><strong>Treating anomaly scores as probabilities.</strong> They are not — different methods use different ranges, scales and even orientations. Put every score on "higher = more anomalous" and normalise to $[0, 1]$ (or use ranks) before blending or thresholding.</li>
+  <li><strong>Using a small LOF neighbourhood against coordinated anomalies.</strong> A ring of near-identical anomalies larger than $k$ masks itself (ring AUC 0.22 at $k = 20$ in the worked example). Choose $k$ larger than any plausible anomalous group.</li>
 </ol>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Try It Yourself</h2>
 
 <div class="try-it">
-  <p><strong>Exercise 4.</strong></p>
+  <p><strong>Exercise 4</strong> (<code>modules/mlfp04/solutions/ex_4/</code>, four
+  scripts) uses the credit applications with injected, typed anomalies from
+  the worked example (<code>shared.mlfp04.ex_4.load_dataset</code>); the label
+  is used only to evaluate:</p>
   <ol>
-    <li>Load the financial transactions dataset.</li>
-    <li>Apply Z-score (on amount), Isolation Forest, and LOF.</li>
-    <li>Normalise and blend the three scores.</li>
-    <li>Inspect the overlap between methods: Venn diagram of flagged points.</li>
-    <li>Use EnsembleEngine to reproduce the blend with its API.</li>
-    <li>Write a one-paragraph business explanation for the top 10 flagged transactions.</li>
+    <li><code>01_statistical_methods.py</code> — Z-score, the 1.5×IQR rule and
+      winsorisation, scored with AUC-ROC and AUC-PR.</li>
+    <li><code>02_isolation_forest.py</code> — path-length isolation and a
+      contamination sweep showing the precision/recall trade-off.</li>
+    <li><code>03_local_outlier_factor.py</code> — an <code>n_neighbors</code>
+      sweep, LOF at $k = 50$, and the masking trap on the application ring.</li>
+    <li><code>04_ensemble_blending.py</code> — equal, AUC-weighted and rank
+      blends; <code>AnomalyDetectionEngine.ensemble_detect()</code>; then a
+      supervised second stage with <code>EnsembleEngine.blend()</code> /
+      <code>.stack()</code> fitted on a labelled review sample and evaluated on
+      held-out rows.</li>
   </ol>
+  <p>Stretch: write a one-paragraph explanation, for a credit-risk reviewer,
+  of why the top 10 LOF-flagged applications were flagged.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -396,7 +502,7 @@ print(f"Flagged {anomalies.sum()} of {len(anomalies)} transactions "
 <ul>
   <li><strong>Back to M1:</strong> Z-score and IQR originally appeared as data cleaning tools. Today they are anomaly detectors — same math, different purpose.</li>
   <li><strong>Back to Lesson 4.1:</strong> HDBSCAN's noise label ($-1$) is already an anomaly detector. The methods in this lesson are more flexible — you can combine them.</li>
-  <li><strong>Forward to M5 (drift monitoring):</strong> DriftMonitor in production uses the same algorithms to flag "is today's data different from last week's?"</li>
+  <li><strong>Back to M3 (Lesson 3.8, drift monitoring):</strong> <code>DriftMonitor</code> answers a different question — has a feature's whole distribution shifted (PSI, KS test)? — rather than "is this row strange?". Use both in production: anomaly detection on individual records, drift monitoring on the population.</li>
 </ul>
 
 <!-- ═══════════════════════════════════════════════════════ -->

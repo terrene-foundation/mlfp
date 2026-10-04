@@ -36,8 +36,9 @@
 <p class="lead">
   In Module 3 every exercise handed you a column called <code>y</code>. You had
   prices, churn flags, risk categories — a ground truth to fit against. In
-  Module 4 there is no <code>y</code>. Today you will organise ten thousand
-  Singapore e-commerce customers into segments <em>before</em> anyone tells you
+  Module 4 there is no <code>y</code>. Today you will organise Singapore
+  e-commerce customers (a 3,000-customer sample of the 50,000 you met in
+  Module 3) into segments <em>before</em> anyone tells you
   what a segment is. By the end you will know five clustering algorithms, three
   evaluation metrics, and — most importantly — how to argue that the clusters
   you found are real rather than statistical fog.
@@ -47,7 +48,7 @@
 <h2>Why This Matters</h2>
 
 <p>
-  A marketing manager hands you a table of ten thousand online shoppers. She
+  A marketing manager hands you a table of fifty thousand online shoppers. She
   wants "three or four segments we can target differently". No one has labelled
   them. No one knows how many segments exist. You have spending, frequency,
   recency, and a dozen behavioural counters. Where do you start?
@@ -154,9 +155,10 @@
 </ol>
 
 <p>
-  Both steps monotonically decrease the total squared distance between points
-  and their centroids, so the algorithm must converge (though not necessarily
-  to the global optimum). The quantity it is minimising is the <strong>inertia</strong>:
+  Neither step can increase the total squared distance between points and
+  their centroids (each step lowers it or leaves it unchanged), and there are
+  only finitely many ways to assign points, so the algorithm must converge
+  (though not necessarily to the global optimum). The quantity it is minimising is the <strong>inertia</strong>:
 </p>
 
 <div class="annotated-equation">
@@ -226,7 +228,7 @@
     <g stroke="#22C55E" stroke-width="2" fill="#DCFCE7"><rect x="625" y="105" width="10" height="10"/></g>
   </g>
 </svg>
-<figcaption>K-means convergence. Squares are centroids; colour is current assignment. Each iteration strictly decreases inertia $J$.</figcaption>
+<figcaption>K-means convergence. Squares are centroids; colour is current assignment. No iteration can increase inertia $J$.</figcaption>
 </figure>
 
 <p>
@@ -321,13 +323,31 @@
 <div class="callout theory">
   <span class="label">🔵 Theory</span>
   <p>
-    Ward's linkage is mathematically equivalent to greedy K-means: at each
-    step it picks the merge that minimises the sum of squared deviations
-    around the new centroid. This is why Ward + Euclidean distance is the
-    default in most applications — it is the hierarchical analogue of the
-    algorithm you already understand.
+    Ward's linkage greedily minimises the same within-cluster sum of squares
+    that K-means minimises: at each step it picks the merge that increases
+    that sum the least. It is <em>not</em> equivalent to K-means — a greedy
+    merge can never be undone, so Ward's partition at a given $K$ usually
+    differs from the K-means partition (in the worked example below they agree
+    only partly, ARI&nbsp;≈&nbsp;0.49). It is the hierarchical analogue of the
+    objective you already understand, which is why Ward + Euclidean distance
+    is a common default.
   </p>
 </div>
+
+<h4>Agglomerative versus divisive</h4>
+
+<p>
+  Everything above is <strong>agglomerative</strong> (bottom-up): start with
+  $n$ singletons and merge. <strong>Divisive</strong> (top-down) clustering
+  runs the other way: start with one cluster holding every point and
+  repeatedly split the cluster that is least homogeneous, for example by
+  running 2-means inside it (this is <em>bisecting K-means</em>, available in
+  scikit-learn as <code>BisectingKMeans</code>). Divisive methods are useful
+  when you mainly care about the first few coarse splits, because they make
+  those decisions using all the data at once; agglomerative methods make the
+  fine, local decisions first and the coarse ones last. Both produce a tree
+  you can cut, but they generally give different trees.
+</p>
 
 <h3>DBSCAN and HDBSCAN: density, not distance to centroid</h3>
 
@@ -444,8 +464,11 @@
   than to the next nearest. $s(i) \approx 0$ means $i$ sits on the boundary.
   $s(i) < 0$ means $i$ is actually closer to a different cluster — a
   misclassification. The average silhouette across all points is the
-  <strong>silhouette score</strong>. Good clusterings score above 0.5; below
-  0.25 is typically statistical fog.
+  <strong>silhouette score</strong>. Above about 0.5 the clusters are clearly
+  separated; below about 0.25 they overlap heavily, which is common for real
+  customer data. A low score does not make a segmentation useless, but it
+  means the segments are fuzzy regions rather than distinct groups, and you
+  must justify them by their business profile.
 </p>
 
 <h3>Davies-Bouldin and Calinski-Harabasz</h3>
@@ -494,6 +517,25 @@
   answer every other metric refuses to give you.
 </p>
 
+<h3>External metrics: ARI and NMI</h3>
+
+<p>
+  Silhouette, Davies-Bouldin, Calinski-Harabasz and the gap statistic are
+  <em>internal</em> metrics: they judge a clustering from the data alone.
+  When you do have a reference partition — known labels on a benchmark, or
+  another clustering you want to compare with — use an <em>external</em>
+  metric. The <strong>Adjusted Rand Index</strong> counts the pairs of points
+  that the two partitions treat the same way (together in both, or apart in
+  both) and corrects for the agreement expected by chance, so a random
+  labelling scores about 0 and identical partitions score 1 (the cluster ids
+  themselves do not matter). <strong>Normalised Mutual Information</strong>
+  measures how much knowing one partition tells you about the other, scaled
+  to $[0, 1]$. Both are in <code>sklearn.metrics</code>
+  (<code>adjusted_rand_score</code>, <code>normalized_mutual_info_score</code>).
+  In the worked example K-means and Ward agree with ARI ≈ 0.49 and
+  NMI ≈ 0.42 — the same broad structure, many individual disagreements.
+</p>
+
 <div class="callout advanced">
   <span class="label">🟣 Advanced</span>
   <p>
@@ -504,116 +546,200 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>The Kailash Engine: AutoMLEngine for clustering</h2>
+<h2>The Kailash Engine: ClusteringEngine (and where AutoMLEngine fits)</h2>
 
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    Kailash's <code>AutoMLEngine</code> can sweep multiple clustering
-    algorithms and hyperparameters, score each one, and return the best
-    configuration — the clustering equivalent of the supervised AutoML you
-    met in M3. Crucially, the LLM-guided search is <em>double opt-in</em>:
-    you must both set <code>agent=True</code> and install the
-    <code>kailash-ml[agents]</code> extra. This is governance by design:
-    LLM calls cost money and introduce non-determinism, so the engine makes
-    them impossible to enable by accident.
+    kailash-ml puts four of this lesson's algorithms — K-means, GMM (Lesson
+    4.2), DBSCAN and spectral clustering — behind one
+    <code>ClusteringEngine.fit()</code> call that returns the labels together
+    with the silhouette score. <code>sweep_k()</code> runs the "try every $K$
+    and score it" loop you will write by hand in the worked example and
+    reports the best $K$ for the criterion you choose. Ward/agglomerative
+    clustering and HDBSCAN are not in the engine; the worked example and
+    Exercise 1 use scikit-learn, SciPy and the <code>hdbscan</code> package for
+    those. The module assessment's clustering task uses this engine.
   </p>
 </div>
 
-<pre><code class="language-python">from kailash_ml.engines.automl_engine import AutoMLEngine, AutoMLConfig
+<pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+from kailash_ml.engines.clustering import ClusteringEngine
+
+FEATURES = ["total_revenue", "order_count", "avg_order_value",
+            "days_since_last_order", "customer_tenure_days",
+            "satisfaction_score", "num_returns"]  # churned = outcome, excluded
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X = customers.select(FEATURES).drop_nulls().sample(3000, seed=42)
+X = X.select((pl.all() - pl.all().mean()) / pl.all().std())  # standardise
+
+engine = ClusteringEngine()  # algorithms: kmeans | gmm | dbscan | spectral
+sweep = engine.sweep_k(X, k_range=range(2, 9), criterion="silhouette")
+fit = engine.fit(X, algorithm="kmeans", n_clusters=sweep.optimal_k)
+print(f"K={fit.n_clusters}  silhouette={fit.silhouette_score:.3f}")</code></pre>
+
+<p>
+  On this 3,000-customer sample the sweep picks $K = 3$ with a silhouette of
+  about 0.18. <code>fit.labels</code> holds one cluster id per row, ready to
+  join back onto the customer table.
+</p>
+
+<p>
+  <code>AutoMLEngine</code> is a different tool: it does not know what
+  clustering is. You give it a search space (in Exercise 1.5: algorithm
+  $\in$ {kmeans, gmm} and $K \in [3, 8]$) and an async trial function that
+  fits one candidate — with <code>ClusteringEngine</code> — and returns its
+  metric. The engine runs the search, enforces the trial, time and cost
+  budgets, and records every trial. LLM-guided search is <em>double
+  opt-in</em>: you must set <code>agent=True</code> <em>and</em> give it a
+  cost cap or approval, so it cannot be enabled by accident. The
+  configuration Exercise 1.5 uses:
+</p>
+
+<pre><code class="language-python">from kailash_ml.automl import AutoMLConfig, ParamSpec
 
 config = AutoMLConfig(
     task_type="clustering",
-    metric_to_optimize="silhouette",
+    metric_name="silhouette",
     direction="maximize",
-    search_strategy="random",
-    search_n_trials=20,
-    agent=False,                # Default — no LLM calls
-    max_llm_cost_usd=1.0,       # Hard cap if agent=True
-)</code></pre>
-
-<p>
-  Even with <code>agent=False</code>, the engine still performs a random
-  search over K-means, GMM, HDBSCAN, and spectral clustering across a
-  sensible hyperparameter grid, reporting silhouette, DB, and CH for each
-  trial. In 90% of projects this is all you need.
-</p>
+    search_strategy="grid",     # every algorithm x a grid of K values
+    max_trials=12,
+    agent=False,                # default: no LLM calls
+    max_llm_cost_usd=1.0,       # hard cap if agent=True is ever switched on
+)
+search_space = [
+    ParamSpec(name="algorithm", kind="categorical", choices=("kmeans", "gmm")),
+    ParamSpec(name="n_clusters", kind="int", low=3, high=8),
+]
+# AutoMLEngine(config=config, tenant_id=..., actor_id=...).run(space=search_space,
+#     trial_fn=...) is awaited in Exercise 1.5; the trial function calls ClusteringEngine.fit.</code></pre>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Worked Example: Segmenting Singapore E-commerce Customers</h2>
 
 <p>
-  Load the customer feature table from Module 3 and engineer three new
-  behavioural features (frequency, recency, monetary value — the RFM triple).
-  Then cluster.
+  The customer table from Module 3 (<code>mlfp03/ecommerce_customers.parquet</code>,
+  50,000 customers) has seven numeric behaviour columns: total revenue, order
+  count, average order value, days since the last order, tenure in days, a
+  1–5 satisfaction score and the number of returns. The <code>churned</code>
+  column is an <strong>outcome</strong>, not behaviour: it is left out of the
+  features — otherwise the segments would partly be a split on the answer —
+  and used afterwards only to profile the segments. Silhouette and
+  hierarchical clustering scale with $n^2$, so we work on a 3,000-customer
+  random sample; every step runs in seconds.
 </p>
 
 <pre><code class="language-python">import numpy as np
 import polars as pl
-from sklearn.cluster import KMeans
-from sklearn.mixture import GaussianMixture
+from sklearn.cluster import KMeans, AgglomerativeClustering
 from sklearn.metrics import silhouette_score, davies_bouldin_score
-from sklearn.preprocessing import StandardScaler
 import hdbscan
 
 from shared import MLFPDataLoader
-from kailash_ml.interop import to_sklearn_input
 
-loader = MLFPDataLoader()
-customers = loader.load("mlfp03", "ecommerce_customers.parquet")
+FEATURES = ["total_revenue", "order_count", "avg_order_value",
+            "days_since_last_order", "customer_tenure_days",
+            "satisfaction_score", "num_returns"]
 
-feature_cols = [
-    c for c, d in zip(customers.columns, customers.dtypes)
-    if d in (pl.Float64, pl.Float32, pl.Int64, pl.Int32) and c != "customer_id"
-]
-X, _, _ = to_sklearn_input(
-    customers.drop_nulls(subset=feature_cols),
-    feature_columns=feature_cols,
-)
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+sample = customers.drop_nulls(subset=FEATURES).sample(3000, seed=42)
 
 # STANDARDISE — mandatory for distance-based clustering
-X_scaled = StandardScaler().fit_transform(X)
+X_scaled = (
+    sample.select(FEATURES)
+    .select((pl.all() - pl.all().mean()) / pl.all().std())
+    .to_numpy()
+)
 
 # Sweep K from 2 to 10 with silhouette
 sils = []
 for k in range(2, 11):
-    km = KMeans(n_clusters=k, random_state=42, n_init=10)
-    labels = km.fit_predict(X_scaled)
+    labels = KMeans(n_clusters=k, random_state=42, n_init=10).fit_predict(X_scaled)
     sils.append(silhouette_score(X_scaled, labels))
 
 best_k = 2 + int(np.argmax(sils))
 print(f"Best K by silhouette: {best_k} (score={max(sils):.3f})")</code></pre>
 
 <p>
-  The result will look something like <code>Best K by silhouette: 4 (score=0.41)</code>.
-  A silhouette of 0.41 says the clusters are real but not razor-sharp — which
-  is honest for customer data. Now compare K-means, GMM, and HDBSCAN on the
-  same data:
+  This prints <code>Best K by silhouette: 3 (score=0.182)</code>. The curve is
+  flat — 0.169 at $K=2$, 0.182 at $K=3$, drifting down to 0.145 at $K=10$ — and
+  a silhouette below 0.25 says the segments overlap heavily. That is honest
+  for customer behaviour, which does not fall into crisp groups. Now compare
+  K-means with Ward and HDBSCAN on the same data:
 </p>
 
 <pre><code class="language-python">km_labels = KMeans(n_clusters=best_k, random_state=42, n_init=10).fit_predict(X_scaled)
+ward_labels = AgglomerativeClustering(n_clusters=best_k, linkage="ward").fit_predict(X_scaled)
+hdb_labels = hdbscan.HDBSCAN(min_cluster_size=50, min_samples=10).fit_predict(X_scaled)
 
-gmm = GaussianMixture(n_components=best_k, random_state=42, covariance_type="full")
-gmm_labels = gmm.fit_predict(X_scaled)
-
-hdb = hdbscan.HDBSCAN(min_cluster_size=50, min_samples=10)
-hdb_labels = hdb.fit_predict(X_scaled)
-
-for name, lbl in [("K-means", km_labels), ("GMM", gmm_labels), ("HDBSCAN", hdb_labels)]:
-    valid = lbl != -1
-    if valid.sum() &lt; 2 or len(set(lbl[valid])) &lt; 2:
-        continue
+for name, lbl in [("K-means", km_labels), ("Ward", ward_labels), ("HDBSCAN", hdb_labels)]:
+    valid = lbl != -1                      # HDBSCAN noise is excluded from the scores
     sil = silhouette_score(X_scaled[valid], lbl[valid])
     db = davies_bouldin_score(X_scaled[valid], lbl[valid])
-    print(f"{name:&lt;10} k={len(set(lbl[valid])):&lt;3} sil={sil:.3f} DB={db:.3f}")</code></pre>
+    print(f"{name:&lt;8} n={int(valid.sum()):&gt;5} k={len(set(lbl[valid]))} "
+          f"sil={sil:.3f} DB={db:.2f}")</code></pre>
+
+<table>
+  <thead><tr><th>Method</th><th>Customers scored</th><th>Clusters</th><th>Silhouette</th><th>Davies-Bouldin</th></tr></thead>
+  <tbody>
+    <tr><td>K-means ($K=3$)</td><td>3,000</td><td>3</td><td>0.182</td><td>1.71</td></tr>
+    <tr><td>Ward ($K=3$)</td><td>3,000</td><td>3</td><td>0.134</td><td>1.99</td></tr>
+    <tr><td>HDBSCAN</td><td>2,553 (447 noise)</td><td>3</td><td>0.095</td><td>2.77</td></tr>
+  </tbody>
+</table>
 
 <p>
-  Once you have chosen the best method, profile each cluster by computing
-  per-cluster means and comparing them to the global mean. A cluster where
-  frequency is +50% and monetary value is −30% is a "frequent bargain hunter".
-  A cluster where recency is +80 days and frequency is −60% is a "dormant
-  user". These human labels are what your marketing manager will use; the
-  algorithm cannot produce them.
+  K-means wins both internal metrics — unsurprisingly, because silhouette and
+  Davies-Bouldin reward compact, convex, centroid-shaped clusters, which is
+  exactly what K-means optimises. That is a bias of the metrics, not proof
+  that K-means found the "true" segments (Exercise 1.4 shows silhouette
+  preferring K-means on two interleaved moons that spectral clustering
+  separates perfectly, ARI&nbsp;=&nbsp;1.0). HDBSCAN refuses to assign 447
+  customers (14.9%) to any dense group — unusual high spenders, very
+  long-tenured customers, one-off buyers — which is worth a look of its own.
+</p>
+
+<p>
+  Finally, profile each K-means cluster. <code>churned</code> is used here for
+  the first time, as a description, never as an input:
+</p>
+
+<pre><code class="language-python">profiles = (
+    sample.with_columns(pl.Series("cluster", km_labels))
+    .group_by("cluster")
+    .agg(
+        pl.len().alias("customers"),
+        pl.col("total_revenue").mean().round(0),
+        pl.col("avg_order_value").mean().round(0),
+        pl.col("days_since_last_order").mean().round(0),
+        pl.col("customer_tenure_days").mean().round(0),
+        pl.col("churned").mean().round(2).alias("churn_rate"),  # outcome, profiling only
+    )
+    .sort("cluster")
+)
+print(profiles)</code></pre>
+
+<table>
+  <thead><tr><th>Cluster</th><th>Customers</th><th>Revenue (S$)</th><th>Avg order (S$)</th><th>Days since last order</th><th>Tenure (days)</th><th>Churn rate</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>402</td><td>950</td><td>166</td><td>339</td><td>827</td><td>0.74</td></tr>
+    <tr><td>1</td><td>1,274</td><td>240</td><td>31</td><td>182</td><td>603</td><td>0.46</td></tr>
+    <tr><td>2</td><td>1,324</td><td>239</td><td>32</td><td>533</td><td>1,116</td><td>1.00</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Cluster ids are arbitrary; the profiles are what matter. Cluster 0 is a
+  small group of <strong>high-value, big-basket customers</strong> (four times
+  the revenue, five times the average order). Cluster 1 is <strong>recently
+  active customers</strong> with the lowest churn rate. Cluster 2 is
+  <strong>lapsed long-standing customers</strong>: last order a year and a
+  half ago on average, and every one of them in the sample recorded as
+  churned. Notice that <code>churned</code> was never a clustering input, yet
+  the segments separate it sharply — recency is doing the work. These human
+  labels are what your marketing manager will use; the algorithm cannot
+  produce them.
 </p>
 
 <div class="worked-example">
@@ -622,10 +748,10 @@ for name, lbl in [("K-means", km_labels), ("GMM", gmm_labels), ("HDBSCAN", hdb_l
     After running this, you should have:
   </p>
   <ul>
-    <li>A numeric <code>best_k</code> chosen by silhouette.</li>
-    <li>Three sets of labels from K-means, GMM, and HDBSCAN.</li>
-    <li>A comparison table showing silhouette and Davies-Bouldin for each.</li>
-    <li>A per-cluster profile table where each row is a cluster and each column is a feature's mean relative to the global mean.</li>
+    <li><code>best_k = 3</code>, chosen by silhouette, with the full silhouette curve printed.</li>
+    <li>Three sets of labels from K-means, Ward and HDBSCAN (HDBSCAN with noise label $-1$).</li>
+    <li>A comparison table of silhouette and Davies-Bouldin for each method.</li>
+    <li>A per-cluster profile table, with <code>churned</code> used only to describe the segments.</li>
   </ul>
 </div>
 
@@ -663,17 +789,26 @@ for name, lbl in [("K-means", km_labels), ("GMM", gmm_labels), ("HDBSCAN", hdb_l
 <h2>Try It Yourself</h2>
 
 <div class="try-it">
-  <p><strong>Exercise 1 (in the MLFP04 solutions folder).</strong> Run the full
-  clustering workflow on the Singapore e-commerce customer data:</p>
+  <p><strong>Exercise 1</strong> (<code>modules/mlfp04/solutions/ex_1/</code>, five
+  scripts) runs the clustering workflow on the e-commerce customers, with
+  <code>churned</code> excluded from the features throughout:</p>
   <ol>
-    <li>Load <code>ecommerce_customers.parquet</code> and select numeric features.</li>
-    <li>Standardise with <code>StandardScaler</code>.</li>
-    <li>Sweep K-means with $K \in \{2, \ldots, 10\}$; pick best by silhouette.</li>
-    <li>Fit spectral clustering, HDBSCAN, and a Gaussian mixture with the same $K$.</li>
-    <li>Compute silhouette, Davies-Bouldin, and Calinski-Harabasz for each method.</li>
-    <li>Profile each cluster of the best method and assign a business-meaningful name.</li>
+    <li><code>01_kmeans.py</code> — k-means++ versus random initialisation; choose $K$
+      with the elbow, the silhouette and the gap statistic (with the 1-SE rule),
+      and see where the three disagree.</li>
+    <li><code>02_hierarchical.py</code> — single, complete, average and Ward linkage on
+      a subsample; read the Ward dendrogram and cut it.</li>
+    <li><code>03_density_based.py</code> — choose DBSCAN's $\varepsilon$ from a
+      k-distance plot, then let HDBSCAN pick the clusters and the noise.</li>
+    <li><code>04_spectral.py</code> — build the graph Laplacian by hand on two
+      interleaved moons: spectral clustering recovers them (ARI 1.0) while the
+      silhouette still prefers K-means — the metric's bias made visible.</li>
+    <li><code>05_evaluation_profiling.py</code> — an <code>AutoMLEngine</code> search
+      over algorithm × $K$ with <code>ClusteringEngine</code> as the trainer and
+      <code>agent=False</code>, then a business profile of the chosen segments.</li>
   </ol>
-  <p>Stretch goal: use the gap statistic and check whether the best method's chosen $K$ survives the null-reference test.</p>
+  <p>Stretch goal: rerun the worked example with <code>BisectingKMeans</code> (a
+  divisive method) and compare it with Ward using the ARI.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -704,8 +839,8 @@ for name, lbl in [("K-means", km_labels), ("GMM", gmm_labels), ("HDBSCAN", hdb_l
   K-means objective function, explain why standardisation is required, and
   name two clustering methods that handle non-convex cluster shapes? If
   yes, go to Lesson 4.2 — we are about to meet a principled way to fit
-  <em>soft</em> clusters and derive the general-purpose EM algorithm that
-  powers half of classical machine learning.
+  <em>soft</em> clusters and derive the EM algorithm, the general recipe for
+  fitting latent-variable models such as Gaussian mixtures.
 </p>
 
 </main>

@@ -1,6 +1,11 @@
 # Cross-cutting issues (span modules; owned by integration/S6, not a single module shard)
 
-## X-PP: kailash-ml PreprocessingPipeline.setup() fits before it splits (data leakage)
+## X-PP: kailash-ml PreprocessingPipeline.setup() fits before it splits (data leakage) — FIXED in course code (merged 4a821de7)
+Course fix landed: `shared.kailash_helpers.split_then_preprocess` / `split_raw_train_test` / `preprocess_train_test`
+(+ tests/test_split_then_preprocess.py, 7 tests). All mlfp03 shared loaders + mlfp01 ex_8 route through it; mlfp03
+ex_2 CV re-fits preprocessing per fold. Uses the private `_apply_imbalance_correction` (guarded, typed error).
+Remaining: regenerate the 36 affected notebooks; execute mlfp03 ex_2–ex_8 + mlfp01 ex_8 on the fleet (metrics may shift
+slightly — credit splits now stratified; ex_2 scales on its 300 train rows).
 Verified 2026-10-03 in kailash-ml 2.2.2 (engines/preprocessing.py): setup() runs _impute (l.354),
 _encode_categoricals (l.359, incl. TARGET encoding l.747) and _scale_numerics (l.376) on ALL rows, and only
 then _split (l.393). Test-set statistics leak into training; target encoding before the split is severe.

@@ -1,74 +1,64 @@
-# MLFP02 — Task 1: Probability, Bayes & Experiment Validation
+# MLFP02 — Task 1: Bayesian Updating & Likelihood Estimation
 
-**Weight**: 20 marks · **Difficulty**: Hard · **Dataset**: `data/mlfp02/experiment_data.parquet` (500,000 rows, 9 columns)
+**Weight**: 20 marks · **Outcomes**: 2.1 (Bayes, conjugate priors, choosing a distribution), 2.2 (MLE, MAP)
+**Data**: `mlfp02/experiment_data.parquet` — the four-arm e-commerce experiment
+(`user_id, experiment_group, metric_value, pre_metric_value, revenue, timestamp, segment, platform, country`).
+`metric_value` is the user's order value in dollars during the experiment.
 
 ## Scenario
 
-A Southeast-Asia e-commerce team ran a multi-arm experiment on a new app flow.
-The raw log has columns `user_id, experiment_group, metric_value,
-pre_metric_value, revenue, timestamp, segment, platform, country`. Before you
-trust any uplift number you must (a) reason about the conversion event
-probabilistically, (b) prove the allocation was not silently corrupted, and
-(c) update a prior belief about the treatment conversion rate.
+The growth team wants two things before the formal A/B read-out in Task 2.
 
-Work the **primary A/B comparison only**: the `control` and `treatment_a`
-arms (ignore `treatment_b` and `variant_c`). Define the conversion event
-deterministically as `converted := metric_value >= 50.0`.
+1. **A belief about each arm's conversion rate** that they can update as data
+   arrives. A user _converts_ when their order value is at least **$50**.
+   The team's prior for any arm's conversion rate is a Beta distribution
+   whose parameters they will hand you. They also want the probability that
+   an arm's true conversion rate is higher than control's.
+2. **A model of order value** for the finance forecast. Finance is choosing
+   between a Gamma law (shape, scale) and a LogNormal law (μ, σ of the log
+   order value) and wants the one the data supports better, judged by AIC.
+   For new product lines with only a handful of orders, finance also wants a
+   **MAP** Gamma fit that combines the few orders with last year's beliefs:
+   - the prior density of the Gamma **shape** is the LogNormal density whose
+     log has mean `ln 2` and standard deviation `0.5`;
+   - the prior density of the Gamma **scale** is the LogNormal density whose
+     log has mean `ln 20` and standard deviation `1.0`;
+   - the two priors are independent; the MAP estimate maximises the
+     posterior density over (shape, scale).
 
-Implement `solve() -> dict`.
+## What to submit
 
-## Required computation
+`starter.py` with these four functions implemented (signatures fixed):
 
-1. **Conditional probabilities** — over the control + treatment_a cohort:
-   - `p_convert_overall` = P(converted)
-   - `p_convert_control` = P(converted | control)
-   - `p_convert_treatment` = P(converted | treatment_a)
-2. **Bayes inversion** — `p_treatment_given_convert` = P(treatment_a | converted)
-   = `P(converted|treatment_a) · P(treatment_a) / P(converted)`, where
-   `P(treatment_a)` is treatment_a's share of the **cohort** (not the full file).
-3. **Sample Ratio Mismatch** — the experiment was designed for a 50/50 split.
-   Run a chi-square goodness-of-fit on the observed counts
-   `[n_control, n_treatment]` against `expected = n_total / 2` per cell:
-   - `srm_chi2` = Σ (observed − expected)² / expected
-   - `srm_p_value` = `scipy.stats.chi2.sf(srm_chi2, df=1)`
-   - `srm_flag` = `srm_p_value < 1e-3` (bool)
-4. **Base-rate fallacy (fraud detector)** — pure scalar Bayes using the fixed
-   constants `base=0.02`, `sensitivity=0.95`, `fpr=0.03`:
-   `p_fraud_given_flagged = sens·base / (sens·base + fpr·(1−base))`.
-5. **Beta-Binomial conjugate update** — on the **treatment_a** arm, with prior
-   `Beta(2, 20)`: `successes = Σ converted`, `failures = n − successes`,
-   posterior `Beta(2+successes, 20+failures)`:
-   - `beta_post_alpha`, `beta_post_beta`
-   - `posterior_mean` = α/(α+β)
-   - `cred_int_low`, `cred_int_high` = `stats.beta.ppf(0.025/0.975, α, β)`
+| Function                                       | Returns                                                                                                                                                                                                                                           |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `conversion_posterior(orders, arm, prior)`     | dict: `alpha`, `beta` (posterior Beta parameters), `mean`, `ci_low`, `ci_high` (95% equal-tailed credible interval)                                                                                                                               |
+| `prob_beats_control(orders, treatment, prior)` | float: posterior probability that `treatment`'s conversion rate exceeds `control`'s (both arms start from the same `prior`, independently)                                                                                                        |
+| `fit_order_value(values)`                      | dict: `gamma_shape`, `gamma_scale`, `gamma_loglik`, `lognorm_mu`, `lognorm_sigma`, `lognorm_loglik`, `best_by_aic` (`"gamma"` or `"lognormal"`) — maximum-likelihood fits with no location shift; each `*_loglik` is the maximised log-likelihood |
+| `map_gamma(values)`                            | dict: `shape`, `scale`, `log_posterior` (log-likelihood + log prior densities at your estimate, dropping no terms)                                                                                                                                |
 
-## Return contract — `dict` with these exact keys (full-precision floats)
+`orders` is a polars DataFrame with the experiment schema (possibly a subset of
+rows); `prior` is a `(a, b)` tuple; `values` is a 1-D numpy array of strictly
+positive order values.
 
-```
-p_convert_overall, p_convert_control, p_convert_treatment,
-p_treatment_given_convert, srm_chi2, srm_p_value, srm_flag (bool),
-p_fraud_given_flagged, beta_post_alpha, beta_post_beta,
-posterior_mean, cred_int_low, cred_int_high
-```
+## Acceptance criteria
 
-## Visible sanity checks
-
-After a correct implementation:
-
-- `p_convert_control < p_convert_treatment` (treatment lifts conversion)
-- `srm_flag is True` — the arms are **not** 50/50 (a real SRM)
-- `0.39 < p_fraud_given_flagged < 0.40` — only ~39% of flagged are truly fraud
-- `cred_int_low < posterior_mean < cred_int_high`
-
-## Grading (12 automated checks, all must pass)
-
-return type is `dict` · all 13 keys present · three conditional probabilities ·
-Bayes inversion · SRM chi-square · SRM p-value · SRM flag · fraud base-rate
-Bayes · Beta posterior parameters · posterior mean · 95% credible interval.
+- The grader calls your functions on **data you have not seen** (fresh random
+  subsets of the experiment, other priors, and order-value samples it
+  generates itself). Results must be computed from the arguments — never from
+  numbers you observed while developing.
+- Posterior parameters and the credible interval must be exact (closed form).
+- `prob_beats_control` must be within **±0.01** of the exact value, including
+  on small subsets where the answer is far from 0 or 1.
+- An MLE or MAP answer is accepted when the log-likelihood (log-posterior) at
+  your parameters is within **0.01** of the true maximum, and the value you
+  report equals the value at your parameters.
+- Your AIC verdict must match the data on every sample the grader uses.
 
 ## Rules
 
-- **Polars only** for data wrangling — no pandas. `scipy.stats` is allowed for
-  the chi-square / Beta quantiles.
-- Load via `shared.MLFPDataLoader`.
-- Fully **deterministic** — no randomness anywhere in this task.
+- Polars for data handling (no pandas); numpy / scipy allowed for the
+  mathematics. You may use any optimiser, but you are graded on whether you
+  reached the optimum of the right objective.
+- Develop against the real data via `shared.MLFPDataLoader` (see `starter.py`).
+- Run `python starter.py` to try your functions on the real data.

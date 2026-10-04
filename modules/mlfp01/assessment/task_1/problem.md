@@ -1,71 +1,95 @@
 # MLFP01 — Task 1: Taxi Trip Data Forensics
 
-**Weight**: 25 marks · **Difficulty**: Hard · **Dataset**: `data/mlfp01/sg_taxi_trips.parquet` (50,000 raw rows, 12 columns)
+**Weight**: 20 marks · **Dataset**: `data/mlfp01/sg_taxi_trips.parquet` (50,000 raw rows, 12 columns)
+**Outcomes assessed**: data types and parsing (1.1), filtering and derived columns
+(1.2), null handling and deterministic cleaning (1.8)
 
 ## Scenario
 
-A Singapore ride-hailing operator hands you a raw trip log straight from three
-merged dispatch systems. It is dirty: duplicate trip IDs, physically impossible
-records (negative fares, teleporting trips), 15 different spellings of four
-payment methods, and missing zones/tips. Build the deterministic cleaning
-pipeline that turns it into an analysis-ready table.
+A ride-hailing operator merged the trip logs of three dispatch systems and
+extracted the result on **1 January 2025**. The analytics team cannot use the
+log until it meets the data contract below.
 
-Implement `solve() -> pl.DataFrame`.
+Nobody has listed what is wrong with the log. Finding the problems is part of
+the task: inspect the data, decide what each problem is, and write a cleaning
+function that enforces the contract.
 
-## Required pipeline (in any order that produces the spec'd result)
+Your function will be run on the full log **and on other extracts from the
+same dispatch systems that you have not seen**. It must enforce the contract
+by rule. A function that remembers particular trip IDs, row positions or
+counts from this file will fail on the unseen extracts.
 
-1. **Parse timestamps** — `pickup_datetime`, `dropoff_datetime` → `Datetime`
-   using format `"%Y-%m-%d %H:%M:%S"`.
-2. **Derive** `trip_duration_min` = minutes between dropoff and pickup, and
-   `implied_speed_kmh` = `distance_km / (trip_duration_min / 60)`.
-3. **Normalise `payment_type`** to exactly four canonical values. Match
-   case-insensitively on substrings:
-   - contains `grab` → `"Grab"`
-   - contains `nets` → `"NETS"`
-   - contains `cash` → `"Cash"`
-   - contains `card`, `visa`, `mastercard`, or `credit` → `"Card"`
-4. **Impute** — `tip_sgd` null → `0.0`; `pickup_zone` / `dropoff_zone` null →
-   `"Unknown"`.
-5. **Drop physically impossible rows** — keep a row only if ALL hold:
-   - `fare_sgd > 0`
-   - `0 < distance_km <= 100`
-   - `passengers >= 1`
-   - `0 < trip_duration_min <= 180`
-   - `2 <= implied_speed_kmh <= 120`
-6. **Deduplicate** by `trip_id`, keeping the row with the **highest `fare_sgd`**
-   (tie-break: latest `dropoff_datetime`). Exactly one row per `trip_id`.
-7. **Derive** `fare_per_km` = `fare_sgd / distance_km`, and `is_airport`
-   (Boolean) = `True` when `pickup_zone` **or** `dropoff_zone` is
-   `"Changi Airport"`.
-8. **Return** a DataFrame with these **16 columns in this exact order**, sorted
-   ascending by `pickup_datetime`:
+## Interface
 
-   ```
-   trip_id, pickup_datetime, dropoff_datetime, pickup_zone, dropoff_zone,
-   distance_km, fare_sgd, tip_sgd, payment_type, passengers,
-   pickup_latitude, pickup_longitude, trip_duration_min, implied_speed_kmh,
-   fare_per_km, is_airport
-   ```
+```python
+def clean_trips(raw: pl.DataFrame) -> pl.DataFrame: ...
+```
 
-## Visible sanity checks
+`raw` has the same 12 columns and dtypes as the parquet file. `clean_trips`
+works only on the frame it is given: it must not load files itself and must not
+modify `raw` in place.
 
-After a correct implementation:
+## The data contract (acceptance criteria)
 
-- `result.shape == (44596, 16)`
-- `sorted(result["payment_type"].unique()) == ["Card", "Cash", "Grab", "NETS"]`
-- every `implied_speed_kmh` lies in `[2, 120]`
-- `result["trip_id"].n_unique() == result.height` (no duplicates)
-- about 2,400 airport trips
+**Output columns.** One row per usable trip, with at least these 14 columns
+(any order; extra columns are allowed):
 
-## Grading (10 automated checks, all must pass)
+- the 12 source columns, with `pickup_datetime` and `dropoff_datetime` as
+  Polars `Datetime`
+- `trip_duration_min` (Float): minutes from pickup to dropoff
+- `avg_speed_kmh` (Float): `distance_km` divided by the duration in hours
 
-return type · exact 16-column schema · datetime dtypes · payment normalised to
-the 4 labels · no nulls in key columns · plausibility invariants (no impossible
-row survives) · no duplicate `trip_id` · row count matches the independently
-re-derived ground truth · derived columns correct · sorted by pickup.
+**A usable trip** is a record that describes a trip that could really have
+happened. All of the following must hold:
+
+1. it was picked up before the log was extracted (before 2025-01-01 00:00:00);
+2. its fare is positive and it carried at least one passenger;
+3. its pickup point lies inside Singapore — latitude 1.15 to 1.47 and longitude
+   103.60 to 104.05, both inclusive;
+4. its average speed is between 2 and 120 km/h, inclusive.
+
+Where a recorded value is wrong but the correct value is unambiguous, **repair
+it**. Do not discard a trip you can repair.
+
+**Identity.** A `trip_id` identifies exactly one usable trip. Remove the records
+that are not usable trips first. If two or more of the remaining records share
+a `trip_id`, you cannot tell which one owns it, so keep none of them.
+
+**Values.**
+
+- `payment_type` holds exactly one of the four methods the operator accepts,
+  `Card`, `Cash`, `NETS` or `Grab`, whatever spelling the dispatch system used.
+- A missing tip means no tip was paid (`0.0`). A missing pickup or dropoff zone
+  is recorded as `"Unknown"`.
+- Every value that was already correct in the raw record is passed through
+  unchanged.
+
+## How you are graded (10 automated checks)
+
+The grader computes its own expected result from the raw data. It never uses
+numbers your code reports about itself.
+
+| #   | Check                                                                    |
+| --- | ------------------------------------------------------------------------ |
+| 1   | All 14 required columns are present, with Datetime timestamps            |
+| 2   | Full log: the set of kept `trip_id`s matches exactly, with no duplicates |
+| 3   | Full log: `payment_type` is correct for every kept trip                  |
+| 4   | Full log: repaired values are correct for every kept trip                |
+| 5   | Full log: missing tips and zones are filled as the contract says         |
+| 6   | Full log: `trip_duration_min` and `avg_speed_kmh` are correct            |
+| 7   | Full log: the untouched values are unchanged                             |
+| 8   | Unseen extract: the set of kept `trip_id`s matches exactly               |
+| 9   | Unseen extract: `payment_type` and the repaired values are correct       |
+| 10  | `raw` is not modified by your function                                   |
+
+Marks = 20 × (checks passed / 10). A check that cannot run because the output
+is unusable counts as failed.
 
 ## Rules
 
-- **Polars only** — no pandas.
-- Load via `shared.MLFPDataLoader` (works in VS Code and Colab).
-- Cleaning must be **deterministic** — no random sampling.
+- **Polars only.** No pandas.
+- Deterministic: no random sampling, and the same input always gives the same
+  output.
+- Self-check before you submit: run `starter.py`. It loads the log, calls your
+  function and prints a summary. Every number you quote in your own notes
+  should come from running it.

@@ -386,9 +386,18 @@ def attach_onnx_artifact(name: str, version: int, onnx_path: Path) -> None:
     ``ModelRegistry.register_model`` saves the training artifact as
     ``model.pkl``; ``InferenceServer.from_registry(..., runtime="onnx")``
     loads ``model.onnx`` for the same name + version from this ArtifactStore.
+
+    OnnxBridge writes large weights to a sibling ``<file>.onnx.data`` file
+    (ONNX external data). Storing only the ``.onnx`` bytes would leave the
+    served model without its weights ("external data path does not exist"),
+    so the model is loaded with its external data and stored as ONE
+    self-contained protobuf.
     """
+    import onnx
+
+    model_proto = onnx.load(str(onnx_path))  # pulls in any .onnx.data weights
     asyncio.run(
-        ARTIFACT_STORE.save(name, version, Path(onnx_path).read_bytes(), "model.onnx")
+        ARTIFACT_STORE.save(name, version, model_proto.SerializeToString(), "model.onnx")
     )
 
 

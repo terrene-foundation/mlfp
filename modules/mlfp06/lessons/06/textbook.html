@@ -521,42 +521,71 @@ async def llm_route(query: str) -> str:
 
 <p>
   When agents communicate, they need a structured protocol — not free-form
-  text that the receiving agent must parse. The Agent-to-Agent (A2A) protocol
-  defines a standard message format:
+  text that the receiving agent must parse. Kaizen's Agent-to-Agent (A2A)
+  records live in <code>kaizen.nodes.ai.a2a</code> (and are re-exported from
+  the top-level <code>kaizen</code> package):
 </p>
 
-<pre><code class="language-python">from kaizen import A2ATask, A2AAgentCard
-
-# Profiler sends a structured task to trainer via the A2A primitives
-# exposed at the top of the kaizen package.
-task = A2ATask(
-    sender="profiler",
-    receiver="trainer",
-    task_id="analysis-001",
-    payload={
-        "dataset": "sg_telco_churn.csv",
-        "identified_target": "churned",
-        "quality_issues": ["2% nulls in tenure", "class imbalance 73/27"],
-        "recommended_preprocessing": ["impute_nulls", "oversample_minority"],
-    },
-    metadata={"cost_so_far": 0.12, "step": 1},
+<pre><code class="language-python">from kaizen.nodes.ai.a2a import (
+    A2AAgentCard,
+    A2ATask,
+    Capability,
+    CapabilityLevel,
+    TaskPriority,
+    TaskState,
 )
 
-# Each receiving agent advertises its capabilities via an AgentCard
-# so the supervisor can route tasks without hardcoding a dispatch table.
-trainer_card = A2AAgentCard(
-    agent_id="trainer",
-    capabilities=["train", "cross_validate", "evaluate"],
-)</code></pre>
+# WHO an agent is: identity, version and what it is good at.
+# A router reads cards like this instead of a hardcoded dispatch table.
+structural_card = A2AAgentCard(
+    agent_id="structural",
+    agent_name="Structural analyst",
+    agent_type="specialist",
+    version="1.0",
+    primary_capabilities=[
+        Capability(
+            name="entity_extraction",
+            domain="reading_comprehension",
+            level=CapabilityLevel.EXPERT,
+            description="Named entities and the relationships between them",
+            keywords=["entity", "who", "where", "relationship"],
+        ),
+    ],
+    description="Entities, relationships and how a passage is organised",
+)
+
+# WHAT is being asked: a typed task with requirements and success criteria,
+# not a paragraph of free text the worker has to interpret.
+task = A2ATask(
+    name="analyse_passage",
+    description="List the named entities in the passage and how they relate",
+    assigned_to=["structural"],
+    delegated_by="supervisor",
+    priority=TaskPriority.HIGH,
+    requirements=["return key_entities and relationships as lists"],
+    success_criteria=["every entity appears in the passage text"],
+    context={"title": "Normans", "question": "Who ruled the duchy of Normandy?"},
+)
+
+print(task.state)                          # TaskState.CREATED
+task.transition_to(TaskState.ASSIGNED)     # returns True: a legal transition
+print(task.state)                          # TaskState.ASSIGNED</code></pre>
 
 <div class="callout advanced">
   <span class="label">Advanced</span>
   <p>
-    A2A messages carry metadata (cost, step number, timestamp) alongside the
-    payload. This enables the supervisor to track progress without parsing
-    agent output text. The protocol also supports priority levels and error
-    states — if a worker fails, it sends an error message that the supervisor
-    can handle (retry, skip, or abort).
+    The two records separate identity from work. An
+    <code>A2AAgentCard</code> carries <code>agent_id</code>,
+    <code>agent_name</code>, <code>agent_type</code> and <code>version</code>
+    (all required), plus primary / secondary capabilities. An
+    <code>A2ATask</code> carries a state lifecycle
+    (<code>created → assigned → in_progress → … → completed</code>, or
+    <code>failed</code> / <code>cancelled</code>), a priority
+    (<code>low</code> to <code>critical</code>), and quality targets for
+    iterative work. Because failure is an explicit state, a supervisor can
+    decide to retry, re-route or abort instead of parsing an apology out of
+    free text. Exercise 6.3's router applies the same idea in its simplest
+    form: one capability line per specialist, one typed routing decision.
   </p>
 </div>
 
@@ -570,13 +599,13 @@ trainer_card = A2AAgentCard(
 
   <!-- Workers -->
   <rect x="40" y="130" width="130" height="45" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
-  <text x="105" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Profiler</text>
+  <text x="105" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Factual</text>
   <rect x="210" y="130" width="130" height="45" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
-  <text x="275" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Trainer</text>
+  <text x="275" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Semantic</text>
   <rect x="380" y="130" width="130" height="45" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
-  <text x="445" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Reporter</text>
+  <text x="445" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Structural</text>
   <rect x="550" y="130" width="130" height="45" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
-  <text x="615" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Validator</text>
+  <text x="615" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Interpreter</text>
 
   <!-- Task messages down -->
   <line x1="300" y1="85" x2="105" y2="130" stroke="#22C55E" stroke-width="1.5"/>
@@ -592,7 +621,7 @@ trainer_card = A2AAgentCard(
   <line x1="445" y1="130" x2="375" y2="85" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="4 3"/>
   <line x1="615" y1="130" x2="400" y2="85" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="4 3"/>
 </svg>
-<figcaption>Supervisor sends structured task messages (green) to workers and receives structured result messages (blue, dashed). Each message carries a payload and metadata.</figcaption>
+<figcaption>Supervisor sends structured task messages (green) to workers and receives structured results (blue, dashed). Each task carries its requirements, context and a lifecycle state; each result is a typed dict keyed by the worker's output fields.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -600,54 +629,75 @@ trainer_card = A2AAgentCard(
 
 <p>
   Without memory, every agent invocation starts from scratch. The agent does
-  not remember what it profiled five minutes ago, what another worker
-  discovered about the same dataset, or which facts have already been
-  established. Kaizen exposes two memory primitives that cover the full
-  spectrum:
+  not remember what the user asked two turns ago, what another worker already
+  established about the same passage, or which facts are settled. The
+  specification names three kinds of agent memory; multi-agent systems add a
+  fourth, shared between agents. Here is how each maps onto what you use in
+  this course:
 </p>
 
 <table>
-  <thead><tr><th>Primitive</th><th>Scope</th><th>Persistence</th><th>Use case</th></tr></thead>
+  <thead><tr><th>Tier</th><th>Scope</th><th>Kaizen primitive</th><th>In Exercise 6.5</th></tr></thead>
   <tbody>
-    <tr><td><strong><code>BufferMemory</code></strong></td><td>One agent's working context</td><td>In-process (lives for the agent's lifetime)</td><td>The agent's own running transcript — thought / action / observation across the current task</td></tr>
-    <tr><td><strong><code>SharedMemoryPool</code></strong></td><td>Many agents, one workspace</td><td>Backend-pluggable (in-memory, SQLite, or a Kaizen workspace store)</td><td>Cross-agent facts — "HDB resale target column is <code>resale_price</code>"; "last profiled 2025-11-15"; "best model so far: gradient_boosting"</td></tr>
+    <tr><td><strong>Short-term</strong></td><td>One agent, current conversation</td><td><code>BufferMemory(max_turns=…)</code> — a per-session sliding window of turns</td><td><code>ShortTermMemory</code>: a 6-message window over a 10-turn conversation; the oldest notes are evicted</td></tr>
+    <tr><td><strong>Long-term</strong></td><td>Facts that outlive one conversation</td><td>None built in — <code>SharedMemoryPool</code> is in-process only; production systems use a vector store or database</td><td><code>LongTermMemory</code>: facts with an importance weight, recalled by word overlap</td></tr>
+    <tr><td><strong>Entity</strong></td><td>Structured records about people, places, concepts</td><td>None built in — a small keyed store or knowledge graph</td><td><code>EntityMemory</code>: typed entities plus relationships, looked up by exact name</td></tr>
+    <tr><td><strong>Shared</strong></td><td>Many agents, one workspace</td><td><code>SharedMemoryPool()</code> — <code>write_insight</code>, <code>read_relevant</code>, <code>read_all</code></td><td>Insights one specialist leaves for the others</td></tr>
   </tbody>
 </table>
 
+<p>
+  The two Kaizen primitives, run end to end (no LLM needed):
+</p>
+
 <pre><code class="language-python">from kaizen.memory import BufferMemory, SharedMemoryPool
 
-# Per-agent scratchpad — isolated to this agent's run loop
-profiler_buffer = BufferMemory(max_turns=20)
+# Short-term: one agent's sliding window, keyed by session id
+buffer = BufferMemory(max_turns=3)
+for i in range(1, 6):
+    buffer.save_turn("session-1", {"user": f"question {i}", "agent": f"answer {i}"})
+context = buffer.load_context("session-1")
+print(context["turn_count"], [t["user"] for t in context["turns"]])
+# 3 ['question 3', 'question 4', 'question 5']   ← turns 1 and 2 were evicted
 
-# Cross-agent workspace — facts any worker can read or write
-shared_pool = SharedMemoryPool(backend="sqlite", path="hdb_workspace.db")
+# Shared: insights one agent leaves for the others (constructor takes no arguments)
+pool = SharedMemoryPool()
+pool.write_insight({
+    "agent_id": "factual",
+    "content": "Passage is about the Normans; the answer is supported",
+    "tags": ["normans", "evidence"],
+    "importance": 0.9,
+    "segment": "analysis",
+})
+pool.write_insight({
+    "agent_id": "structural",
+    "content": "Key entities: Normandy, Rollo, France",
+    "tags": ["normans", "entities"],
+    "importance": 0.6,
+    "segment": "analysis",
+})
 
-# Attach to agent via its config — BufferMemory is per-agent,
-# SharedMemoryPool is passed to every worker that should see it
-class AnalystConfig(WorkerConfig):
-    memory: BufferMemory | None = None
-    shared: SharedMemoryPool | None = None
+# The semantic agent asks for important insights on this topic
+seen = pool.read_relevant(agent_id="semantic", tags=["normans"], min_importance=0.7)
+print([i["agent_id"] for i in seen])     # ['factual']  — the 0.6 insight is filtered out
+print(len(pool.read_all()))              # 2
 
-profiler_agent = ProfilerAgent(
-    AnalystConfig(memory=profiler_buffer, shared=shared_pool)
-)
-
-# After running, the shared pool holds structured facts for other workers
-shared_pool.get("hdb_resale_dataset")
-# → {"rows": 50000, "columns": 11, "last_profiled": "2025-11-15",
-#    "target": "resale_price", "best_model": "gradient_boosting"}</code></pre>
+# By default an agent does not read back its own insights (exclude_own=True)
+print([i["agent_id"] for i in pool.read_relevant(agent_id="factual", tags=["normans"])])
+# ['structural']</code></pre>
 
 <div class="callout theory">
   <span class="label">Theory</span>
   <p>
-    <code>BufferMemory</code> is the agent's "working memory" — the running
-    transcript of thoughts, actions, and observations for the current task.
-    <code>SharedMemoryPool</code> is the team's "shared whiteboard" — facts
-    that any worker can write or read, so the trainer does not re-profile
-    what the profiler already profiled. Earlier Kaizen releases split this
-    into three named tiers (short-term, long-term, entity), but the two-
-    primitive model is strictly more flexible: the pool's backend decides
-    persistence, and the agents decide which facts matter.
+    Each tier fails in its own way, and Exercise 6.5 measures it. Short-term
+    memory silently forgets whatever scrolled out of the window. Long-term
+    recall by word overlap misses a paraphrased question. Entity lookup is
+    exact, so an abbreviation finds nothing unless you store aliases. The
+    shared pool is only as good as the tags and importance scores its writers
+    choose. Production systems combine the tiers for exactly this reason —
+    and because <code>BufferMemory</code> and <code>SharedMemoryPool</code>
+    both live in process memory, anything that must survive a restart needs
+    a real store behind it.
   </p>
 </div>
 

@@ -39,8 +39,10 @@
   explanations from Shapley values), LIME (model-agnostic local
   explanations), ALE (accumulated local effects that handle correlated
   features), and the fairness metrics every deployed model must report.
-  We close with the impossibility theorem: you cannot simultaneously
-  satisfy demographic parity, equalised odds, and calibration.
+  We close with the impossibility theorem: when base rates differ between
+  groups, demographic parity, equalised odds and calibration cannot hold
+  together — not even two at a time, except for a useless or a perfect
+  predictor.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -69,7 +71,7 @@
   <thead><tr><th>Axiom</th><th>Meaning</th></tr></thead>
   <tbody>
     <tr><td><strong>Efficiency</strong></td><td>Contributions sum to the total prediction: $\sum_i \phi_i = f(x) - \mathbb{E}[f(x)]$</td></tr>
-    <tr><td><strong>Symmetry</strong></td><td>Features with identical contributions get identical values</td></tr>
+    <tr><td><strong>Symmetry</strong></td><td>Two features that add the same amount to every coalition get identical values</td></tr>
     <tr><td><strong>Dummy</strong></td><td>A feature that never changes the prediction gets $\phi_i = 0$</td></tr>
     <tr><td><strong>Linearity</strong></td><td>For a sum of two models, Shapley values add</td></tr>
   </tbody>
@@ -85,19 +87,19 @@
   <text x="90" y="65" font-family="Inter" font-size="11" fill="#64748B">Base value (average prediction)</text>
   <!-- Positive contributions -->
   <rect x="285" y="85" width="120" height="30" rx="4" fill="#22C55E" opacity="0.7"/>
-  <text x="360" y="105" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">+alcohol (+0.4)</text>
+  <text x="360" y="105" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">+debt_to_income (+0.4)</text>
   <rect x="405" y="125" width="80" height="30" rx="4" fill="#22C55E" opacity="0.5"/>
-  <text x="445" y="145" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">+sulphates (+0.2)</text>
+  <text x="445" y="145" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">+credit_utilization (+0.2)</text>
   <!-- Negative contributions -->
   <rect x="185" y="165" width="100" height="30" rx="4" fill="#F43F5E" opacity="0.7"/>
-  <text x="235" y="185" text-anchor="middle" font-family="Inter" font-size="11" fill="#9F1239">-acidity (-0.3)</text>
+  <text x="235" y="185" text-anchor="middle" font-family="Inter" font-size="11" fill="#9F1239">-months_employed (-0.3)</text>
   <rect x="235" y="205" width="50" height="30" rx="4" fill="#F43F5E" opacity="0.5"/>
-  <text x="260" y="225" text-anchor="middle" font-family="Inter" font-size="11" fill="#9F1239">-pH (-0.1)</text>
+  <text x="260" y="225" text-anchor="middle" font-family="Inter" font-size="11" fill="#9F1239">-payment_history (-0.1)</text>
   <!-- Final prediction -->
   <rect x="85" y="245" width="200" height="30" rx="4" fill="#0D9488" opacity="0.3"/>
   <text x="90" y="265" font-family="Inter" font-size="11" fill="#0D9488">Final prediction = base + sum(SHAP)</text>
 </svg>
-<figcaption>A SHAP waterfall shows how each feature pushes the prediction up or down from the base value. Green features increase the prediction; red features decrease it.</figcaption>
+<figcaption>A SHAP waterfall for one credit applicant (illustrative values, in log-odds of default). Each feature pushes the prediction up or down from the base value; green features raise the default risk, red ones lower it. For a LightGBM classifier TreeSHAP works on the log-odds scale, so base value + SHAP values = the model's raw log-odds, not its probability.</figcaption>
 </figure>
 
 <h3>TreeSHAP and KernelSHAP</h3>
@@ -114,15 +116,24 @@
 
 <pre><code class="language-python">import shap
 
-# TreeSHAP for a gradient boosting model
+# TreeSHAP for a fitted LightGBM classifier (X_test: numpy array)
 explainer = shap.TreeExplainer(model)
-shap_values = explainer.shap_values(X_test)
+sv = explainer(X_test)          # an Explanation object, log-odds scale
 
-# Summary plot: global feature importance
-shap.summary_plot(shap_values, X_test)
+# Global view: beeswarm of every row's SHAP values
+shap.plots.beeswarm(sv)
 
-# Waterfall for one prediction
-shap.plots.waterfall(shap_values[0])</code></pre>
+# Local view: waterfall for one applicant
+shap.plots.waterfall(sv[0])</code></pre>
+
+<p>
+  Call the explainer (<code>explainer(X)</code>) rather than
+  <code>explainer.shap_values(X)</code> when you want plots: the
+  waterfall needs an <code>Explanation</code> object and raises a
+  <code>TypeError</code> on a bare array. For a random-forest
+  classifier the Explanation has a class axis — pick the positive class
+  with <code>sv[0, :, 1]</code>.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>LIME: Local Interpretable Model-agnostic Explanations</h2>
@@ -137,26 +148,38 @@ shap.plots.waterfall(shap_values[0])</code></pre>
 
 <pre><code class="language-python">from lime.lime_tabular import LimeTabularExplainer
 
-explainer = LimeTabularExplainer(
-    X_train.to_numpy(),
-    feature_names=X_train.columns,
-    class_names=["low", "high"],
+# X_train / X_test: numpy arrays; feature_names: list of column names
+lime_explainer = LimeTabularExplainer(
+    X_train,
+    feature_names=feature_names,
+    class_names=["repay", "default"],
+    random_state=0,
 )
 
-explanation = explainer.explain_instance(
-    X_test[0].to_numpy(),
+explanation = lime_explainer.explain_instance(
+    X_test[0],              # ONE row as a 1-D array
     model.predict_proba,
     num_features=5,
 )
-explanation.show_in_notebook()</code></pre>
+print(explanation.as_list())   # [(feature condition, weight), ...]</code></pre>
+
+<p>
+  If your data is a polars frame, pass <code>X.to_numpy()</code> to the
+  explainer and <code>X.to_numpy()[0]</code> for the row —
+  <code>X[0]</code> on a polars frame is a 1-row DataFrame, and LIME fails
+  with a broadcasting error.
+</p>
 
 <div class="callout theory">
   <span class="label">🔵 Theory</span>
   <p>
-    SHAP gives exact attributions that sum to the prediction (efficiency
-    axiom). LIME gives approximate local explanations that may not sum
-    exactly. Use SHAP when you need consistency and additivity; use LIME
-    when you need a quick, model-agnostic explanation.
+    SHAP attributions sum to the prediction (efficiency axiom) — exactly
+    for TreeSHAP, approximately for KernelSHAP. LIME's weights come from a
+    local linear fit to random perturbations: they need not sum to the
+    prediction and can change from run to run unless you fix the seed. Use
+    SHAP when you need consistency and additivity; use LIME when you need a
+    quick, model-agnostic local story — and check that the two agree on the
+    top features.
   </p>
 </div>
 
@@ -164,20 +187,80 @@ explanation.show_in_notebook()</code></pre>
 <h2>ALE: Accumulated Local Effects</h2>
 
 <p>
-  Partial Dependence Plots (PDP) show the average effect of a feature,
-  but they assume features are independent. When features are correlated,
-  PDPs produce unrealistic data points. ALE fixes this by accumulating
-  local effects within small intervals:
+  SHAP and LIME explain <em>how much</em> a feature matters; an effect plot
+  shows the <em>shape</em> of its effect. The classic Partial Dependence
+  Plot (PDP) sets feature $j$ to a value $z$ for <em>every</em> row and
+  averages the prediction. When $j$ is correlated with other features that
+  creates impossible rows — on the credit data, an applicant aged 25 with
+  30 years of employment — and the curve averages the model's guesses on
+  data it never saw.
+</p>
+
+<p>
+  ALE (Apley &amp; Zhu, 2020) moves only the rows that actually live near
+  each value. Split the range of $x_j$ into quantile bins
+  $[z_{k-1}, z_k]$. For the rows $N_k$ already in bin $k$, move $x_j$ to the
+  bin's upper and lower edges, keep every other feature as it is, and
+  average the change in the model's output:
+</p>
+
+$$\text{ALE}_j(z_K) \;=\; \sum_{k=1}^{K} \frac{1}{|N_k|} \sum_{i \in N_k} \Bigl[ f\bigl(z_k,\, x_{i,\setminus j}\bigr) - f\bigl(z_{k-1},\, x_{i,\setminus j}\bigr) \Bigr] \;-\; c$$
+
+<p>
+  where $x_{i,\setminus j}$ is row $i$'s other features and the constant
+  $c$ centres the curve so its average is zero. Because each difference
+  uses a real row nudged only within its own bin, no impossible
+  combinations are evaluated. The accumulated sum gives the effect
+  <em>shape</em>: a rising curve means larger values of the feature push
+  the prediction up.
+</p>
+
+<pre><code class="language-python">import numpy as np
+
+def ale_curve(model, X, j, n_bins=10):
+    """First-order ALE of feature j on the log-odds scale (centred)."""
+    edges = np.unique(np.quantile(X[:, j], np.linspace(0, 1, n_bins + 1)))
+    bin_of_row = np.clip(np.searchsorted(edges, X[:, j], side="right") - 1,
+                         0, len(edges) - 2)
+    effects = np.zeros(len(edges) - 1)
+    counts = np.zeros(len(edges) - 1)
+    for k in range(len(edges) - 1):
+        rows = X[bin_of_row == k]
+        if len(rows) == 0:
+            continue
+        lo, hi = rows.copy(), rows.copy()
+        lo[:, j], hi[:, j] = edges[k], edges[k + 1]
+        effects[k] = (model.predict(hi, raw_score=True)
+                      - model.predict(lo, raw_score=True)).mean()
+        counts[k] = len(rows)
+    ale = np.concatenate([[0.0], np.cumsum(effects)])
+    centre = np.sum((ale[:-1] + ale[1:]) / 2 * counts) / counts.sum()
+    return edges, ale - centre
+
+j = feature_names.index("months_employed")
+edges, ale = ale_curve(model, X_test[:3000], j)</code></pre>
+
+<p>
+  On the Lesson 3.6 credit model (the LightGBM from the worked example
+  below), the ALE of <code>months_employed</code> falls steadily: about
+  +1.1 log-odds for applicants with no employment history, around 0 near
+  20 years, and about −1.1 at 30 years — longer employment, lower default
+  risk. Its near-twin <code>employment_years</code> (correlation 0.9996)
+  has a much flatter curve (about +0.3 to −0.6). The model mostly splits
+  on <code>months_employed</code>, so ALE shows the twin adds little on its
+  own. A PDP of either feature would mix in impossible combinations of
+  the two; ALE does not.
 </p>
 
 <div class="callout advanced">
-  <span class="label">🟣 Advanced</span>
+  <span class="label">🟣 Advanced — ALE vs SHAP for correlated features</span>
   <p>
-    ALE partitions the feature range into intervals, computes the average
-    change in prediction within each interval, and accumulates these
-    changes. Unlike PDP, ALE never evaluates the model on unrealistic
-    feature combinations (e.g., a flat that is both 20 sqm and has 5
-    bedrooms).
+    Interventional TreeSHAP (the default) also breaks correlations: it
+    replaces "missing" features with values from background rows, which can
+    pair them with impossible partners. With near-duplicate features,
+    SHAP's credit can land almost entirely on one twin. Read SHAP, ALE and
+    permutation importance together; when they disagree about a correlated
+    pair, the disagreement is the finding.
   </p>
 </div>
 
@@ -187,15 +270,19 @@ explanation.show_in_notebook()</code></pre>
 <h3>Disparate impact</h3>
 
 <p>
-  The four-fifths rule: the selection rate for the minority group should be
-  at least 80% of the selection rate for the majority group:
+  The four-fifths rule: each group's selection (here: approval) rate should
+  be at least 80% of the rate of the most-favoured group. The rule comes
+  from the US EEOC Uniform Guidelines on Employee Selection Procedures
+  (1978) — an employment-law screening heuristic that credit teams widely
+  borrow as a rule of thumb. It is a screen that triggers investigation,
+  not a legal test of lending fairness:
 </p>
 
 <div class="annotated-equation">
-  $$\text{Disparate Impact} = \frac{P(\hat{Y}=1 \mid G=\text{minority})}{P(\hat{Y}=1 \mid G=\text{majority})} \;\geq\; 0.8$$
+  $$\text{DI}(g) = \frac{P(\text{approved} \mid G=g)}{\max_{h} P(\text{approved} \mid G=h)} \;\geq\; 0.8$$
   <div class="annotations">
-    <span>Below 0.8 = potential discrimination</span>
-    <span>Common in hiring and lending</span>
+    <span>Below 0.8 = adverse impact: investigate</span>
+    <span>Originates in employment selection</span>
   </div>
 </div>
 
@@ -215,10 +302,14 @@ $$P(\hat{Y}=1 \mid Y=0, G=a) = P(\hat{Y}=1 \mid Y=0, G=b)$$
   <span class="label">⚠ The impossibility theorem</span>
   <p>
     Chouldechova (2017) and Kleinberg et al. (2016) proved that when base
-    rates differ between groups, you <strong>cannot simultaneously
-    satisfy</strong> demographic parity, equalised odds, and calibration.
-    Any model that satisfies two of the three necessarily violates the
-    third.
+    rates differ between groups, calibration within groups and equalised
+    odds cannot both hold unless the predictor is perfect. Demographic
+    parity fares no better: combined with calibration it forces equal base
+    rates outright, and combined with equalised odds it forces a classifier
+    whose decisions carry no information about the outcome. So the three
+    criteria are <strong>pairwise incompatible</strong> — not "pick any
+    two". Except for trivial or perfect predictors, you can satisfy at most
+    <em>one</em> of them, and you must choose which.
   </p>
   <p>
     This is not a limitation of any particular model — it is a mathematical
@@ -235,50 +326,111 @@ $$P(\hat{Y}=1 \mid Y=0, G=a) = P(\hat{Y}=1 \mid Y=0, G=b)$$
   <text x="360" y="30" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#F43F5E">Demographic Parity</text>
   <text x="110" y="245" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#F43F5E">Equalised Odds</text>
   <text x="610" y="245" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#F43F5E">Calibration</text>
-  <text x="360" y="155" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">Pick at most two</text>
+  <text x="360" y="155" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">No two can hold together</text>
   <text x="360" y="175" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">(when base rates differ)</text>
 </svg>
-<figcaption>The fairness impossibility theorem: with unequal base rates, satisfying two fairness criteria requires violating the third.</figcaption>
+<figcaption>The fairness impossibility theorem: with unequal base rates the three criteria are pairwise incompatible (except for trivial or perfect predictors) — you choose which one to prioritise and document why.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Credit Scoring Fairness Audit</h2>
+<h2>Worked Example: Explaining and Auditing the Credit Model</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
-  <p>Audit the credit scoring model from Lesson 3.5 for fairness across demographic groups.</p>
+  <p>
+    Explain and audit the credit default model Exercise 3.6 builds: a
+    LightGBM trained through kailash-ml's <code>TrainingPipeline</code> on
+    the leak-free synthetic credit data, with defaulters up-weighted, and
+    loaded back from the model registry so we explain exactly the
+    registered artefact. An applicant is declined when the predicted
+    default probability is at least 0.5. The protected attributes in the
+    data are <code>race</code>, <code>gender</code> and <code>age</code>.
+  </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — Compute SHAP values.</span>
-    <pre><code class="language-python">explainer = shap.TreeExplainer(model)
-shap_values = explainer.shap_values(X_test)
-shap.summary_plot(shap_values, X_test)</code></pre>
-  </div>
+    <span class="step-label">Step 1 — SHAP values, and checking additivity.</span>
+    <pre><code class="language-python">import numpy as np
+from shared.mlfp03.ex_6 import build_shap_explainer, decode_group
 
-  <div class="step">
-    <span class="step-label">Step 2 — Measure disparate impact.</span>
-    <pre><code class="language-python">pred = model.predict(X_test)
-rate_minority = pred[group == "minority"].mean()
-rate_majority = pred[group == "majority"].mean()
-di = rate_minority / rate_majority
-print(f"Disparate impact: {di:.3f} {'PASS' if di >= 0.8 else 'FAIL'}")</code></pre>
-  </div>
+b = build_shap_explainer()      # trains via TrainingPipeline + registry
+model, X_test, y_test = b["model"], b["X_test"], b["y_test"]
+names, sv, base = b["feature_names"], b["shap_vals"], b["expected_value"]
 
-  <div class="step">
-    <span class="step-label">Step 3 — Measure equalised odds.</span>
-    <pre><code class="language-python">for g in ["minority", "majority"]:
-    mask = group == g
-    tpr = recall_score(y_test[mask], pred[mask])
-    fpr = (pred[mask] & ~y_test[mask]).sum() / (~y_test[mask]).sum()
-    print(f"  {g}: TPR={tpr:.3f}, FPR={fpr:.3f}")</code></pre>
-  </div>
+# Efficiency axiom, on the log-odds scale
+raw = model.predict(X_test, raw_score=True)
+print(np.abs(base + sv.sum(axis=1) - raw).max())   # ~1e-14
 
-  <div class="step">
-    <span class="step-label">Step 4 — Report findings.</span>
+imp = np.abs(sv).mean(axis=0)
+for i in np.argsort(-imp)[:5]:
+    print(f"{names[i]:<24}{imp[i]:.3f}")</code></pre>
+    <pre><code class="language-text">months_employed         0.767
+debt_to_income          0.387
+credit_utilization      0.375
+payment_history_score   0.265
+credit_age_years        0.152</code></pre>
     <p>
-      Document: which fairness criteria were measured, which passed, which
-      failed, and what the tradeoffs are. The impossibility theorem means
-      you cannot fix everything — be transparent about the choice.
+      Base value plus the SHAP values reproduces the model's raw log-odds to
+      machine precision. Additivity holds in log-odds, <em>not</em> in
+      probability: summing SHAP values against <code>predict_proba</code>
+      would appear to fail. Employment history dominates, followed by debt
+      load and payment behaviour.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Disparate impact per protected attribute.</span>
+    <pre><code class="language-python">y_pred = b["y_pred"]            # 1 = predicted default = DECLINE
+groups = {}
+for attr in ["race", "gender", "age"]:
+    g = decode_group(X_test, names, attr, b["ordinal_mappings"])  # age is banded
+    groups[attr] = g
+    approval = {k: 1 - y_pred[g == k].mean() for k in np.unique(g)}
+    best = max(approval.values())
+    di = {k: round(v / best, 3) for k, v in approval.items()}
+    base_rate = {k: round(y_test[g == k].mean(), 3) for k in np.unique(g)}
+    print(attr, di, base_rate)</code></pre>
+    <p>
+      Race and gender pass the four-fifths screen comfortably: every
+      group's approval rate is above 95% of the most-approved group's. Age
+      fails badly. Applicants aged 21–34 are approved about 36% as often as
+      those aged 65+. But their default base rate is also about ten times
+      higher (about 25% against about 3%). The screen flags the outcome; it
+      cannot tell you whether the gap is justified risk or unfair treatment.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Equalised odds: TPR and FPR per group.</span>
+    <pre><code class="language-python">g = groups["age"]
+for k in np.unique(g):
+    m = g == k
+    tpr = y_pred[m &amp; (y_test == 1)].mean()   # defaulters correctly declined
+    fpr = y_pred[m &amp; (y_test == 0)].mean()   # good applicants wrongly declined
+    print(f"{k:&lt;6} TPR={tpr:.3f}  FPR={fpr:.3f}")</code></pre>
+    <p>
+      Use explicit comparisons such as <code>(y_test == 0)</code>, never
+      <code>~y_test</code>: on an integer array <code>~</code> is bitwise NOT
+      (<code>~0 == -1</code>), not logical negation. Across age bands the
+      false-positive rate ranges from more than half of good young
+      applicants wrongly declined to almost none of the oldest. Equalised
+      odds is far from satisfied, and — because base rates differ this much
+      — the impossibility theorem says no threshold choice can equalise it
+      while keeping the scores calibrated within each group.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Report and route the decision.</span>
+    <p>
+      Document which criteria were measured, which passed, which failed,
+      and the base-rate context. A failure such as the age result is not
+      "fixed" automatically by re-weighting until the ratio passes: it is
+      routed to a human decision (a risk committee) that chooses which
+      fairness criterion matters for this product and accepts the
+      trade-off in writing. Singapore's FEAT principles call for exactly
+      this kind of fairness and transparency assessment. They are
+      non-binding principles and do not prescribe a metric or a numeric
+      threshold.
     </p>
   </div>
 </div>
@@ -308,7 +460,8 @@ print(f"Disparate impact: {di:.3f} {'PASS' if di >= 0.8 else 'FAIL'}")</code></p
   <span class="label">⚠ Mistake 3: Optimising for one fairness metric blindly</span>
   <p>
     The impossibility theorem means optimising for demographic parity
-    may hurt calibration. Always measure and report multiple metrics.
+    will break calibration whenever base rates differ. Always measure and
+    report several metrics, and state which one you prioritised.
   </p>
 </div>
 
@@ -322,7 +475,7 @@ print(f"Disparate impact: {di:.3f} {'PASS' if di >= 0.8 else 'FAIL'}")</code></p
 
 <div class="try-it">
   <h3>🎯 Exercise B — Fairness audit</h3>
-  <p>Compute disparate impact and equalised odds across demographic groups. Report which criteria pass and which fail. Explain the impossibility theorem with your model's specific numbers.</p>
+  <p>Compute disparate impact and equalised odds across race, gender and age bands. Report which criteria pass and which fail. Use the per-group base rates to explain, with your model's own numbers, why equalising one criterion would break another.</p>
 </div>
 
 <div class="try-it">

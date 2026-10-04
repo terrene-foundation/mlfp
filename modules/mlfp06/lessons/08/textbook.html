@@ -35,33 +35,36 @@
 
 <p class="lead">
   This is the culmination of the six-module programme. You deploy a complete,
-  governed AI system via Nexus — a platform accessible through API, CLI, and MCP
-  simultaneously. The system integrates every major Kailash package: Core SDK for
-  workflow orchestration, ML for model training, Kaizen for agents, PACT for
-  governance, Nexus for deployment, and DriftMonitor for production monitoring.
-  This is not a toy demo — it is the architecture of a real production AI system.
-  And it is yours.
+  governed AI system via Nexus — one handler registered on the API, CLI and MCP
+  channels at once. The system integrates the Kailash stack you have built up:
+  kailash-align for the fine-tuned adapters, Kaizen for the agent, PACT for
+  governance, Nexus for deployment with signed-token authentication, and
+  kailash-ml's <code>DriftMonitor</code> for production monitoring. It is the
+  architecture of a real production AI system, small enough to run on your
+  laptop. And it is yours.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Why This Matters</h2>
 
 <p>
-  Consider a Singapore bank building an internal AI system to predict HDB resale
-  prices for mortgage risk assessment. The model must serve predictions to three
-  audiences: relationship managers via a web dashboard (REST API), the risk
-  automation team via a CLI batch pipeline, and an AI assistant via MCP tool calls.
-  Each audience needs authentication. The system must log every prediction for
-  regulatory audit. Model drift must be detected before stale predictions cause
-  bad lending decisions.
+  Consider a bank deploying an internal question-answering assistant. It must
+  serve three audiences: staff through an intranet portal (REST API), the
+  operations team through scripted batch jobs (CLI), and AI copilots through MCP
+  tool calls. Each caller must be authenticated, and what the assistant may do
+  must depend on <em>who</em> is asking — a front-line user may get answers, but
+  only model operators may update the model and only auditors may read the audit
+  log. Every answer must be logged for audit, and the system must notice when the
+  questions it receives stop looking like the ones it was validated on.
 </p>
 
 <p>
   Building this from scratch means writing an API server, a CLI parser, an MCP
   server, an auth layer, a rate limiter, a logging pipeline, and a drift detector
   — all as separate codebases that need to stay in sync. Or you can use Nexus,
-  which gives you all three channels from a single codebase, with PACT governance
-  and DriftMonitor bolted on. That is what you build today.
+  which gives you all three channels from a single handler, put PACT governance
+  inside that handler, and run DriftMonitor over the traffic. That is what you
+  build today — the same system as Exercise 8.
 </p>
 
 <figure class="diagram">
@@ -75,18 +78,18 @@
 
   <!-- Training -->
   <rect x="20" y="50" width="130" height="65" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
-  <text x="85" y="72" text-anchor="middle" font-weight="600" font-size="11" fill="#3B82F6">TrainingPipeline</text>
-  <text x="85" y="90" text-anchor="middle" font-size="9" fill="#1E293B">Train model</text>
-  <text x="85" y="104" text-anchor="middle" font-size="9" fill="#64748B">M3-M5</text>
+  <text x="85" y="72" text-anchor="middle" font-weight="600" font-size="11" fill="#3B82F6">kailash-align</text>
+  <text x="85" y="90" text-anchor="middle" font-size="9" fill="#1E293B">Fine-tune adapters</text>
+  <text x="85" y="104" text-anchor="middle" font-size="9" fill="#64748B">M6.2-6.3</text>
 
   <!-- Arrow -->
   <line x1="155" y1="82" x2="175" y2="82" stroke="#475569" stroke-width="2" marker-end="url(#arr-cap)"/>
 
   <!-- DataFlow -->
   <rect x="180" y="50" width="110" height="65" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
-  <text x="235" y="72" text-anchor="middle" font-weight="600" font-size="11" fill="#22C55E">DataFlow</text>
-  <text x="235" y="90" text-anchor="middle" font-size="9" fill="#1E293B">Persist model</text>
-  <text x="235" y="104" text-anchor="middle" font-size="9" fill="#64748B">ModelRegistry</text>
+  <text x="235" y="72" text-anchor="middle" font-weight="600" font-size="11" fill="#22C55E">AdapterRegistry</text>
+  <text x="235" y="90" text-anchor="middle" font-size="9" fill="#1E293B">Track adapters</text>
+  <text x="235" y="104" text-anchor="middle" font-size="9" fill="#64748B">Ex 8.1</text>
 
   <!-- Arrow -->
   <line x1="295" y1="82" x2="315" y2="82" stroke="#475569" stroke-width="2" marker-end="url(#arr-cap)"/>
@@ -133,15 +136,15 @@
   <text x="130" y="224" text-anchor="middle" font-size="9" fill="#64748B">Detects model staleness</text>
 
   <path d="M 130 240 L 130 310 L 570 310 L 570 290" stroke="#8B5CF6" stroke-width="1.5" stroke-dasharray="5 3" fill="none"/>
-  <text x="350" y="325" text-anchor="middle" font-size="10" fill="#8B5CF6">Monitors deployed model — alerts on feature drift, prediction shift, data quality</text>
+  <text x="350" y="325" text-anchor="middle" font-size="10" fill="#8B5CF6">Compares live traffic with a reference window — PSI, KS and JSD per feature</text>
 </svg>
-<figcaption>The complete production stack: train, persist, wrap in agent, govern, deploy, monitor. One codebase, three channels.</figcaption>
+<figcaption>The complete production stack: fine-tune, register, wrap in an agent, govern, deploy, monitor. One handler, three channels.</figcaption>
 </figure>
 
 <p>
   Every box in this diagram maps to a lesson you have already completed. The
-  capstone connects them into one running system. The scaffolding is roughly 40%
-  — you are connecting proven components, not building everything from zero.
+  capstone connects them into one running system. The scaffolding is minimal —
+  you are connecting proven components, but you write the connections yourself.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -150,11 +153,13 @@
 <h3>Nexus: One Codebase, Three Interfaces</h3>
 
 <p>
-  Nexus is Kailash's multi-channel deployment platform. You register a Python
-  function (or a Kaizen agent) as a <em>service</em>, and Nexus automatically
-  exposes it as a REST endpoint, a CLI command, and an MCP tool. You write the
-  logic once; Nexus handles serialisation, transport, error formatting, and
-  documentation generation for all three channels.
+  Nexus is Kailash's multi-channel deployment platform. You register a handler
+  — a plain Python function with <code>app.handler_extract(name, func)</code>, or
+  a built workflow with <code>app.register(name, workflow.build())</code> — and
+  Nexus exposes it on every channel: an API endpoint
+  (<code>POST /workflows/&lt;name&gt;/execute</code>), a CLI command and an MCP
+  tool. You write the logic once; Nexus handles serialisation, transport and
+  error formatting for all three channels.
 </p>
 
 <div class="callout foundations">
@@ -170,48 +175,54 @@
 <h3>Authentication and Authorisation (RBAC)</h3>
 
 <p>
-  <strong>Authentication</strong> answers "who are you?" — typically via a JWT
-  token. <strong>Authorisation</strong> answers "what are you allowed to do?" —
-  via role-based access control (RBAC). Nexus supports both out of the box.
+  <strong>Authentication</strong> answers "who are you?" — here via a signed JWT.
+  <strong>Authorisation</strong> answers "what are you allowed to do?". Nexus
+  handles authentication through a plugin, <code>NexusAuthPlugin</code>, which
+  verifies the token (missing or forged tokens get HTTP 401 before your code
+  runs) and puts the verified user, including its <code>roles</code> claim, on
+  <code>request.state.user</code>.
 </p>
 
 <p>
-  Roles cascade from PACT's D/T/R structure (Lesson 6.7). An <code>admin</code>
-  can deploy models and change configurations. An <code>analyst</code> can run
-  predictions but not modify the model. A <code>viewer</code> can see results
-  but not trigger new predictions. Each API call, CLI invocation, and MCP tool
-  call checks the caller's role before executing.
+  Authorisation is where PACT comes in. The capstone maps the role claim onto one
+  of three governance tiers, each a role in the capstone org with its own
+  envelope (Lesson 6.7): <code>qa</code> (public clearance, $1, may only answer
+  and search), <code>admin</code> (confidential, $10, may also update the model,
+  view metrics and monitor drift) and <code>audit</code> (secret, $50, may also
+  read the audit log and generate reports). Inside the handler,
+  <code>engine.verify_action</code> decides each request. The role always comes
+  from the <em>signed</em> token — a <code>role</code> field in the request body
+  is ignored, so a caller cannot promote itself.
 </p>
 
 <figure class="diagram">
 <svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
-  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">RBAC: roles control access to services</text>
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">The signed role claim picks the governance tier</text>
 
   <!-- Roles -->
   <rect x="40" y="50" width="120" height="50" rx="8" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
-  <text x="100" y="72" text-anchor="middle" font-weight="700" font-size="12" fill="#EF4444">admin</text>
-  <text x="100" y="90" text-anchor="middle" font-size="9" fill="#1E293B">deploy + predict + view</text>
+  <text x="100" y="72" text-anchor="middle" font-weight="700" font-size="12" fill="#EF4444">audit</text>
+  <text x="100" y="90" text-anchor="middle" font-size="9" fill="#1E293B">secret · $50</text>
 
   <rect x="40" y="115" width="120" height="50" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
-  <text x="100" y="137" text-anchor="middle" font-weight="700" font-size="12" fill="#F59E0B">analyst</text>
-  <text x="100" y="155" text-anchor="middle" font-size="9" fill="#1E293B">predict + view</text>
+  <text x="100" y="137" text-anchor="middle" font-weight="700" font-size="12" fill="#F59E0B">admin</text>
+  <text x="100" y="155" text-anchor="middle" font-size="9" fill="#1E293B">confidential · $10</text>
 
   <rect x="40" y="180" width="120" height="35" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
-  <text x="100" y="202" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">viewer</text>
+  <text x="100" y="202" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">qa · public · $1</text>
 
-  <!-- Services -->
+  <!-- Actions -->
   <rect x="300" y="50" width="160" height="40" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
-  <text x="380" y="75" text-anchor="middle" font-size="11" fill="#4F46E5" font-weight="600">/deploy</text>
+  <text x="380" y="75" text-anchor="middle" font-size="11" fill="#4F46E5" font-weight="600">access_audit_log</text>
 
   <rect x="300" y="105" width="160" height="40" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
-  <text x="380" y="130" text-anchor="middle" font-size="11" fill="#4F46E5" font-weight="600">/predict</text>
+  <text x="380" y="130" text-anchor="middle" font-size="11" fill="#4F46E5" font-weight="600">update_model</text>
 
   <rect x="300" y="160" width="160" height="40" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
-  <text x="380" y="185" text-anchor="middle" font-size="11" fill="#4F46E5" font-weight="600">/results</text>
+  <text x="380" y="185" text-anchor="middle" font-size="11" fill="#4F46E5" font-weight="600">generate_answer</text>
 
   <!-- Access lines -->
   <line x1="165" y1="70" x2="295" y2="70" stroke="#EF4444" stroke-width="1.5"/>
-  <line x1="165" y1="75" x2="295" y2="125" stroke="#EF4444" stroke-width="1.5"/>
   <line x1="165" y1="80" x2="295" y2="180" stroke="#EF4444" stroke-width="1.5"/>
 
   <line x1="165" y1="135" x2="295" y2="125" stroke="#F59E0B" stroke-width="1.5"/>
@@ -220,39 +231,61 @@
   <line x1="165" y1="197" x2="295" y2="180" stroke="#22C55E" stroke-width="1.5"/>
 
   <!-- Blocked -->
-  <text x="560" y="75" font-size="10" fill="#EF4444" font-weight="600">admin: full access</text>
-  <text x="560" y="130" font-size="10" fill="#F59E0B" font-weight="600">analyst: no deploy</text>
-  <text x="560" y="185" font-size="10" fill="#22C55E" font-weight="600">viewer: read only</text>
+  <text x="480" y="75" font-size="10" fill="#EF4444" font-weight="600">audit: answers + audit log</text>
+  <text x="480" y="130" font-size="10" fill="#F59E0B" font-weight="600">admin: answers + model ops</text>
+  <text x="480" y="185" font-size="10" fill="#22C55E" font-weight="600">qa: answers only</text>
 </svg>
-<figcaption>RBAC maps roles to permitted services. Each API/CLI/MCP call checks the caller's role before executing.</figcaption>
+<figcaption>Each tier is a role with its own PACT envelope (a subset of the allowed actions shown). The handler runs <code>verify_action</code> for the tier named in the verified token before the agent runs.</figcaption>
 </figure>
 
-<h3>Middleware: Rate Limiting, Logging, CORS</h3>
+<h3>Plugins and Middleware: Authentication, Rate Limiting, CORS</h3>
 
 <p>
-  Nexus middleware wraps every request with cross-cutting concerns:
+  Nexus adds cross-cutting behaviour in two ways: constructor options and
+  <em>plugins</em> (<code>app.add_plugin(...)</code>). The capstone uses both:
 </p>
 
 <ul>
-  <li><strong>Rate limiting</strong> prevents abuse. A sensible default for internal tools is 60 requests per minute per user. Public-facing APIs may need stricter limits.</li>
-  <li><strong>Logging</strong> captures every request and response for audit. Combined with PACT governance logs, this creates a complete audit trail.</li>
-  <li><strong>CORS</strong> (Cross-Origin Resource Sharing) controls which web domains can call the API. For internal dashboards, whitelist your domain; never use <code>*</code> in production.</li>
+  <li><strong>Authentication</strong> — <code>NexusAuthPlugin(jwt=JWTConfig(...))</code>
+    verifies HS256 tokens. The signing secret comes from the environment
+    (<code>MLFP_JWT_SECRET</code>), never from source code.</li>
+  <li><strong>Rate limiting</strong> — the same plugin takes
+    <code>rate_limit=RateLimitConfig(requests_per_minute=10, burst_size=5)</code>;
+    over the limit, callers get HTTP 429. The limiter counts requests per client
+    whether or not they carry a valid token, so it also absorbs floods of
+    unauthenticated calls. (The constructor's own <code>rate_limit</code> is set
+    to <code>None</code> so the limit is configured in one place.)</li>
+  <li><strong>CORS</strong> (Cross-Origin Resource Sharing) — <code>Nexus(cors_origins=[...])</code>
+    controls which web origins a browser may call the API from. An allowed
+    origin is echoed in <code>Access-Control-Allow-Origin</code>; any other
+    origin gets no such header. Allow-list your intranet domain; never use
+    <code>*</code> in production. One limitation of the installed release: the
+    JWT check runs before CORS, so a browser's pre-flight <code>OPTIONS</code>
+    request (which carries no token) is answered with 401. Server-to-server
+    calls are unaffected; a browser front-end needs the pre-flight handled in
+    front of Nexus.</li>
+  <li><strong>Logging</strong> — every governed request also leaves records in
+    the tier supervisor's hash-chained audit log (Lesson 6.7), which is the
+    evidence an auditor reads.</li>
 </ul>
 
 <h3>Production Monitoring with DriftMonitor</h3>
 
 <p>
-  A model trained on January data may produce poor predictions by July if the
-  underlying distribution shifts. DriftMonitor (from Lesson 3.8) watches for
-  three kinds of drift:
+  A system validated on one population of inputs may behave poorly when the
+  inputs change. <code>DriftMonitor</code> (from Lesson 3.8) compares a window of
+  current data with a stored reference window, column by column, using three
+  statistics: the Population Stability Index (PSI), the Kolmogorov–Smirnov (KS)
+  test and the Jensen–Shannon divergence (JSD). What you feed it decides which
+  kind of drift you catch:
 </p>
 
 <table>
-  <thead><tr><th>Drift type</th><th>What shifts</th><th>Detection method</th><th>Example</th></tr></thead>
+  <thead><tr><th>Drift type</th><th>Column you monitor</th><th>Example</th></tr></thead>
   <tbody>
-    <tr><td>Feature drift</td><td>Input distributions</td><td>KL divergence, PSI</td><td>Median flat size increases from 90 to 110 sqm</td></tr>
-    <tr><td>Prediction drift</td><td>Output distribution</td><td>KS test on predictions</td><td>Mean predicted price drifts upward 15%</td></tr>
-    <tr><td>Data quality</td><td>Missing/invalid values</td><td>Schema validation</td><td>New API version returns null for a required field</td></tr>
+    <tr><td>Input (feature) drift</td><td>A numeric feature of each request</td><td>The capstone monitors question length: exam-style questions are much longer than the short factual questions the assistant was validated on</td></tr>
+    <tr><td>Output drift</td><td>A numeric feature of each response</td><td>Answer length, or a model score, shifting over time</td></tr>
+    <tr><td>Data quality</td><td>Not DriftMonitor's job</td><td>Missing or invalid fields are caught by schema and validation checks at ingestion (Module 1)</td></tr>
   </tbody>
 </table>
 
@@ -260,11 +293,11 @@
   <span class="label">Theory</span>
   <p>
     Population Stability Index (PSI) quantifies how much a distribution has
-    shifted. PSI below 0.1 indicates no meaningful change. PSI between 0.1 and
-    0.25 suggests moderate drift worth investigating. PSI above 0.25 signals
-    significant drift — retrain the model. The formula compares the expected
-    proportion $e_i$ (training data) against the actual proportion $a_i$
-    (production data) across $k$ bins:
+    shifted. A common rule of thumb: below 0.1 is stable, 0.1–0.25 is a moderate
+    shift worth investigating, above 0.25 is a significant shift. The capstone
+    alerts at 0.2, <code>DriftMonitor</code>'s default <code>psi_threshold</code>.
+    The formula compares the expected proportion $e_i$ (reference data) against
+    the actual proportion $a_i$ (current data) across $k$ bins:
   </p>
 </div>
 
@@ -319,12 +352,13 @@
   <span class="label">Kailash Engine</span>
   <p>
     <code>Nexus</code> is the deployment layer of the Kailash platform. It
-    takes any Python callable or Kaizen agent and exposes it via REST API,
-    CLI, and MCP simultaneously. Key methods: <code>Nexus(name)</code> to
-    create a platform, <code>add_auth(provider, roles)</code> to configure
-    RBAC, <code>add_middleware(type, **config)</code> for cross-cutting
-    concerns, <code>register_service(name, handler)</code> to add endpoints,
-    and <code>serve(port)</code> to launch all three channels.
+    exposes a handler on the API, CLI and MCP channels at once. Key calls:
+    <code>Nexus(api_port=8000, cors_origins=[...], rate_limit=...)</code> to
+    create the platform; <code>app.add_plugin(NexusAuthPlugin(jwt=JWTConfig(...), rate_limit=RateLimitConfig(...)))</code>
+    for authentication and rate limiting; <code>app.handler_extract(name, func)</code>
+    to register a Python function (or <code>app.register(name, workflow.build())</code>
+    for a workflow); <code>app.fastapi_app</code> for in-process testing; and
+    <code>app.start()</code> to serve.
   </p>
 </div>
 
@@ -340,22 +374,22 @@
   <!-- Auth -->
   <rect x="150" y="60" width="90" height="50" rx="6" fill="#FEE2E2" stroke="#EF4444"/>
   <text x="195" y="82" text-anchor="middle" font-weight="600" font-size="10" fill="#EF4444">Auth</text>
-  <text x="195" y="98" text-anchor="middle" font-size="9" fill="#64748B">JWT + RBAC</text>
+  <text x="195" y="98" text-anchor="middle" font-size="9" fill="#64748B">JWT plugin</text>
 
   <!-- Rate limit -->
   <rect x="270" y="60" width="90" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
   <text x="315" y="82" text-anchor="middle" font-weight="600" font-size="10" fill="#F59E0B">Rate Limit</text>
-  <text x="315" y="98" text-anchor="middle" font-size="9" fill="#64748B">60/min/user</text>
+  <text x="315" y="98" text-anchor="middle" font-size="9" fill="#64748B">10/min + burst 5</text>
 
   <!-- Governance -->
   <rect x="390" y="60" width="90" height="50" rx="6" fill="#F5F3FF" stroke="#8B5CF6"/>
   <text x="435" y="82" text-anchor="middle" font-weight="600" font-size="10" fill="#8B5CF6">PACT</text>
-  <text x="435" y="98" text-anchor="middle" font-size="9" fill="#64748B">Governance</text>
+  <text x="435" y="98" text-anchor="middle" font-size="9" fill="#64748B">verify_action</text>
 
   <!-- Handler -->
   <rect x="510" y="60" width="90" height="50" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
   <text x="555" y="82" text-anchor="middle" font-weight="600" font-size="10" fill="#22C55E">Handler</text>
-  <text x="555" y="98" text-anchor="middle" font-size="9" fill="#64748B">Agent.run()</text>
+  <text x="555" y="98" text-anchor="middle" font-size="9" fill="#64748B">supervisor.run()</text>
 
   <!-- Logger -->
   <rect x="630" y="60" width="70" height="50" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
@@ -377,166 +411,216 @@
   <text x="315" y="210" text-anchor="middle" font-size="9" fill="#F59E0B">429 Too Many Requests</text>
 
   <line x1="435" y1="115" x2="435" y2="225" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4 3"/>
-  <text x="435" y="240" text-anchor="middle" font-size="9" fill="#8B5CF6">403 Forbidden (governance)</text>
+  <text x="435" y="240" text-anchor="middle" font-size="9" fill="#8B5CF6">200 + "blocked": true (governance)</text>
 </svg>
-<figcaption>Every request flows through auth, rate limiting, and governance before reaching the handler. Failures at any stage return the appropriate HTTP status.</figcaption>
+<figcaption>Every request passes authentication and rate limiting before the handler runs, and governance before the agent runs. The edge layers answer with HTTP 401 or 429; a governance refusal is a normal response that carries <code>"blocked": true</code> and the verdict.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Deploying a Governed HDB Price Prediction Platform</h2>
+<h2>Worked Example: Deploying the Governed Capstone Assistant</h2>
 
 <div class="worked-example">
   <h3>Goal</h3>
   <p>
-    Deploy the governed multi-agent system from Lessons 6.5-6.7 via Nexus.
-    The system predicts HDB resale prices. Three channels (API, CLI, MCP),
-    RBAC authentication, governance checks, and drift monitoring. Singapore-
-    specific: the model was trained on HDB transaction data and serves
-    predictions for flat types across estates like Tampines, Jurong East,
-    and Ang Mo Kio.
+    Deploy the governed capstone question-answering agent from Exercise 8 via
+    Nexus. One handler is registered on all three channels; callers authenticate
+    with signed JWTs, the role claim selects a PACT governance tier, requests are
+    rate-limited and CORS-restricted, and a <code>DriftMonitor</code> watches the
+    incoming questions. The agent answers on the local Ollama model
+    (<code>OLLAMA_CHAT_MODEL</code>), so nothing leaves your machine.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — Build the platform.</span>
-    <p>Create a Nexus application, configure auth and middleware.</p>
-    <pre><code class="language-python">from nexus import Nexus
-from pact import GovernanceEngine, load_org_yaml
-from kaizen_agents import GovernedSupervisor
-from kailash_ml import TrainingPipeline, DriftMonitor, ModelRegistry
-
-# Create platform
-app = Nexus("hdb-price-platform")
-
-# Configure RBAC: three roles
-app.add_auth(provider="jwt", roles=["admin", "analyst", "viewer"])
-
-# Add middleware
-app.add_middleware("rate_limit", requests_per_minute=60)
-app.add_middleware("logging", level="INFO", format="json")
-app.add_middleware("cors", origins=["https://dashboard.internal.sg"])</code></pre>
-  </div>
-
-  <div class="step">
-    <span class="step-label">Step 2 — Load the governed supervisor.</span>
+    <span class="step-label">Step 1 — Rebuild the governed stack.</span>
     <p>
-      Retrieve the governed supervisor from Lesson 6.7. The
-      <code>GovernedSupervisor</code> drives a Kaizen multi-agent pipeline
-      (DataScientist, FeatureEngineer, ModelSelector, ReportWriter) with
-      PACT envelopes attached to every role.
+      <code>compile_capstone_governance()</code> loads the capstone org YAML,
+      builds the <code>GovernanceEngine</code> and applies its clearances and
+      envelopes. <code>build_capstone_stack(engine)</code> attaches a full
+      five-dimension envelope to each tier's role address and builds one
+      <code>GovernedSupervisor</code> per tier.
     </p>
-    <pre><code class="language-python"># Load the trained model
-registry = ModelRegistry()
-model = registry.load("hdb-price-predictor", version="latest")
-
-# Load the compiled org and attach envelopes (same flow as Lesson 6.7)
-loaded = load_org_yaml("org/mortgage_risk.yaml")
-engine = GovernanceEngine(loaded.org_definition)
-
-# The governed supervisor — standalone, not a wrapper
-governed_supervisor = GovernedSupervisor(
-    model="gpt-4o-mini",
-    budget_usd=10.00,
-    tools=["predict_price", "fetch_comparables", "explain_prediction"],
-    data_clearance="confidential",
+    <pre><code class="language-python">from shared.mlfp06.ex_8 import (
+    build_capstone_stack, compile_capstone_governance, handle_qa,
 )
 
-# execute_node is the callback where the real prediction agent runs
-async def executor(spec, inputs):
-    prediction = await prediction_agent.run(inputs)
-    return {"result": prediction, "cost": prediction.cost,
-            "prompt_tokens": prediction.prompt_tokens,
-            "completion_tokens": prediction.completion_tokens}</code></pre>
+engine, _loaded = compile_capstone_governance()
+agents_by_role, tiers = build_capstone_stack(engine)
+for t in tiers:
+    print(f"{t.role:<6} {t.address}  ${t.budget_usd:>4.1f}  {t.clearance:<12} {t.tools}")
+# qa     D1-R1-T1-R1  $ 1.0  public       ['generate_answer', 'search_context']
+# admin  D1-R1-T2-R1  $10.0  confidential ['generate_answer', 'search_context', 'update_model', 'view_metrics', 'monitor_drift']
+# audit  D1-R1-T3-R1  $50.0  secret       ['generate_answer', 'search_context', 'view_metrics', 'access_audit_log', 'generate_report']</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 3 — Register services and deploy.</span>
-    <p>
-      Register the governed agent as a Nexus service. Add a health check
-      and a drift monitoring endpoint.
-    </p>
-    <pre><code class="language-python"># Service wrapper binds the executor to the supervisor's run loop
-async def predict_service(payload: dict) -> dict:
-    result = await governed_supervisor.run(
-        objective=f"Predict price for {payload['flat_type']} in {payload['town']}",
-        execute_node=executor,
-        context=payload,
-    )
-    return {"price": result.output["price"],
-            "budget_consumed": result.budget_consumed,
-            "audit_chain_valid": governed_supervisor.audit.verify_chain()}
+    <span class="step-label">Step 2 — Create the platform: authentication, rate limit, CORS.</span>
+    <pre><code class="language-python">import os
+import secrets
 
-# Prediction service — the core endpoint
-app.register_service("predict", predict_service,
-    roles=["admin", "analyst"])
+from kailash.trust.auth.jwt import JWTConfig
+from kailash.trust.rate_limit.config import RateLimitConfig
+from nexus import Nexus, NexusAuthPlugin
 
-# Results view — read-only
-app.register_service("results", get_recent_predictions,
-    roles=["admin", "analyst", "viewer"])
-
-# Deploy endpoint — admin only
-app.register_service("deploy", deploy_new_model,
-    roles=["admin"])
-
-# Health check — no auth required
-app.register_service("health", lambda: {"status": "ok"},
-    public=True)
-
-# Launch: API on :8000, CLI available, MCP on stdio
-app.serve(port=8000)</code></pre>
-  </div>
-
-  <div class="step">
-    <span class="step-label">Step 4 — Configure drift monitoring.</span>
-    <p>
-      Attach DriftMonitor to the deployed model. It compares incoming
-      feature distributions against the training data baseline.
-    </p>
-    <pre><code class="language-python">monitor = DriftMonitor(
-    model_name="hdb-price-predictor",
-    baseline_data=training_features,
-    metrics=["psi", "ks_test"],
-    alert_threshold=0.25,    # PSI > 0.25 triggers alert
-    check_interval_hours=24  # daily check
+# The signing secret comes from the environment; a random per-run secret is
+# only acceptable for a local demo (tokens die with the process).
+jwt_config = JWTConfig(
+    secret=os.environ.get("MLFP_JWT_SECRET") or secrets.token_urlsafe(48),
+    algorithm="HS256",
 )
 
-# Register monitor with the platform
-app.register_monitor(monitor)</code></pre>
+app = Nexus(
+    api_port=8000,
+    rate_limit=None,                          # configured on the plugin below
+    cors_origins=["https://intranet.example.sg"],
+    enable_durability=False,
+)
+app.add_plugin(NexusAuthPlugin(
+    jwt=jwt_config,
+    rate_limit=RateLimitConfig(requests_per_minute=10, burst_size=5),
+))</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 5 — Test all three channels.</span>
-    <pre><code class="language-python">import requests
+    <span class="step-label">Step 3 — Register one governed handler for all three channels.</span>
+    <p>
+      The handler takes the role from the <em>verified</em> token, never from
+      the request body. <code>handle_qa</code> refuses a role with no tier, runs
+      <code>engine.verify_action</code> for the tier's address, and only then
+      runs the tier's <code>GovernedSupervisor</code> with the Kaizen agent on
+      Ollama. A governance refusal comes back as a normal response with
+      <code>"blocked": True</code> and the verdict — not as an HTTP error.
+    </p>
+    <pre><code class="language-python">from starlette.requests import Request
 
-# Test via REST API
-response = requests.post("http://localhost:8000/predict",
-    headers={"Authorization": f"Bearer {analyst_token}"},
-    json={"town": "Tampines", "flat_type": "4-room",
-          "floor_area_sqm": 93, "lease_commence_year": 1998})
-assert response.status_code == 200
-prediction = response.json()
-print(f"Predicted price: ${prediction['price']:,.0f}")
+async def serve_qa(question: str, request: Request) -> dict:
+    user = request.state.user                       # set by the JWT plugin
+    role = next((r for r in user.roles if r in agents_by_role), "")
+    result = await handle_qa(question, role=role,
+                             agents_by_role=agents_by_role, engine=engine)
+    result["user"] = user.user_id
+    return result
 
-# Test auth: unauthenticated request rejected
-bad = requests.post("http://localhost:8000/predict",
-    json={"town": "Tampines", "flat_type": "4-room"})
-assert bad.status_code == 401
+app.handler_extract("capstone_serve_qa", serve_qa,
+                    description="Governed capstone QA (role from JWT claim)")
+# API: POST /workflows/capstone_serve_qa/execute
+# The same handler is also registered as a CLI command and an MCP tool.</code></pre>
+  </div>
 
-# Test RBAC: viewer cannot predict
-viewer_resp = requests.post("http://localhost:8000/predict",
-    headers={"Authorization": f"Bearer {viewer_token}"},
-    json={"town": "Tampines", "flat_type": "4-room"})
-assert viewer_resp.status_code == 403</code></pre>
-    <pre><code class="language-bash"># Test via CLI
-$ hdb-price-platform predict \
-    --town Tampines --flat-type 4-room \
-    --floor-area 93 --lease-year 1998
-Predicted price: $485,000</code></pre>
+  <div class="step">
+    <span class="step-label">Step 4 — Test the API channel in-process.</span>
+    <p>
+      <code>httpx.ASGITransport</code> sends real HTTP requests to the app
+      without opening a port, so the tests run anywhere. Tokens are issued with
+      the same <code>JWTConfig</code>; the forged token is signed with a
+      different secret.
+    </p>
+    <pre><code class="language-python">import httpx
+from kailash.trust.auth.jwt import JWTValidator
+
+issuer = JWTValidator(jwt_config)
+qa_token = issuer.create_access_token("alice", roles=["qa"])
+guest_token = issuer.create_access_token("eve", roles=["guest"])
+forged_token = JWTValidator(JWTConfig(secret=secrets.token_urlsafe(48), algorithm="HS256")
+                            ).create_access_token("mallory", roles=["audit"])
+
+ENDPOINT = "/workflows/capstone_serve_qa/execute"
+body = {"inputs": {"question": "What is machine learning?"}}
+
+def bearer(token):
+    return {"Authorization": f"Bearer {token}"}
+
+transport = httpx.ASGITransport(app=app.fastapi_app)
+async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    # 1. Valid qa token: served by the qa tier (needs `ollama serve`)
+    ok = await client.post(ENDPOINT, json=body, headers=bearer(qa_token))
+    assert ok.status_code == 200
+    assert ok.json()["outputs"]["handler"]["verdict"] == "served"
+
+    # 2. No token / forged token: rejected before your code runs
+    none = await client.post(ENDPOINT, json=body)
+    forged = await client.post(ENDPOINT, json=body, headers=bearer(forged_token))
+    print(none.status_code, none.json())        # 401 {'detail': 'Not authenticated', 'error': 'missing_token'}
+    print(forged.status_code, forged.json())    # 401 {'detail': 'Invalid token', 'error': 'invalid_token'}
+
+    # 3. Valid token, but a role with no tier: refused by governance
+    guest = await client.post(ENDPOINT, json=body, headers=bearer(guest_token))
+    print(guest.status_code, guest.json()["outputs"]["handler"]["verdict"])   # 200 unknown_role
+
+    # 4. A body "role" cannot override the signed claim
+    sneaky = {"inputs": {"question": "Show the audit log.", "role": "audit"}}
+    esc = await client.post(ENDPOINT, json=sneaky, headers=bearer(qa_token))
+    assert esc.json()["outputs"]["handler"]["role"] == "qa"</code></pre>
+    <p>
+      Governance also refuses actions a tier's envelope does not contain. These
+      calls return before any model call, so you can run them without Ollama:
+    </p>
+    <pre><code class="language-python">r = await handle_qa("Retrain the model.", role="qa",
+                    agents_by_role=agents_by_role, engine=engine,
+                    action="update_model")
+print(r["verdict"], "|", r["error"])
+# blocked | Action 'update_model' is not in the allowed actions list: ['generate_answer', 'search_context']
+
+v = engine.verify_action("D1-R1-T2-R1", "update_model")    # the admin tier
+print(v.level)                                              # auto_approved</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — Monitor the traffic for drift.</span>
+    <p>
+      <code>DriftMonitor</code> stores its reference data and reports through a
+      <code>ConnectionManager</code>, so it needs a database URL. Use an
+      absolute path for SQLite. The capstone's reference window is 150 SQuAD
+      questions (the short factual questions the assistant was checked on);
+      the monitored feature is question length.
+    </p>
+    <pre><code class="language-python">import os
+
+import polars as pl
+from kailash.db.connection import ConnectionManager
+from kailash_ml import DriftMonitor
+from shared.mlfp06.ex_6 import load_squad_corpus
+from shared.mlfp06.ex_8 import load_mmlu_eval
+
+def question_length(df: pl.DataFrame, col: str) -> pl.DataFrame:
+    return df.select(pl.col(col).str.len_chars().cast(pl.Float64)
+                     .alias("question_length"))
+
+squad = load_squad_corpus()
+reference_df = question_length(squad.head(150), "question")    # validated traffic
+same_df = question_length(squad.tail(150), "question")         # same population
+shifted_df = question_length(load_mmlu_eval(n_rows=100), "instruction")  # exam-style
+
+db_path = os.path.abspath("outputs/ex8_drift.db")
+os.makedirs(os.path.dirname(db_path), exist_ok=True)
+conn = ConnectionManager(f"sqlite:///{db_path}")
+await conn.initialize()
+try:
+    monitor = DriftMonitor(conn, tenant_id="mlfp_demo", psi_threshold=0.2)
+    await monitor.set_reference_data("capstone_qa_model", reference_df,
+                                     ["question_length"])
+    for name, window in [("same population", same_df), ("exam-style", shifted_df)]:
+        report = await monitor.check_drift("capstone_qa_model", window)
+        feature = report.feature_results[0]
+        print(f"{name:<16} PSI={feature.psi:.3f}  KS p={feature.ks_pvalue:.3g}  "
+              f"severity={report.overall_severity}  drift={report.overall_drift_detected}")
+finally:
+    await conn.close()</code></pre>
+    <p>
+      Expect a PSI far above the 0.2 threshold for the exam-style window
+      (those questions are several times longer) and a much lower value for the
+      second SQuAD sample. Read <code>overall_drift_detected</code> together
+      with the statistics: the report combines PSI, KS and JSD
+      (<code>feature.statistics_used</code>), and on windows of only 150 rows
+      the KS test can fire on sampling noise alone. Exercise 8.4 also mixes the
+      two populations in steps (0%, 5%, … 60% exam-style) to show how quickly
+      the PSI crosses the threshold.
+    </p>
   </div>
 
   <p>
-    The platform is now live. Three audiences — web dashboards, batch pipelines,
-    AI assistants — all share the same prediction logic, the same governance
-    rules, and the same audit trail.
+    The platform is now live on the API channel and registered on the CLI and
+    MCP channels. Every audience shares the same handler, the same governance
+    tiers and the same audit trail.
   </p>
 </div>
 
@@ -544,35 +628,39 @@ Predicted price: $485,000</code></pre>
 <h2>Debugging Agent Reasoning Chains</h2>
 
 <p>
-  When a governed agent returns an unexpected result, you need to trace the
-  reasoning chain. Kaizen agents emit structured trace events that show every
-  thought, action, observation, and governance check:
+  When an agent returns an unexpected result, look at what it actually did.
+  Two records are available. The supervisor's audit log shows the governed
+  steps (started, completed, failed, held) with their cost. The course's
+  <code>LLMObservatory</code> captures an agent run event by event — every
+  model turn and tool call — so you can see which tools were called, in what
+  order, and whether the agent got stuck repeating itself.
 </p>
 
-<pre><code class="language-python"># GovernedSupervisor captures every step in its audit trail
-result = await governed_supervisor.run(
-    objective="Predict HDB price for Ang Mo Kio 3-room",
-    execute_node=executor,
-    context={"town": "Ang Mo Kio", "flat_type": "3-room"},
-)
+<pre><code class="language-python">from shared.mlfp06._ollama_bootstrap import make_delegate
+from shared.mlfp06.diagnostics import LLMObservatory
+from shared.mlfp06.ex_5 import build_tool_registry, load_hotpotqa, make_tools
 
-# Inspect the reasoning chain via the audit trail
-for entry in governed_supervisor.audit.to_list():
-    print(f"[{entry['phase']}] {entry['action']}")
-    print(f"  Verdict: {entry['verdict']} — {entry['reason']}")
-    if entry.get("tool_name"):
-        print(f"  Tool: {entry['tool_name']}")
+# 1. Governed steps of the capstone qa tier (after a handle_qa call)
+for rec in agents_by_role["qa"].audit.to_list():
+    print(rec["timestamp"], rec["record_type"], rec["action"], rec["details"].get("cost"))
 
-# Verify the chain has not been tampered with
-assert governed_supervisor.audit.verify_chain()</code></pre>
+# 2. Event-level trace of a tool-using agent (the Exercise 5 ReAct set-up)
+delegate = make_delegate(tools=build_tool_registry(make_tools(load_hotpotqa())))
+obs = LLMObservatory(run_id="capstone_debug")
+trace = await obs.agent.capture_run(delegate, "Which film came out first?",
+                                    run_id="debug_1")
+print(obs.agent.tool_usage("debug_1"))     # tool, calls, errors, mean_latency_ms, total_cost_usd
+print(obs.agent.detect_loops("debug_1"))   # the same call repeated = a stuck agent
+obs.agent.plot_trace("debug_1")            # step-by-step timeline (plotly figure)</code></pre>
 
 <div class="callout warning">
   <span class="label">Common pitfall</span>
   <p>
-    Trace output can be verbose. Filter by step type (<code>thought</code>,
-    <code>action</code>, <code>observation</code>, <code>governance</code>)
-    to focus on the relevant part of the chain. In production, traces should
-    be stored in a structured log (not printed to stdout) for later analysis.
+    Traces are verbose. Start from <code>tool_usage</code> (one row per tool)
+    and <code>detect_loops</code> (empty when the agent never repeated a call),
+    and open the full timeline only when those point at a problem. In
+    production, store traces and audit records in a structured log, not on
+    stdout.
   </p>
 </div>
 
@@ -582,42 +670,56 @@ assert governed_supervisor.audit.verify_chain()</code></pre>
 <p>
   Agent testing is fundamentally different from function testing. A function
   returns the same output for the same input. An agent may take different
-  reasoning paths each time. Testing agents requires <em>behavioural
-  assertions</em> — checking that the agent's actions and final answer are
-  reasonable, not that it followed a specific sequence.
+  reasoning paths each time. Split the suite in two. <em>Governance tests</em>
+  are deterministic: a refused request never reaches the model, so the verdict
+  is exact and the tests run without Ollama. <em>Behavioural tests</em> call the
+  model and assert properties of the result (served, non-empty, logged) rather
+  than exact text. This suite mirrors the Exercise 8.4 harness; the first five
+  tests pass on the installed stack without a model.
 </p>
 
-<pre><code class="language-python">def test_agent_uses_correct_tools():
-    """Verify agent calls DataExplorer before TrainingPipeline."""
-    result = agent.run("Analyse and predict HDB prices", trace=True)
-    tool_names = [s.tool_name for s in result.trace if s.type == "action"]
-    assert "explore_data" in tool_names, "Agent must explore data first"
-    assert tool_names.index("explore_data") < tool_names.index("train_model")
+<pre><code class="language-python">import pytest
+from shared.mlfp06.ex_8 import build_capstone_stack, compile_capstone_governance, handle_qa
 
-async def test_agent_respects_governance():
-    """Verify the supervisor stops when its budget is exhausted."""
-    from kaizen_agents import GovernedSupervisor
-    tiny = GovernedSupervisor(
-        model="gpt-4o-mini",
-        budget_usd=0.01,                 # tiny budget
-        tools=["predict_price"],
-        data_clearance="public",
-    )
-    async def expensive_executor(spec, inputs):
-        return {"result": "...", "cost": 0.02,
-                "prompt_tokens": 100, "completion_tokens": 50}
-    result = await tiny.run(
-        objective="Complex multi-step analysis",
-        execute_node=expensive_executor,
-    )
-    assert not result.success
-    assert result.budget_consumed <= 0.01 or "budget" in result.failure_reason.lower()
 
-def test_prediction_within_range():
-    """Verify prediction is within plausible range for Singapore HDB."""
-    result = agent.run("Predict 4-room Tampines price")
-    price = result.output["price"]
-    assert 200_000 <= price <= 1_200_000, f"Price {price} outside HDB range"</code></pre>
+@pytest.fixture(scope="module")
+def stack():
+    engine, _ = compile_capstone_governance()
+    agents_by_role, _tiers = build_capstone_stack(engine)
+    return engine, agents_by_role
+
+
+# Governance tests: refused before any model call, so they run without Ollama
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role, action, expected", [
+    ("invalid_role", "generate_answer", "unknown_role"),
+    ("qa", "update_model", "blocked"),
+    ("qa", "access_audit_log", "blocked"),
+    ("admin", "access_audit_log", "blocked"),
+])
+async def test_governance_refuses(stack, role, action, expected):
+    engine, agents_by_role = stack
+    r = await handle_qa("Any question", role=role, agents_by_role=agents_by_role,
+                        engine=engine, action=action)
+    assert r["blocked"] is True and r["verdict"] == expected
+
+
+def test_tiers_allow_their_own_actions(stack):
+    engine, _ = stack
+    assert engine.verify_action("D1-R1-T2-R1", "update_model").allowed      # admin
+    assert engine.verify_action("D1-R1-T3-R1", "access_audit_log").allowed  # audit
+
+
+# Behavioural test: needs `ollama serve` — asserts properties, not exact text
+@pytest.mark.asyncio
+async def test_qa_tier_answers_and_logs(stack):
+    engine, agents_by_role = stack
+    r = await handle_qa("What is the capital of France?", role="qa",
+                        agents_by_role=agents_by_role, engine=engine)
+    assert r["verdict"] == "served" and r["answer"].strip()
+    trail = agents_by_role["qa"].audit.to_list()
+    assert any(rec["action"].startswith("node_completed") for rec in trail)
+    assert agents_by_role["qa"].audit.verify_chain()</code></pre>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>What You Have Built Across Six Modules</h2>
@@ -703,20 +805,21 @@ def test_prediction_within_range():
   <span class="label">Mistake 1: Skipping auth in development</span>
   <p>
     "I'll add auth later" is how production systems ship without auth.
-    Configure RBAC from day one, even in development. Use test tokens
-    with different roles. The three-line Nexus auth configuration has
-    zero excuse for deferring.
+    Configure authentication from day one, even in development. Issue test
+    tokens with different roles from the same <code>JWTConfig</code>. Adding
+    <code>NexusAuthPlugin</code> is a few lines; there is no excuse for
+    deferring it.
   </p>
 </div>
 
 <div class="callout warning">
   <span class="label">Mistake 2: No drift monitoring</span>
   <p>
-    A model deployed without monitoring is a time bomb. Singapore's HDB
-    market shifts with government cooling measures, interest rate changes,
-    and demographic trends. A model trained on 2023 data will degrade
-    through 2024 unless monitored. DriftMonitor is not optional — it is
-    the feedback loop that keeps the model honest.
+    A model deployed without monitoring is a time bomb. The questions users
+    ask change — a new product, a new regulation, a new kind of user — and an
+    assistant validated on one population quietly degrades on another.
+    DriftMonitor is not optional — it is the feedback loop that tells you when
+    the traffic no longer looks like what you tested.
   </p>
 </div>
 
@@ -724,19 +827,21 @@ def test_prediction_within_range():
   <span class="label">Mistake 3: Testing only the happy path</span>
   <p>
     Your API returns 200 for valid requests — great. But does it return
-    401 for missing auth? 403 for wrong role? 429 for rate limit breaches?
-    422 for malformed input? Test every error path. The error paths are
-    what keep a production system safe.
+    401 for a missing or forged token? Does a valid token with the wrong role
+    come back <code>"blocked": true</code>? Does the limiter answer 429? Does a
+    <code>role</code> field in the body get ignored? Test every refusal path.
+    The refusal paths are what keep a production system safe.
   </p>
 </div>
 
 <div class="callout warning">
   <span class="label">Mistake 4: Forgetting the CLI and MCP channels</span>
   <p>
-    Nexus gives you three channels from one codebase. Test all three.
-    The CLI is how batch jobs will consume the service. MCP is how
-    AI agents will consume it. If you only test the REST API, you are
-    testing one third of your deployment surface.
+    Nexus registers the handler on three channels. The exercise tests the API
+    channel in-process; before production, exercise the CLI (how batch jobs
+    will consume the service) and MCP (how AI agents will consume it) too, and
+    check that each channel authenticates its callers. If you only test the
+    REST API, you are testing one third of your deployment surface.
   </p>
 </div>
 
@@ -746,40 +851,45 @@ def test_prediction_within_range():
 <div class="try-it">
   <h3>Exercise A — Deploy and test all three channels</h3>
   <p>
-    Deploy the governed multi-agent system from M6.5-6.7 via Nexus. Add RBAC
-    with three roles (admin, analyst, viewer). Test via REST API, CLI, and MCP.
-    Verify that unauthenticated requests return 401 and that viewers cannot
-    access the prediction endpoint.
+    Rebuild the worked example. Add a fourth tier, <code>analyst</code>
+    (restricted clearance, $5, actions <code>generate_answer</code> and
+    <code>view_metrics</code>), attached under the ML Director with
+    <code>engine.set_role_envelope</code>. Issue an analyst token and verify
+    over the API that it is served for a question, refused for
+    <code>update_model</code>, and that a missing token returns 401.
   </p>
 </div>
 
 <div class="try-it">
   <h3>Exercise B — Add drift monitoring</h3>
   <p>
-    Configure DriftMonitor on the deployed model. Simulate drift by modifying
-    the input distribution (e.g., increase all floor areas by 20%). Verify
-    that the monitor detects the drift and reports PSI above the threshold.
+    Using Step 5, build traffic windows that mix SQuAD and MMLU questions in
+    increasing proportions (0%, 10%, 20%, 40%). Record the PSI and
+    <code>overall_drift_detected</code> for each window, and find the smallest
+    share of exam-style questions that crosses the 0.2 threshold. Then repeat
+    with a second SQuAD sample of 50 rows and explain any alert you see.
   </p>
 </div>
 
 <div class="try-it">
   <h3>Exercise C — Complete integration test</h3>
   <p>
-    Write an end-to-end test that: (1) submits a prediction request via API,
-    (2) verifies governance logging captured the access check, (3) queries
-    the results endpoint as a viewer, (4) confirms the audit trail shows
-    both the prediction and the results query.
+    Write an end-to-end test that: (1) submits a question via the API with a
+    qa token, (2) submits the same question with an admin token, (3) confirms
+    that each tier's supervisor audit log gained a
+    <code>node_completed</code> record and that both chains verify, and (4)
+    confirms a guest token leaves no new record in any tier's log.
   </p>
 </div>
 
 <div class="try-it">
   <h3>Exercise D — Extend with a plugin</h3>
   <p>
-    Add a Nexus plugin that enriches every prediction response with a
-    confidence interval. The plugin wraps the prediction handler, runs
-    the prediction, then appends a 95% confidence range based on the
-    model's training residuals. Test that the enriched response appears
-    on all three channels.
+    Wrap <code>serve_qa</code> in a second handler that adds the request's
+    latency and the tier's remaining budget (from the supervisor's
+    <code>budget_consumed</code> and the tier's <code>budget_usd</code>) to every
+    response, and register it under a new name. Test over the API that the new
+    fields appear on served responses and are absent from refusals.
   </p>
 </div>
 
@@ -790,9 +900,10 @@ def test_prediction_within_range():
   The production pipeline pattern in this lesson integrates concepts from
   every previous module. <strong>M3.8</strong> introduced DriftMonitor for
   supervised model monitoring. <strong>M5.7</strong> introduced OnnxBridge and
-  InferenceServer for model export and serving. <strong>M6.5</strong> built the
-  ReAct agent with cost budgets. <strong>M6.6</strong> orchestrated multi-agent
-  pipelines and MCP servers. <strong>M6.7</strong> added PACT governance with
+  InferenceServer for model export and serving. <strong>M6.2–6.3</strong>
+  trained the adapters that Exercise 8.1 registers and loads.
+  <strong>M6.5</strong> built tool-using agents with bounded turns and budgets.
+  <strong>M6.6</strong> orchestrated multi-agent pipelines and MCP servers. <strong>M6.7</strong> added PACT governance with
   D/T/R addressing and operating envelopes. This lesson connects all of them
   into a single deployable system.
 </p>
@@ -806,9 +917,9 @@ def test_prediction_within_range():
 <p>
   You started in Lesson 1.1 writing your first line of Python against a
   Singapore weather dataset — twelve rows, three columns. You end in Lesson 6.8
-  deploying a governed, multi-channel AI system that serves predictions via API,
-  CLI, and MCP, enforces role-based access control, monitors for model drift,
-  and logs every decision for compliance audit.
+  deploying a governed, multi-channel AI system that answers questions via API,
+  CLI, and MCP, decides every request with PACT governance, monitors its traffic
+  for drift, and logs every governed step for compliance audit.
 </p>
 <p>
   Between those two points, you built: data exploration pipelines (M1),
@@ -820,7 +931,7 @@ def test_prediction_within_range():
 <p>
   48 lessons. Every concept implemented in code, tested against real data, and
   deployed with the Kailash platform. Singapore was your testing ground —
-  HDB prices, weather data, stock markets, MRT networks. The Kailash SDK is
+  HDB prices, weather records, real public datasets. The Kailash SDK is
   your toolkit — Polars-native, engine-first, production-ready from lesson one.
 </p>
 <p>

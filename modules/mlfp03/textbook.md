@@ -1130,7 +1130,7 @@ The rule picks the largest `alpha` whose mean CV error is within one standard er
 
 Consider an e-commerce team building a customer churn model (an illustrative composite). The ML team's first attempt used logistic regression. It worked reasonably well — 0.74 AUC. The head of data science insisted they try "something more modern". They tried a deep neural network. It reached 0.76 AUC after two weeks of tuning. They tried XGBoost. It reached 0.83 AUC in an afternoon. They tried a random forest. It reached 0.82 AUC in twenty minutes.
 
-What the team had re-learned is one of the more stable empirical findings in ML: **on medium-sized tabular data, tree-based ensembles usually match or beat neural networks** with far less tuning (see, for example, Grinsztajn, Oyallon and Varoquaux, 2022, "Why do tree-based models still outperform deep learning on tabular data?"). It is a strong default, not a law — and as this lesson's own leaderboard shows, sometimes a simpler family wins.
+What the team had re-learned is one of the more stable empirical findings in ML: **on medium-sized tabular data, tree-based ensembles usually match or beat neural networks** with far less tuning (see, for example, Grinsztajn, Oyallon and Varoquaux, 2022, "Why do tree-based models still outperform deep learning on typical tabular data?"). It is a strong default, not a law — and as this lesson's own leaderboard shows, sometimes a simpler family wins.
 
 But the story has another layer. When the team shipped the random forest, the legal team asked: "Can you explain why the model rejected this specific customer?" The random forest could not give a simple answer. They ended up adding a decision tree as a fallback model for the "explainability path" — slightly worse accuracy, but every prediction came with a rule.
 
@@ -2938,101 +2938,155 @@ Each has trade-offs. Post-processing is the easiest to deploy but the least prin
 
 ## Why This Matters
 
-A Singapore insurance company had a great model: a LightGBM fraud detector with 0.88 AUC. They trained it on a Monday. They deployed it on a Wednesday. On Thursday, the data science team found a bug in the feature engineering code. On Friday, when they tried to retrain with the fix, nobody could remember which exact combination of preprocessing steps, hyperparameters, and data splits produced the deployed model. They spent three weeks trying to reproduce the original training run. They never fully succeeded.
+Picture an insurer's data science team (an illustrative composite) with a great model: a LightGBM fraud detector with 0.88 AUC. They trained it on a Monday. They deployed it on a Wednesday. On Thursday, the data science team found a bug in the feature engineering code. On Friday, when they tried to retrain with the fix, nobody could remember which exact combination of preprocessing steps, hyperparameters, and data splits produced the deployed model. They spent three weeks trying to reproduce the original training run. They never fully succeeded.
 
 This is the reproducibility crisis in ML. It is not a problem that better algorithms solve — it is a problem that **workflows** solve. A workflow captures the entire pipeline from raw data to deployed model as a reproducible graph. Every training run is an execution of that graph. Every deployed model is linked back to the graph version that produced it. Every model has an immutable record: the data version, the code version, the hyperparameters, the metrics.
 
-Kailash's `WorkflowBuilder` is this capture mechanism. Combined with the `ModelRegistry` for versioning and `HyperparameterSearch` for tuning, it turns one-off notebooks into production pipelines you can re-run a year later and get the same answer.
+Kailash's `WorkflowBuilder` is this capture mechanism. Combined with the `ModelRegistry` for versioning and `HyperparameterSearch` for tuning, it turns one-off notebooks into production pipelines you can re-run a year later and reproduce.
 
 This lesson covers:
 
 - How to build ML workflows with `WorkflowBuilder`.
-- Custom nodes: `@register_node`, `Node` subclasses, `PythonCodeNode`.
+- Custom nodes (`@register_node`, `Node` subclasses), `PythonCodeNode` for glue logic, and `SwitchNode` for branching.
+- An async/await primer for the database-backed engines.
 - Bayesian optimisation for hyperparameter search.
-- Model registry lifecycle: stage → promote → retire.
-- `ModelSignature` for input/output validation.
+- Model registry lifecycle: staging → shadow → production → archived, and rollback.
+- `ModelSignature` and `MetricSpec`: recording a model's input/output contract and its measured metrics.
 
 ## Core Concepts
 
 ### The Workflow Abstraction
 
-A Kailash workflow is a directed acyclic graph of nodes. Each node does one thing: load data, preprocess, train, evaluate, register. Edges carry data between nodes. The runtime executes the graph in dependency order, passing outputs of upstream nodes as inputs to downstream nodes.
+A Kailash workflow is a directed acyclic graph of nodes. Each node does one thing: load data, train, evaluate, decide. Edges carry named outputs of one node to named inputs of another. The runtime validates the graph, executes nodes in dependency order, and returns every node's outputs together with a `run_id` for the execution.
 
-```python
-from kailash.workflow.builder import WorkflowBuilder
-from kailash.runtime.local import LocalRuntime
+Three kinds of node build an ML workflow:
 
-workflow = WorkflowBuilder()
-workflow.add_node("DataLoaderNode", "load", {"path": "credit.parquet"})
-workflow.add_node("PreprocessNode", "prep", {"scaler": "standard"})
-workflow.add_node("TrainNode", "train", {"model": "lightgbm"})
-workflow.add_node("EvalNode", "eval", {"metrics": ["auc", "ap"]})
+- **Custom nodes** — a class decorated with `@register_node()` that subclasses `Node` and implements `get_parameters()` and `run(**kwargs)`. Heavy work (polars, LightGBM, Kailash engines) goes here. Subclass `AsyncNode` and implement `async_run` instead when the work is a coroutine, such as `TrainingPipeline.train`.
+- **`PythonCodeNode`** — a few lines of inline code for glue logic. Its inputs arrive as variables named after the connection targets, and whatever dict you assign to `result` becomes its output. The code runs in a **sandbox**: only a whitelist of modules may be imported (standard-library modules plus numpy, scipy and scikit-learn, among others) — `polars`, `lightgbm` and the course's `shared` package are refused. That is a feature: inline code stays small and auditable, and anything bigger belongs in a named, testable custom node.
+- **Logic nodes** from `kailash.nodes.logic` — `SwitchNode` routes its `input_data` to `true_output` or `false_output` according to a condition, and `MergeNode` joins branches back together. (There is no `ConditionalNode`.)
 
-workflow.add_connection("load", "data", "prep", "input_data")
-workflow.add_connection("prep", "processed", "train", "train_data")
-workflow.add_connection("train", "model", "eval", "model")
-workflow.add_connection("prep", "processed", "eval", "test_data")
-
-runtime = LocalRuntime()
-results, run_id = runtime.execute(workflow.build())
-```
-
-The four-argument `add_connection` pattern is core to Kailash: `(source_node, source_output, target_node, target_input)`. It creates an edge that carries the named output of one node to the named input of another.
+Node outputs should be small and JSON-friendly. Heavy objects travel as **references** — a parquet path for data, a registry name and version for a model — exactly as a production pipeline passes artefact pointers, not objects.
 
 ### Custom Nodes
 
-When a built-in node does not exist for your task, create one.
-
-**Option 1: inline PythonCodeNode.** Fast for one-off logic:
+Two custom nodes for the credit problem — one that loads and cleans the data, one that trains and evaluates:
 
 ```python
-workflow.add_node("PythonCodeNode", "custom_feature", {
-    "code": """
+from pathlib import Path
+from typing import Any
+
 import polars as pl
-result = {'features': input_data.with_columns(
-    (pl.col('income') / pl.col('debt_ratio')).alias('income_per_debt_unit')
-)}
-"""
-})
-```
+from kailash.nodes.base import Node, NodeParameter, register_node
+from shared import MLFPDataLoader
 
-**Option 2: Subclass Node.** Cleaner and testable:
+DATA_PATH = Path("credit_clean.parquet").resolve()
 
-```python
-from kailash.nodes.base import Node, NodeParameter
-from kailash.nodes.base import register_node
 
 @register_node()
-class CustomFeatureNode(Node):
-    def get_parameters(self):
+class CreditLoadNode(Node):
+    """Load the credit table, drop the identifier and the planted leak, write a parquet artefact."""
+
+    def get_parameters(self) -> dict[str, NodeParameter]:
+        return {}
+
+    def run(self, **kwargs: Any) -> dict[str, Any]:
+        credit = (
+            MLFPDataLoader().load("mlfp02", "sg_credit_scoring.parquet")
+            .drop("customer_id", "future_default_indicator")
+        )
+        credit.write_parquet(DATA_PATH)
+        return {"path": str(DATA_PATH), "rows": credit.height,
+                "default_rate": float(credit["default"].mean())}
+
+
+@register_node()
+class TrainEvalNode(Node):
+    """Hold out 20,000 rows, fit LightGBM on the rest, return held-out AUC and AP."""
+
+    def get_parameters(self) -> dict[str, NodeParameter]:
         return {
-            "input_data": NodeParameter(name="input_data", type=pl.DataFrame, required=True),
+            "path": NodeParameter(name="path", type=str, required=True),
+            "n_estimators": NodeParameter(name="n_estimators", type=int, required=False, default=200),
         }
 
-    def run(self, **kwargs):
-        df = kwargs["input_data"]
-        out = df.with_columns(
-            (pl.col("income") / pl.col("debt_ratio")).alias("income_per_debt_unit")
-        )
-        return {"features": out}
+    def run(self, **kwargs: Any) -> dict[str, Any]:
+        import lightgbm as lgb
+        from sklearn.metrics import average_precision_score, roc_auc_score
+
+        df = pl.read_parquet(kwargs["path"]).sample(fraction=1.0, shuffle=True, seed=42)
+        numeric = [c for c, t in df.schema.items() if t.is_numeric() and c != "default"]
+        test, train = df.head(20_000), df.tail(df.height - 20_000)
+        model = lgb.LGBMClassifier(n_estimators=kwargs.get("n_estimators", 200),
+                                   random_state=42, verbose=-1)
+        model.fit(train.select(numeric).to_numpy(), train["default"].to_numpy())
+        p = model.predict_proba(test.select(numeric).to_numpy())[:, 1]
+        y = test["default"].to_numpy()
+        return {"auc": float(roc_auc_score(y, p)), "ap": float(average_precision_score(y, p))}
 ```
 
-Once registered, `CustomFeatureNode` is available in any workflow by name: `workflow.add_node("CustomFeatureNode", "feat", {})`.
+(`TrainEvalNode` keeps things short by using only the numeric columns; Exercise 7's nodes use the full leak-free preprocessing and `TrainingPipeline`.) Once registered, a node is available in any workflow by its class name.
 
-### Logic Nodes: Branching and Conditional Execution
+### Logic Nodes: Branching on a Quality Gate
 
-Production workflows often need to branch based on runtime conditions. "If AUC > 0.85, promote to staging; else flag for review." Kailash provides conditional nodes for this:
+Production workflows branch on runtime results: "if the model clears the quality gate, promote it; otherwise hold it for human review." The gate itself is a `PythonCodeNode`; a `SwitchNode` does the routing:
 
 ```python
-workflow.add_node("ConditionalNode", "gate", {
-    "condition": "auc > 0.85",
-})
-workflow.add_connection("eval", "metrics", "gate", "inputs")
-workflow.add_connection("gate", "true_branch", "promote", "signal")
-workflow.add_connection("gate", "false_branch", "flag", "signal")
+from kailash.runtime import LocalRuntime
+from kailash.workflow.builder import WorkflowBuilder
+
+GATE = """
+result = {'auc': auc, 'ap': ap, 'min_ap': 2 * default_rate,
+          'promote': auc >= 0.75 and ap >= 2 * default_rate}
+"""
+
+workflow = WorkflowBuilder()
+workflow.add_node("CreditLoadNode", "load", {})
+workflow.add_node("TrainEvalNode", "train_eval", {"n_estimators": 200})
+workflow.add_node("PythonCodeNode", "gate_check", {"code": GATE})
+workflow.add_node("SwitchNode", "gate", {"condition_field": "promote", "operator": "==", "value": True})
+workflow.add_node("PythonCodeNode", "promote", {"code": "result = dict(payload, decision='promote to staging')"})
+workflow.add_node("PythonCodeNode", "hold", {"code": "result = dict(payload, decision='hold for human review')"})
+
+# add_connection(from_node, from_output, to_node, to_input)
+workflow.add_connection("load", "path", "train_eval", "path")
+workflow.add_connection("train_eval", "auc", "gate_check", "auc")
+workflow.add_connection("train_eval", "ap", "gate_check", "ap")
+workflow.add_connection("load", "default_rate", "gate_check", "default_rate")
+workflow.add_connection("gate_check", "result", "gate", "input_data")
+workflow.add_connection("gate", "true_output", "promote", "payload")
+workflow.add_connection("gate", "false_output", "hold", "payload")
+
+# skip_branches: nodes on the branch the SwitchNode did not take are skipped, not fed None
+with LocalRuntime(conditional_execution="skip_branches") as runtime:
+    results, run_id = runtime.execute(workflow.build())
+
+print("run", run_id, "- nodes that ran:", sorted(results))
+print(results["gate_check"]["result"])
+DATA_PATH.unlink()   # the parquet artefact was only needed inside the run
 ```
 
-When `gate` fires, it routes execution to either `promote` or `flag` depending on the condition. This is how you encode the "human-on-the-loop" gate: automated promotion for high-confidence runs, human review for borderline runs.
+The four-argument `add_connection` pattern is core to Kailash: `(source_node, source_output, target_node, target_input)`. A custom node's outputs are the keys of the dict its `run` returns (`"path"`, `"auc"`); a `PythonCodeNode`'s output is the single dict `"result"` (address one key inside it as `"result.<key>"`). In this run the model scores a held-out AUC of about 0.79 and AP of about 0.37, the gate needs AP of at least twice the 12.9% default rate (0.258), so `promote` runs and `hold` is skipped — it has no entry in `results`. If any node raises, `execute()` raises: there is no silent fallback. This is how you encode a "human-on-the-loop" gate: automated promotion for runs that clear the bar, human review for the rest.
+
+### Async/Await: A Short Primer
+
+The registry, `TrainingPipeline`, `HyperparameterSearch` and DataFlow (Lesson 3.8) all talk to a database, so their methods are **coroutines**: `async def` functions that can pause while waiting for I/O. Three rules cover everything in this module:
+
+1. Inside an `async def` function, call a coroutine with `await`: `result = await pipeline.train(...)`.
+2. From ordinary top-level script code, run one coroutine with `asyncio.run(main())`. Put all the awaiting inside `main()` and call `asyncio.run` once — not once per step.
+3. Open connections inside `try:` and close them in `finally:` (`await conn.close()`), so a failure halfway does not leave the database file locked.
+
+```python
+import asyncio
+
+
+async def main():
+    await asyncio.sleep(0.1)       # stands in for a database call
+    return "done"
+
+print(asyncio.run(main()))
+```
+
+In a Jupyter notebook an event loop is already running, so there you write `await main()` directly instead of `asyncio.run(main())`.
 
 ### Hyperparameter Search
 
@@ -3056,250 +3110,174 @@ The idea: treat the validation score as a black-box function of the hyperparamet
 
 **Loop.** (1) Build a surrogate from points tried so far. (2) Maximise the acquisition function over the hyperparameter space to pick the next point. (3) Evaluate `f` at that point. (4) Repeat.
 
-For high-dimensional hyperparameter spaces, Tree-structured Parzen Estimator (TPE, Bergstra et al. 2011) often outperforms Gaussian processes. TPE is what Optuna uses by default.
+For high-dimensional hyperparameter spaces, Tree-structured Parzen Estimator (TPE, Bergstra et al. 2011) often outperforms Gaussian processes. TPE is what Optuna uses by default — and what kailash-ml's `strategy="bayesian"` runs.
 
-**Practical budget.** Bayesian optimisation needs fewer trials than random search to reach a given score. Typical budget: 30–100 trials for 3–5 hyperparameters. Beyond 10 hyperparameters, gains diminish and it is often faster to use informed defaults.
+**Practical budget.** Bayesian optimisation usually needs fewer trials than random search to reach a given score. Typical budget: 30–100 trials for 3–5 hyperparameters. Beyond 10 hyperparameters, gains diminish and it is often faster to use informed defaults.
 
 ### Kailash HyperparameterSearch
 
-```python
-from kailash_ml import HyperparameterSearch, SearchSpace, ParamDistribution, SearchConfig
-
-space = SearchSpace(
-    learning_rate=ParamDistribution.log_uniform(1e-3, 1e-1),
-    num_leaves=ParamDistribution.int_uniform(15, 127),
-    min_child_samples=ParamDistribution.int_uniform(5, 100),
-    reg_lambda=ParamDistribution.log_uniform(1e-3, 1e2),
-)
-
-config = SearchConfig(
-    strategy="bayesian",
-    n_trials=50,
-    cv_folds=5,
-    scoring="average_precision",
-    random_state=42,
-)
-
-searcher = HyperparameterSearch(space=space, config=config)
-best = searcher.fit(X_train, y_train)
-print(f"Best AP: {best.score:.3f}")
-print(f"Best params: {best.params}")
-```
-
-The engine wraps Optuna internally. Parameters are sampled from the declared distributions, evaluated with cross-validation, and the surrogate model is updated after each trial. After `n_trials`, it returns the best configuration.
+`HyperparameterSearch(pipeline=...)` drives a `TrainingPipeline` through a search. You declare the space with `SearchSpace(params=[ParamDistribution(name, type, low=..., high=...)])` — types include `"int_uniform"`, `"uniform"`, `"log_uniform"` and `"categorical"` (with `choices=[...]`) — and the budget and objective with `SearchConfig(strategy="bayesian", n_trials=..., metric_to_optimize="auc", direction="maximize")`. These three classes live in `kailash_ml.engines.hyperparameter_search`. Every trial is one `pipeline.train(...)` call scored on the pipeline's holdout, carved from the data you pass — so pass **development rows only**, and keep the test rows for one final check. The worked example below runs a ten-trial search.
 
 ### Model Registry: Lifecycle Management
 
-A `ModelRegistry` stores trained models along with metadata, versioning, and lifecycle state. The state machine:
+A `ModelRegistry` stores trained models as versioned artefacts together with their metrics, signature and lifecycle stage. In kailash-ml 2.2 the stages and allowed transitions are:
 
 ```
-  Experiment   →   Staging   →   Production   →   Archive
-      |             |              |
-  (register)    (promote)      (retire)
+  register_model() ──► staging ──► shadow ──► production ──► archived
+                          │                       ▲              │
+                          └───────────────────────┘              │
+                          ▲                                       │
+                          └───────────── (rollback) ◄─────────────┘
 ```
 
-- **Experiment**: just trained. Not yet validated for any use.
-- **Staging**: passed validation, ready for A/B testing or shadow deployment.
-- **Production**: serving real traffic.
-- **Archive**: retired but kept for compliance and rollback.
+- **staging** — every new version lands here, from `register_model()` or from `TrainingPipeline.train()`.
+- **shadow** — scores live traffic in parallel with production; its predictions are logged, not acted on.
+- **production** — serving real decisions. Promoting a new version to production automatically moves the previous production version to **archived**.
+- **archived** — retired, kept for audit. The only way back is `archived → staging`, then up again — which is exactly how a rollback works.
 
-```python
-from kailash_ml import ModelRegistry, ModelSignature, MetricSpec
-
-registry = ModelRegistry(path="./model_registry")
-
-sig = ModelSignature(
-    inputs={"X": "float64[:, :]"},
-    outputs={"proba": "float64[:]"},
-)
-
-metrics = MetricSpec(values={
-    "auc": 0.87,
-    "ap": 0.61,
-    "brier": 0.08,
-})
-
-version = registry.register(
-    model=trained_model,
-    name="credit_default_lgb",
-    signature=sig,
-    metrics=metrics,
-    metadata={
-        "training_data": "credit_scoring_v3.parquet",
-        "feature_version": "v2.1",
-        "trained_at": "2026-04-10T14:23:00",
-    },
-)
-print(f"Registered as version {version}")
-```
-
-Promotion between stages:
-
-```python
-registry.promote("credit_default_lgb", version=version, stage="staging")
-# ... some validation passes ...
-registry.promote("credit_default_lgb", version=version, stage="production")
-```
-
-Rollback:
-
-```python
-previous = registry.get("credit_default_lgb", stage="production", version="v42")
-registry.promote("credit_default_lgb", version="v42", stage="production")
-```
+Every move is `await registry.promote_model(name, version, target_stage, reason=...)`, and the reason is stored with the transition — the audit trail of *why* a model went live. (There is no `registry.promote()`; `promote_model` is the method.) An invalid move, such as `archived → shadow`, raises a `ValueError` listing the valid targets.
 
 ### ModelSignature: The Contract
 
-A `ModelSignature` defines the input and output schema. At serve time, the registry validates incoming requests against the signature and rejects anything mismatched. This is your first line of defence against production bugs like "client sends strings where we expected floats" or "client sends 15 features when we trained on 14".
+A `ModelSignature` (from `kailash_ml.types`) records what goes into and comes out of a model:
 
 ```python
-sig = ModelSignature(
-    inputs={
-        "age": "int64",
-        "income": "float64",
-        "debt_ratio": "float64",
-        "num_credit_lines": "int64",
-    },
-    outputs={"default_probability": "float64"},
-    constraints={
-        "age": {"min": 18, "max": 120},
-        "income": {"min": 0, "max": 1e7},
-    },
+from kailash_ml.types import FeatureField, FeatureSchema, ModelSignature
+
+signature = ModelSignature(
+    input_schema=FeatureSchema(
+        name="credit_input",
+        features=[FeatureField("age", "float64"), FeatureField("income_sgd", "float64"),
+                  FeatureField("debt_to_income", "float64")],
+        entity_id_column="application_id",
+    ),
+    output_columns=["default_probability"],
+    output_dtypes=["float64"],
+    model_type="classifier",
 )
 ```
 
-The registry will refuse to serve a request with `age = 10` — it violates the constraint. That protects you from a client bug silently sending garbage.
+Registering a model with its signature means anyone who later loads version 3 can see exactly which columns, in which types, it was trained on — and a serving layer (for example a Nexus endpoint, Module 6) can reject a request that sends 32 features to a model trained on 33, or a string where it expects a float. The signature records names and types; range rules such as "age between 18 and 100" are business validation you write in the serving layer.
 
-## Worked Example: End-to-End Workflow
+## Worked Example: Search, Register, Promote, Roll Back
 
-Following MLFP03 ex_7:
+Following Exercise 7. To keep the search quick, work with a 30,000-applicant sample: hold out 10,000 for test, and let the search and training see only the 20,000 development rows.
 
 ```python
 import asyncio
+import pickle
+from pathlib import Path
+
 import polars as pl
-from kailash.workflow.builder import WorkflowBuilder
-from kailash.runtime.local import LocalRuntime
-from kailash_ml import (
-    PreprocessingPipeline, TrainingPipeline, HyperparameterSearch,
-    ModelRegistry, ModelSignature, SearchSpace, ParamDistribution, SearchConfig,
-)
-import lightgbm as lgb
+from kailash.db import ConnectionManager
+from kailash_ml import HyperparameterSearch, ModelRegistry, PreprocessingPipeline, TrainingPipeline
+from kailash_ml.engines.hyperparameter_search import ParamDistribution, SearchConfig, SearchSpace
+from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+from kailash_ml.interop import to_sklearn_input
+from kailash_ml.types import FeatureField, FeatureSchema, MetricSpec, ModelSignature
+from sklearn.metrics import roc_auc_score
 from shared import MLFPDataLoader
 
-loader = MLFPDataLoader()
+credit = (
+    MLFPDataLoader().load("mlfp02", "sg_credit_scoring.parquet")
+    .drop("customer_id", "future_default_indicator")
+    .sample(n=30_000, shuffle=True, seed=42)
+)
+test_df, dev_df = credit.head(10_000), credit.tail(20_000)
+pipe = PreprocessingPipeline()
+fitted = pipe.setup(dev_df, target="default", train_size=0.8, seed=42, normalize=False,
+                    categorical_encoding="ordinal", imputation_strategy="median")
+feature_names = [c for c in fitted.train_data.columns if c != "default"]
+dev = pl.concat([fitted.train_data, fitted.test_data]).with_columns(
+    pl.int_range(0, 20_000, dtype=pl.Int64).alias("application_id")
+)
+X_test, y_test, _ = to_sklearn_input(pipe.transform(test_df), feature_columns=feature_names,
+                                     target_column="default")
+schema = FeatureSchema(name="credit_input", features=[FeatureField(f, "float64") for f in feature_names],
+                       entity_id_column="application_id")
 
-# Build the workflow
-workflow = WorkflowBuilder()
+space = SearchSpace(params=[
+    ParamDistribution("n_estimators", "int_uniform", low=100, high=600),
+    ParamDistribution("learning_rate", "log_uniform", low=0.01, high=0.3),
+    ParamDistribution("num_leaves", "int_uniform", low=15, high=127),
+    ParamDistribution("min_child_samples", "int_uniform", low=5, high=100),
+])
+config = SearchConfig(strategy="bayesian", n_trials=10, metric_to_optimize="auc",
+                      direction="maximize", register_best=False)
+EVAL = EvalSpec(metrics=["auc"], split_strategy="holdout", test_size=0.2)
 
-workflow.add_node("PythonCodeNode", "load", {
-    "code": """
-from shared import MLFPDataLoader
-loader = MLFPDataLoader()
-df = loader.load('mlfp02', 'credit_scoring.parquet')
-result = {'data': df}
-"""
-})
 
-workflow.add_node("PythonCodeNode", "split", {
-    "code": """
-from sklearn.model_selection import train_test_split
-import numpy as np
-X = data.drop('default').to_numpy()
-y = data.select('default').to_series().to_numpy()
-X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
-result = {'X_train': X_tr, 'y_train': y_tr, 'X_test': X_te, 'y_test': y_te}
-"""
-})
-
-workflow.add_node("PythonCodeNode", "train", {
-    "code": """
-import lightgbm as lgb
-model = lgb.LGBMClassifier(n_estimators=300, learning_rate=0.05, num_leaves=31, random_state=42)
-model.fit(X_train, y_train)
-result = {'model': model}
-"""
-})
-
-workflow.add_node("PythonCodeNode", "evaluate", {
-    "code": """
-from sklearn.metrics import roc_auc_score, average_precision_score, brier_score_loss
-proba = model.predict_proba(X_test)[:, 1]
-result = {
-    'auc': float(roc_auc_score(y_test, proba)),
-    'ap': float(average_precision_score(y_test, proba)),
-    'brier': float(brier_score_loss(y_test, proba)),
-}
-"""
-})
-
-workflow.add_connection("load", "data", "split", "data")
-workflow.add_connection("split", "X_train", "train", "X_train")
-workflow.add_connection("split", "y_train", "train", "y_train")
-workflow.add_connection("split", "X_test", "evaluate", "X_test")
-workflow.add_connection("split", "y_test", "evaluate", "y_test")
-workflow.add_connection("train", "model", "evaluate", "model")
-
-runtime = LocalRuntime()
-results, run_id = runtime.execute(workflow.build())
-print(f"Run ID: {run_id}")
-print(f"Metrics: {results['evaluate']}")
+def lgbm(params):
+    return ModelSpec(model_class="lightgbm.LGBMClassifier", framework="lightgbm",
+                     hyperparameters={"random_state": 42, "verbose": -1, **params})
 ```
 
-Every run gets a unique `run_id`. Every intermediate artefact (data, model, metrics) is stored against that ID. Re-running the same workflow gives you a new ID but the same lineage — you can diff runs to find where behaviour diverged.
-
-### Hyperparameter Search with the Workflow
+Now the whole lifecycle in one coroutine — search, retrain the winner, score it once on test, register it with metrics and signature, promote it, then simulate a monthly retrain and a rollback:
 
 ```python
-space = SearchSpace(
-    learning_rate=ParamDistribution.log_uniform(1e-3, 1e-1),
-    num_leaves=ParamDistribution.int_uniform(15, 127),
-    min_child_samples=ParamDistribution.int_uniform(5, 100),
-    reg_lambda=ParamDistribution.log_uniform(1e-3, 1e2),
-)
-config = SearchConfig(strategy="bayesian", n_trials=40, cv_folds=5,
-                     scoring="average_precision", random_state=42)
+REGISTRY_DB = Path("mlfp03_registry.db").resolve()   # absolute path: see Lesson 3.8
 
-searcher = HyperparameterSearch(space=space, config=config, base_model_cls=lgb.LGBMClassifier)
-best = searcher.fit(X_train, y_train)
-print(f"Best params: {best.params}")
-print(f"Best AP: {best.score:.3f}")
 
-final_model = lgb.LGBMClassifier(**best.params, random_state=42)
-final_model.fit(X_train, y_train)
+async def lifecycle():
+    conn = ConnectionManager(f"sqlite:///{REGISTRY_DB}")
+    await conn.initialize()
+    try:
+        registry = ModelRegistry(conn)
+        pipeline = TrainingPipeline(feature_store=None, registry=registry)
+
+        search = await HyperparameterSearch(pipeline=pipeline).search(
+            data=dev, schema=schema, base_model_spec=lgbm({}), search_space=space,
+            config=config, eval_spec=EVAL, experiment_name="credit_hp_search",
+        )
+        print("best params:", search.best_params, "| validation AUC:", round(search.best_metrics["auc"], 3))
+
+        final = await pipeline.train(data=dev, schema=schema, model_spec=lgbm(search.best_params),
+                                     eval_spec=EVAL, experiment_name="credit_scorer_training")
+        model = pickle.loads(await registry.load_artifact("credit_scorer_training", final.model_version.version))
+        test_auc = float(roc_auc_score(y_test, model.predict_proba(X_test)[:, 1]))
+        print(f"test AUC (used once): {test_auc:.3f}")
+
+        signature = ModelSignature(input_schema=schema, output_columns=["default_probability"],
+                                   output_dtypes=["float64"], model_type="classifier")
+        metrics = [MetricSpec(name="auc_roc", value=test_auc, split="test")]
+        v1 = await registry.register_model("credit_scorer", pickle.dumps(model),
+                                           metrics=metrics, signature=signature)
+        if test_auc >= 0.75:   # the quality gate, computed — never assumed
+            await registry.promote_model("credit_scorer", v1.version, "production",
+                                         reason=f"test AUC {test_auc:.3f} >= 0.75")
+
+        # A month later: a retrained version goes live, and v1 is archived automatically
+        v2 = await registry.register_model("credit_scorer", pickle.dumps(model),
+                                           metrics=metrics, signature=signature)
+        await registry.promote_model("credit_scorer", v2.version, "production", reason="monthly retrain")
+        print([(m.version, m.stage) for m in await registry.get_model_versions("credit_scorer")])
+
+        # v2 misbehaves in production: roll back to v1 (archived -> staging -> production)
+        await registry.promote_model("credit_scorer", v1.version, "staging", reason="rollback: v2 drift alert")
+        await registry.promote_model("credit_scorer", v1.version, "production", reason="rollback: v2 drift alert")
+        print([(m.version, m.stage) for m in await registry.get_model_versions("credit_scorer")])
+    finally:
+        await conn.close()
+
+
+asyncio.run(lifecycle())
 ```
 
-### Registry and Promotion
+What a run shows: the ten-trial Bayesian search lands on a validation AUC of about 0.76–0.78 on its holdout of the 20,000 development rows (the sampler's choices vary from run to run, so the winning parameters do too); the retrained winner scores within about 0.01 of that on the 10,000 untouched test rows — consistent, because no decision was made on them. After the monthly retrain the versions read `[(2, 'production'), (1, 'archived')]`; after the rollback, `[(2, 'archived'), (1, 'production')]`. Every transition carries its reason. The scores are a little below Lesson 3.4's because each model here trains on 16,000 rows instead of 64,000 — a reminder that a search budget spent on a smaller sample buys speed, not accuracy. (On a laptop the search takes a few minutes; Exercise 7 runs twenty trials on the full development set and compares them with a four-point grid.)
 
-```python
-registry = ModelRegistry(path="./registry")
-
-sig = ModelSignature(
-    inputs={f"feature_{i}": "float64" for i in range(X_train.shape[1])},
-    outputs={"default_probability": "float64"},
-)
-
-version = registry.register(
-    model=final_model,
-    name="mlfp_credit_default",
-    signature=sig,
-    metrics={"auc": 0.87, "ap": 0.61},
-    metadata={"hyperparameters": best.params, "run_id": run_id},
-)
-
-registry.promote("mlfp_credit_default", version=version, stage="staging")
-```
+Run the workflow from the Logic Nodes section and this lifecycle together and you have the whole of Exercise 7 in miniature: a reproducible run with a `run_id`, a computed promotion gate, a searched model, and a registry that can tell an auditor which version served which decision, and why.
 
 ## Try It Yourself
 
-**Exercise A (easy).** Build a workflow that loads the HDB data, trains a `LinearRegression`, and reports R-squared. Add a conditional node that promotes to staging only if R-squared > 0.7.
+**Exercise A (easy).** Build a workflow that loads the HDB data, trains a `LinearRegression` on `floor_area_sqm` and `lease_commence_date` (hold out test rows first), and reports R-squared. Add a `PythonCodeNode` gate and a `SwitchNode` that route to a "promote" node only if R-squared > 0.7. Does your model pass? (Inspect `resale_price` first — the synthetic table contains implausible prices.)
 
 **Exercise B (medium).** Compare random search and Bayesian optimisation on LightGBM for the credit dataset. Both get 30 trials. Report the best AP each achieves. Plot the cumulative-best-so-far curve for both. Does Bayesian win?
 
-**Exercise C (hard).** Subclass `Node` to create a `SMOTENode` that performs SMOTE resampling. Register it with `@register_node`. Use it in a workflow between `split` and `train`.
+**Exercise C (hard).** Subclass `Node` to create a `SMOTENode` that performs SMOTE resampling. Register it with `@register_node`. Use it in a workflow between a split node and a train node, and make sure it resamples the training rows only — never the test rows.
 
 ## Cross-References
 
-- **Module 1, Lesson 1.8** Python classes and inheritance — used for subclassing `Node`.
+- **Module 1, Lesson 1.8** Data pipelines — the same load → transform → output thinking, now as a graph of nodes.
 - **Lesson 3.4** Gradient boosting — the model we are tuning here.
 - **Lesson 3.5** Metrics — what we optimise during search.
 - **Forward link:** Lesson 3.8 uses the model registered here for production deployment.
@@ -3339,15 +3317,9 @@ TPE scales better than GPs and handles conditional and categorical parameters na
 
 ## Deeper Dive: The Workflow as a Reproducibility Artefact
 
-A Kailash workflow is more than an execution plan — it is a reproducibility artefact. When you call `runtime.execute(workflow.build())`, the runtime captures:
+A Kailash workflow is more than an execution plan — it is a reproducibility artefact. The workflow definition (nodes, parameters, connections) is code you can version in git, and every `runtime.execute(workflow.build())` returns the outputs of each node together with a unique `run_id`. Store that `run_id` with what the run produced — in the registry's promotion reason, an `ExperimentTracker` run, or a DataFlow table (Lesson 3.8) — together with the git commit and the data version.
 
-- The workflow DAG structure.
-- The parameters of every node.
-- The order of execution and timing.
-- The inputs and outputs of every node (or references to them in the data store).
-- The run ID, a unique identifier for this execution.
-
-Six months later, you can take the run ID and rebuild the exact workflow that produced a specific model, with the exact parameters. You cannot do this with a notebook — notebooks have global state, cell ordering that can be rerun out of order, and hidden dependencies on what was last in memory. Workflows do not.
+Six months later, that record tells you exactly which workflow definition, parameters and data produced a specific model, and you can re-run it. You cannot do this with a notebook — notebooks have global state, cell ordering that can be rerun out of order, and hidden dependencies on what was last in memory. Workflows do not.
 
 This is why production ML systems move from notebooks to workflows as they mature. A notebook is fine for exploration. A workflow is required for production.
 
@@ -3356,7 +3328,7 @@ This is why production ML systems move from notebooks to workflows as they matur
 1. Why is the `run_id` from `runtime.execute()` important for reproducibility?
 2. When would you use `PythonCodeNode` instead of a custom `Node` subclass? When the reverse?
 3. Bayesian optimisation has an exploration-exploitation trade-off. What acquisition function parameter controls it, and what does tuning it do?
-4. A `ModelSignature` constraint rejects `age = 10`. A legitimate client in Malaysia sends such a request for a special-case product. How do you handle this without breaking the contract?
+4. A client sends a request with 32 features to a model whose `ModelSignature` lists 33. Where should that request be rejected, and what should the error say? Now suppose a legitimate new product needs an extra feature: why is the right answer a new model version with a new signature rather than relaxing the old one?
 5. Derive Expected Improvement from the definition `E[max(0, f(theta) - f_best)]` assuming `f(theta)` is Gaussian with known mean and variance.
 6. Why does TPE handle conditional parameters better than Gaussian processes?
 
@@ -3368,7 +3340,7 @@ This is why production ML systems move from notebooks to workflows as they matur
 
 ## Why This Matters
 
-A Singapore telco deployed a customer churn model in January 2020. It was performing brilliantly. Then COVID-19 hit. Roaming stopped. Data usage spiked as workers moved home. The feature distributions shifted dramatically. The model's predictions continued to be confident, but they were now confidently wrong. By March, churn predictions had decoupled entirely from actual churn. No alarm fired because the model never "errored" — it just quietly degraded. The telco lost an estimated S$8 million in retention budget spent on customers who did not actually churn before they detected the problem.
+Picture a telco (an illustrative composite) that deployed a customer churn model in January 2020. It was performing brilliantly. Then COVID-19 hit. Roaming stopped. Data usage spiked as workers moved home. The feature distributions shifted dramatically. The model's predictions continued to be confident, but they were now confidently wrong. By March, churn predictions had decoupled entirely from actual churn. No alarm fired because the model never "errored" — it just quietly degraded. By the time anyone noticed, months of retention budget had gone to customers who were never going to leave.
 
 This is **model drift**. A model trained on yesterday's distribution can become useless when the world changes. Catching drift is not optional — it is the single most important operational task for a deployed ML model. You need to monitor:
 
@@ -3397,55 +3369,70 @@ Stages 5–8 are what "production" means. Without them, you have a notebook, not
 
 ### DataFlow: Persistence for ML Results
 
-Kailash's `DataFlow` is a zero-config database layer. You declare a schema with `@db.model`, and DataFlow generates CRUD operations automatically. It handles connection pooling, schema migrations, and async I/O.
+Kailash's `DataFlow` is a zero-config database layer. You declare a table as a plain Python class decorated with `@db.model` — the class annotations *are* the schema, ordinary defaults are column defaults, and an `id: int` annotation becomes an auto-generated primary key. DataFlow creates the table and gives you CRUD operations through `db.express` (and, for workflows, generated CRUD nodes).
 
 ```python
-from kailash.db import ConnectionManager, db
-from kailash.db.models import field
+from pathlib import Path
+
+from dataflow import DataFlow
+
+# Use an ABSOLUTE path: DataFlow's SQLite adapter resolves a relative
+# "sqlite:///evals.db" from the filesystem root and fails to open it.
+db = DataFlow(f"sqlite:///{Path('mlfp03_evals.db').resolve()}")
+
 
 @db.model
 class ModelEvaluation:
-    id: int = field(primary_key=True)
-    model_name: str = field(index=True)
-    model_version: str
-    dataset_version: str
+    id: int
+    model_name: str
+    model_version: int
     auc: float
     average_precision: float
     brier_score: float
-    calibration_error: float
-    trained_at: str
-    metadata_json: str
+    dataset_version: str = "v1"
+
 
 @db.model
 class PredictionLog:
-    id: int = field(primary_key=True)
-    request_id: str = field(index=True)
-    model_name: str = field(index=True)
-    model_version: str
-    features_json: str
+    id: int
+    request_id: str
+    model_name: str
+    model_version: int
     prediction: float
-    predicted_at: str
-    outcome: float = field(nullable=True)  # filled in later when ground truth arrives
+    outcome: int = -1        # filled in later, when the loan's outcome is known
 ```
 
-Using these models:
+Every `db.express` method is a coroutine and takes the **model name as a string**:
 
 ```python
-async def persist_evaluation(conn, eval_data):
-    return await db.express.create(conn, ModelEvaluation, eval_data)
+import asyncio
 
-async def get_history(conn, model_name):
-    return await db.express.list(conn, ModelEvaluation,
-                                  filter={"model_name": model_name},
-                                  order_by="-trained_at")
 
-async def update_outcome(conn, request_id, outcome):
-    return await db.express.update(conn, PredictionLog,
-                                    filter={"request_id": request_id},
-                                    values={"outcome": outcome})
+async def bookkeeping():
+    await db.initialize()                       # creates the tables on first use
+    try:
+        await db.express.create("ModelEvaluation", {
+            "model_name": "credit_scorer", "model_version": 1,
+            "auc": 0.796, "average_precision": 0.380, "brier_score": 0.097,
+        })
+        await db.express.create("PredictionLog", {
+            "request_id": "req-0001", "model_name": "credit_scorer",
+            "model_version": 1, "prediction": 0.21,
+        })
+        log = await db.express.find_one("PredictionLog", {"request_id": "req-0001"})
+        await db.express.update("PredictionLog", log["id"], {"outcome": 0})   # ground truth arrives
+        history = await db.express.list("ModelEvaluation", filter={"model_name": "credit_scorer"})
+        n_logged = await db.express.count("PredictionLog", {"model_name": "credit_scorer"})
+        return history, n_logged
+    finally:
+        await db.close_async()
+
+
+history, n_logged = asyncio.run(bookkeeping())
+print(len(history), "evaluation row(s);", n_logged, "prediction(s) logged")
 ```
 
-`db.express` is the built-in convenience API: `create`, `list`, `get`, `update`, `delete`. For complex queries, drop to raw SQL via the connection manager, but 80% of ML bookkeeping is satisfied by `db.express` alone.
+`db.express` covers `create`, `read` (by id), `find_one`, `list` (with `filter`, `limit`, `order_by`), `update` (by id), `delete` (by id) and `count`. That is enough for nearly all ML bookkeeping: evaluation history, prediction logs, drift checks, review decisions. Run the snippet twice and the history grows — the rows persist in the file between runs, which is the point.
 
 ### DriftMonitor: Watching the World Change
 
@@ -3495,8 +3482,8 @@ where `F_actual` and `F_baseline` are the ECDFs of the two samples. The test sta
 
 KS has a known null distribution: if both samples come from the same distribution, `sqrt(n) * D` converges to the Kolmogorov distribution. The scipy function `scipy.stats.ks_2samp` returns both `D` and a p-value.
 
-- `p-value < 0.01`: strong evidence of drift.
-- `p-value >= 0.01`: no significant drift.
+- A small p-value is evidence that the live distribution differs from the reference.
+- With large batches KS detects even tiny, harmless shifts, and with many features tested at once some small p-values appear by chance — so set the threshold with both in mind (see the Bonferroni note below).
 
 KS is more sensitive than PSI for detecting small-scale distribution changes, but it does not tell you the direction or magnitude of the shift. Use both: PSI for a continuous "how much" score, KS for a statistical test.
 
@@ -3508,29 +3495,18 @@ Monitor rolling AUC, rolling AP, and rolling log loss over a sliding window (e.g
 
 The challenge is that ground truth often arrives late. For credit default, you need 30–180 days before you know if a loan defaulted. So performance drift is measured with a lag, while input drift is measured immediately. Combine both for full coverage.
 
-### DriftSpec
+### Configuring DriftMonitor
 
-Kailash's `DriftMonitor` takes a `DriftSpec` declaring which features to monitor, which tests to run, and which thresholds trigger alerts:
+Kailash's `DriftMonitor` runs PSI and KS (plus a Jensen-Shannon distance) on every monitored feature, keeps the reference distribution and every report in its own database tables, and flags features that cross your thresholds:
 
-```python
-from kailash_ml import DriftMonitor, DriftSpec
+- `DriftMonitor(conn, tenant_id=..., psi_threshold=0.2, ks_threshold=0.001)` — `conn` is an initialised `kailash.db.ConnectionManager`. Give the monitor **its own SQLite file**: the model registry's database already contains a drift-report table with a different layout, and sharing the file fails with "no column named id".
+- `await monitor.set_reference_data(model_name, reference_frame, feature_columns)` — usually the training rows.
+- `report = await monitor.check_drift(model_name, new_batch)` — returns a `DriftReport` with `overall_drift_detected`, `overall_severity` and one entry per feature in `report.feature_results` (`feature_name`, `psi`, `drift_detected`, ...).
+- For unattended monitoring, `schedule_monitoring(...)` takes an interval, a function that fetches the latest batch and an optional `DriftSpec` describing what to check; `start_scheduler()` runs it.
 
-spec = DriftSpec(
-    features={
-        "age": {"test": "psi", "threshold": 0.25},
-        "income": {"test": "ks", "threshold": 0.05},
-        "debt_ratio": {"test": "psi", "threshold": 0.25},
-    },
-    baseline_data=X_train,
-    monitoring_frequency="daily",
-    alert_channels=["logs", "metrics"],
-)
+Why a KS threshold of 0.001 rather than the familiar 0.05? Because the monitor runs one test per feature — 33 tests per batch on the credit data. At 0.05, even with no drift at all you would expect about 1.6 false alarms per batch. Dividing 0.05 by the number of tests (the **Bonferroni correction**, 0.05 / 33 ≈ 0.0015) keeps the chance of *any* false alarm per batch near 5%. The worked example runs the monitor on a clean and a drifted batch.
 
-monitor = DriftMonitor(spec=spec)
-alerts = monitor.check(new_batch)
-```
-
-If any feature breaches its threshold, the monitor emits an alert that downstream systems can route to Slack, PagerDuty, or a retraining queue.
+If any feature breaches its threshold, the report says so; routing that to a pager, a retraining queue or a DataFlow alert table (as Exercise 8 does) is your pipeline's job.
 
 ### Conformal Prediction
 
@@ -3543,11 +3519,11 @@ Standard classifiers give you a probability. Conformal prediction gives you a **
 3. Compute the `ceil((n + 1) * (1 - alpha)) / n` quantile of the `s_i`. Call it `q`.
 4. For a new point `x`, the prediction set is `{y : 1 - p_hat(y | x) <= q}`.
 
-This set has coverage `1 - alpha` in expectation, regardless of the model. `alpha = 0.1` gives 90% coverage.
+This set contains the true label with probability **at least** `1 - alpha`, whatever the model — `alpha` is the *miscoverage* level, so `alpha = 0.1` gives at least 90% coverage. Two conditions come with the guarantee. It is **marginal**: averaged over future cases, not promised for each individual or each sub-group. And it needs the calibration and future data to be **exchangeable** — drift breaks it. For a binary classifier a set can contain one class (a confident call), both classes (route to a human), or occasionally neither. Use the finite-sample quantile level above with `np.quantile(..., method="higher")`; plain `np.quantile(scores, 1 - alpha)` drops the `(n + 1)` correction and the default interpolation can land just below the needed order statistic.
 
 For regression, use `s_i = |y_i - y_hat(x_i)|`, and the prediction interval is `[y_hat(x) - q, y_hat(x) + q]`.
 
-Conformal prediction is the only method that gives distribution-free coverage guarantees. It is the right tool when downstream decisions need principled uncertainty quantification — think medical diagnosis, legal risk assessments, safety-critical systems.
+Conformal prediction is the most widely used way to get distribution-free, finite-sample coverage guarantees on top of any model. It is the right tool when downstream decisions need principled uncertainty quantification — think medical diagnosis, legal risk assessments, safety-critical systems.
 
 ### Model Cards
 
@@ -3580,241 +3556,294 @@ These practices turn one-off ML projects into a sustainable engineering function
 
 ## Worked Example: End-to-End Production Pipeline
 
-Following MLFP03 ex_8:
+Following Exercise 8, this example takes the credit model from training to a monitored, documented candidate for production. The rows get four jobs (see the Deeper Dive "Why So Many Splits?"): **fit** the booster, **calibrate** its probabilities, **conformal-calibrate** the prediction sets, and **evaluate** once.
 
 ```python
 import asyncio
-from datetime import datetime
 import json
+import pickle
+from datetime import datetime, timezone
+from pathlib import Path
+
 import numpy as np
 import polars as pl
-import lightgbm as lgb
-from sklearn.model_selection import train_test_split
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.metrics import (
-    roc_auc_score, average_precision_score, brier_score_loss, log_loss,
-)
 from kailash.db import ConnectionManager
-from kailash.db.models import db, field
-from kailash_ml import ModelRegistry, ModelSignature, DriftMonitor, DriftSpec
+from kailash_ml import ModelRegistry, PreprocessingPipeline, TrainingPipeline
+from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+from kailash_ml.interop import to_sklearn_input
+from kailash_ml.types import FeatureField, FeatureSchema
 from shared import MLFPDataLoader
 
-loader = MLFPDataLoader()
-credit = loader.load("mlfp02", "credit_scoring.parquet")
-
-feature_cols = [c for c in credit.columns if c != "default"]
-X = credit.select(feature_cols).to_numpy()
-y = credit.select("default").to_series().to_numpy()
-
-X_train, X_holdout, y_train, y_holdout = train_test_split(
-    X, y, test_size=0.3, stratify=y, random_state=42,
+credit = (
+    MLFPDataLoader().load("mlfp02", "sg_credit_scoring.parquet")
+    .drop("customer_id", "future_default_indicator")   # identifier + planted leak (Lesson 3.1)
+    .sample(fraction=1.0, shuffle=True, seed=42)
 )
-X_cal, X_test, y_cal, y_test = train_test_split(
-    X_holdout, y_holdout, test_size=0.5, stratify=y_holdout, random_state=42,
-)
+test_df, dev_df = credit.head(20_000), credit.tail(80_000)
+pipe = PreprocessingPipeline()
+fitted = pipe.setup(dev_df, target="default", train_size=0.8, seed=42, normalize=False,
+                    categorical_encoding="ordinal", imputation_strategy="median")
+feature_names = [c for c in fitted.train_data.columns if c != "default"]
+
+
+def to_xy(frame):
+    X, y, _ = to_sklearn_input(frame, feature_columns=feature_names, target_column="default")
+    return X, y.astype(int)
+
+
+def as_frame(X):
+    return pl.DataFrame(X, schema=feature_names, orient="row")
+
+
+X_fit, y_fit = to_xy(fitted.train_data)            # 64,000 rows: train the booster
+X_cal, y_cal = to_xy(fitted.test_data)            # 16,000 rows: fit the isotonic calibrator
+X_test, y_test = to_xy(pipe.transform(test_df))   # 20,000 rows, split in two below
+X_conf, y_conf = X_test[:10_000], y_test[:10_000]  # conformal calibration
+X_eval, y_eval = X_test[10_000:], y_test[10_000:]  # final evaluation only
+
+schema = FeatureSchema(name="credit_input", features=[FeatureField(f, "float64") for f in feature_names],
+                       entity_id_column="application_id")
+REGISTRY_DB = Path("mlfp03_registry.db").resolve()
+MODEL_NAME = "credit_default_production"
 ```
 
-**Step 1: Train and calibrate.**
+**Step 1: Train through `TrainingPipeline`, then calibrate on rows the model never saw.** No class weights this time (Lesson 3.5 showed they inflate the probabilities that conformal sets and the model card depend on):
 
 ```python
-base = lgb.LGBMClassifier(
-    n_estimators=500, learning_rate=0.05, num_leaves=31,
-    subsample=0.8, colsample_bytree=0.8, random_state=42,
-)
-calibrated = CalibratedClassifierCV(base, method="isotonic", cv=5)
-calibrated.fit(X_train, y_train)
+async def train_and_calibrate():
+    conn = ConnectionManager(f"sqlite:///{REGISTRY_DB}")
+    await conn.initialize()
+    try:
+        registry = ModelRegistry(conn)
+        pipeline = TrainingPipeline(feature_store=None, registry=registry)
+        fit_frame = as_frame(X_fit).with_columns(
+            pl.Series("default", y_fit),
+            pl.int_range(0, len(y_fit), dtype=pl.Int64).alias("application_id"),
+        )
+        result = await pipeline.train(
+            data=fit_frame, schema=schema,
+            model_spec=ModelSpec(model_class="lightgbm.LGBMClassifier", framework="lightgbm",
+                                 hyperparameters={"n_estimators": 300, "learning_rate": 0.05, "max_depth": 5,
+                                                  "num_leaves": 31, "min_child_samples": 40,
+                                                  "random_state": 42, "verbose": -1}),
+            eval_spec=EvalSpec(metrics=["auc"], split_strategy="holdout", test_size=0.2),
+            experiment_name=MODEL_NAME,
+        )
+        version = result.model_version.version
+        base = pickle.loads(await registry.load_artifact(MODEL_NAME, version))
+        calibrated = await pipeline.calibrate(base, as_frame(X_cal), pl.Series("default", y_cal),
+                                              method="isotonic")
+        return calibrated, version
+    finally:
+        await conn.close()
 
-p_test = calibrated.predict_proba(X_test)[:, 1]
-auc = roc_auc_score(y_test, p_test)
-ap = average_precision_score(y_test, p_test)
-brier = brier_score_loss(y_test, p_test)
-ll = log_loss(y_test, p_test)
-print(f"Test AUC={auc:.3f}, AP={ap:.3f}, Brier={brier:.4f}, LogLoss={ll:.3f}")
+
+calibrated, version = asyncio.run(train_and_calibrate())
+
+from sklearn.metrics import average_precision_score, brier_score_loss, log_loss, roc_auc_score
+
+p_eval = calibrated.predict_proba(X_eval)[:, 1]
+metrics = {
+    "auc": float(roc_auc_score(y_eval, p_eval)),
+    "average_precision": float(average_precision_score(y_eval, p_eval)),
+    "brier": float(brier_score_loss(y_eval, p_eval)),
+    "log_loss": float(log_loss(y_eval, p_eval)),
+}
+print(f"registered base model v{version}; calibrated model on evaluation rows:",
+      {k: round(v, 4) for k, v in metrics.items()})
 ```
 
-**Step 2: Conformal prediction for uncertainty.**
+@@S1@@
+
+**Step 2: Conformal prediction sets.** The score of a row is one minus the probability the model gave to what actually happened. `q_hat` is the finite-sample-corrected quantile of those scores on the conformal-calibration rows:
 
 ```python
-alpha = 0.10
-p_cal = calibrated.predict_proba(X_cal)
-y_cal_int = y_cal.astype(int)
-nonconformity = 1.0 - p_cal[np.arange(len(y_cal_int)), y_cal_int]
+ALPHA = 0.10
 
-q_level = np.ceil((len(nonconformity) + 1) * (1 - alpha)) / len(nonconformity)
-q_level = min(q_level, 1.0)
-q_hat = np.quantile(nonconformity, q_level)
-print(f"Conformal quantile q_hat = {q_hat:.3f} for coverage {1 - alpha:.0%}")
+p_conf = calibrated.predict_proba(X_conf)[:, 1]
+scores = np.where(y_conf == 1, 1 - p_conf, p_conf)            # 1 - p(true class)
+n = len(scores)
+q_hat = float(np.quantile(scores, min(np.ceil((n + 1) * (1 - ALPHA)) / n, 1.0), method="higher"))
 
-p_test_full = calibrated.predict_proba(X_test)
-prediction_sets = [np.where(1.0 - p_test_full[i] <= q_hat)[0] for i in range(len(X_test))]
-
-coverage = np.mean([y_test[i] in prediction_sets[i] for i in range(len(X_test))])
-avg_set_size = np.mean([len(s) for s in prediction_sets])
-print(f"Empirical coverage: {coverage:.3f} (target {1 - alpha:.0%})")
-print(f"Average set size: {avg_set_size:.2f}")
+has_default = (1 - p_eval) <= q_hat       # is "default" plausible at this alpha?
+has_repay = p_eval <= q_hat               # is "repay" plausible?
+covered = np.where(y_eval == 1, has_default, has_repay)
+set_size = has_default.astype(int) + has_repay.astype(int)
+print(f"q_hat = {q_hat:.3f}; coverage {covered.mean():.3f} (target >= {1 - ALPHA:.2f}); "
+      f"singletons {np.mean(set_size == 1):.1%}, both classes {np.mean(set_size == 2):.1%}, "
+      f"empty {np.mean(set_size == 0):.1%}")
 ```
 
-The empirical coverage should be close to 90%. If it is not, something is wrong with exchangeability (e.g., you accidentally used training data as calibration).
+@@S2@@
 
-**Step 3: Persist to DataFlow.**
+**Step 3: Persist the evaluation with DataFlow.** A metric that only exists in a `print()` does not exist for an auditor:
 
 ```python
+from dataflow import DataFlow
+
+MONITORING_DB = Path("mlfp03_monitoring.db").resolve()
+db = DataFlow(f"sqlite:///{MONITORING_DB}")    # absolute path: a relative one fails
+
+
 @db.model
 class ModelRunLog:
-    id: int = field(primary_key=True)
-    model_name: str = field(index=True)
-    run_id: str
+    id: int
+    model_name: str
+    model_version: int
     auc: float
-    ap: float
+    average_precision: float
     brier: float
-    log_loss: float
-    coverage: float
-    trained_at: str
+    conformal_coverage: float
+    status: str = "candidate"
+
 
 async def persist():
-    conn = ConnectionManager.get_default()
-    run_data = {
-        "model_name": "mlfp_credit_default_v1",
-        "run_id": datetime.utcnow().strftime("%Y%m%dT%H%M%S"),
-        "auc": auc,
-        "ap": ap,
-        "brier": brier,
-        "log_loss": ll,
-        "coverage": coverage,
-        "trained_at": datetime.utcnow().isoformat(),
-    }
-    await db.express.create(conn, ModelRunLog, run_data)
-    all_runs = await db.express.list(conn, ModelRunLog,
-                                      filter={"model_name": "mlfp_credit_default_v1"})
-    return all_runs
+    await db.initialize()
+    try:
+        created = await db.express.create("ModelRunLog", {
+            "model_name": MODEL_NAME, "model_version": version,
+            "auc": metrics["auc"], "average_precision": metrics["average_precision"],
+            "brier": metrics["brier"], "conformal_coverage": float(covered.mean()),
+        })
+        row = await db.express.find_one("ModelRunLog", {"model_name": MODEL_NAME, "model_version": version})
+        await db.express.update("ModelRunLog", row["id"], {"status": "evaluated"})
+        history = await db.express.list("ModelRunLog", filter={"model_name": MODEL_NAME})
+        return created, history
+    finally:
+        await db.close_async()
 
-all_runs = asyncio.run(persist())
-print(f"Total runs in registry: {len(all_runs)}")
+
+created, history = asyncio.run(persist())
+print(f"{len(history)} run(s) stored; latest status: {history[-1]['status']}")
 ```
 
-**Step 4: Register in ModelRegistry.**
+**Step 4: Monitor for drift.** First a hand-rolled PSI, to see the mechanics, then `DriftMonitor` on a clean batch and a deliberately drifted one:
 
 ```python
-registry = ModelRegistry(path="./registry")
+from kailash_ml import DriftMonitor
 
-sig = ModelSignature(
-    inputs={f: "float64" for f in feature_cols},
-    outputs={"default_probability": "float64"},
-)
 
-version = registry.register(
-    model=calibrated,
-    name="mlfp_credit_default_v1",
-    signature=sig,
-    metrics={"auc": auc, "ap": ap, "brier": brier},
-    metadata={
-        "training_size": len(X_train),
-        "conformal_coverage": coverage,
-        "conformal_q_hat": float(q_hat),
-        "calibration_method": "isotonic",
-    },
-)
-
-registry.promote("mlfp_credit_default_v1", version=version, stage="staging")
-print(f"Registered version: {version}")
-```
-
-**Step 5: Set up drift monitoring.**
-
-```python
 def psi(actual, baseline, bins=10):
-    quantiles = np.quantile(baseline, np.linspace(0, 1, bins + 1))
-    quantiles[0] -= 1e-9
-    quantiles[-1] += 1e-9
-    actual_counts, _ = np.histogram(actual, bins=quantiles)
-    baseline_counts, _ = np.histogram(baseline, bins=quantiles)
-    a = np.clip(actual_counts / max(actual_counts.sum(), 1), 1e-4, None)
-    b = np.clip(baseline_counts / max(baseline_counts.sum(), 1), 1e-4, None)
+    edges = np.unique(np.quantile(baseline, np.linspace(0, 1, bins + 1)))
+    a = np.histogram(np.clip(actual, edges[0], edges[-1]), bins=edges)[0] / len(actual)
+    b = np.histogram(baseline, bins=edges)[0] / len(baseline)
+    a, b = np.clip(a, 1e-4, None), np.clip(b, 1e-4, None)
     return float(np.sum((a - b) * np.log(a / b)))
 
-# Simulate drift: shift income distribution in the test batch
-X_drifted = X_test.copy()
-income_idx = feature_cols.index("income") if "income" in feature_cols else 1
-X_drifted[:, income_idx] = X_drifted[:, income_idx] * 1.5 + 10000
 
-print("\n=== Drift Report ===")
-for i, name in enumerate(feature_cols[:8]):  # limit to first 8 for display
-    psi_no_drift = psi(X_test[:, i], X_train[:, i])
-    psi_drift = psi(X_drifted[:, i], X_train[:, i])
-    marker = " ** DRIFT **" if psi_drift > 0.25 else ""
-    print(f"  {name:25s}  no-drift PSI={psi_no_drift:.3f}  drifted PSI={psi_drift:.3f}{marker}")
+income = feature_names.index("income_sgd")
+X_drifted = X_eval.copy()
+X_drifted[:, income] = X_drifted[:, income] * 1.5 + 10_000      # simulated income shift
+print(f"income_sgd PSI: clean batch {psi(X_eval[:, income], X_fit[:, income]):.3f}, "
+      f"drifted batch {psi(X_drifted[:, income], X_fit[:, income]):.3f}")
+
+DRIFT_DB = Path("mlfp03_drift.db").resolve()   # the monitor's OWN file, not the registry's
+
+
+async def monitor_batches():
+    conn = ConnectionManager(f"sqlite:///{DRIFT_DB}")
+    await conn.initialize()
+    try:
+        monitor = DriftMonitor(conn, tenant_id="_single", psi_threshold=0.2,
+                               ks_threshold=0.001)   # Bonferroni: 33 features tested at once
+        await monitor.set_reference_data(MODEL_NAME, as_frame(X_fit), feature_names)
+        for name, batch in [("clean", X_eval), ("drifted", X_drifted)]:
+            report = await monitor.check_drift(MODEL_NAME, as_frame(batch))
+            flagged = [f.feature_name for f in report.feature_results if f.drift_detected]
+            print(f"{name:8s} overall drift={report.overall_drift_detected}  flagged={flagged}")
+    finally:
+        await conn.close()
+
+
+asyncio.run(monitor_batches())
 ```
 
-When you inject a 50% shift and offset in `income`, its PSI should jump from near zero to well above 0.25, triggering an alert. The other features should stay below threshold.
+@@S4@@
 
-**Step 6: Model card.**
+**Step 5: Write the model card from measured evidence.** Every number in the card below is computed in this run — including the fairness analysis — and none is typed in by hand:
 
 ```python
+T_STAR = 1_500 / (1_500 + 10_000)          # Lesson 3.5's cost-optimal threshold
+decline = (p_eval >= T_STAR).astype(int)
+age = X_eval[:, feature_names.index("age")]
+bands = np.select([age < 35, age < 50, age < 65], ["21-34", "35-49", "50-64"], default="65+")
+approval = {b: float(1 - decline[bands == b].mean()) for b in np.unique(bands)}
+best = max(approval.values())
+di_by_age = {b: round(r / best, 2) for b, r in approval.items()}
+
 model_card = {
-    "model_details": {
-        "name": "mlfp_credit_default_v1",
-        "version": version,
-        "type": "Calibrated LightGBM",
-        "owner": "MLFP Credit Team",
-        "trained_at": datetime.utcnow().isoformat(),
-    },
-    "intended_use": {
-        "primary": "Predict probability of credit default on personal loan applications",
-        "out_of_scope": [
-            "Corporate credit",
-            "Secured loans (mortgage, auto)",
-            "Decisions without human review",
-        ],
-    },
-    "factors": {
-        "demographic": ["age", "gender"],
-        "geographic": ["Singapore only"],
-        "temporal": ["Training data covers 2022-2024"],
-    },
-    "metrics": {
-        "auc": round(auc, 3),
-        "average_precision": round(ap, 3),
-        "brier": round(brier, 4),
-        "log_loss": round(ll, 3),
-        "conformal_coverage_90": round(coverage, 3),
-    },
-    "evaluation_data": {
-        "size": len(X_test),
-        "base_rate": float(y_test.mean()),
-        "source": "Anonymized Singapore credit bureau data",
-    },
-    "training_data": {
-        "size": len(X_train),
-        "base_rate": float(y_train.mean()),
-        "known_biases": [
-            "Under-representation of self-employed (8% vs Singapore census 11%)",
-            "Limited coverage of age > 65",
-        ],
-    },
-    "ethical_considerations": {
-        "fairness_audited": True,
-        "disparate_impact_ratio": 0.87,
-        "impossibility_tradeoff": "Prioritised calibration parity; equalized odds may vary",
-    },
-    "caveats": [
-        "Do not use for automated rejection without human review",
-        "Retrain quarterly or when PSI > 0.25 on any feature",
-        "Monitor conformal coverage monthly",
-    ],
+    "model_details": {"name": MODEL_NAME, "base_model_version": version,
+                      "type": "LightGBM + isotonic calibration",
+                      "card_written": datetime.now(timezone.utc).isoformat()},
+    "intended_use": {"primary": "Rank and score unsecured personal-loan applications for default risk",
+                     "out_of_scope": ["Corporate or secured credit", "Fully automated declines without human review"]},
+    "factors": {"protected_attributes_audited": ["race", "gender", "age band"]},
+    "metrics": {**{k: round(v, 4) for k, v in metrics.items()},
+                "decision_threshold": round(T_STAR, 3),
+                "threshold_basis": "c_FP / (c_FP + c_FN) with illustrative costs S$1,500 / S$10,000",
+                "conformal_coverage_target": 1 - ALPHA,
+                "conformal_coverage_measured": round(float(covered.mean()), 3)},
+    "evaluation_data": {"rows": int(len(y_eval)), "default_rate": round(float(y_eval.mean()), 3),
+                        "source": "synthetic Singapore credit-scoring table (sg_credit_scoring.parquet)"},
+    "training_data": {"rows": int(len(y_fit)), "default_rate": round(float(y_fit.mean()), 3),
+                      "excluded_columns": ["customer_id", "future_default_indicator (post-outcome leak)"]},
+    "quantitative_analyses": {"approval_disparate_impact_by_age_band": di_by_age},
+    "ethical_considerations": ["Youngest age band fails the four-fifths screen (see analyses); "
+                               "decision on acceptability referred to the risk committee",
+                               "Model is calibrated, not equal-error-rate, across age bands (impossibility theorem)"],
+    "caveats": ["Retrain or investigate when any feature's PSI exceeds 0.2 or KS p < 0.001",
+                "Conformal coverage is marginal and assumes new applicants are exchangeable with recent ones"],
 }
-
-with open("model_card.json", "w") as f:
-    json.dump(model_card, f, indent=2)
-print("Model card written to model_card.json")
+Path("model_card.json").write_text(json.dumps(model_card, indent=2))
+print("disparate impact by age band:", di_by_age)
 ```
 
-**Step 7: Promote to production.**
+@@S5@@
+
+**Step 6: Gate, register, and promote only with a human sign-off.** Production readiness is a set of checks computed from evidence, plus a decision by an accountable person. Exercise 8.5 computes eleven such gates; here are six:
 
 ```python
-# Only after stakeholder sign-off
-registry.promote("mlfp_credit_default_v1", version=version, stage="production")
-print("Model promoted to production")
+from kailash_ml.types import MetricSpec, ModelSignature
+
+gates = {
+    "auc_above_0.75": metrics["auc"] >= 0.75,
+    "ap_above_2x_base_rate": metrics["average_precision"] >= 2 * y_fit.mean(),
+    "brier_beats_base_rate_forecast": metrics["brier"] < y_fit.mean() * (1 - y_fit.mean()),
+    "conformal_coverage_met": covered.mean() >= 1 - ALPHA - 0.01,
+    "no_drift_on_clean_batch": psi(X_eval[:, income], X_fit[:, income]) < 0.2,
+    "model_card_written": Path("model_card.json").exists(),
+}
+for gate, passed in gates.items():
+    print(f"  {'PASS' if passed else 'FAIL'}  {gate}")
+
+HUMAN_SIGN_OFF = False   # set by an accountable person after reading the model card — never by code
+
+
+async def register_and_maybe_promote():
+    conn = ConnectionManager(f"sqlite:///{REGISTRY_DB}")
+    await conn.initialize()
+    try:
+        registry = ModelRegistry(conn)
+        mv = await registry.register_model(
+            "credit_scorer_calibrated", pickle.dumps(calibrated),
+            metrics=[MetricSpec(name=k, value=v, split="test", higher_is_better=k in ("auc", "average_precision"))
+                     for k, v in metrics.items()],
+            signature=ModelSignature(input_schema=schema, output_columns=["default_probability"],
+                                     output_dtypes=["float64"], model_type="classifier"),
+        )
+        if all(gates.values()) and HUMAN_SIGN_OFF:
+            mv = await registry.promote_model("credit_scorer_calibrated", mv.version, "production",
+                                              reason="all gates passed + risk committee sign-off")
+        return mv
+    finally:
+        await conn.close()
+
+
+mv = asyncio.run(register_and_maybe_promote())
+print(f"credit_scorer_calibrated v{mv.version} is in stage: {mv.stage}")
 ```
+
+@@S6@@
 
 ## Try It Yourself
 
@@ -3829,7 +3858,7 @@ print("Model promoted to production")
 - **Lesson 3.5** Calibration — the calibrated model is what we serve in production.
 - **Lesson 3.6** Fairness — the fairness audit feeds the model card.
 - **Lesson 3.7** Registry — the pipeline ends with a promoted model.
-- **Module 2, Lesson 2.2** Hypothesis testing — KS is a hypothesis test.
+- **Module 2, Lesson 2.3** Hypothesis testing — KS is a hypothesis test, and the multiple-testing problem behind the Bonferroni threshold.
 
 ## Deeper Dive: Conformal Coverage Guarantee
 
@@ -3869,20 +3898,16 @@ Typical cadences:
 
 Combine leading and lagging signals. Input drift (PSI, KS) is leading — it tells you something changed. Performance drift (AUC drop) is lagging — it tells you the model got worse. You need both.
 
-## Deeper Dive: Why Three Splits?
+## Deeper Dive: Why So Many Splits?
 
-The split in MLFP03 ex_8 uses train, calibration, and test. Why three?
+The worked example gives the rows four jobs. Why?
 
-- **Train**: fit the model parameters.
-- **Calibration**: fit the probability calibrator (Platt / isotonic) and/or the conformal quantile. Must be separate from train because the model is biased on training data — its predictions on train data are over-confident.
-- **Test**: evaluate the final (calibrated) model honestly. Must be separate from calibration because the calibrator has seen calibration labels.
+- **Fit** (64,000 rows): learn the model's parameters.
+- **Calibration** (16,000 rows): fit the probability calibrator (Platt / isotonic). Must be separate from the fit rows because the model is over-confident on rows it trained on.
+- **Conformal calibration** (10,000 rows): compute `q_hat`. The conformal guarantee needs these scores to be exchangeable with future scores, so they must come from rows that neither the model nor the calibrator has seen.
+- **Evaluation** (10,000 rows): report the final model honestly, once.
 
-With only two splits (train, test), you either:
-
-1. Calibrate on train — biased, over-confident predictions.
-2. Calibrate on test — calibration metrics are no longer honest; test set contaminated by calibration.
-
-Three splits is the minimum for an honest production pipeline with calibrated probabilities.
+Collapse any two and something stops being honest. Calibrate on the fit rows and the calibrator learns the training-set over-confidence. Calibrate on the evaluation rows and the reported Brier score has been tuned on the rows it is measured on. Compute `q_hat` on the isotonic calibration rows and the conformal scores there are systematically better than on new data, so coverage falls short. The general rule: **every component fitted from data needs data it has not seen to be evaluated on.**
 
 ## Deeper Dive: What a Complete Model Card Looks Like
 
@@ -3902,7 +3927,7 @@ Writing a model card is a forcing function. If you cannot answer these questions
 
 ## Reflection Questions
 
-1. Why do we use three different data splits (train / calibration / test)? What would go wrong with only two?
+1. The worked example splits the rows four ways (fit / calibration / conformal / evaluation). What goes wrong if the isotonic calibrator and the conformal quantile share the same rows? And if the calibrator is fitted on the evaluation rows?
 2. Conformal prediction has a distribution-free coverage guarantee. What assumption is required for the guarantee to hold?
 3. PSI thresholds of 0.1 and 0.25 are conventions, not proofs. How would you choose thresholds for a new application?
 4. Your model card says "do not use for automated rejection". A product manager removes this clause to ship faster. What do you do?
@@ -3924,7 +3949,7 @@ You have now walked the entire supervised ML pipeline: from the raw data that en
 - Lesson 3.7 turned your training code into a reproducible workflow with hyperparameter search and a model registry.
 - Lesson 3.8 closed the loop with production persistence, drift monitoring, conformal prediction, and model cards.
 
-The next module (MLFP04) takes you into the unsupervised world: clustering, dimensionality reduction, anomaly detection, and the natural language processing techniques that sit between classical ML and deep learning. Module 5 brings deep learning and transformers; Module 6 is LLMs and agents.
+The next module (MLFP04) completes the Foundation Certificate (Modules 1–4). It takes you into the unsupervised world — clustering, mixture models and the EM algorithm, dimensionality reduction, anomaly detection, association rules, topic models and recommender systems — and ends with a first look at neural networks. The Advanced Certificate (Modules 5–6) covers deep learning and vision, then LLMs and agents.
 
 But the skeleton you built here — engineer, regularise, choose, tune, evaluate, interpret, register, monitor — is the skeleton of every ML system you will ever build. Know it by heart. Come back to this textbook when you lose your way.
 
@@ -4043,15 +4068,15 @@ This is the power of conformal prediction: the set size automatically reflects t
 
 ## Appendix A: End-to-End Singapore Case Study
 
-To cement the ideas from the eight lessons, walk through this end-to-end case study. It is not an exercise — it is a reading exercise. The goal is to see how every decision connects.
+To cement the ideas from the eight lessons, walk through this end-to-end case study. It is not an exercise — it is a reading exercise. The goal is to see how every decision connects. The bank, its data and every number below are **hypothetical and illustrative**; they are not results from the course datasets.
 
 ### The Problem
 
-DBS Bank (hypothetically) wants to build a personal loan default prediction model for the Singapore market. The business context:
+A Singapore retail bank (hypothetical) wants to build a personal loan default prediction model for the Singapore market. The business context:
 
 - **Loan product**: unsecured personal loans, S$5,000 to S$100,000, 12 to 60 month terms.
 - **Base rate**: 8% of loans default within 24 months.
-- **Regulatory context**: MAS Notice 635 requires explainable credit decisions. PDPA gives consumers the right to ask for an explanation.
+- **Governance context**: the bank applies MAS's FEAT principles (non-binding guidance on fairness, ethics, accountability and transparency in AI-driven decisions), so every credit decision must be explainable to the customer and to the bank's risk committee.
 - **Business cost**: average loss on default is S$22,000. Average profit on a good loan is S$1,800. The cost ratio is 12:1.
 
 ### Lesson 3.1: Features
@@ -4062,13 +4087,13 @@ The raw data has 60 columns across three tables: applications, credit bureau pul
 2. Computes bureau-based features: number of open lines, total outstanding balance, credit utilisation, number of late payments in the past 24 months.
 3. Computes transaction-based features: average monthly income (from salary deposits), income variability (coefficient of variation), cash-out-to-income ratio.
 4. Computes temporal features: customer tenure, days since last product opened, months of transaction history.
-5. Avoids leakage: every feature is computed with data strictly before `application_date`. The rolling features use `closed="left"` in polars group_by_dynamic.
+5. Avoids leakage: every feature is computed with data strictly before `application_date`. The rolling features use polars `rolling_*_by(..., closed="left")`, so each window ends strictly before the application date.
 
 Result: 87 features, registered in FeatureStore as `credit_default_v3`.
 
 ### Lesson 3.2: Bias-Variance and Regularisation
 
-Initial baseline: L2-regularised logistic regression (`Ridge`-style). Train MSE is low, validation MSE is slightly higher — the model has moderate variance. A nested 5×3 CV gives AP = 0.41 (vs base rate 0.08).
+Initial baseline: L2-regularised logistic regression. Training log loss is a little lower than validation log loss — a small gap, so variance is modest and the limiting factor is bias. A nested 5×3 CV gives AP = 0.41 (vs base rate 0.08).
 
 ### Lesson 3.3: Model Zoo Comparison
 
@@ -4101,7 +4126,7 @@ LightGBM picked for production: best speed/accuracy trade-off. CatBoost slightly
 With base rate 8%, the team:
 
 1. Trains LightGBM with `scale_pos_weight = (1 - 0.08) / 0.08 = 11.5` (cost-sensitive).
-2. Applies isotonic calibration via `CalibratedClassifierCV(method="isotonic", cv=5)`.
+2. Applies isotonic calibration with `TrainingPipeline.calibrate(..., method="isotonic")` on a held-out 20% of the development rows — necessary, because the class weights inflated the raw probabilities.
 3. Computes the cost-optimal threshold: `p* = c_FP / (c_FP + c_FN) = 1800 / (1800 + 22000) = 0.0756`.
 4. Evaluates on held-out test: AP 0.61, Brier 0.048, reliability curve close to diagonal.
 
@@ -4109,7 +4134,7 @@ With base rate 8%, the team:
 
 SHAP summary plot shows the top features:
 
-1. `credit_utilisation` — higher utilisation, higher default.
+1. `credit_utilization` — higher utilisation, higher default.
 2. `months_since_last_late_payment` — longer since late, lower default.
 3. `income_coefficient_of_variation` — higher variability, higher default.
 4. `total_outstanding_balance` — higher balance, higher default.
@@ -4126,20 +4151,20 @@ The team notes the small TPR gap and documents it in the model card. No mitigati
 
 The full pipeline is encoded as a Kailash workflow with nodes for load → split → preprocess → train → calibrate → evaluate → register. Bayesian hyperparameter search with TPE runs 80 trials over `learning_rate`, `num_leaves`, `min_child_samples`, `reg_lambda`, improving AP from 0.60 to 0.63.
 
-The tuned model is registered as `dbs_credit_default` version 1.0.0 in ModelRegistry, with signature, metrics, and metadata.
+The tuned model is registered as `credit_default` version 1 in the ModelRegistry (stage: staging), with its `ModelSignature` and test-set `MetricSpec`s.
 
 ### Lesson 3.8: Production
 
 Before promoting to staging:
 
 1. Conformal prediction calibrated at 90% coverage gives a `q_hat` of 0.21 on the calibration set.
-2. DriftSpec configures PSI monitoring on all 87 features, with thresholds of 0.15 (warning) and 0.25 (alert).
+2. A `DriftMonitor` with its own database is given the training rows as reference and scheduled daily on all 87 features, alerting at PSI above 0.2 or a Bonferroni-corrected KS p-value below 0.05 / 87.
 3. Model card written, 9 sections, reviewed by legal and compliance.
 4. DataFlow `ModelEvaluation` and `PredictionLog` tables deployed; every scoring request writes a row.
 
-The model goes to staging for shadow deployment. For two weeks, it scores every application in parallel with the existing model; predictions are logged but not used. After two weeks, the team compares shadow metrics to production metrics. Shadow wins. Canary rollout begins: 10% of traffic, then 50% after 48 hours, then 100% after another 48 hours.
+The model is promoted from staging to the shadow stage. For two weeks, it scores every application in parallel with the existing model; predictions are logged but not used. After two weeks, the team compares shadow metrics to production metrics. Shadow wins. Canary rollout begins: 10% of traffic, then 50% after 48 hours, then 100% after another 48 hours.
 
-Two months later, PSI on `total_outstanding_balance` jumps to 0.28. Investigation reveals that a new credit bureau started contributing data with a slightly different definition of "outstanding balance". The model is retrained on the updated data, re-registered as version 1.1.0, and promoted after passing the same shadow-canary pipeline.
+Two months later, PSI on `total_outstanding_balance` jumps to 0.28. Investigation reveals that a new credit bureau started contributing data with a slightly different definition of "outstanding balance". The model is retrained on the updated data, registered as version 2, and promoted after passing the same shadow-canary pipeline; version 1 moves to archived, ready for a rollback.
 
 This is the full MLOps lifecycle. Every lesson in this module was a step in this story.
 
@@ -4156,8 +4181,12 @@ E[(y - y_hat)^2] = Bias^2(y_hat) + Var(y_hat) + sigma^2
 ```
 L_ridge = Sum (y_i - x_i^T beta)^2 + lambda * Sum beta_j^2
 L_lasso = Sum (y_i - x_i^T beta)^2 + lambda * Sum |beta_j|
-L_enet  = Sum (y_i - x_i^T beta)^2 + lambda * (alpha * Sum |beta_j| + (1-alpha) * Sum beta_j^2)
+L_enet  = Sum (y_i - x_i^T beta)^2 + lambda * (rho * Sum |beta_j| + (1-rho) * Sum beta_j^2)
 ```
+
+scikit-learn: `alpha` = `lambda`, `l1_ratio` = `rho`; `Lasso`/`ElasticNet` scale the squared error by `1/(2n)`.
+
+Bayesian reading: Ridge = MAP under `beta_j ~ N(0, tau^2)` with `lambda = sigma^2 / tau^2`.
 
 Ridge closed form:
 
@@ -4285,22 +4314,24 @@ q_hat = quantile_{ceil((n+1)(1-alpha))/n}(s_1, ..., s_n)
 
 ## Appendix C: Kailash Engine Quick Reference
 
-| Engine                  | Purpose                                     | Lesson |
-| ----------------------- | ------------------------------------------- | ------ |
-| `DataExplorer`          | Profile datasets, detect types, spot issues | 3.1    |
-| `FeatureEngineer`       | Generate derived features                   | 3.1    |
-| `FeatureStore`          | Version and serve features                  | 3.1    |
-| `PreprocessingPipeline` | Scale, encode, impute                       | 3.2    |
-| `TrainingPipeline`      | Standard train + evaluate loop              | 3.3-5  |
-| `AutoMLEngine`          | Multi-family automated search               | 3.4    |
-| `EnsembleEngine`        | Stacking and blending                       | 3.5    |
-| `ModelVisualizer`       | SHAP plots, calibration curves              | 3.6    |
-| `HyperparameterSearch`  | Bayesian / random / grid search             | 3.7    |
-| `ModelRegistry`         | Versioning and lifecycle                    | 3.7    |
-| `WorkflowBuilder`       | Pipeline orchestration                      | 3.7    |
-| `DataFlow`              | Database persistence with schemas           | 3.8    |
-| `DriftMonitor`          | PSI / KS drift detection                    | 3.8    |
-| `ExperimentTracker`     | Log runs, params, metrics                   | 3.1-8  |
+| Engine / class          | Import from                                    | Key calls (kailash-ml 2.2)                                                   | Lesson |
+| ----------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------- | ------ |
+| `DataExplorer`          | `kailash_ml`                                   | `await DataExplorer().profile(df)`                                           | 3.1    |
+| `FeatureSchema`, `FeatureField` | `kailash_ml.types`                     | `FeatureSchema(name, features=[...], entity_id_column=...)`                  | 3.1    |
+| `FeatureEngineer`       | `kailash_ml`                                   | `generate(df, schema, strategies=[...])`, `select(..., target=, method=)`    | 3.1    |
+| `FeatureStore`          | `kailash_ml`                                   | Versioned, shared feature sets (not used in the M3 exercises)                | 3.1    |
+| `ExperimentTracker`     | `kailash_ml`                                   | `await ExperimentTracker.create(store_url=)`, `async with tracker.track(...)` | 3.1    |
+| `PreprocessingPipeline` | `kailash_ml`                                   | `setup(dev_rows, target=...)` then `transform(test_rows)` — never `setup` on all rows | 3.2 |
+| `TrainingPipeline`      | `kailash_ml`                                   | `await train(data, schema, ModelSpec, EvalSpec, experiment_name)`, `await calibrate(...)` | 3.3–3.8 |
+| `ModelSpec`, `EvalSpec` | `kailash_ml.engines.training_pipeline`         | `ModelSpec(model_class=, hyperparameters=)`, `EvalSpec(metrics=, split_strategy=)` | 3.3 |
+| `AutoMLEngine`          | `kailash_ml`                                   | Governed, budgeted multi-family search (not used in the M3 exercises)        | 3.4    |
+| `EnsembleEngine`        | `kailash_ml`                                   | `stack(models, df, target=, fold=)`, `blend(models, df, target=)`            | 3.5    |
+| `ModelVisualizer`       | `kailash_ml`                                   | ROC / PR / calibration / confusion charts; `feature_importance` = model's own split importance, not SHAP | 3.5–3.6 |
+| `HyperparameterSearch`  | `kailash_ml` (+ `SearchSpace`, `ParamDistribution`, `SearchConfig` from `kailash_ml.engines.hyperparameter_search`) | `await HyperparameterSearch(pipeline=).search(...)` | 3.7 |
+| `ModelRegistry`         | `kailash_ml` (+ `MetricSpec`, `ModelSignature` from `kailash_ml.types`) | `await register_model(...)`, `await promote_model(name, version, stage, reason=)` | 3.7 |
+| `WorkflowBuilder`, `LocalRuntime` | `kailash.workflow.builder`, `kailash.runtime` | `add_node`, `add_connection`, `runtime.execute(workflow.build())`   | 3.7    |
+| `DataFlow`              | `dataflow`                                     | `@db.model`, `await db.express.create/read/find_one/list/update/delete/count` | 3.8   |
+| `DriftMonitor`          | `kailash_ml`                                   | `await set_reference_data(...)`, `await check_drift(...)` — own database file | 3.8   |
 
 ## Appendix D: Further Reading
 
@@ -4316,7 +4347,17 @@ q_hat = quantile_{ceil((n+1)(1-alpha))/n}(s_1, ..., s_n)
 - Platt, J. (1999). Probabilistic Outputs for Support Vector Machines. _Advances in Large Margin Classifiers_.
 - Mitchell, M., et al. (2019). Model Cards for Model Reporting. _FAT\*_.
 - Chouldechova, A. (2017). Fair Prediction with Disparate Impact. _Big Data_, 5(2).
-- Kleinberg, J., Mullainathan, S., & Raghavan, M. (2016). Inherent Trade-Offs in the Fair Determination of Risk Scores.
+- Kleinberg, J., Mullainathan, S., & Raghavan, M. (2016). Inherent Trade-Offs in the Fair Determination of Risk Scores. arXiv:1609.05807 (published at ITCS 2017).
+- Friedman, J. H. (2001). Greedy Function Approximation: A Gradient Boosting Machine. _Annals of Statistics_, 29(5), 1189–1232.
+- Breiman, L., Friedman, J., Olshen, R., & Stone, C. (1984). _Classification and Regression Trees_. Wadsworth. (Cost-complexity pruning; the one-standard-error rule.)
+- Bergstra, J., & Bengio, Y. (2012). Random Search for Hyper-Parameter Optimization. _JMLR_, 13, 281–305.
+- Bergstra, J., Bardenet, R., Bengio, Y., & Kégl, B. (2011). Algorithms for Hyper-Parameter Optimization. _NeurIPS_. (TPE.)
+- Niculescu-Mizil, A., & Caruana, R. (2005). Predicting Good Probabilities with Supervised Learning. _ICML_.
+- Guo, C., Pleiss, G., Sun, Y., & Weinberger, K. Q. (2017). On Calibration of Modern Neural Networks. _ICML_.
+- Murphy, A. H. (1973). A New Vector Partition of the Probability Score. _Journal of Applied Meteorology_, 12(4), 595–600.
+- Apley, D. W., & Zhu, J. (2020). Visualizing the Effects of Predictor Variables in Black Box Supervised Learning Models. _Journal of the Royal Statistical Society Series B_, 82(4), 1059–1086. (ALE.)
+- Angelopoulos, A. N., & Bates, S. (2023). Conformal Prediction: A Gentle Introduction. _Foundations and Trends in Machine Learning_, 16(4), 494–591.
+- Grinsztajn, L., Oyallon, E., & Varoquaux, G. (2022). Why Do Tree-Based Models Still Outperform Deep Learning on Typical Tabular Data? _NeurIPS Datasets and Benchmarks_.
 
 **Textbooks for deeper study:**
 

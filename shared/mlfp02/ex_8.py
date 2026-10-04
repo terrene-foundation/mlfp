@@ -41,7 +41,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # relative URL fails with "unable to open database file". Always hand DataFlow
 # an absolute path.
 FEATURE_STORE_URL = f"sqlite:///{(OUTPUT_DIR / 'mlfp02_ex8_features.db').resolve().as_posix()}"
-EXPERIMENT_STORE_URL = "sqlite:///mlfp02_experiments.db"
+EXPERIMENT_STORE_URL = f"sqlite:///{(OUTPUT_DIR / 'mlfp02_experiments.db').resolve().as_posix()}"
 EXPERIMENT_NAME = "mlfp02_ex8_hdb_features"
 
 # Single-tenant course store: kailash-ml's FeatureStore requires a tenant
@@ -157,11 +157,19 @@ def compute_v1_features(df: pl.DataFrame) -> pl.DataFrame:
     Produces: storey_midpoint, price_per_sqm, remaining_lease_years,
     transaction_id (row index). These are the base features v2 extends.
     """
+    # The raw file has letter-O typos in storey_range ("O4 TO 06", "1O TO 12",
+    # "28 TO 3O"); read a letter O next to a digit as zero, leaving "TO" alone,
+    # so the numeric extraction is not truncated to the first digit.
+    storey = (
+        pl.col("storey_range")
+        .str.replace_all(r"\bO(\d)", "0${1}")
+        .str.replace_all(r"(\d)O\b", "${1}0")
+    )
     return df.with_columns(
         (
             (
-                pl.col("storey_range").str.extract(r"(\d+)", 1).cast(pl.Float64)
-                + pl.col("storey_range").str.extract(r"TO (\d+)", 1).cast(pl.Float64)
+                storey.str.extract(r"(\d+)", 1).cast(pl.Float64)
+                + storey.str.extract(r"TO (\d+)", 1).cast(pl.Float64)
             )
             / 2
         ).alias("storey_midpoint"),

@@ -50,3 +50,16 @@
 - Owner questions: spec still says "Quiz + ML pipeline project" and HDB-based 3.1/3.2 exercises (intent, not stack).
 - X-PP: shared/mlfp03 ex_2.load_credit_data, ex_3.build_train_test_split, ex_7.prepare_credit_frames still fit preprocessing on all rows before splitting — fix in the cross-cutting integration shard.
 - Upstream: EnsembleEngine.stack/blend crash unless base models are pre-fitted; TrainingPipeline silently skips average_precision; LocalRuntime.execute() without a context manager → DeprecationWarning.
+
+---
+# Additions from the textbook shard (S3a, merged 80e1f1e3)
+- OWNER DECISION: ICU data — only 198 of 416,526 vital-sign readings (4 admissions) fall in the first 24h, so ex_1's
+  first-24h feature selection ranks noise (test AUC ≈ 0.50; best MI barely above a shuffled-target baseline). Options:
+  regenerate the ICU dataset with dense early vitals, move the prediction cutoff, or reframe ex_1. Textbook teaches the finding honestly.
+- Lesson pages: 3.1 → ICU long_stay + the window-report finding; 3.6 textbook uses an UNWEIGHTED LightGBM at t* = 0.130:
+  DI ≥ 0.97 race/gender, 0.26 ages 21–34 — and cites ex_6's 0.94/0.96 (class-weighted model) — keep consistent;
+  3.8 model card = 9 sections (Mitchell et al.) — lesson page says 7, change it.
+- Leak screen: leak column alone AUC 0.99; leaky model 0.994. scale_pos_weight = n_neg/n_pos. C(53,3) = 23,426.
+- PythonCodeNode sandbox refuses polars / lightgbm / shared imports (textbook says so).
+- Upstream: LocalRuntime logs _record_execution_metrics error under skip_branches; HyperparameterSearch sampler unseeded
+  (best params vary); TrainingPipeline F1 is support-weighted.

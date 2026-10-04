@@ -56,7 +56,7 @@ This chapter has eight lessons that progress along the Feature Engineering Spect
 1. **Why This Matters** — a Singapore-contextualised motivation.
 2. **Core Concepts** — plain-language explanations, then formal definitions, then code.
 3. **Mathematical Foundations** — derivations from first principles. Marked THEORY or ADVANCED.
-4. **The Kailash Engine** — the engine that implements the concept.
+4. **The Kailash Engine** — the engine that implements the concept, called with its real, installed API. Where no Kailash engine exists (association rules in 4.5, recommenders in 4.7), the section says so.
 5. **Worked Example** — a complete walkthrough on real data.
 6. **Try It Yourself** — five or more drills with solutions at the end of each lesson.
 7. **Cross-References** — connections forward and backward.
@@ -1941,14 +1941,15 @@ topic_model = BERTopic(
     nr_topics="auto",
 )
 bert_topics, _ = topic_model.fit_transform(documents)
-info = topic_model.get_topic_info()
-print(f"BERTopic: {int((info['Topic'] >= 0).sum())} topics, "
+# BERTopic returns a pandas table; keep the three columns we need and move to polars
+info = pl.from_pandas(topic_model.get_topic_info()[["Topic", "Count", "Name"]])
+print(f"BERTopic: {info.filter(pl.col('Topic') >= 0).height} topics, "
       f"{sum(t == -1 for t in bert_topics):,} outlier documents")
-for _, row in info[info["Topic"] >= 0].head(6).iterrows():
+for row in info.filter(pl.col("Topic") >= 0).head(6).iter_rows(named=True):
     print(f"  topic {row['Topic']}: {row['Count']} docs  {row['Name']}")
 ```
 
-BERTopic embeds each document with a pre-trained sentence-transformer, reduces the embeddings with UMAP to about five dimensions, clusters them with HDBSCAN and labels each cluster with class-based TF-IDF — the same pipeline as Exercise 6.4. It chooses the number of topics itself and puts documents that fit no dense cluster into topic $-1$. The exact topics depend on the embedding model you configure. With the small `sentence-transformers/all-MiniLM-L6-v2` model, one run produced 40 topics and put 1,223 documents (about 25%) in the outlier topic; the largest topics were the Olympics (921 documents), Najaf, Windows and online music, Google's IPO, quarterly profits and space exploration — the same stories NMF found, plus dozens of smaller ones. `get_topic_info()` returns a pandas table (BERTopic's own format), which is why the loop above uses pandas-style `iterrows()`; convert with `pl.from_pandas(info)` if you want to keep working in polars.
+BERTopic embeds each document with a pre-trained sentence-transformer, reduces the embeddings with UMAP to about five dimensions, clusters them with HDBSCAN and labels each cluster with class-based TF-IDF — the same pipeline as Exercise 6.4. It chooses the number of topics itself and puts documents that fit no dense cluster into topic $-1$. The exact topics depend on the embedding model you configure. With the small `sentence-transformers/all-MiniLM-L6-v2` model, one run produced 40 topics and put 1,223 documents (about 25%) in the outlier topic; the largest topics were the Olympics (921 documents), Najaf, Windows and online music, Google's IPO, quarterly profits and space exploration — the same stories NMF found, plus dozens of smaller ones. `get_topic_info()` returns a pandas table (BERTopic's own format), so the code converts the three columns it needs to polars at that boundary.
 
 ## Try It Yourself
 
@@ -3223,6 +3224,8 @@ Module 5 introduces specialised architectures: autoencoders for reconstruction, 
 
 - McInnes, L., Healy, J., and Astels, S. "hdbscan: Hierarchical density based clustering." _JOSS_, 2017. The HDBSCAN reference.
 
+- Tibshirani, R., Walther, G., and Hastie, T. "Estimating the Number of Clusters in a Data Set via the Gap Statistic." _Journal of the Royal Statistical Society B_, 2001.
+
 - Arthur, D., and Vassilvitskii, S. "k-means++: The Advantages of Careful Seeding." _SODA_, 2007. The K-means++ initialisation paper with its $O(\log K)$ competitive guarantee.
 
 **On dimensionality reduction**
@@ -3233,9 +3236,13 @@ Module 5 introduces specialised architectures: autoencoders for reconstruction, 
 
 - McInnes, L., Healy, J., and Melville, J. "UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction." _arXiv:1802.03426_, 2018.
 
+- Levina, E., and Bickel, P. "Maximum Likelihood Estimation of Intrinsic Dimension." _NeurIPS_ (NIPS 17), 2004.
+
 **On anomaly detection**
 
 - Liu, F., Ting, K., and Zhou, Z.-H. "Isolation Forest." _ICDM_, 2008. The original Isolation Forest paper.
+
+- Han, S., Hu, X., Huang, H., Jiang, M., and Zhao, Y. "ADBench: Anomaly Detection Benchmark." _NeurIPS Datasets and Benchmarks_, 2022. The injected-anomaly evaluation recipe used in Exercise 4.
 
 - Breunig, M., et al. "LOF: Identifying Density-Based Local Outliers." _SIGMOD_, 2000. The original LOF paper.
 
@@ -3245,11 +3252,23 @@ Module 5 introduces specialised architectures: autoencoders for reconstruction, 
 
 - Grootendorst, M. "BERTopic: Neural topic modeling with a class-based TF-IDF procedure." _arXiv:2203.05794_, 2022.
 
+- Mimno, D., Wallach, H., Talley, E., Leenders, M., and McCallum, A. "Optimizing Semantic Coherence in Topic Models." _EMNLP_, 2011. The UMass coherence measure.
+
+- Chang, J., Boyd-Graber, J., Gerrish, S., Wang, C., and Blei, D. "Reading Tea Leaves: How Humans Interpret Topic Models." _NeurIPS_, 2009.
+
+- Mikolov, T., Sutskever, I., Chen, K., Corrado, G., and Dean, J. "Distributed Representations of Words and Phrases and their Compositionality." _NeurIPS_, 2013. Skip-gram with negative sampling.
+
+- Levy, O., and Goldberg, Y. "Neural Word Embedding as Implicit Matrix Factorization." _NeurIPS_, 2014.
+
 - Robertson, S., and Zaragoza, H. "The Probabilistic Relevance Framework: BM25 and Beyond." _Foundations and Trends in Information Retrieval_, 2009.
 
 **On recommender systems**
 
-- Koren, Y., Bell, R., and Volinsky, C. "Matrix Factorization Techniques for Recommender Systems." _Computer_, 2009. The Netflix Prize paper — the definitive introduction to collaborative filtering with matrix factorisation.
+- Koren, Y., Bell, R., and Volinsky, C. "Matrix Factorization Techniques for Recommender Systems." _Computer_, 2009. Written by members of the Netflix Prize winning team — the standard introduction to collaborative filtering with biased matrix factorisation.
+
+- Koren, Y. "Factorization Meets the Neighborhood: a Multifaceted Collaborative Filtering Model." _KDD_, 2008. Introduces SVD++.
+
+- Gomez-Uribe, C., and Hunt, N. "The Netflix Recommender System: Algorithms, Business Value, and Innovation." _ACM Transactions on Management Information Systems_, 2015.
 
 - Hu, Y., Koren, Y., and Volinsky, C. "Collaborative Filtering for Implicit Feedback Datasets." _ICDM_, 2008.
 
@@ -3260,6 +3279,8 @@ Module 5 introduces specialised architectures: autoencoders for reconstruction, 
 - He, K., et al. "Delving Deep into Rectifiers." _ICCV_, 2015. The Kaiming initialisation paper.
 
 - Kingma, D., and Ba, J. "Adam: A Method for Stochastic Optimization." _ICLR_, 2015.
+
+- Jiang, A. Q., et al. "Mixtral of Experts." _arXiv:2401.04088_, 2024. An openly documented sparse Mixture-of-Experts language model.
 
 - Ioffe, S., and Szegedy, C. "Batch Normalization: Accelerating Deep Network Training." _ICML_, 2015.
 

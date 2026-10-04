@@ -46,3 +46,14 @@
 - HDB file has impossible leases (negative remaining-lease age); lesson 2.5 keeps them to match the slides (textbook says so) — S6/owner may decide to clean.
 - Shared numbers (all match merged slides): 11,554/arm; 19.1% vs 24.8%; SRM p = 0.624; ρ = 0.21 → 4.4% CUPED reduction; ATT −23,208; area OR 54; acc 0.81; AUC 0.92; R² 0.828; +9,096/sqm; 3,536 rows removed.
 - Textbook numbers (S3a, merged 6d83b0b7): posterior 846,770 ± 2,260; SRM χ² 13,889 all arms / control-vs-treatment_a p = 0.62; CUPED 4.4%; DiD −23,208 (pre-trend p = 0.56; broken panel p = 0.024); OR 54.4, acc 0.815, AUC 0.92; regression R² 0.860 (CV 0.860), out-of-time R² 0.831; power sizes 1,004 and 5,139; ROI $5,100/week ~10-week payback.
+
+---
+# Additions from the assessment shard (S5, merged 2479f959)
+- Deck assessment slide + spec end line: "5 auto-graded coding tasks, 100 marks (20/25/25/15/15)" (P5).
+- BUG shared/mlfp02/ex_8.py: storey regex misreads letter-O typos ("1O TO 12" → 1, "28 TO 3O" → 3) — fix in integration.
+- shared/mlfp02/ex_8.py EXPERIMENT_STORE_URL is still a relative sqlite URL — make absolute (X-DF hygiene).
+- ex_8 town medians average monthly medians; Task 5 uses median over all sales in the window (deliberate) — lesson text must not equate them.
+- Upstream kailash-ml 2.2.2: FeatureStore.materialize fails on nulls even with nullable=True; ~12 rows/s writes; first
+  ExperimentTracker.start_run ~18 s; process hangs at exit without close().
+- New instructor-only grading_harness.py; starters use `raise NotImplementedError` as student scaffolds (zero-tolerance
+  hook may need an exemption for assessment starters).

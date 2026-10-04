@@ -432,7 +432,7 @@ print(f"{candidates.total_candidates} candidates -> kept {picked.selected_column
 
 Now apply one method from each selection family to the full candidate set.
 
-**Filter: mutual information, against a noise floor.** Mutual information is never negative and its estimator is noisy, so even a useless feature gets a small positive score. Compare the scores with what a *shuffled* target produces:
+**Filter: mutual information, against a noise floor.** Mutual information is never negative and its estimator is noisy, so even a useless feature gets a small positive score. Compare the scores with what a _shuffled_ target produces:
 
 ```python
 from sklearn.feature_selection import mutual_info_classif
@@ -492,7 +492,7 @@ for name, cols in [("all features", feature_cols), ("L1 subset", top_l1)]:
     print(f"{name:13s} ({len(cols):2d} features): test AUC = {auc:.3f}")
 ```
 
-Read the results together. The best mutual-information score (about 0.020) barely clears the shuffled-target floor (about 0.017). The three methods disagree — they share only two features (`n_lab_results` and `n_medication_doses`). And a random forest on either feature set scores a test AUC of about 0.50, no better than a coin. **Every selection method always returns *some* features, even when there is no signal to select.** The intersection of three methods is a robust core only when the methods are ranking real signal; here they are ranking noise, because the 24-hour window contains almost no events. The right conclusion is a data finding — "first-24-hour features from this extract cannot predict long stays; we need earlier event capture or a later prediction time" — not a model tweak. Catching that before modelling is exactly what the window report and the noise floor are for.
+Read the results together. The best mutual-information score (about 0.020) barely clears the shuffled-target floor (about 0.017). The three methods disagree — they share only two features (`n_lab_results` and `n_medication_doses`). And a random forest on either feature set scores a test AUC of about 0.50, no better than a coin. **Every selection method always returns _some_ features, even when there is no signal to select.** The intersection of three methods is a robust core only when the methods are ranking real signal; here they are ranking noise, because the 24-hour window contains almost no events. The right conclusion is a data finding — "first-24-hour features from this extract cannot predict long stays; we need earlier event capture or a later prediction time" — not a model tweak. Catching that before modelling is exactly what the window report and the noise floor are for.
 
 ## Try It Yourself
 
@@ -625,7 +625,7 @@ Requires non-negative features and is strictly for categorical-categorical.
 
 ## Why This Matters
 
-In 2017, a Singapore fintech trained a revenue forecasting model using 180 features and a 12-degree polynomial expansion. On the training set, the R-squared was 0.998. On the validation set, it was 0.41. The CTO asked why.
+Picture a fintech team (an illustrative composite) that trained a revenue forecasting model using 180 features and a 12-degree polynomial expansion. On the training set, the R-squared was 0.998. On the validation set, it was 0.41. The CTO asked why.
 
 The model had memorised the training data. Every wiggle, every outlier, every noise blip had been fit perfectly. When new data arrived, the model had no idea what to do. The technical term for this is **overfitting**. The underlying concept is called the **bias-variance tradeoff**, and it is the single most important theoretical idea in supervised learning.
 
@@ -734,6 +734,21 @@ You cannot reduce `sigma^2`. You trade bias against variance. That is the whole 
 - **Feature quality.** Better features reduce bias without increasing variance — this is why feature engineering is such a good investment.
 - **Regularisation.** Adding a penalty to the loss function increases bias and decreases variance. Its strength is the tuning knob.
 
+### Learning Curves: Reading Bias and Variance From Data
+
+You cannot compute bias and variance directly on real data — you only have one training set. A **learning curve** is the practical diagnostic: train on growing subsets of the training data (100 rows, 200, 400, …), and at each size record the training score and the cross-validated validation score.
+
+Read the curve at its right-hand end, where the model has seen the most data:
+
+| What you see                                             | Diagnosis                       | What helps                                                          |
+| -------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------- |
+| Large gap: training score well above validation score    | **High variance** (overfitting) | More data, stronger regularisation, a simpler model, fewer features |
+| Validation still rising as rows are added                | Variance not yet exhausted      | More data will keep helping                                         |
+| Curves have met (small gap) but both sit at a poor score | **High bias** (underfitting)    | A richer model or better features — more data will **not** help     |
+| Curves have met at a good score                          | Good fit                        | Ship it (after the test set agrees)                                 |
+
+The gap between the two curves is the variance symptom; the level where they meet is the bias symptom. A common mistake is to read a large gap as "high bias" and reach for a more complex model — that makes overfitting worse. The worked example below draws both kinds of curve on the credit data.
+
 ### Regularisation
 
 Take a linear regression loss function:
@@ -747,11 +762,13 @@ Add a penalty term:
 ```
 L_ridge(beta) = Sum_i (y_i - x_i^T beta)^2 + lambda * Sum_j beta_j^2
 L_lasso(beta) = Sum_i (y_i - x_i^T beta)^2 + lambda * Sum_j |beta_j|
-L_enet(beta)  = Sum_i (y_i - x_i^T beta)^2 + lambda * (alpha * Sum_j |beta_j| + (1 - alpha) * Sum_j beta_j^2)
+L_enet(beta)  = Sum_i (y_i - x_i^T beta)^2 + lambda * (rho * Sum_j |beta_j| + (1 - rho) * Sum_j beta_j^2)
 ```
 
 - `lambda` controls the overall strength of regularisation. Larger `lambda` = smaller coefficients = more bias, less variance.
-- `alpha` in elastic net blends L1 and L2. `alpha = 1` is pure Lasso, `alpha = 0` is pure Ridge.
+- `rho` in elastic net blends L1 and L2. `rho = 1` is pure Lasso, `rho = 0` is pure Ridge.
+
+**Mapping to scikit-learn.** scikit-learn names these knobs differently, and the clash trips everyone up once: `Ridge(alpha=...)`, `Lasso(alpha=...)` and `ElasticNet(alpha=...)` take the overall strength `lambda` as **`alpha`**, and `ElasticNet(l1_ratio=...)` is the mix `rho`. scikit-learn also scales the losses: `Lasso` and `ElasticNet` minimise `(1/(2n)) * Sum_i (y_i - x_i^T beta)^2 + alpha * (l1_ratio * ||beta||_1 + (1 - l1_ratio)/2 * ||beta||_2^2)`, while `Ridge` uses the unscaled sum of squares. So the same numerical `alpha` is a far stronger penalty in `Lasso` than in `Ridge` — tune each on its own grid.
 
 The two penalties look similar but behave very differently.
 
@@ -771,7 +788,7 @@ This is why Lasso produces sparse solutions: the diamond has corners, the circle
 
 ### Bayesian Interpretation
 
-Regularisation has a deep Bayesian interpretation. Recall from Module 2.3 that the posterior is proportional to the likelihood times the prior:
+Regularisation has a deep Bayesian interpretation. Recall from Module 2.1 that the posterior is proportional to the likelihood times the prior:
 
 ```
 p(beta | D) proportional_to p(D | beta) * p(beta)
@@ -789,13 +806,25 @@ Maximum a posteriori (MAP) estimation maximises this. If we put a **Gaussian pri
 log p(beta) = -Sum_j beta_j^2 / (2 tau^2) + constant
 ```
 
+For linear regression with Gaussian noise, `y_i ~ N(x_i^T beta, sigma^2)`, the likelihood term is
+
+```
+-log p(D | beta) = Sum_i (y_i - x_i^T beta)^2 / (2 sigma^2) + constant
+```
+
 Negating to turn maximisation into minimisation, the MAP loss is:
 
 ```
--log p(D | beta) + Sum_j beta_j^2 / (2 tau^2)
+Sum_i (y_i - x_i^T beta)^2 / (2 sigma^2) + Sum_j beta_j^2 / (2 tau^2)
 ```
 
-This is exactly Ridge regression with `lambda = 1 / (2 tau^2)`. **L2 regularisation is a Gaussian prior on the coefficients.**
+Multiply through by `2 sigma^2` (which does not move the minimum):
+
+```
+Sum_i (y_i - x_i^T beta)^2 + (sigma^2 / tau^2) * Sum_j beta_j^2
+```
+
+This is exactly Ridge regression with `lambda = sigma^2 / tau^2`. **L2 regularisation is a Gaussian prior on the coefficients**, and the formula says something intuitive: a tighter prior (small `tau^2`) or noisier data (large `sigma^2`) means a bigger penalty.
 
 Similarly, if we put a **Laplace prior** — `beta_j ~ Laplace(0, b)` — then:
 
@@ -803,9 +832,9 @@ Similarly, if we put a **Laplace prior** — `beta_j ~ Laplace(0, b)` — then:
 log p(beta) = -Sum_j |beta_j| / b + constant
 ```
 
-The MAP loss becomes Lasso regression. **L1 regularisation is a Laplace prior on the coefficients.**
+The same steps give Lasso regression with `lambda = 2 sigma^2 / b`. **L1 regularisation is a Laplace prior on the coefficients.**
 
-Why does this matter? Because it tells you what regularisation is doing philosophically: it encodes a belief that the true coefficients are small before you see the data. Ridge says "I believe coefficients are Gaussian-small". Lasso says "I believe most coefficients are exactly zero, and those that are non-zero can be any size". These are different beliefs about the world, and the choice should be driven by your actual prior.
+Why does this matter? Because it tells you what regularisation is doing philosophically: it encodes a belief that the true coefficients are small before you see the data. Ridge says "I believe coefficients are Gaussian-small — all of them a little". Lasso's Laplace prior is sharply peaked at zero with heavier tails: "most coefficients are near zero, a few may be large" — and its MAP estimate sets many coefficients exactly to zero. These are different beliefs about the world, and the choice should be driven by your actual prior.
 
 For a tall, thin dataset (few features, many observations), regularisation barely matters — the data dominates the prior. For a wide dataset (many features, few observations), the prior is load-bearing, and the choice of prior is a genuine design decision.
 
@@ -835,153 +864,194 @@ This gives you `k` estimates of test error from `k` different train-test splits.
 - The inner loop searches hyperparameters on the training portion of the outer split.
 - The outer loop evaluates the tuned model on held-out data.
 
-Without nesting, the hyperparameter search sees the test data through the tuning process, leading to optimistic bias. Nested CV is expensive (`k_outer * k_inner * n_configs` model fits) but gives honest generalisation estimates.
+Without nesting, the hyperparameter search sees the test data through the tuning process, leading to optimistic bias. Nested CV is expensive — `k_outer * (k_inner * n_configs + 1)` model fits, counting the refit of the winner in each outer fold (5 outer folds, 3 inner folds and 5 configurations is 5 × 16 = 80 fits) — but gives honest generalisation estimates.
 
-## Kailash Engine: CrossValidator and PreprocessingPipeline
+## Kailash Engine: PreprocessingPipeline, Fitted on Training Rows Only
 
-Kailash's `PreprocessingPipeline` wraps the common train-time operations (scaling, encoding, imputation) so you can compose them with any model. Crucially, the pipeline is fit on the training fold only, then applied to the validation fold — avoiding the classic leak where you fit a scaler on all the data.
+Kailash's `PreprocessingPipeline` wraps the common train-time operations — imputation, categorical encoding, scaling — behind one call, `setup()`, and replays exactly the same fitted transformations on new rows with `transform()`.
 
-```python
-from kailash_ml import PreprocessingPipeline
-from sklearn.model_selection import StratifiedKFold, cross_val_score
-from sklearn.linear_model import Ridge
-
-pipe = PreprocessingPipeline(
-    numeric_features=["floor_area_sqm", "remaining_lease_years"],
-    categorical_features=["flat_type", "town"],
-    scaler="standard",
-    encoder="onehot",
-)
-
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-scores = cross_val_score(
-    Ridge(alpha=1.0),
-    pipe.fit_transform(X),
-    y,
-    cv=cv,
-    scoring="r2",
-)
-print(f"CV R^2: {scores.mean():.3f} +/- {scores.std():.3f}")
-```
-
-## Worked Example: Bias-Variance and Regularisation on Credit Data
-
-The MLFP03 ex_2 solution demonstrates bias-variance on Singapore credit scoring data with a continuous target (`credit_utilisation`). Let us walk through a simplified version.
+One property matters more than any other: **`setup()` fits its statistics on every row you pass it, and only then splits those rows into its own `train_data` / `test_data`.** If you pass the full dataset, the imputation medians, category codes and scaling means are computed with the test rows included — a leak. The leak-free pattern is to hold out your test rows first, give `setup()` only the development rows, and `transform()` the test rows afterwards:
 
 ```python
-import numpy as np
 import polars as pl
-from sklearn.preprocessing import PolynomialFeatures, StandardScaler
-from sklearn.pipeline import Pipeline
-from sklearn.linear_model import Ridge, Lasso, ElasticNet, LinearRegression
-from sklearn.model_selection import train_test_split, KFold
-from sklearn.metrics import mean_squared_error
+from kailash_ml import PreprocessingPipeline
+from kailash_ml.interop import to_sklearn_input
 from shared import MLFPDataLoader
 
-loader = MLFPDataLoader()
-credit = loader.load("mlfp02", "credit_scoring.parquet")
+credit = (
+    MLFPDataLoader().load("mlfp02", "sg_credit_scoring.parquet")
+    # customer_id is an identifier, future_default_indicator a planted leak,
+    # and default is an OUTCOME — none may predict savings_balance
+    .drop("customer_id", "future_default_indicator", "default")
+    .sample(fraction=1.0, shuffle=True, seed=42)
+)
+test_df = credit.head(5_000)        # 1. hold out the test rows FIRST
+train_df = credit.slice(5_000, 300)  #    a deliberately small training set
 
-numeric = ["age", "income", "debt_ratio", "num_credit_lines", "employment_years"]
-X = credit.select(numeric).drop_nulls().to_numpy()
-y = credit.select("credit_utilisation").to_series().to_numpy()[:len(X)]
+pipe = PreprocessingPipeline()      # 2. fit imputation / encoding / scaling on train rows only
+fitted = pipe.setup(
+    train_df,
+    target="savings_balance",
+    train_size=0.8,
+    seed=42,
+    normalize=True,
+    categorical_encoding="ordinal",
+    imputation_strategy="median",
+)
+# setup() split our 300 rows 80/20 internally; both parts were transformed
+# with statistics from those same 300 rows, so we can use all of them.
+train = pl.concat([fitted.train_data, fitted.test_data])
+test = pipe.transform(test_df)      # 3. replay the fitted transforms on test
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+feature_names = [c for c in train.columns if c != "savings_balance"]
+X_train, y_train, _ = to_sklearn_input(train, feature_columns=feature_names, target_column="savings_balance")
+X_test, y_test, _ = to_sklearn_input(test, feature_columns=feature_names, target_column="savings_balance")
+
+# Standardise the target with TRAINING statistics, so MSE = 1 means "no better than the mean"
+y_mean, y_std = y_train.mean(), y_train.std()
+y_train, y_test = (y_train - y_mean) / y_std, (y_test - y_mean) / y_std
+print(X_train.shape, X_test.shape)
 ```
 
-Now run a complexity sweep: polynomial features from degree 1 to degree 8, each fit with plain linear regression, and measure both training and test error.
+Inside **cross-validation** the same rule applies at fold level: every fold's preprocessing must be fitted on that fold's training part. The simplest way is to put the transformations inside a scikit-learn `Pipeline`, which `cross_val_score` refits on every fold:
 
 ```python
-train_errors, test_errors = [], []
-for degree in range(1, 9):
-    pipe = Pipeline([
-        ("poly", PolynomialFeatures(degree)),
-        ("scaler", StandardScaler()),
-        ("lr", LinearRegression()),
-    ])
-    pipe.fit(X_train, y_train)
-    train_errors.append(mean_squared_error(y_train, pipe.predict(X_train)))
-    test_errors.append(mean_squared_error(y_test, pipe.predict(X_test)))
+from sklearn.linear_model import Ridge
+from sklearn.model_selection import KFold, cross_val_score
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
-for d, (tr, te) in enumerate(zip(train_errors, test_errors), start=1):
-    print(f"degree {d}: train MSE = {tr:.4f}, test MSE = {te:.4f}")
+cv = KFold(n_splits=5, shuffle=True, random_state=42)   # regression target: plain KFold
+scores = cross_val_score(make_pipeline(StandardScaler(), Ridge(alpha=1.0)),
+                         X_train, y_train, cv=cv, scoring="r2")
+print(f"CV R^2: {scores.mean():.3f} +/- {scores.std(ddof=1):.3f}")
 ```
 
-You will typically see training error decrease monotonically with degree, while test error forms a U-shape: high at both extremes (underfit and overfit) with a minimum in the middle. The minimum of the test curve is the bias-variance sweet spot.
+Two details in that snippet are deliberate. `StratifiedKFold` only works for class labels; for a continuous target use `KFold`. And the scaler sits *inside* the pipeline — scaling `X_train` once before `cross_val_score` would let each validation fold's statistics leak into its training folds.
 
-Now compare regularisation strategies at a fixed high degree:
+## Worked Example: Bias-Variance on a Noisy Sine, Regularisation on Credit Data
+
+This walkthrough follows Exercise 2, in two parts.
+
+**Part 1 — the bias-variance curve on data where we know the truth.** On real data you never know `f(x)`, so the cleanest demonstration uses a synthetic problem: `y = sin(2 pi x) + epsilon` with noise standard deviation 0.2 (so the irreducible error is `sigma^2 = 0.04`), 40 training points and 1,000 test points. Fit polynomials of increasing degree:
 
 ```python
-degree = 6
-poly = PolynomialFeatures(degree)
-scaler = StandardScaler()
+from sklearn.metrics import mean_squared_error
+from shared.mlfp03.ex_2 import make_poly_pipeline, make_sine_dataset
 
-X_tr_poly = scaler.fit_transform(poly.fit_transform(X_train))
-X_te_poly = scaler.transform(poly.transform(X_test))
+x_tr, y_tr, x_te, y_te, noise_var = make_sine_dataset()   # n_train=40, sigma=0.2
+for degree in [1, 2, 4, 6, 9, 12, 15, 20]:
+    model = make_poly_pipeline(degree).fit(x_tr, y_tr)
+    tr = mean_squared_error(y_tr, model.predict(x_tr))
+    te = mean_squared_error(y_te, model.predict(x_te))
+    print(f"degree {degree:>2}: train MSE {tr:.4f}  test MSE {te:.4f}")
+```
+
+The U-shape appears exactly as the theory predicts. Degrees 1–2 underfit: a line cannot bend into a sine, and test MSE sits near 0.25 (high bias). Degrees 4–15 sit just above the noise floor of 0.04 (the best, degree 6, scores about 0.044). By degree 20 test MSE has climbed back to about 0.060 while training MSE keeps falling — the extra flexibility is fitting noise (high variance). No model gets below 0.04: that is `sigma^2`, the irreducible term in the decomposition.
+
+**Part 2 — regularisation on the credit data.** Use the leak-free `X_train` / `X_test` built in the Kailash Engine section above: 300 training rows, 5,000 test rows, 32 numeric features, and target `savings_balance` (standardised). Then build a much wider feature set — all degree-2 products of the 32 features, 560 columns for 300 rows — and compare plain least squares with the three penalties:
+
+```python
+import warnings
+
+import numpy as np
+from sklearn.linear_model import ElasticNet, Lasso, LinearRegression, Ridge
+from sklearn.metrics import r2_score
+from sklearn.preprocessing import PolynomialFeatures
 
 models = {
-    "No reg (LR)": LinearRegression(),
-    "Ridge (L2)": Ridge(alpha=1.0),
-    "Lasso (L1)": Lasso(alpha=0.01, max_iter=10000),
-    "ElasticNet": ElasticNet(alpha=0.01, l1_ratio=0.5, max_iter=10000),
+    "OLS (no penalty)":       LinearRegression(),
+    "Ridge alpha=100":        Ridge(alpha=100.0),
+    "Lasso alpha=0.05":       Lasso(alpha=0.05, max_iter=50_000),
+    "ElasticNet a=0.05 r=.5": ElasticNet(alpha=0.05, l1_ratio=0.5, max_iter=50_000),
 }
 
-for name, model in models.items():
-    model.fit(X_tr_poly, y_train)
-    mse = mean_squared_error(y_test, model.predict(X_te_poly))
-    n_nonzero = np.sum(np.abs(model.coef_) > 1e-6) if hasattr(model, "coef_") else "-"
-    print(f"{name:15s}  test MSE = {mse:.4f}  non-zero coefs = {n_nonzero}")
+for degree in [1, 2]:
+    print(f"--- degree {degree} features ---")
+    for name, model in models.items():
+        est = make_pipeline(PolynomialFeatures(degree, include_bias=False), StandardScaler(), model)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")      # OLS on 560 columns is ill-conditioned
+            est.fit(X_train, y_train)
+        coef = est[-1].coef_
+        print(f"{name:24s} train R2 {r2_score(y_train, est.predict(X_train)):6.3f}  "
+              f"test R2 {r2_score(y_test, est.predict(X_test)):6.3f}  "
+              f"non-zero {np.sum(np.abs(coef) > 1e-6)}/{len(coef)}")
 ```
 
-Observations to expect:
+What the measured output shows:
 
-- Plain LR will have the highest test MSE (overfit).
-- Ridge will have lower MSE and all coefficients non-zero but shrunk.
-- Lasso will have comparable MSE and many coefficients exactly zero.
-- Elastic Net will land somewhere between Ridge and Lasso.
+- **Degree 1 (32 features, 300 rows).** OLS already overfits a little: train R² about 0.35, test R² about 0.23. `savings_balance` is only partly predictable from the other columns, so no model does dramatically better, but every penalty narrows the gap: Ridge reaches a test R² of about 0.26 and Lasso about 0.27 while keeping only 10 of the 32 coefficients non-zero. ElasticNet lands in between (18 non-zero).
+- **Degree 2 (560 features, 300 rows).** OLS interpolates the training data (train R² 1.00) and collapses on test (R² about −4.7 — far worse than predicting the mean). Ridge with `alpha=100` pulls test R² back to about 0.0, and Lasso does best (about 0.21) by keeping 61 of 560 coefficients. With more features than rows, the penalty is not a refinement — it is what makes the model usable.
+
+Notice `alpha=100` for Ridge but `0.05` for Lasso: the scikit-learn losses are scaled differently (see the mapping box above), so their `alpha` values are not comparable.
+
+**Learning curves.** Draw the diagnostic curves for two very different models — a linear regression and an unpruned decision tree (Lesson 3.3) — on a larger training pool (4,000 rows, prepared the same leak-free way):
+
+```python
+from sklearn.model_selection import learning_curve
+from sklearn.tree import DecisionTreeRegressor
+
+pool_df = credit.slice(5_300, 4_000)
+pool_pipe = PreprocessingPipeline()
+pool_fit = pool_pipe.setup(pool_df, target="savings_balance", train_size=0.8, seed=42,
+                           normalize=True, categorical_encoding="ordinal", imputation_strategy="median")
+pool = pl.concat([pool_fit.train_data, pool_fit.test_data])
+X_pool, y_pool, _ = to_sklearn_input(pool, feature_columns=feature_names, target_column="savings_balance")
+y_pool = (y_pool - y_pool.mean()) / y_pool.std()
+
+for name, model in [
+    ("linear OLS", LinearRegression()),
+    ("deep tree", DecisionTreeRegressor(min_samples_leaf=5, random_state=42)),
+]:
+    sizes, tr, va = learning_curve(model, X_pool, y_pool, train_sizes=[100, 200, 400, 800, 1600, 3200],
+                                   cv=KFold(5, shuffle=True, random_state=42), scoring="r2")
+    for n, a, b in zip(sizes, tr.mean(axis=1), va.mean(axis=1)):
+        print(f"{name:15s} n={n:5d}  train R2 {a:6.3f}  validation R2 {b:6.3f}  gap {a - b:6.3f}")
+```
+
+Read the right-hand ends. **Linear OLS** starts with a big gap (it overfits 100 rows), but by 3,200 rows training and validation R² have met at about 0.30 and 0.28: a small gap at a mediocre score is **high bias** — more rows will not help; richer features or a more flexible model might. **The deep tree** is the opposite: training R² stays near 0.77 while validation R² stays below zero at every size, a gap of about 0.95 that barely moves. That is **high variance** — the tree memorises its training rows. At this scale more data is not closing the gap, so the remedy is to constrain the model (a shallower tree, larger leaves, or averaging many trees in a random forest — Lesson 3.3).
 
 ### Nested Cross-Validation Example
+
+Choosing `alpha` by cross-validation and then reporting that same cross-validation score is optimistic: the score was used to pick the winner. Nested CV puts the tuning loop inside an outer evaluation loop:
 
 ```python
 from sklearn.model_selection import GridSearchCV
 
 outer = KFold(n_splits=5, shuffle=True, random_state=42)
 inner = KFold(n_splits=3, shuffle=True, random_state=42)
-
-param_grid = {"alpha": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]}
+param_grid = {"ridge__alpha": [0.1, 1.0, 10.0, 100.0, 1000.0]}
 
 outer_scores = []
-for train_idx, test_idx in outer.split(X):
-    X_out_tr, X_out_te = X[train_idx], X[test_idx]
-    y_out_tr, y_out_te = y[train_idx], y[test_idx]
+for train_idx, test_idx in outer.split(X_train):
+    search = GridSearchCV(make_pipeline(StandardScaler(), Ridge()), param_grid,
+                          cv=inner, scoring="neg_mean_squared_error")
+    search.fit(X_train[train_idx], y_train[train_idx])
+    mse = mean_squared_error(y_train[test_idx], search.predict(X_train[test_idx]))
+    outer_scores.append(mse)
+    print(f"  fold: best alpha = {search.best_params_['ridge__alpha']}, held-out MSE = {mse:.3f}")
 
-    search = GridSearchCV(Ridge(), param_grid, cv=inner, scoring="neg_mean_squared_error")
-    search.fit(X_out_tr, y_out_tr)
-
-    best = search.best_estimator_
-    score = mean_squared_error(y_out_te, best.predict(X_out_te))
-    outer_scores.append(score)
-    print(f"  fold alpha = {search.best_params_['alpha']}, test MSE = {score:.4f}")
-
-print(f"Nested CV MSE: {np.mean(outer_scores):.4f} +/- {np.std(outer_scores):.4f}")
+print(f"Nested CV MSE: {np.mean(outer_scores):.3f} +/- {np.std(outer_scores, ddof=1):.3f}")
 ```
 
-The nested score is your honest generalisation estimate. It is typically 5–15% worse than a flat CV score because the flat score is tainted by the tuning procedure.
+The nested score is your honest estimate of how the *whole procedure* — "tune alpha by 3-fold CV, then fit" — will perform on new data. It is usually somewhat worse than the best inner-CV score, and the gap grows with the number of configurations you try. Notice also that different outer folds may pick different alphas: that spread is itself information about how stable your tuning is.
 
 ## Try It Yourself
 
-**Exercise A (easy).** Using the bias-variance code above, plot `train_mse` and `test_mse` versus polynomial degree. Mark the sweet spot. Explain in one sentence what each region of the plot represents.
+**Exercise A (easy).** Plot `train_mse` and `test_mse` versus polynomial degree for the sine data. Mark the sweet spot and the noise floor `sigma^2 = 0.04`. Explain in one sentence what each region of the plot represents.
 
-**Exercise B (medium).** For the Lasso model at degree 6, print the names of the features with non-zero coefficients, sorted by absolute coefficient value. Lasso should have selected a sparse subset — which features did it keep?
+**Exercise B (medium).** For the degree-1 Lasso on the credit data, print the names of the features with non-zero coefficients, sorted by absolute coefficient value. Then sweep `alpha` over `[0.001, 0.003, 0.01, 0.03, 0.1, 0.3]` and plot the number of non-zero coefficients against `alpha`.
 
-**Exercise C (hard).** Implement a manual bias-variance estimator: bootstrap 100 training sets of size 500 from the credit dataset, train a model on each, and compute the prediction at a fixed test point. The variance of the 100 predictions is the variance component. The squared difference between the average prediction and the true value is the bias squared. Do this for Ridge with `alpha = 0.01` and `alpha = 100`. Which has higher bias? Which has higher variance?
+**Exercise C (hard).** Implement a bootstrap bias-variance estimator on the sine problem, where you know the truth: draw 200 fresh training sets of 40 points with `sample_sine_training_set` (in `shared/mlfp03/ex_2.py`), fit a degree-1, degree-6 and degree-20 polynomial to each, and at 100 fixed test points compute bias² (squared gap between the average prediction and `sin(2 pi x)`) and variance (spread of the 200 predictions). Check that bias² + variance + 0.04 approximately equals the measured test MSE.
 
 ## Cross-References
 
-- **Module 2, Lesson 2.3** Bayesian priors and posteriors — directly connects to the Bayesian interpretation of regularisation.
-- **Module 2, Lesson 2.4** Linear regression — the base model we are regularising.
-- **Module 2, Lesson 2.2** Bessel's correction — appears again in CV variance estimates.
-- **Forward link:** Lesson 3.3 and 3.4 will rely on CV for model comparison.
-- **Forward link:** Lesson 3.7 will use Bayesian optimisation to search the hyperparameter space.
+- **Module 2, Lesson 2.1** Bayesian priors and posteriors — directly connects to the Bayesian interpretation of regularisation.
+- **Module 2, Lesson 2.5** Linear regression — the base model we are regularising.
+- **Module 2, Lesson 2.2** Bessel's correction — appears again in CV variance estimates (`ddof=1`).
+- **Forward link:** Lessons 3.3 and 3.4 rely on CV for model comparison.
+- **Forward link:** Lesson 3.7 uses Bayesian optimisation to search the hyperparameter space.
 
 ## Deeper Dive: Regularisation Path and the Lasso Solution Path
 
@@ -999,7 +1069,7 @@ plt.ylabel("Coefficient")
 plt.legend()
 ```
 
-Features that enter early (at high `lambda`) are the most important — Lasso picks them first. Features that enter last have marginal contributions. This is a visual feature-importance ranking that comes for free with Lasso.
+Features that enter early (at high `lambda`) are the ones most correlated with what the model has not yet explained — Lasso picks them first. Features that enter last add little once the early ones are in. Treat the order as a rough ranking, not a verdict: among strongly correlated features, Lasso tends to pick one and leave its twins out.
 
 ## Deeper Dive: Why L2 Has a Closed-Form Solution and L1 Does Not
 
@@ -1023,16 +1093,23 @@ The absence of a closed form makes Lasso slightly slower, but the benefit — sp
 
 Suppose 5-fold CV gives MSE of (3.2, 3.4, 3.1, 3.5, 3.3) for `alpha = 1` and (3.0, 3.1, 3.2, 3.3, 3.1) for `alpha = 10`. The mean for `alpha = 10` is lower, so you pick it. But look at the standard deviations — they overlap. Is the difference statistically meaningful?
 
-Breiman's **one-standard-error rule** says: pick the simplest model whose CV score is within one standard error of the best. "Simplest" usually means the most regularised. The rule's logic: all models within one SE are statistically indistinguishable, so pick the one with the best generalisation properties, which is typically the most regularised.
+The **one-standard-error rule** (Breiman et al., 1984, from the CART book) says: pick the simplest model whose CV score is within one standard error of the best. "Simplest" usually means the most regularised. The rule's logic: all models within one SE are statistically indistinguishable, so pick the one with the best generalisation properties, which is typically the most regularised.
 
 ```python
-scores = cross_val_score(Ridge(alpha=alpha), X, y, cv=5, scoring="neg_mean_squared_error")
-mean = -scores.mean()
-se = scores.std() / np.sqrt(len(scores))
-print(f"alpha={alpha}: MSE = {mean:.3f} +/- {se:.3f}")
+rows = []
+for alpha in [0.1, 1.0, 10.0, 100.0, 1000.0]:
+    mse = -cross_val_score(make_pipeline(StandardScaler(), Ridge(alpha=alpha)),
+                           X_train, y_train, cv=cv, scoring="neg_mean_squared_error")
+    se = mse.std(ddof=1) / np.sqrt(len(mse))
+    rows.append((alpha, mse.mean(), se))
+    print(f"alpha={alpha:>7}: CV MSE = {mse.mean():.3f} +/- {se:.3f}")
+
+best_alpha, best_mean, best_se = min(rows, key=lambda r: r[1])
+chosen = max(alpha for alpha, mean, _ in rows if mean <= best_mean + best_se)
+print(f"lowest CV MSE at alpha={best_alpha}; one-SE rule picks alpha={chosen}")
 ```
 
-Pick the largest `alpha` whose `mean` is within `min_mean + se_at_min` of the best. This protects you from overfitting your hyperparameter search.
+The rule picks the largest `alpha` whose mean CV error is within one standard error of the best. This protects you from overfitting your hyperparameter search.
 
 ## Reflection Questions
 

@@ -917,147 +917,128 @@ asyncio.run(main())</code></pre>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Multi-Agent ML Pipeline</h2>
+<h2>Worked Example: Supervisor-Worker on a SQuAD Passage</h2>
 
 <div class="worked-example">
   <h3>Goal</h3>
   <p>
-    Build a supervisor-worker pipeline for Singapore HDB resale price analysis.
-    The DataScientist supervisor delegates to three workers: FeatureEngineer
-    (profiles data, engineers features), ModelSelector (trains and compares
-    models), and ReportWriter (produces the executive summary). All agents
-    communicate via A2A messages and share an entity memory store.
+    Answer a reading-comprehension question with a team: three specialists
+    (factual, semantic, structural) analyse the passage concurrently, each
+    leaves its key finding in a <code>SharedMemoryPool</code>, and a synthesis
+    supervisor writes the final answer. You finish with the answer, the
+    supervisor's confidence, a per-stage latency breakdown, and an audit trail
+    of who contributed what. This is Exercise 6.1 plus the shared-memory tier
+    from Exercise 6.5.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1. Define the three worker agents.</span>
-    <p>Each worker has a dataclass config, a typed signature, 3-4 tools, and
-    a reference to the same <code>SharedMemoryPool</code> so facts flow
-    across the team:</p>
-    <pre><code class="language-python">from dataclasses import dataclass
-from kaizen import Signature, InputField, OutputField
-from kaizen.core.base_agent import BaseAgent
-from kaizen.memory import SharedMemoryPool
-from kaizen_agents.agents.specialized.react import ReActAgent
-
-shared_pool = SharedMemoryPool(backend="sqlite", path="hdb_workspace.db")
-
-@dataclass
-class HDBWorkerConfig:
-    model: str = "gpt-4o-mini"
-    budget_limit_usd: float = 1.00
-    shared: SharedMemoryPool | None = None
-
-# Worker 1: Feature Engineer
-class FeatureTask(Signature):
-    """Profile HDB data and engineer features."""
-    dataset: str = InputField(description="Dataset filename")
-    feature_report: str = OutputField(description="Profiling + feature notes")
-    engineered_columns: list = OutputField(description="Derived columns added")
-
-class FeatureAgent(ReActAgent):
-    def __init__(self, config: HDBWorkerConfig):
-        super().__init__(
-            config=config,
-            signature=FeatureTask(),
-            tools=[explore_data, compute_correlations, create_features],
-        )
-
-feature_agent = FeatureAgent(HDBWorkerConfig(shared=shared_pool))
-
-# Worker 2: Model Selector
-class ModelTask(Signature):
-    """Train 3 models and recommend the best."""
-    dataset: str = InputField(description="Dataset filename")
-    features: list = InputField(description="Engineered column names")
-    model_comparison: str = OutputField(description="Comparison table")
-    best_model: str = OutputField(description="Recommended model")
-
-class ModelAgent(ReActAgent):
-    def __init__(self, config: HDBWorkerConfig):
-        super().__init__(
-            config=config,
-            signature=ModelTask(),
-            tools=[train_model, cross_validate, evaluate_model],
-        )
-
-model_agent = ModelAgent(HDBWorkerConfig(shared=shared_pool))
-
-# Worker 3: Report Writer
-class ReportWriteTask(Signature):
-    """Synthesise findings into executive report."""
-    feature_report: str = InputField(description="From feature agent")
-    model_comparison: str = InputField(description="From model agent")
-    executive_summary: str = OutputField(description="Final report")
-
-class ReportWriterAgent(ReActAgent):
-    def __init__(self, config: HDBWorkerConfig):
-        super().__init__(
-            config=config,
-            signature=ReportWriteTask(),
-            tools=[format_table, generate_chart],
-        )
-
-report_writer = ReportWriterAgent(HDBWorkerConfig(shared=shared_pool))</code></pre>
-  </div>
-
-  <div class="step">
-    <span class="step-label">Step 2. Build the supervisor.</span>
+    <span class="step-label">Step 1. Load the corpus and build the team.</span>
     <pre><code class="language-python">import asyncio
-from kaizen.core.base_agent import BaseAgent
+import time
 
-class SupervisorSignature(Signature):
-    dataset: str = InputField(description="Dataset filename")
-    executive_summary: str = OutputField(description="Combined report")
+from kaizen.memory import SharedMemoryPool
 
-class HDBAnalysisSupervisor(BaseAgent):
-    def __init__(self, config: HDBWorkerConfig):
-        super().__init__(config=config, signature=SupervisorSignature())
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, preflight_ollama
+from shared.mlfp06.ex_6 import (
+    build_specialists,
+    build_synthesis,
+    load_squad_corpus,
+    run_checked,
+)
 
-    async def orchestrate(self, dataset: str) -> str:
-        # Phase 1: Feature engineering
-        features = await feature_agent.run_async(dataset=dataset)
+passages = load_squad_corpus()                 # SQuAD 2.0: title, text, question, answer
+doc, question = passages["text"][0], passages["question"][0]
 
-        # Phase 2: Model selection (uses engineered features)
-        models = await model_agent.run_async(
-            dataset=dataset,
-            features=features["engineered_columns"],
-        )
+factual, semantic, structural = build_specialists()
+supervisor = build_synthesis()
+pool = SharedMemoryPool()
 
-        # Phase 3: Report (combines both results)
-        report = await report_writer.run_async(
-            feature_report=features["feature_report"],
-            model_comparison=models["model_comparison"],
-        )
-
-        # Per-agent budgets cap the total. Cascaded budgets live in PACT (6.7).
-        print(f"Budget caps (per worker): ${feature_agent.config.budget_limit_usd:.2f}")
-        return report["executive_summary"]
-
-supervisor = HDBAnalysisSupervisor(HDBWorkerConfig(shared=shared_pool))
-result = asyncio.run(supervisor.orchestrate(dataset="hdb_resale.csv"))</code></pre>
+# The one output field each specialist publishes for the rest of the team
+PUBLISH = {"factual": "factual_claims", "semantic": "main_themes", "structural": "key_entities"}</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 3. Observe the multi-agent trace.</span>
-    <pre><code class="language-text">[Supervisor] Delegating to FeatureEngineer...
-  [FeatureEng] Profiling hdb_resale.csv — 50,000 rows, 11 columns
-  [FeatureEng] Created 3 features: price_per_sqm, floor_bucket, lease_remaining_years
-  [FeatureEng] Stored entity "hdb_resale" in shared memory
-  [FeatureEng] Cost: $0.42
+    <span class="step-label">Step 2. Fan out, record insights, fan in.</span>
+    <pre><code class="language-python">async def run_worker(name: str, agent) -> tuple[str, dict, float]:
+    t0 = time.perf_counter()
+    out = await run_checked(agent, document=doc, question=question)
+    pool.write_insight({
+        "agent_id": name,
+        "content": str(out[PUBLISH[name]]),
+        "tags": ["passage-0", name],
+        "importance": 0.8,
+        "segment": "fan-out",
+    })
+    return name, out, time.perf_counter() - t0
 
-[Supervisor] Delegating to ModelSelector...
-  [ModelSel] Training on 14 features (11 original + 3 engineered)
-  [ModelSel] LR: R²=0.82 | RF: R²=0.91 | GB: R²=0.93
-  [ModelSel] Gradient boosting wins. Top predictor: floor_area_sqm
-  [ModelSel] Cost: $0.67
 
-[Supervisor] Delegating to ReportWriter...
-  [Reporter] Reading shared entities for context
-  [Reporter] Generating executive summary with charts
-  [Reporter] Cost: $0.31
+async def analyse() -> dict:
+    fan_out = await asyncio.gather(
+        run_worker("factual", factual),
+        run_worker("semantic", semantic),
+        run_worker("structural", structural),
+    )
+    outs = {name: out for name, out, _ in fan_out}
+    latency = {name: dt for name, _, dt in fan_out}
 
-[Supervisor] Total: $1.40 / $3.00 budget. Pipeline complete.</code></pre>
+    t0 = time.perf_counter()
+    final = await run_checked(
+        supervisor,
+        document=doc,
+        question=question,
+        factual_analysis=f"Claims: {outs['factual']['factual_claims']}, "
+        f"Evidence: {outs['factual']['evidence_quality']}",
+        semantic_analysis=f"Themes: {outs['semantic']['main_themes']}, "
+        f"Implicit: {outs['semantic']['implicit_info']}",
+        structural_analysis=f"Structure: {outs['structural']['structure_type']}, "
+        f"Entities: {outs['structural']['key_entities']}",
+    )
+    latency["synthesis"] = time.perf_counter() - t0
+    return {
+        "answer": final["unified_answer"],
+        "confidence": final["confidence"],
+        "supported": outs["factual"]["answer_supported"],
+        "latency_s": latency,
+    }
+
+
+preflight_ollama(required_models=[DEFAULT_CHAT_MODEL])   # fails loudly if Ollama is down
+result = asyncio.run(analyse())
+
+print(f"Q: {question}")
+print(f"Gold answer: {passages['answer'][0]!r}   (empty = unanswerable in SQuAD 2.0)")
+print(f"Team answer: {result['answer'][:200]}")
+print(f"Confidence: {result['confidence']}   Factual agent says supported: {result['supported']}")
+for stage, seconds in result["latency_s"].items():
+    print(f"  {stage:10s} {seconds:5.1f}s")
+for insight in pool.read_all():
+    print(f"  [{insight['agent_id']}] {insight['content'][:80]}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3. Read the result.</span>
+    <p>
+      Your exact text and timings depend on your Ollama model and machine, so
+      read the output for its shape rather than matching numbers:
+    </p>
+    <ul>
+      <li><strong>Answer vs gold.</strong> SQuAD 2.0 deliberately includes
+      unanswerable questions (empty gold answer). A good team answer agrees
+      with the gold span when there is one and says the passage does not
+      support an answer when there is not — the factual agent's
+      <code>answer_supported</code> field is the first place to look.</li>
+      <li><strong>Latency.</strong> The three fan-out stages overlap, so their
+      wall-clock is close to the slowest one on a concurrent backend; on a
+      single-slot local daemon they queue and the stage times grow one after
+      another. Synthesis always runs last and usually has the longest prompt.</li>
+      <li><strong>Audit trail.</strong> The pool holds exactly three insights,
+      one per specialist, tagged <code>passage-0</code>. When the final answer
+      is wrong you can see which specialist introduced the error instead of
+      re-reading one giant prompt.</li>
+      <li><strong>Cost.</strong> Four LLM calls, $0 on local Ollama. On a
+      hosted provider each agent's <code>budget_limit_usd</code> would cap its
+      share.</li>
+    </ul>
   </div>
 </div>
 

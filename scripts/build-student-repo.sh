@@ -78,11 +78,15 @@ for module_dir in "$SOURCE"/modules/mlfp*/; do
     #   - grader.py       re-derives the answer from data (leaks the formula)
     #   - exam.py         the fully-solved module exam
     #   - README.md       self-grade instructions referencing the withheld grader
+    #   - grading_harness.py / _*.py  instructor-only grading internals (how the
+    #                     grader builds secret held-out inputs)
     if [ -d "$module_dir/assessment" ]; then
         rsync -a --delete \
             --exclude='__pycache__' \
             --exclude='solution.py' \
             --exclude='grader.py' \
+            --exclude='grading_harness.py' \
+            --exclude='_*.py' \
             --exclude='exam.py' \
             --exclude='README.md' \
             --exclude='*solution*' \

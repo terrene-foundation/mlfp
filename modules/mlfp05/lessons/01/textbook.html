@@ -71,10 +71,15 @@
     autoencoder cleans them up without a human touching a slider.
   </li>
   <li>
-    <strong>Synthetic patient records for research.</strong> A hospital
-    wants to share data with researchers but cannot expose real patients.
-    A variational autoencoder trained on anonymised records can generate
-    new, plausible records that preserve statistical structure.
+    <strong>Synthetic records for research and testing.</strong> A
+    hospital wants researchers to prototype on realistic data. A
+    variational autoencoder trained on its records can generate new,
+    plausible records that preserve statistical structure.
+    <em>Synthetic is not the same as private:</em> generative models can
+    memorise and reproduce training rows, so a privacy claim needs a
+    formal guarantee (for example differentially private training) plus
+    memorisation and membership‑inference testing — never just "it was
+    generated".
   </li>
 </ul>
 
@@ -322,18 +327,31 @@ $$\mathrm{KL}\!\bigl(\mathcal{N}(\mu, \sigma^2) \,\|\, \mathcal{N}(0, I)\bigr) \
   <span class="label">⚙ Kailash Engine</span>
   <p>
     For every model you train in Module 5, <code>ModelVisualizer</code>
-    gives you one‑liner training‑curve plots, latent‑space scatter plots,
-    and reconstruction galleries without having to import matplotlib.
-    Pass it the per‑epoch loss list and the model, and it handles layout,
-    titles, and the HTML figure. We rely on it heavily in this module
-    because we need to <em>see</em> what each architecture is learning.
+    turns plain Python data into interactive Plotly figures without any
+    matplotlib boilerplate. Two methods carry most of this module:
+    <code>training_history(metrics)</code> takes a dict of per‑epoch
+    lists (one line per key), and <code>scatter(df, x, y, color=...)</code>
+    takes a polars DataFrame — exactly what you need for a latent‑space
+    plot. (Image galleries such as reconstruction grids are not a
+    ModelVisualizer feature; the exercise helpers draw those.)
   </p>
 </div>
 
-<pre><code class="language-python">from kailash_ml import ModelVisualizer
+<pre><code class="language-python">import polars as pl
+from kailash_ml import ModelVisualizer
+
 viz = ModelVisualizer()
-viz.plot_training_curve(losses=history, title="VAE training loss")
-viz.plot_latent_scatter(z_vectors=mu.cpu(), labels=y, title="VAE latent space")
+# history: list of per-epoch losses from your training loop
+fig = viz.training_history({"VAE loss": history}, y_label="loss")
+
+# first two latent dims of the encoder means, coloured by class label
+latent = pl.DataFrame({
+    "z1": mu[:, 0].tolist(), "z2": mu[:, 1].tolist(),
+    "label": [str(c) for c in y.tolist()],
+})
+fig = viz.scatter(latent, x="z1", y="z2", color="label",
+                  title="VAE latent space")
+fig.show()   # both methods return a Plotly figure
 </code></pre>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -342,34 +360,47 @@ viz.plot_latent_scatter(z_vectors=mu.cpu(), labels=y, title="VAE latent space")
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Build and train four autoencoders on a small synthetic image dataset
-    (2000 tiny 16×16 Gaussian blobs). Compare reconstruction error. Sample
-    new images from the VAE's latent space. You will recognise every line
-    from M5 exercise 1.
+    Build and train autoencoders on a small <strong>synthetic</strong>
+    image dataset (2,000 tiny 16×16 Gaussian blobs, generated in Step 1)
+    so the whole example runs in about a minute on a laptop. Compare
+    reconstruction error, sample new images from the VAE's latent space,
+    and plot the results with ModelVisualizer. Exercise 1 applies the same
+    architectures, scaled up to 784 inputs, to the real Fashion‑MNIST
+    dataset (60,000 clothing images).
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — imports and the dataset.</span>
+    <span class="step-label">Step 1 — imports and the (synthetic) dataset.</span>
     <pre><code class="language-python">import numpy as np
+import polars as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 from kailash_ml import ModelVisualizer
+from shared.kailash_helpers import get_device
 
 torch.manual_seed(42)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+rng = np.random.default_rng(42)
+device = get_device()          # MPS / CUDA / CPU, picked automatically
 
 def make_blobs(n=2000, size=16):
+    """SYNTHETIC data: one soft Gaussian blob per 16x16 image."""
     yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
-    cx = np.random.uniform(4, size-4, n).astype(np.float32)[:, None, None]
-    cy = np.random.uniform(4, size-4, n).astype(np.float32)[:, None, None]
-    w  = np.random.uniform(1.5, 3.0, n).astype(np.float32)[:, None, None]
-    return np.exp(-((xx - cx)**2 + (yy - cy)**2) / (2 * w**2))
+    cx = rng.uniform(4, size - 4, n).astype(np.float32)[:, None, None]
+    cy = rng.uniform(4, size - 4, n).astype(np.float32)[:, None, None]
+    w  = rng.uniform(1.5, 3.0, n).astype(np.float32)[:, None, None]
+    imgs = np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * w ** 2))
+    return imgs, w.ravel()
 
-X_np = make_blobs()
-X = torch.from_numpy(X_np.reshape(len(X_np), -1)).to(device)  # (n, 256)
+X_np, widths = make_blobs()
+X = torch.from_numpy(X_np.reshape(len(X_np), -1)).to(device)  # (2000, 256)
 loader = DataLoader(TensorDataset(X), batch_size=64, shuffle=True)</code></pre>
+    <p>
+      Pixels lie in <code>[0, 1]</code> (the blob centre is 1, the
+      background is ≈0). We keep each blob's width so we can colour the
+      latent plot by it in Step 9.
+    </p>
   </div>
 
   <div class="step">
@@ -408,7 +439,13 @@ for epoch in range(20):
         opt.zero_grad(); loss.backward(); opt.step()
         running += loss.item() * batch.size(0)
     history.append(running / len(loader.dataset))
-print(f"Vanilla AE final MSE: {history[-1]:.5f}")</code></pre>
+print(f"Vanilla AE MSE: epoch 1 {history[0]:.4f} -> epoch 20 {history[-1]:.4f}")</code></pre>
+    <p>
+      In our run the per‑pixel MSE fell from about 0.15 after the first
+      epoch to about 0.003 after twenty (exact digits vary by machine and
+      backend). Eight numbers are enough because each image is really
+      described by three: the blob's x, y and width.
+    </p>
   </div>
 
   <div class="step">
@@ -474,15 +511,32 @@ print(f"Vanilla AE final MSE: {history[-1]:.5f}")</code></pre>
       standard for VAE loss so the two terms are comparable per batch.
       The KL closed form is the one we derived above.
     </p>
+    <pre><code class="language-python">vae = VAE().to(device)
+opt = torch.optim.Adam(vae.parameters(), lr=1e-3)
+vae_history = []
+for epoch in range(20):
+    total = 0.0
+    for (batch,) in loader:
+        recon, mu, logvar = vae(batch)
+        loss, rec, kl = vae_loss(recon, batch, mu, logvar)
+        opt.zero_grad(); loss.backward(); opt.step()
+        total += loss.item()
+    vae_history.append(total / len(loader.dataset))   # loss per image
+print(f"VAE loss per image: epoch 1 {vae_history[0]:.2f} -> epoch 20 {vae_history[-1]:.2f}")</code></pre>
+    <p>
+      Because of the <code>sum</code> reduction this loss is per image, not
+      per pixel, so it is not on the same scale as the vanilla MSE. In our
+      run it fell from roughly 38 to roughly 6.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 7 — sample new images from the VAE.</span>
     <pre><code class="language-python">vae.eval()
 with torch.no_grad():
-    z = torch.randn(16, 8, device=device)       # draw from prior
+    z = torch.randn(16, 8, device=device)       # draw from the prior
     generated = vae.decoder(z).cpu().view(16, 16, 16)
-print("Generated 16 new blobs — none of these are training images.")</code></pre>
+print(generated.shape, "new images decoded from random prior draws")</code></pre>
     <p>
       This is the payoff: sampling $z$ from the standard normal prior and
       passing it through the decoder produces <em>new</em> images that
@@ -516,7 +570,41 @@ print("Generated 16 new blobs — none of these are training images.")</code></p
         )
     def forward(self, x):
         z = self.encoder(x)
-        return self.decoder(z), z</code></pre>
+        return self.decoder(z), z
+
+conv_ae = ConvAE().to(device)
+recon, z = conv_ae(X[:4].view(-1, 1, 16, 16))   # images, not flat vectors
+print(recon.shape, z.shape)   # torch.Size([4, 1, 16, 16]) torch.Size([4, 8])</code></pre>
+    <p>
+      Train it with the Step 3 loop, reshaping each batch with
+      <code>batch.view(-1, 1, 16, 16)</code>.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 9 — look at what was learned.</span>
+    <pre><code class="language-python">viz = ModelVisualizer()
+fig_loss = viz.training_history(
+    {"vanilla AE (MSE)": history}, y_label="mean squared error"
+)
+
+with torch.no_grad():
+    mu, _ = vae.encode(X)
+size = ["narrow" if w &lt; 2.0 else "medium" if w &lt; 2.5 else "wide" for w in widths]
+latent = pl.DataFrame({
+    "z1": mu[:, 0].cpu().tolist(),
+    "z2": mu[:, 1].cpu().tolist(),
+    "blob width": size,
+})
+fig_latent = viz.scatter(latent, x="z1", y="z2", color="blob width",
+                         title="VAE latent space (first two dims)")
+fig_loss.show(); fig_latent.show()</code></pre>
+    <p>
+      The loss curve should drop steeply then flatten. In the latent plot,
+      look for structure — nearby points should be blobs of similar
+      position or width. Only two of the eight latent dimensions are
+      shown, so some structure is hidden in the others.
+    </p>
   </div>
 
   <p>
@@ -540,6 +628,26 @@ print("Generated 16 new blobs — none of these are training images.")</code></p
     <tr><td>Convolutional</td><td><code>Conv2d</code> stack, same loss</td><td>MSE</td><td>No (unless you add VAE head)</td></tr>
   </tbody>
 </table>
+
+<h3>Survey: five more variants (all built in Exercise 1)</h3>
+
+<table>
+  <thead><tr><th>Variant</th><th>What changes</th><th>Exercise 1 file</th></tr></thead>
+  <tbody>
+    <tr><td>Sparse</td><td>L1 penalty on the hidden‑layer <em>activations</em>, $\lambda\sum_j |h_j|$, so only a few units fire per input</td><td><code>04_sparse_ae.py</code></td></tr>
+    <tr><td>Contractive</td><td>Penalty on the encoder Jacobian, $\lambda \,\|\partial z / \partial x\|_F^2$, computed <em>per sample</em> — it depends on the input. This is not L2 weight decay on the encoder weights.</td><td><code>05_contractive_ae.py</code></td></tr>
+    <tr><td>Stacked</td><td>Several encoder/decoder layers, progressively narrower</td><td><code>07_stacked_ae.py</code></td></tr>
+    <tr><td>Recurrent</td><td>LSTM/GRU encoder and decoder for sequences</td><td><code>08_recurrent_ae.py</code></td></tr>
+    <tr><td>Contractive VAE</td><td>VAE loss plus the contractive Jacobian penalty on the encoder mean</td><td><code>10_contractive_vae.py</code></td></tr>
+  </tbody>
+</table>
+
+<p>
+  Naming note: in the literature "CVAE" means <em>Conditional</em> VAE
+  (generation conditioned on a class label). The contractive variant
+  above is always written out in full, "Contractive VAE", to avoid the
+  clash.
+</p>
 
 <div class="callout advanced">
   <span class="label">🟣 Advanced — Why not just do PCA?</span>

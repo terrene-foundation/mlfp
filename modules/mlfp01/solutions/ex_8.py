@@ -613,10 +613,15 @@ print("\n✓ Checkpoint 7 passed — spatial features engineered\n")
 # ══════════════════════════════════════════════════════════════════════
 # TASK 8: PreprocessingPipeline — model-ready features
 # ══════════════════════════════════════════════════════════════════════
-# PreprocessingPipeline.setup() does the train/test split itself, then
-# learns imputation, scaling and encoding from the TRAIN split only and
-# applies them to both splits — so nothing about the test rows leaks
-# into the transformations.
+# PreprocessingPipeline.setup() learns its imputation values, scaling
+# statistics and category lists from EVERY row you hand it — and only
+# splits train/test afterwards. Hand it the whole dataset and the test
+# rows quietly shape the transformations the model is judged with.
+#
+# So the order is:
+#   1. hold the test rows out FIRST (before anything is fitted),
+#   2. fit the pipeline on the TRAINING rows only,
+#   3. apply the fitted pipeline to the test rows with transform().
 
 # --- 8a: Select feature columns ---
 # Excluded on purpose:
@@ -643,45 +648,74 @@ feature_cols = [
 ]
 pipeline_df = taxi_clean.select(feature_cols + ["fare_sgd"])
 
-# --- 8b: Run PreprocessingPipeline ---
+# --- 8b: Hold out the test rows FIRST ---
+shuffled = pipeline_df.sample(fraction=1.0, shuffle=True, seed=42)
+n_train = int(shuffled.height * 0.8)
+train_raw = shuffled.head(n_train)
+test_raw = shuffled.tail(shuffled.height - n_train)
+print(f"Held out before any fitting: {train_raw.height:,} train / {test_raw.height:,} test rows")
+
+# --- 8c: Fit PreprocessingPipeline on the TRAINING rows only ---
+# setup() also splits the rows it is given into two parts; here that split
+# stays inside the training rows and we do not use it. The honest test
+# set is test_raw, which setup() never sees.
 pipeline = PreprocessingPipeline()
 result = pipeline.setup(
-    data=pipeline_df,
+    data=train_raw,
     target="fare_sgd",
-    train_size=0.8,
     seed=42,
     normalize=True,
     categorical_encoding="onehot",
     imputation_strategy="median",
 )
+# Apply the FITTED pipeline to each split.
+train_data = pipeline.transform(train_raw)
+test_data = pipeline.transform(test_raw)
 
-print(f"=== PreprocessingPipeline Result ===")
-print(result.summary)
+print("=== PreprocessingPipeline Result ===")
 print(f"  Task type:     {result.task_type}")
-print(f"  Train shape:   {result.train_data.shape}")
-print(f"  Test shape:    {result.test_data.shape}")
+print(f"  Train shape:   {train_data.shape}")
+print(f"  Test shape:    {test_data.shape}")
 print(f"  Numeric feats: {len(result.numeric_columns)}")
 print(f"  Cat feats:     {len(result.categorical_columns)}")
 
-# --- 8c: Inspect the processed features ---
+# --- 8d: Inspect the processed features ---
 print(f"\n  Numeric columns: {result.numeric_columns[:10]}")
 print(f"  Categorical columns: {result.categorical_columns[:10]}")
-print(f"  Shape before -> after: {result.original_shape} -> {result.transformed_shape}")
+print(f"  Shape before -> after: {train_raw.shape} -> {train_data.shape}")
 # INTERPRETATION: the column count grows because one-hot encoding turns
 # each categorical column into one 0/1 column per category.
 
-# --- 8d: Verify train/test split ---
-total_rows = result.train_data.shape[0] + result.test_data.shape[0]
-train_pct = result.train_data.shape[0] / total_rows * 100
-print(f"\n  Train: {result.train_data.shape[0]:,} ({train_pct:.0f}%)")
-print(f"  Test:  {result.test_data.shape[0]:,} ({100 - train_pct:.0f}%)")
+# --- 8e: Prove the test rows did not shape the scaling ---
+# The fitted scaler stores the mean it subtracts from each numeric column.
+scaler = result.transformers["scaler"]
+dist_idx = result.numeric_columns.index("distance_km")
+train_mean = train_raw["distance_km"].mean()
+all_rows_mean = pipeline_df["distance_km"].mean()
+print("\n  distance_km mean:")
+print(f"    training rows only:    {train_mean:.4f} km")
+print(f"    all rows (incl. test): {all_rows_mean:.4f} km")
+print(f"    learned by the scaler: {scaler.mean_[dist_idx]:.4f} km")
+# INTERPRETATION: the scaler's mean equals the TRAINING-rows mean, not the
+# all-rows mean — the test rows were never seen while fitting. Had we
+# passed pipeline_df to setup(), the scaler would hold the all-rows mean.
+
+# --- 8f: Verify train/test split ---
+total_rows = train_data.shape[0] + test_data.shape[0]
+train_pct = train_data.shape[0] / total_rows * 100
+print(f"\n  Train: {train_data.shape[0]:,} ({train_pct:.0f}%)")
+print(f"  Test:  {test_data.shape[0]:,} ({100 - train_pct:.0f}%)")
 
 # ── Checkpoint 8 ─────────────────────────────────────────────────────
 assert result is not None, "PreprocessingPipeline.setup() must return a result"
 assert result.task_type == "regression"
 assert result.target_column == "fare_sgd"
-assert abs(total_rows - pipeline_df.height) <= 1
-assert result.train_data["fare_sgd"].null_count() == 0
+assert total_rows == pipeline_df.height, "Every row is in exactly one split"
+assert train_data["fare_sgd"].null_count() == 0
+assert abs(scaler.mean_[dist_idx] - train_mean) < 1e-9, \
+    "The scaler must be fitted on the training rows only"
+assert train_data.columns == test_data.columns, \
+    "Both splits must go through the same fitted pipeline"
 print("\n✓ Checkpoint 8 passed — PreprocessingPipeline complete\n")
 
 
@@ -896,8 +930,8 @@ print(f"  Stage 5  Clean:      {len(cleaning_log)} logged cleaning steps")
 print(f"  Stage 6  Temporal:   {len(temporal_cols)} temporal features")
 print(f"  Stage 7  Spatial:    {len(spatial_cols)} spatial features")
 print(
-    f"  Stage 8  Pipeline:   {result.train_data.shape[0]:,} train / "
-    f"{result.test_data.shape[0]:,} test"
+    f"  Stage 8  Pipeline:   {train_data.shape[0]:,} train / "
+    f"{test_data.shape[0]:,} test"
 )
 print(f"  Stage 9  Visualise:  {len(viz_files)} charts saved")
 print(f"  Stage 10 Verify:     {len(profile_clean.alerts)} alerts remaining")
@@ -930,7 +964,8 @@ print(
     - Temporal: hour, ISO weekday, peak period, day type, duration
     - Spatial: haversine distance to the CBD, average speed
     - Derived: fare per km
-  ✓ PreprocessingPipeline: split, impute, scale and encode in one call
+  ✓ PreprocessingPipeline: hold the test rows out first, fit impute /
+    scale / encode on the training rows, transform() the test rows
   ✓ ModelVisualizer: distributions, hourly patterns, segment comparisons
     — with honest axis labels
   ✓ Quality measurement: original vs cleaned with run_compare()

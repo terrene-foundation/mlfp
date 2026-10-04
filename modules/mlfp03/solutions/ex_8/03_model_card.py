@@ -198,9 +198,10 @@ model_card = f"""
 ## 5. Evaluation Data
 - **Source**: the 20% test split of `sg_credit_scoring.parquet` (course dataset)
 - **Size**: {X_test.shape[0]:,} applications
-- **Preprocessing**: kailash-ml PreprocessingPipeline, ordinal encoding;
+- **Preprocessing**: kailash-ml PreprocessingPipeline, ordinal encoding,
+  fitted on the training split only (the test split was held out first);
   `customer_id` and the post-outcome `future_default_indicator` removed
-- **Motivation / limit**: a seeded RANDOM split — it does not test how the
+- **Motivation / limit**: a seeded RANDOM split, stratified on `default` — it does not test how the
   model performs on future applicants (no time-ordered evaluation)
 
 ## 6. Training Data

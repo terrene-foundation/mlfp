@@ -2631,13 +2631,11 @@ This is backpropagation: compute the error at the output, propagate it backward 
 
 ### ADVANCED: Hidden layers as automated feature engineering
 
-Consider a 2-hidden-layer network for HDB price prediction. The input is $\mathbf{x} = [\text{floor\_area}, \text{storey}, \text{lease\_remaining}, \text{town\_encoded}]$.
-
-The first hidden layer might learn features like:
+Consider a 2-hidden-layer network for HDB price prediction. The input is $\mathbf{x} = [\text{floor\_area}, \text{storey}, \text{flat\_age}, \text{town indicators}]$. As an illustration of the *kind* of feature that can emerge (hidden units are not guaranteed to be this tidy or this interpretable — Drill 6 probes the real network), the first hidden layer might learn features like:
 
 - $h_1$: "overall quality" (positive loading on area, storey, and lease)
 - $h_2$: "location premium" (depends heavily on town encoding)
-- $h_3$: "new vs old" (positive on lease remaining, negative on storey)
+- $h_3$: "new vs old" (negative on flat age)
 
 The second hidden layer combines these into more abstract features:
 
@@ -2646,7 +2644,7 @@ The second hidden layer combines these into more abstract features:
 
 These features were not designed by anyone. They emerged from minimising the price prediction error via backpropagation. This is representation learning — the network discovers its own representations.
 
-The connection to Module 4's journey: in Lesson 4.3, PCA found linear combinations that maximise variance. In Lesson 4.7, matrix factorisation found linear combinations that minimise reconstruction error. Here, neural networks find non-linear combinations that minimise task-specific loss. Each step adds more power.
+The connection to Module 4's journey: in Lesson 4.3, PCA found linear combinations that maximise variance. In Lesson 4.7, matrix factorisation found linear combinations that minimise reconstruction error. Here, neural networks find non-linear combinations that minimise task-specific loss. Each step adds more power — and, as the worked example shows, more power only pays off when the data contain structure that simpler models cannot reach.
 
 ### THEORY: Word2Vec is a one-hidden-layer network
 
@@ -2659,50 +2657,73 @@ Lesson 4.6 used word embeddings as tools and promised to show how they are learn
 
 Backpropagation changes only the rows involved, and words that occur in similar contexts receive similar gradient updates, so their rows drift together — "words that appear in similar contexts have similar meanings", learned rather than designed. Because the softmax over the whole vocabulary is expensive, practical training uses *negative sampling*: a binary classifier that separates real (centre, context) pairs from a few randomly drawn fake ones, which is logistic regression on dot products of embeddings. Levy and Goldberg (2014) showed that skip-gram with negative sampling implicitly factorises a matrix of shifted pointwise mutual information between words and contexts — the same PMI you used for topic coherence in Lesson 4.6, and the same "factorise a co-occurrence matrix" idea as Lesson 4.7. Word embeddings are matrix factorisation learned by a shallow neural network.
 
-## The Kailash Engine: OnnxBridge (model export)
-
-```python
-from kailash_ml import OnnxBridge
-
-bridge = OnnxBridge()
-bridge.export(model, input_shape=(1, 4), output_path="hdb_predictor.onnx")
-# Load for inference
-loaded = bridge.load("hdb_predictor.onnx")
-prediction = loaded.predict(sample_input)
-```
-
 ## Worked Example: Neural Network for HDB Price Prediction — from Scratch
 
-We build a 3-layer network from scratch using NumPy, then add each training technique one by one to see its effect.
+We build a 3-layer network from scratch with NumPy on the course's HDB resale dataset (`mlfp01/hdb_resale.parquet`, about 50,000 transactions from 2015–2024), compare it with a linear model, and then export it with Kailash's `OnnxBridge`. The Lesson 4.8 slides train a one-hidden-layer version on two features; this is the fuller version. The dataset is deliberately messy (you met it in Module 1), so the first step is cleaning.
+
+### Step 0: Clean the data and build features
 
 ```python
 import numpy as np
+import polars as pl
+from shared import MLFPDataLoader
 
-# Load HDB data
-loader = MLFPDataLoader()
-df = loader.load("mlfp04", "sg_hdb_prices.csv")
-features = ["floor_area_sqm", "storey_range_mid", "remaining_lease_years", "town_encoded"]
-X = df.select(features).to_numpy().astype(np.float64)
-y = df["resale_price"].to_numpy().astype(np.float64).reshape(-1, 1)
+hdb = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+clean = (
+    hdb.filter(pl.col("resale_price").is_between(100_000, 2_000_000))   # drop impossible prices
+    .with_columns(
+        # some storey ranges were typed with the letter O instead of zero ("O4 TO 06")
+        storey_mid=pl.col("storey_range").str.replace_all("O", "0")
+        .str.extract(r"^(\d+)", 1).cast(pl.Float64) + 1,
+        sale_year=pl.col("month").str.slice(0, 4).cast(pl.Float64),
+    )
+    .with_columns(flat_age=pl.col("sale_year") - pl.col("lease_commence_date"))
+)
+print(f"{hdb.height:,} rows -> {clean.height:,} after removing impossible prices")
 
-# Standardise
-X_mean, X_std = X.mean(axis=0), X.std(axis=0)
-y_mean, y_std = y.mean(), y.std()
-X_norm = (X - X_mean) / X_std
-y_norm = (y - y_mean) / y_std
+NUMERIC = ["floor_area_sqm", "storey_mid", "flat_age", "sale_year"]
+town_onehot = clean.select("town").to_dummies()                  # 27 towns -> 27 indicator columns
+X = np.hstack([clean.select(NUMERIC).to_numpy(), town_onehot.to_numpy()]).astype(np.float64)
+y = clean["resale_price"].to_numpy().astype(np.float64).reshape(-1, 1) / 1e5   # S$100k units
 
-# Split
-n_train = int(0.8 * len(X_norm))
+rng = np.random.default_rng(42)
+perm = rng.permutation(len(X))
+X, y = X[perm], y[perm]
+n_train = int(0.8 * len(X))
+
+# Standardise with TRAINING statistics only (no test-set leakage)
+X_mean, X_std = X[:n_train].mean(axis=0), X[:n_train].std(axis=0)
+y_mean, y_std = y[:n_train].mean(), y[:n_train].std()
+X_norm, y_norm = (X - X_mean) / X_std, (y - y_mean) / y_std
 X_train, X_test = X_norm[:n_train], X_norm[n_train:]
 y_train, y_test = y_norm[:n_train], y_norm[n_train:]
+n_in = X_train.shape[1]
+print(f"{n_in} inputs, {n_train:,} training rows, {len(X_test):,} test rows")
+```
 
-# Network architecture: 4 -> 64 -> 32 -> 1
-np.random.seed(42)
-W1 = np.random.randn(4, 64) * np.sqrt(2.0 / 4)   # Kaiming init
+Removing prices below S$100,000 or above S$2,000,000 drops about 250 rows (0.5%) that cannot be real HDB resale prices (one is S$10). Storey is converted from a range to its midpoint after repairing the letter-O typos, and the flat's age at sale is derived from the lease start year. Town enters as 27 one-hot columns. The split is made before computing the standardisation statistics, so nothing about the test rows leaks into training.
+
+### Step 1: A linear baseline
+
+```python
+A_train = np.c_[X_train, np.ones(n_train)]
+w_lin, *_ = np.linalg.lstsq(A_train, y_train, rcond=None)
+pred_lin = np.c_[X_test, np.ones(len(X_test))] @ w_lin
+r2_lin = 1 - np.mean((y_test - pred_lin) ** 2) / np.var(y_test)
+print(f"Linear regression: test MSE = {np.mean((y_test - pred_lin) ** 2):.4f}, R^2 = {r2_lin:.3f}")
+```
+
+Always fit the simplest reasonable model first. Here it is strong: floor area alone correlates about 0.91 with price, and the linear model explains 86% of the test-set variance (test MSE 0.139 in standardised units). Any neural network has to beat that to be worth its complexity.
+
+### Step 2: The network — forward pass, backpropagation, update
+
+```python
+# Network architecture: n_in -> 64 -> 32 -> 1, Kaiming (He) initialisation for ReLU
+W1 = rng.standard_normal((n_in, 64)) * np.sqrt(2.0 / n_in)
 b1 = np.zeros((1, 64))
-W2 = np.random.randn(64, 32) * np.sqrt(2.0 / 64)
+W2 = rng.standard_normal((64, 32)) * np.sqrt(2.0 / 64)
 b2 = np.zeros((1, 32))
-W3 = np.random.randn(32, 1) * np.sqrt(2.0 / 32)
+W3 = rng.standard_normal((32, 1)) * np.sqrt(2.0 / 32)
 b3 = np.zeros((1, 1))
 
 def relu(z):
@@ -2711,21 +2732,20 @@ def relu(z):
 def relu_grad(z):
     return (z > 0).astype(float)
 
-lr = 0.001
+def predict(X):
+    return relu(relu(X @ W1 + b1) @ W2 + b2) @ W3 + b3
+
+lr = 0.01
 batch_size = 64
-epochs = 100
+epochs = 30
 
 for epoch in range(epochs):
-    # Shuffle
-    perm = np.random.permutation(n_train)
-    X_shuffled = X_train[perm]
-    y_shuffled = y_train[perm]
-
-    epoch_loss = 0
+    perm = rng.permutation(n_train)
+    X_shuffled, y_shuffled = X_train[perm], y_train[perm]
+    epoch_loss = 0.0
     for start in range(0, n_train, batch_size):
-        end = min(start + batch_size, n_train)
-        X_batch = X_shuffled[start:end]
-        y_batch = y_shuffled[start:end]
+        X_batch = X_shuffled[start:start + batch_size]
+        y_batch = y_shuffled[start:start + batch_size]
         m = len(X_batch)
 
         # Forward pass
@@ -2733,67 +2753,109 @@ for epoch in range(epochs):
         a1 = relu(z1)
         z2 = a1 @ W2 + b2
         a2 = relu(z2)
-        z3 = a2 @ W3 + b3
-        y_hat = z3  # linear output for regression
+        y_hat = a2 @ W3 + b3                    # linear output for regression
 
-        # Loss (MSE)
-        loss = np.mean((y_batch - y_hat) ** 2)
+        loss = np.mean((y_batch - y_hat) ** 2)  # MSE
         epoch_loss += loss * m
 
-        # Backward pass
+        # Backward pass: the chain rule, layer by layer
         dz3 = -2 * (y_batch - y_hat) / m
         dW3 = a2.T @ dz3
         db3 = dz3.sum(axis=0, keepdims=True)
-
         da2 = dz3 @ W3.T
         dz2 = da2 * relu_grad(z2)
         dW2 = a1.T @ dz2
         db2 = dz2.sum(axis=0, keepdims=True)
-
         da1 = dz2 @ W2.T
         dz1 = da1 * relu_grad(z1)
         dW1 = X_batch.T @ dz1
         db1 = dz1.sum(axis=0, keepdims=True)
 
-        # Update weights
-        W3 -= lr * dW3
-        b3 -= lr * db3
-        W2 -= lr * dW2
-        b2 -= lr * db2
-        W1 -= lr * dW1
-        b1 -= lr * db1
+        # Gradient-descent update
+        W3 -= lr * dW3; b3 -= lr * db3
+        W2 -= lr * dW2; b2 -= lr * db2
+        W1 -= lr * dW1; b1 -= lr * db1
 
-    epoch_loss /= n_train
-    if epoch % 20 == 0:
-        # Test loss
-        z1_t = X_test @ W1 + b1; a1_t = relu(z1_t)
-        z2_t = a1_t @ W2 + b2; a2_t = relu(z2_t)
-        y_hat_t = a2_t @ W3 + b3
-        test_loss = np.mean((y_test - y_hat_t) ** 2)
-        print(f"Epoch {epoch}: train_loss={epoch_loss:.4f}, test_loss={test_loss:.4f}")
+    if epoch % 5 == 0 or epoch == epochs - 1:
+        test_loss = np.mean((y_test - predict(X_test)) ** 2)
+        print(f"Epoch {epoch:>2}: train_loss={epoch_loss / n_train:.4f}, test_loss={test_loss:.4f}")
+
+r2_nn = 1 - np.mean((y_test - predict(X_test)) ** 2) / np.var(y_test)
+print(f"Network R^2 = {r2_nn:.3f}   vs linear R^2 = {r2_lin:.3f}")
 ```
 
-The training loss should decrease steadily. If the test loss begins to increase while training loss continues to decrease, you are overfitting — and that is where dropout, batch norm, and early stopping come in.
+Every line of the backward pass is one application of the chain rule from the theory section: `dz3` is $\partial \mathcal{L}/\partial \hat{y}$ for the mean squared error, each `da` multiplies by a weight matrix transposed, and each `dz` gates the gradient with the ReLU derivative. Training and test loss both fall in the first five epochs and then level off together — no overfitting, because 40,000 rows is a lot of data for about 4,200 weights.
+
+After 30 epochs the test MSE is 0.139 in standardised units — exactly where the linear model is — and both reach a test $R^2$ of 0.860. The network has learned the price function, but it has found nothing the linear model had missed.
+
+That non-result is the honest lesson of this example. On tabular data whose main driver is close to linear — price grows with floor area, shifted by town — a neural network has little to discover that a linear model with sensible features has not already captured, and gradient-boosted trees are usually a stronger choice than either. Neural networks earn their cost on images, sequences, text and graphs (Module 5), where hand-designing the features is the hard part. What this example does show is the machinery — forward pass, loss, backpropagation, update — that all of those architectures share.
+
+## The Kailash Engine: OnnxBridge (model export)
+
+To serve a model outside Python you export it to ONNX, a portable graph format. Kailash's `OnnxBridge` checks whether a model can be exported, exports it, and reports the outcome as a result object instead of raising, so a pipeline can decide what to do when export fails. It works on PyTorch and scikit-learn-style models, so we copy the trained NumPy weights into an equivalent `torch` network (a `Linear` layer stores its weight as (out, in), the transpose of our `W`), export it, and confirm with ONNX Runtime that the exported graph gives the same predictions. Exercise 8.5 does the same with a network trained in torch.
+
+```python
+from pathlib import Path
+import onnxruntime as ort
+import torch
+from torch import nn
+from kailash_ml import OnnxBridge
+
+model = nn.Sequential(nn.Linear(n_in, 64), nn.ReLU(), nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 1))
+with torch.no_grad():
+    for layer, W, b in [(model[0], W1, b1), (model[2], W2, b2), (model[4], W3, b3)]:
+        layer.weight.copy_(torch.from_numpy(W.T).float())
+        layer.bias.copy_(torch.from_numpy(b.ravel()).float())
+model.eval()
+
+bridge = OnnxBridge()
+print("compatible:", bridge.check_compatibility(model, framework="torch").compatible)
+export = bridge.export(model, framework="torch", output_path=Path("hdb_price_net.onnx"),
+                       sample_input=torch.randn(1, n_in))   # traces the forward pass
+print("exported:", export.success, export.onnx_status)
+
+batch = X_test[:100].astype(np.float32)
+session = ort.InferenceSession("hdb_price_net.onnx")
+onnx_out = session.run(None, {session.get_inputs()[0].name: batch})[0]
+print(f"max |ONNX - NumPy| = {np.abs(onnx_out - predict(X_test[:100])).max():.2e}")
+```
+
+The compatibility check and export both succeed, and the ONNX graph reproduces the NumPy network to within float32 rounding (a maximum difference of about $5 \times 10^{-7}$). `OnnxBridge` does not train, checkpoint or serve the model: training was your loop, and serving is ONNX Runtime here or `InferenceServer` in Module 5. The deployed graph expects inputs standardised with the *training* means and standard deviations and returns standardised prices — ship `X_mean`, `X_std`, `y_mean` and `y_std` with it. The installed exporter may print warnings during torch export; they are harmless here.
 
 ## Try It Yourself
 
-**Drill 1.** Add dropout to the hidden layers (p=0.2). Implement it from scratch: during training, generate a binary mask from Bernoulli(1-p) and element-wise multiply the activations. Scale by 1/(1-p). During evaluation, do not apply dropout. Compare training curves with and without dropout.
+The drills reuse the network, data and variable names from the worked example.
+
+**Drill 1.** Add dropout to the hidden layers (p=0.2). Implement it from scratch: during training, generate a binary mask from Bernoulli(1-p) and element-wise multiply the activations, scaling the survivors by 1/(1-p). During evaluation, do not apply dropout. Where does the mask have to be reused in the backward pass?
 
 **Solution:**
 
 ```python
 def dropout(a, p=0.2, training=True):
-    if not training:
-        return a
-    mask = (np.random.rand(*a.shape) > p).astype(float)
-    return a * mask / (1 - p)
+    if not training or p == 0:
+        return a, np.ones_like(a)
+    mask = (rng.random(a.shape) > p) / (1 - p)     # inverted dropout: scale at train time
+    return a * mask, mask
 
-# In forward pass during training:
-a1 = dropout(relu(z1), p=0.2, training=True)
-a2 = dropout(relu(z2), p=0.2, training=True)
+# Forward pass during training (one mini-batch):
+z1 = X_batch @ W1 + b1
+a1, mask1 = dropout(relu(z1))
+z2 = a1 @ W2 + b2
+a2, mask2 = dropout(relu(z2))
+y_hat = a2 @ W3 + b3
+
+# Backward pass: the same masks gate the gradients
+dz3 = -2 * (y_batch - y_hat) / len(X_batch)
+da2 = (dz3 @ W3.T) * mask2
+dz2 = da2 * relu_grad(z2)
+da1 = (dz2 @ W2.T) * mask1
+dz1 = da1 * relu_grad(z1)
+print(f"share of first-layer units dropped in this batch: {(mask1 == 0).mean():.2f}")
 ```
 
-**Drill 2.** Implement batch normalisation from scratch for the first hidden layer. During training, normalise using the mini-batch statistics. Maintain running mean and variance for inference. Compare training convergence with and without batch norm.
+A dropped unit contributed nothing to the output, so it must receive no gradient: the backward pass multiplies by the same mask (including the $1/(1-p)$ scale). At evaluation time call the network without dropout — `predict()` above — with no rescaling, because inverted dropout already did the scaling during training. To compare training curves, put these lines into the training loop in place of the plain forward and backward pass.
+
+**Drill 2.** Implement batch normalisation from scratch for the first hidden layer. During training, normalise using the mini-batch statistics. Maintain running mean and variance for inference.
 
 **Solution:**
 
@@ -2811,44 +2873,55 @@ def batch_norm(z, gamma, beta, running_mean, running_var, training=True):
         running_mean[:] = (1 - momentum) * running_mean + momentum * mu
         running_var[:] = (1 - momentum) * running_var + momentum * var
     else:
-        mu = running_mean
-        var = running_var
-    z_hat = (z - mu) / np.sqrt(var + 1e-8)
+        mu, var = running_mean, running_var
+    z_hat = (z - mu) / np.sqrt(var + 1e-5)
     return gamma * z_hat + beta
+
+z1 = X_batch @ W1 + b1
+z1_bn = batch_norm(z1, gamma1, beta1, running_mean, running_var, training=True)
+a1 = relu(z1_bn)
+print(f"after BN (training mode): mean={z1_bn.mean():.3f}, std={z1_bn.std():.3f}")
 ```
 
-**Drill 3.** Replace SGD with Adam. Implement Adam from scratch (maintain first and second moment estimates, apply bias correction). Compare convergence speed: how many epochs does SGD need versus Adam to reach the same test loss?
+In training mode each unit is standardised with the current mini-batch's mean and variance (the printout shows mean 0 and standard deviation 1), then rescaled by the learned $\gamma$ and shifted by $\beta$, which are trained by backpropagation like weights. In evaluation mode the running averages are used instead, so one example's prediction does not depend on which other examples share its batch. Forgetting to switch modes is one of the most common deep-learning bugs.
+
+**Drill 3.** Replace SGD with Adam. Implement Adam from scratch (maintain first and second moment estimates, apply bias correction).
 
 **Solution:**
 
 ```python
-# Adam state for each parameter
-m_W1 = np.zeros_like(W1); v_W1 = np.zeros_like(W1)
-t = 0
 beta1_adam, beta2_adam, eps_adam = 0.9, 0.999, 1e-8
 
 def adam_update(param, grad, m, v, t, lr=0.001):
     m = beta1_adam * m + (1 - beta1_adam) * grad
     v = beta2_adam * v + (1 - beta2_adam) * grad**2
-    m_hat = m / (1 - beta1_adam**t)
+    m_hat = m / (1 - beta1_adam**t)           # bias correction: m and v start at zero
     v_hat = v / (1 - beta2_adam**t)
     param -= lr * m_hat / (np.sqrt(v_hat) + eps_adam)
     return param, m, v
+
+# One moment pair per parameter; t counts update steps, starting at 1
+m_W1, v_W1 = np.zeros_like(W1), np.zeros_like(W1)
+W1_before = W1.copy()
+W1, m_W1, v_W1 = adam_update(W1, dW1, m_W1, v_W1, t=1)
+print(f"largest first-step change: {np.abs(W1 - W1_before).max():.6f} (about lr = 0.001)")
 ```
 
-**Drill 4.** Implement cosine annealing for the learning rate. Start at $\eta = 0.001$, anneal to $\eta = 0.0001$ over 100 epochs. Plot the learning rate schedule and compare training curves with fixed vs cosine-annealed learning rate.
+On the first step the bias-corrected update is $\eta \cdot g/|g| \approx \eta$ for every weight with a non-zero gradient, whatever the gradient's scale — Adam adapts the step size per parameter. For a full comparison, replace the six SGD update lines in the training loop with six `adam_update` calls (each parameter keeps its own `m` and `v`) and compare the test loss per epoch.
+
+**Drill 4.** Implement cosine annealing for the learning rate. Start at $\eta = 0.01$ and anneal to $\eta = 0.001$ over 30 epochs. Print the schedule.
 
 **Solution:**
 
 ```python
-eta_max, eta_min = 0.001, 0.0001
-T = 100
-for epoch in range(T):
-    lr = eta_min + 0.5 * (eta_max - eta_min) * (1 + np.cos(np.pi * epoch / T))
-    # Use lr for this epoch's updates
+eta_max, eta_min, T = 0.01, 0.001, 30
+schedule = [eta_min + 0.5 * (eta_max - eta_min) * (1 + np.cos(np.pi * epoch / T)) for epoch in range(T)]
+print(" ".join(f"{lr_t:.4f}" for lr_t in schedule[::5]))
 ```
 
-**Drill 5.** Implement gradient clipping with max_norm = 1.0. Compute the total gradient norm across all parameters. If it exceeds max_norm, scale all gradients down proportionally. When does gradient clipping activate during training? In which epochs?
+The rate starts at 0.0100, falls slowly at first, fastest in the middle and slowly again as it approaches 0.001. To use it, set `lr = schedule[epoch]` at the top of each epoch in the training loop.
+
+**Drill 5.** Implement gradient clipping with max_norm = 1.0. Compute the total gradient norm across all parameters. If it exceeds max_norm, scale all gradients down proportionally.
 
 **Solution:**
 
@@ -2856,30 +2929,36 @@ for epoch in range(T):
 def clip_gradients(grads, max_norm=1.0):
     total_norm = np.sqrt(sum(np.sum(g**2) for g in grads))
     if total_norm > max_norm:
-        scale = max_norm / total_norm
-        grads = [g * scale for g in grads]
+        grads = [g * (max_norm / total_norm) for g in grads]
     return grads, total_norm
 
-# After computing all gradients:
-[dW1, dW2, dW3, db1, db2, db3], norm = clip_gradients(
-    [dW1, dW2, dW3, db1, db2, db3], max_norm=1.0
-)
-if norm > 1.0:
-    print(f"Epoch {epoch}: gradient clipped (norm={norm:.2f})")
+(dW1, dW2, dW3, db1, db2, db3), norm = clip_gradients([dW1, dW2, dW3, db1, db2, db3])
+print(f"gradient norm before clipping: {norm:.3f} -> clipped: {norm > 1.0}")
 ```
 
-**Drill 6.** Extract the activations of the first hidden layer for all test data points. Apply PCA to reduce these 64-dimensional activations to 2D. Colour the scatter plot by the true resale price. Do the learned representations show meaningful structure (e.g., expensive flats clustered together)?
+Scaling all gradients by the same factor keeps the update's direction and only shortens it. Insert the call between the backward pass and the update and count how often it fires: on this well-scaled regression the norm is usually below 1 once training has settled (0.84 on the last batch here), so clipping rarely changes anything; on RNNs and transformers (Module 5) it is essential.
+
+**Drill 6.** Extract the activations of the first hidden layer for the test data. Apply PCA to reduce these 64-dimensional activations to 2D and check how strongly the first component tracks the true price. Do the learned representations show meaningful structure?
 
 **Solution:**
 
 ```python
-z1_test = X_test @ W1 + b1
-a1_test = relu(z1_test)
 from sklearn.decomposition import PCA
-pca = PCA(n_components=2)
-embeddings_2d = pca.fit_transform(a1_test)
-# Plot with colour = y_test (resale price)
+
+a1_test = relu(X_test @ W1 + b1)
+pcs = PCA(n_components=10).fit_transform(a1_test)
+price = (y_test * y_std + y_mean).ravel() * 1e5
+corrs = [abs(np.corrcoef(pcs[:, i], price)[0, 1]) for i in range(10)]
+print("|corr(hidden PC_i, price)|:", " ".join(f"{c:.2f}" for c in corrs))
+
+# Is price information in the hidden layer at all? A linear read-out answers that.
+A = np.c_[a1_test, np.ones(len(a1_test))]
+coef, *_ = np.linalg.lstsq(A, price, rcond=None)
+print(f"R^2 of a linear read-out of price from the 64 hidden units: "
+      f"{1 - np.mean((price - A @ coef) ** 2) / np.var(price):.3f}")
 ```
+
+None of the first ten principal components tracks price closely (the largest |correlation| is about 0.26). PCA is unsupervised: the biggest variation in the hidden layer comes from the 27 town indicators, which shift price only modestly. Yet a linear read-out recovers price from the 64 hidden units with $R^2 \approx 0.85$ — the price information is there, spread across many units, which is exactly what the next two layers use. A learned representation is organised for the task through the *weights that read it*, not necessarily along its directions of largest variance; that is why we probe representations with simple supervised read-outs as well as with plots.
 
 ## Cross-References
 

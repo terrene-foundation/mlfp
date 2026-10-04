@@ -186,11 +186,14 @@
     programming, translation, style, and reasoning — because every one of
     those skills is useful for lowering the cross-entropy loss on <em>some</em>
     subset of the training data. The task is simple; the <em>data</em> is
-    everything ever written. Scaling laws (Kaplan 2020, Hoffmann 2022)
-    show loss decays as a power law in parameters, data, and compute:
-    $$\mathcal{L}(N, D) \approx \mathcal{L}_\infty + \frac{A}{N^\alpha} + \frac{B}{D^\beta}$$
-    where $N$ is parameters and $D$ is dataset tokens. This is why the
-    frontier keeps moving — the law has not broken yet.
+    everything ever written. Scaling laws (Kaplan et al. 2020; Hoffmann
+    et al. 2022) show loss falls as a power law in parameters and data.
+    The parametric form fitted by Hoffmann et al. (the "Chinchilla" paper) is
+    $$\mathcal{L}(N, D) \approx E + \frac{A}{N^\alpha} + \frac{B}{D^\beta}$$
+    where $N$ is parameters, $D$ is training tokens and $E$ is the
+    <em>irreducible</em> loss — the entropy of text itself, which no model
+    size removes. More parameters and more data shrink the two power-law
+    terms, with diminishing returns; the loss never reaches zero.
   </p>
 </div>
 
@@ -200,7 +203,7 @@
   Before text reaches the transformer it is chopped into <strong>tokens</strong>.
   Modern LLMs use byte-pair encoding (BPE) or similar subword schemes:
   common words are a single token ("Singapore" → 1 token), rare words are
-  split ("HDB" might be 2 tokens), and every character is representable as
+  split ("Jurong" → "Jur" + "ong"; "HDB" → "H" + "DB"), and every character is representable as
   a fallback. A rule of thumb: 1 English token $\approx$ 0.75 words
   $\approx$ 4 characters.
 </p>
@@ -209,26 +212,28 @@
 <svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
   <rect x="20" y="60" width="260" height="60" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
   <text x="150" y="85" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#0D9488">Raw text</text>
-  <text x="150" y="108" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">"Singapore is tropical."</text>
+  <text x="150" y="108" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">"Jurong is tropical."</text>
 
   <line x1="280" y1="90" x2="340" y2="90" stroke="#0D9488" stroke-width="2" marker-end="url(#arr1)"/>
 
   <rect x="350" y="40" width="350" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
   <text x="525" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#92400E">Tokens (5)</text>
-  <text x="525" y="80" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#1E293B">["Sing", "apore", " is", " tropical", "."]</text>
+  <text x="525" y="80" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#1E293B">["Jur", "ong", " is", " tropical", "."]</text>
 
   <rect x="350" y="100" width="350" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
   <text x="525" y="120" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#1E40AF">Token IDs</text>
-  <text x="525" y="140" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#1E293B">[39147, 7209, 374, 35148, 13]</text>
+  <text x="525" y="140" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#1E293B">[94277, 647, 374, 35148, 13]</text>
 </svg>
-<figcaption>Text → subword tokens → integer IDs. The integers are what the transformer actually consumes.</figcaption>
+<figcaption>Text → subword tokens → integer IDs, shown with the open <code>cl100k_base</code> BPE tokenizer (other models use other vocabularies, so the IDs differ). The integers are what the transformer actually consumes.</figcaption>
 </figure>
 
 <p>
   This matters for two practical reasons. First, <strong>you pay per
   token</strong>, not per word. Second, <strong>context windows are
-  measured in tokens</strong>. GPT-4 Turbo allows 128k tokens; a typical
-  Singapore regulatory document is 5–20k tokens. You have room.
+  measured in tokens</strong>. Context windows of 128k tokens are now
+  common on hosted models; a 20-page report is roughly 10–15k tokens
+  (20 pages × ~500 words ÷ 0.75 words per token). Small local models
+  have smaller windows — check yours before stuffing a prompt.
 </p>
 
 <h3>Inference: the KV-cache and why generation is fast</h3>
@@ -261,17 +266,17 @@
 
 <p>
   Here is the paradox: a model trained to predict the next token on random
-  internet text is somehow able to classify company reports, translate
+  internet text is somehow able to classify movie reviews, translate
   legal documents, and write code. How?
 </p>
 
 <p>
   A prompt is not a command — it is a <strong>context</strong>. When you
-  type "Classify this report: &lt;text&gt;. Category:" you are asking the
+  type "Classify this review: &lt;text&gt;. Sentiment:" you are asking the
   model "what tokens are most likely to follow this exact string?". And
   because the training corpus contained billions of classification-shaped
   examples (stack overflow Q&amp;A, form labels, tutorials), the most
-  likely continuation is a category name. You are not teaching the model
+  likely continuation is a label. You are not teaching the model
   anything — you are <em>priming</em> it with a context in which the
   desired output is the natural continuation.
 </p>
@@ -298,35 +303,35 @@
   <text x="195" y="45" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#15803D">1. Zero-shot</text>
   <text x="195" y="64" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">Task description only. No examples.</text>
   <rect x="40" y="80" width="310" height="110" rx="4" fill="white" stroke="#22C55E"/>
-  <text x="50" y="100" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Classify this report as Financial,</text>
-  <text x="50" y="115" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Technology, Healthcare, Real Estate,</text>
-  <text x="50" y="130" font-family="JetBrains Mono" font-size="10" fill="#1E293B">or Manufacturing.</text>
-  <text x="50" y="155" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Report: "Revenue up 15% on net</text>
-  <text x="50" y="170" font-family="JetBrains Mono" font-size="10" fill="#1E293B">interest margin expansion..."</text>
-  <text x="50" y="185" font-family="JetBrains Mono" font-size="10" fill="#0D9488">Category:</text>
+  <text x="50" y="100" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Classify the sentiment of this movie</text>
+  <text x="50" y="115" font-family="JetBrains Mono" font-size="10" fill="#1E293B">review. Categories: positive,</text>
+  <text x="50" y="130" font-family="JetBrains Mono" font-size="10" fill="#1E293B">negative.</text>
+  <text x="50" y="155" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Review: "a sharp, funny script</text>
+  <text x="50" y="170" font-family="JetBrains Mono" font-size="10" fill="#1E293B">let down by a limp ending..."</text>
+  <text x="50" y="185" font-family="JetBrains Mono" font-size="10" fill="#0D9488">Sentiment:</text>
 
   <!-- Few-shot -->
   <rect x="390" y="20" width="350" height="190" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
   <text x="565" y="45" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#1E40AF">2. Few-shot</text>
   <text x="565" y="64" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E3A8A">Task + k labelled examples. Typical k = 3–8.</text>
   <rect x="410" y="80" width="310" height="110" rx="4" fill="white" stroke="#3B82F6"/>
-  <text x="420" y="100" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Example 1: "Loan growth..." → Financial</text>
-  <text x="420" y="115" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Example 2: "SaaS platform..." → Technology</text>
-  <text x="420" y="130" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Example 3: "Oncology drug..." → Healthcare</text>
-  <text x="420" y="155" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Report: "Revenue up 15%..."</text>
-  <text x="420" y="180" font-family="JetBrains Mono" font-size="10" fill="#1E40AF">Category:</text>
+  <text x="420" y="100" font-family="JetBrains Mono" font-size="10" fill="#1E293B">"an absolute masterpiece..." → positive</text>
+  <text x="420" y="115" font-family="JetBrains Mono" font-size="10" fill="#1E293B">"a tedious, predictable mess" → negative</text>
+  <text x="420" y="130" font-family="JetBrains Mono" font-size="10" fill="#1E293B">"delightfully clever..."  → positive</text>
+  <text x="420" y="155" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Review: "a sharp, funny script..."</text>
+  <text x="420" y="180" font-family="JetBrains Mono" font-size="10" fill="#1E40AF">Sentiment:</text>
 
   <!-- CoT -->
   <rect x="20" y="230" width="350" height="190" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
   <text x="195" y="255" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#92400E">3. Chain-of-thought</text>
   <text x="195" y="274" text-anchor="middle" font-family="Inter" font-size="11" fill="#78350F">"Let's think step by step" — reason first, then answer.</text>
   <rect x="40" y="290" width="310" height="120" rx="4" fill="white" stroke="#F59E0B"/>
-  <text x="50" y="310" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Classify this report. Think step by</text>
-  <text x="50" y="325" font-family="JetBrains Mono" font-size="10" fill="#1E293B">step, then state the category.</text>
-  <text x="50" y="350" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Report: "Revenue up 15%..."</text>
-  <text x="50" y="375" font-family="JetBrains Mono" font-size="10" fill="#92400E">1. Key terms: revenue, margin, loans</text>
-  <text x="50" y="390" font-family="JetBrains Mono" font-size="10" fill="#92400E">2. These are banking concepts</text>
-  <text x="50" y="405" font-family="JetBrains Mono" font-size="10" fill="#92400E">3. Category: Financial</text>
+  <text x="50" y="310" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Classify this review. Think step by</text>
+  <text x="50" y="325" font-family="JetBrains Mono" font-size="10" fill="#1E293B">step, then state the sentiment.</text>
+  <text x="50" y="350" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Review: "a sharp, funny script..."</text>
+  <text x="50" y="375" font-family="JetBrains Mono" font-size="10" fill="#92400E">1. Opinion words: sharp, funny, limp</text>
+  <text x="50" y="390" font-family="JetBrains Mono" font-size="10" fill="#92400E">2. "let down" dominates the verdict</text>
+  <text x="50" y="405" font-family="JetBrains Mono" font-size="10" fill="#92400E">3. Sentiment: negative</text>
 
   <!-- Self-consistency -->
   <rect x="390" y="230" width="350" height="190" rx="8" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="2"/>
@@ -334,20 +339,20 @@
   <text x="565" y="274" text-anchor="middle" font-family="Inter" font-size="11" fill="#5B21B6">Sample N CoT chains. Majority vote on final answer.</text>
   <g font-family="Inter" font-size="11" fill="#5B21B6">
     <rect x="410" y="290" width="90" height="26" rx="3" fill="white" stroke="#8B5CF6"/>
-    <text x="455" y="307" text-anchor="middle">CoT 1 → Financial</text>
+    <text x="455" y="307" text-anchor="middle">CoT 1 → negative</text>
     <rect x="510" y="290" width="90" height="26" rx="3" fill="white" stroke="#8B5CF6"/>
-    <text x="555" y="307" text-anchor="middle">CoT 2 → Financial</text>
+    <text x="555" y="307" text-anchor="middle">CoT 2 → negative</text>
     <rect x="610" y="290" width="100" height="26" rx="3" fill="white" stroke="#8B5CF6"/>
-    <text x="660" y="307" text-anchor="middle">CoT 3 → Technology</text>
+    <text x="660" y="307" text-anchor="middle">CoT 3 → positive</text>
     <rect x="410" y="322" width="90" height="26" rx="3" fill="white" stroke="#8B5CF6"/>
-    <text x="455" y="339" text-anchor="middle">CoT 4 → Financial</text>
+    <text x="455" y="339" text-anchor="middle">CoT 4 → negative</text>
     <rect x="510" y="322" width="90" height="26" rx="3" fill="white" stroke="#8B5CF6"/>
-    <text x="555" y="339" text-anchor="middle">CoT 5 → Financial</text>
+    <text x="555" y="339" text-anchor="middle">CoT 5 → negative</text>
   </g>
   <rect x="410" y="365" width="310" height="40" rx="4" fill="#8B5CF6"/>
-  <text x="565" y="390" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="white">Majority → Financial (4 of 5)</text>
+  <text x="565" y="390" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="white">Majority → negative (4 of 5)</text>
 </svg>
-<figcaption>The four baseline prompting strategies. Cost grows left-to-right, top-to-bottom. Quality on complex reasoning tasks usually grows in the same direction — but not always.</figcaption>
+<figcaption>The four baseline prompting strategies on one (made-up) movie review. Cost grows left-to-right, top-to-bottom. Quality on complex reasoning tasks usually grows in the same direction — but not always.</figcaption>
 </figure>
 
 <h3>1. Zero-shot</h3>
@@ -368,11 +373,15 @@
 
 <h3>3. Chain-of-thought</h3>
 <p>
-  Add "Let's think step by step" (or provide reasoning in your few-shot
-  examples) and let the model write out its intermediate work before the
-  final answer. Discovered in <em>Wei et al. 2022</em>; shockingly
-  effective on arithmetic, logic, and multi-step decisions. The cost is
-  more output tokens.
+  Ask the model to write out its intermediate work before the final
+  answer. There are two flavours. <strong>Few-shot CoT</strong>
+  (<em>Wei et al. 2022</em>) puts worked reasoning inside the examples.
+  <strong>Zero-shot CoT</strong> (<em>Kojima et al. 2022</em>) simply
+  appends the five words "Let's think step by step" — with the
+  text-davinci-002 model that lifted MultiArith accuracy from 17.7% to
+  78.7% and GSM8K from 10.4% to 40.7%. CoT helps most on arithmetic,
+  logic and multi-step decisions; on an easy task like binary sentiment
+  the gain can be small or zero. The cost is more output tokens.
 </p>
 
 <div class="callout theory">
@@ -403,33 +412,51 @@
 <div class="callout kailash">
   <span class="label">⚙ Kailash — Kaizen Delegate</span>
   <p>
-    <code>Delegate</code> is Kailash's LLM call primitive. It wraps any
-    provider (OpenAI, Anthropic, Ollama, local models) behind one
-    interface. Every call emits a stream of events — text, tool-call
-    start, tool-call result, completion — and every call enforces a
-    <em>cost budget</em>. Use it for anything more serious than a quick
-    experiment; the budget is the difference between a bug and a bill.
+    <code>Delegate</code> is Kailash's LLM call primitive. It puts hosted
+    and local model providers behind one streaming interface: every call
+    emits a stream of events — text chunks, tool-call start, tool-call
+    result, turn complete (with token usage). In this course every call
+    runs on a local model served by Ollama, and you never build a
+    <code>Delegate</code> by hand: the course helper
+    <code>make_delegate()</code> wires the Ollama adapter and reads the
+    model name from the <code>OLLAMA_CHAT_MODEL</code> environment variable
+    (default <code>llama3.2:3b</code>). Do not pass <code>model=</code> —
+    an explicit name overrides your environment.
   </p>
 </div>
 
-<pre><code class="language-python">from kaizen_agents import Delegate
+<pre><code class="language-python">from shared.mlfp06._ollama_bootstrap import make_delegate
 
-delegate = Delegate(model="gpt-4o-mini", max_llm_cost_usd=0.50)
+delegate = make_delegate(temperature=0.0)   # model from OLLAMA_CHAT_MODEL
 
-response = ""
-async for event in delegate.run("Classify this report: ..."):
-    if hasattr(event, "text"):
-        response += event.text
+prompt = "Classify the sentiment of this review as positive or negative: ..."
+response, usage = "", {}
+async for event in delegate.run(prompt):
+    kind = getattr(event, "event_type", None)
+    if kind == "text_delta":
+        response += event.text          # streamed chunk
+    elif kind == "turn_complete":
+        usage = event.usage or {}       # prompt / completion token counts
 
-print(response)</code></pre>
+print(response, usage)</code></pre>
 
 <p>
   The async iterator is important. LLM responses come in chunks; Delegate
   streams each chunk as soon as it arrives, which lets you display partial
   text in a UI and <em>abort early</em> if the response is going somewhere
-  bad. The <code>max_llm_cost_usd</code> guard trips hard — once your
-  accumulated spend exceeds it, the call raises and nothing more is
-  charged.
+  bad. The course wraps this loop as
+  <code>run_delegate_text(delegate, prompt)</code>, which returns
+  <code>(text, usage, seconds)</code>.
+</p>
+
+<p>
+  What about spend? On a priced hosted provider, <code>Delegate</code>
+  accepts a <code>budget_usd=</code> hard cap. A local Ollama model costs
+  nothing per token, so <code>make_delegate()</code> deliberately sets
+  <code>budget_usd=None</code> — a dollar cap against a free model would
+  be meaningless (and mis-priced). The honest load signal locally is the
+  <strong>token count</strong> in <code>usage</code>, which Exercise 1
+  records for every technique.
 </p>
 
 <h3>Structured output with <code>Signature</code></h3>
@@ -440,198 +467,213 @@ print(response)</code></pre>
   stray colon in the LLM's prose and your pipeline breaks. The production
   answer is to <em>force</em> the LLM to return a typed object, not prose.
   In Kaizen, a <strong>Signature</strong> is a Python class that declares
-  typed input and output fields. You hand it to an agent and the agent
-  produces an instance of that class — guaranteed schema, automatic
-  validation, no string parsing.
+  typed input and output fields. You hand it to an agent; the agent
+  renders the schema into the prompt, asks the model for JSON, and
+  unpacks the reply into a dict keyed by your output-field names — no
+  string parsing on your side.
 </p>
 
 <pre><code class="language-python">from kaizen import Signature, InputField, OutputField
-from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
-
-class ReportExtraction(Signature):
-    """Extract structured info from a Singapore company report."""
-
-    report_text: str = InputField(description="Report excerpt (max ~800 tokens)")
-
-    category: str = OutputField(
-        description="One of: Financial, Technology, Healthcare, Real Estate, Manufacturing"
-    )
-    key_entities: list[str] = OutputField(
-        description="Named entities (companies, products, locations)"
-    )
-    financial_metrics: list[str] = OutputField(
-        description="Financial figures or percentages mentioned"
-    )
-    sentiment: str = OutputField(description="positive | negative | neutral")
-    confidence: float = OutputField(description="Confidence in [0, 1]")
+from kaizen.core.base_agent import BaseAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
 
 
-agent = SimpleQAAgent(
-    signature=ReportExtraction,
-    model="gpt-4o-mini",
-    max_llm_cost_usd=1.0,
+class ReviewExtraction(Signature):
+    """Extract structured information from a movie review snippet."""
+
+    review_text: str = InputField(description="Movie review snippet to analyse")
+
+    sentiment: str = OutputField(description="Exactly one of: positive, negative")
+    confidence: float = OutputField(description="Classification confidence 0.0 to 1.0")
+    key_phrases: list[str] = OutputField(description="Up to 5 phrases that signal sentiment")
+    targets: list[str] = OutputField(description="Aspects evaluated (acting, plot, ...)")
+    tone: str = OutputField(description="enthusiastic, measured, disappointed, ...")
+
+
+agent = BaseAgent(
+    config={
+        "llm_provider": "ollama",
+        "model": DEFAULT_CHAT_MODEL,           # resolved from OLLAMA_CHAT_MODEL
+        "base_url": OLLAMA_BASE_URL,
+        "use_async_llm": True,                 # required for run_async
+        "response_format": {"type": "json_object"},
+        "structured_output_mode": "explicit",
+    },
+    signature=ReviewExtraction(),
 )
 
-result = await agent.run(report_text=doc_text)
-print(result.category, result.confidence, result.key_entities[:3])</code></pre>
+review = "a sharp, funny script let down by a limp, predictable ending."
+result = await agent.run_async(review_text=review)
+print(result["sentiment"], result["confidence"], result["key_phrases"][:3])</code></pre>
 
 <p>
-  Notice what this buys you. <code>result.confidence</code> is a
-  <code>float</code> — not the string <code>"high"</code>. You can write
-  <code>if result.confidence &lt; 0.6: escalate_to_human(result)</code>
-  with a straight face. <code>result.key_entities</code> is already a
-  <code>list[str]</code> — you can index, iterate, and persist to a
-  DataFrame column without any parsing.
+  Notice what this buys you. <code>result["key_phrases"]</code> arrives
+  as a list you can index, iterate and store in a DataFrame column, and
+  <code>result["confidence"]</code> is a number, so
+  <code>if float(result["confidence"]) &lt; 0.6: escalate_to_human(result)</code>
+  is a one-liner. A small local model does not always honour the schema,
+  so check the keys: Exercise 1.6 raises if any output field is missing
+  instead of filling in a placeholder value.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Classifying Singapore Company Reports</h2>
+<h2>Worked Example: Classifying Movie-Review Sentiment</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Classify a small corpus of Singapore company reports into five
-    categories, comparing zero-shot, few-shot, and chain-of-thought
-    prompting on the same inputs. Then upgrade to a Signature for
-    production-grade structured output.
+    Classify short movie-review snippets from the SST-2 dataset (Stanford
+    Sentiment Treebank, public) as <em>positive</em> or <em>negative</em>,
+    comparing zero-shot, few-shot and chain-of-thought prompting on the
+    same inputs. Then upgrade to a Signature for structured output. This
+    is the same task and data as Exercise 1 (<code>ex_1/01</code>–<code>06</code>).
   </p>
 
   <div class="step">
     <span class="step-label">Step 1.</span>
-    <p>Set up the environment and load the dataset.</p>
-    <pre><code class="language-python">import asyncio, os
-import polars as pl
-from kaizen_agents import Delegate
-from kaizen import Signature, InputField, OutputField
-from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
-from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
+    <p>Set up the environment and load the dataset. <code>load_sst2()</code>
+    downloads 200 shuffled SST-2 training rows once and caches them; each
+    row has <code>text</code>, <code>label</code>
+    (<code>positive</code>/<code>negative</code>) and <code>label_id</code>.</p>
+    <pre><code class="language-python">import polars as pl
+from dotenv import load_dotenv
 
-setup_environment()
-model = os.environ["DEFAULT_LLM_MODEL"]
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+from shared.mlfp06.ex_1 import CATEGORIES, get_eval_docs, normalise_label
 
-loader = MLFPDataLoader()
-reports = loader.load("mlfp06", "sg_company_reports.parquet")
-sample = reports.head(10)</code></pre>
+load_dotenv()
+
+docs = get_eval_docs(10)        # first 10 rows of the cached SST-2 sample
+print(docs.select("text", "label"))</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 2.</span>
-    <p>Define the five categories and a zero-shot classifier.</p>
-    <pre><code class="language-python">CATEGORIES = ["Financial", "Technology", "Healthcare", "Real Estate", "Manufacturing"]
+    <p>Define a zero-shot classifier. <code>CATEGORIES</code> is
+    <code>["positive", "negative"]</code>.</p>
+    <pre><code class="language-python">async def ask(prompt: str) -> tuple[str, int]:
+    """One LLM call; returns (text, total tokens)."""
+    text, usage, _seconds = await run_delegate_text(make_delegate(temperature=0.0), prompt)
+    return text, usage["total_tokens"]
 
-async def zero_shot_classify(text: str) -> str:
-    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
-    prompt = f"""Classify this Singapore company report into one category.
+
+async def zero_shot_classify(text: str) -> tuple[str, int]:
+    prompt = f"""Classify the sentiment of the following movie review snippet
+into exactly one category.
+
 Categories: {', '.join(CATEGORIES)}
 
-Report excerpt:
-{text[:800]}
+Review: "{text[:800]}"
 
-Respond with ONLY the category name."""
-    response = ""
-    async for event in delegate.run(prompt):
-        if hasattr(event, "text"):
-            response += event.text
-    return response.strip()</code></pre>
+Respond with ONLY the category name, nothing else."""
+    response, tokens = await ask(prompt)
+    return normalise_label(response), tokens</code></pre>
     <p>
       Read the prompt carefully. The category list is inline so the
       model sees exactly which labels are allowed. The text is truncated
-      to ~800 characters — this bounds cost and avoids hitting the
-      context limit on longer reports. The closing instruction "ONLY the
-      category name" is the <em>format constraint</em>.
+      to 800 characters to bound the prompt length. The closing
+      instruction "ONLY the category name" is the <em>format
+      constraint</em>. <code>normalise_label</code> maps whatever comes
+      back onto <code>positive</code>/<code>negative</code>, or
+      <code>unknown</code> if neither word appears.
     </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3.</span>
-    <p>Add few-shot examples. A good few-shot example set is diverse
-    (covers all categories), clean (unambiguous), and short
+    <p>Add few-shot examples. A good few-shot example set is diverse,
+    clean (unambiguous), balanced across labels and short
     (token-efficient).</p>
     <pre><code class="language-python">FEW_SHOT = [
-    ("Revenue increased 15% driven by loan growth and net interest margin expansion.", "Financial"),
-    ("The company launched its cloud-native SaaS platform serving enterprise clients.", "Technology"),
-    ("Clinical trials for the oncology drug showed 40% improvement in patient outcomes.", "Healthcare"),
-    ("The integrated township development in Jurong added 2,500 residential units.", "Real Estate"),
-    ("Factory automation reduced production cycle time by 30% at the Tuas fab.", "Manufacturing"),
+    ("an absolute masterpiece of storytelling and visual style.", "positive"),
+    ("a tedious and predictable mess from start to finish.", "negative"),
+    ("delightfully clever, with performances that elevate every scene.", "positive"),
+    ("fails to land a single emotional beat in over two hours.", "negative"),
 ]
 
-async def few_shot_classify(text: str) -> str:
-    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
-    examples = "\n".join(f'Text: "{t}"\nCategory: {c}\n' for t, c in FEW_SHOT)
-    prompt = f"""Classify Singapore company reports. Examples:
+
+async def few_shot_classify(text: str) -> tuple[str, int]:
+    examples = "\n".join(f'Review: "{t}"\nSentiment: {c}\n' for t, c in FEW_SHOT)
+    prompt = f"""Classify the sentiment of movie reviews. Examples:
 
 {examples}
-Text: "{text[:800]}"
-Category:"""
-    response = ""
-    async for event in delegate.run(prompt):
-        if hasattr(event, "text"):
-            response += event.text
-    return response.strip()</code></pre>
+Review: "{text[:800]}"
+Sentiment:"""
+    response, tokens = await ask(prompt)
+    return normalise_label(response), tokens</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 4.</span>
-    <p>Add chain-of-thought. The prompt asks for reasoning first, then a
-    final line with the category.</p>
-    <pre><code class="language-python">async def cot_classify(text: str) -> tuple[str, str]:
-    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
-    prompt = f"""Classify this report into one of: {', '.join(CATEGORIES)}.
-Think step by step:
-1. Identify key terms and topics in the text
-2. Match those terms to the most relevant category
-3. State your final classification on the last line
+    <p>Add chain-of-thought. The prompt asks for reasoning first, then the
+    label on the last line (which is where <code>normalise_label</code>
+    looks first).</p>
+    <pre><code class="language-python">async def cot_classify(text: str) -> tuple[str, str, int]:
+    prompt = f"""Classify the sentiment of this movie review as positive or negative.
 
-Report excerpt:
-{text[:800]}
+Think step by step:
+1. Identify the key opinion words and their valence
+2. Assess whether the overall tone is favourable or unfavourable
+3. Consider any sarcasm or irony
+4. State your final classification as exactly "positive" or "negative"
+
+Review: "{text[:800]}"
 
 Step-by-step reasoning:"""
-    response = ""
-    async for event in delegate.run(prompt):
-        if hasattr(event, "text"):
-            response += event.text
-    lines = response.strip().split("\n")
-    final = lines[-1].strip()
-    return response, final</code></pre>
+    reasoning, tokens = await ask(prompt)
+    return normalise_label(reasoning), reasoning, tokens</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 5.</span>
-    <p>Upgrade to Signature-based extraction for production use.</p>
-    <pre><code class="language-python">class ReportExtraction(Signature):
-    report_text: str = InputField(description="Report excerpt")
-    category: str = OutputField(description=f"One of: {', '.join(CATEGORIES)}")
-    key_entities: list[str] = OutputField(description="Named entities")
-    financial_metrics: list[str] = OutputField(description="Financial figures")
-    sentiment: str = OutputField(description="positive | negative | neutral")
-    confidence: float = OutputField(description="Confidence in [0, 1]")
+    <p>Run all three on the same ten reviews and compare.</p>
+    <pre><code class="language-python">rows = []
+for row in docs.iter_rows(named=True):
+    zero, zero_tok = await zero_shot_classify(row["text"])
+    few, few_tok = await few_shot_classify(row["text"])
+    cot, _reasoning, cot_tok = await cot_classify(row["text"])
+    rows.append({"review": row["text"][:40], "gold": row["label"],
+                 "zero": zero, "few": few, "cot": cot,
+                 "zero_tok": zero_tok, "few_tok": few_tok, "cot_tok": cot_tok})
 
-agent = SimpleQAAgent(
-    signature=ReportExtraction,
-    model=model,
-    max_llm_cost_usd=1.0,
-)
-
-result = await agent.run(report_text=sample["text"][0][:800])
-print(f"Category: {result.category}")
-print(f"Confidence: {result.confidence:.2f}")
-print(f"Entities: {result.key_entities}")</code></pre>
+comparison = pl.DataFrame(rows)
+print(comparison)
+for col in ("zero", "few", "cot"):
+    acc = (comparison[col] == comparison["gold"]).mean()
+    print(f"{col:5s} accuracy {acc:.0%}   mean tokens {comparison[col + '_tok'].mean():.0f}")</code></pre>
     <p>
-      The agent writes a prompt for you, calls the model, parses the
-      response into the <code>ReportExtraction</code> schema, and hands
-      you a typed Python object. If the model's output does not match the
-      schema, the agent retries. You never see string parsing.
+      Your numbers depend on your local model and will vary from run to
+      run, so read the <em>shape</em>: few-shot and CoT prompts are
+      several times longer than zero-shot, and CoT spends most of its
+      extra tokens on output. On a task as easy as binary sentiment, the
+      accuracy gap between the three is usually small; rows where the
+      strategies disagree are exactly the ones you would send to a human.
     </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 6.</span>
     <p>
-      Compare accuracy. On the 10-document sample, agreement between
-      strategies is the proxy for confidence: rows where all three agree
-      are almost certainly correct; rows where strategies disagree are
-      exactly where you would escalate to a human in production.
+      Upgrade to Signature-based extraction for production use — the
+      <code>ReviewExtraction</code> agent from the previous section, run
+      over the same rows.
+    </p>
+    <pre><code class="language-python">FIELDS = ["sentiment", "confidence", "key_phrases", "targets", "tone"]
+
+extracted = []
+for text in docs["text"].to_list():
+    result = await agent.run_async(review_text=text[:800])
+    missing = [f for f in FIELDS if f not in result]
+    if missing:                                 # no silent placeholders
+        raise RuntimeError(f"agent returned no {missing}: {str(result)[:200]}")
+    extracted.append({f: result[f] for f in FIELDS})
+
+print(pl.DataFrame(extracted).select("sentiment", "confidence", "tone"))</code></pre>
+    <p>
+      The agent writes the prompt for you, calls the model and hands you
+      a dict with one key per output field. You never split strings, and
+      a reply that breaks the schema fails loudly instead of slipping a
+      wrong value into your pipeline.
     </p>
   </div>
 </div>
@@ -656,12 +698,17 @@ print(f"Entities: {result.key_entities}")</code></pre>
 </div>
 
 <p>
-  For <code>gpt-4o-mini</code> at the time of writing, $r_\text{in}
-  \approx \$0.15$ per million tokens and $r_\text{out} \approx \$0.60$
-  per million tokens — output is 4× more expensive than input. That is
-  why chain-of-thought is more expensive than zero-shot: you are asking
-  the model to produce more output tokens (the reasoning) before the
-  final answer.
+  Prices change often, so treat these as illustrative: a hosted small
+  model might charge $r_\text{in} \approx \$0.15$ and
+  $r_\text{out} \approx \$0.60$ per million tokens, a hosted frontier
+  model about \$3 and \$15. Hosted providers typically charge 4–5× more
+  per output token than per input token. That is why chain-of-thought is
+  more expensive than zero-shot: you are asking the model to produce more
+  output tokens (the reasoning) before the final answer. A local model on
+  Ollama — what this course uses — has $r = 0$; the cost you pay is
+  latency and hardware, which is why Exercise 1 records tokens per
+  technique and converts them at one illustrative blended rate
+  (\$0.50 per million) only to compare techniques.
 </p>
 
 <h3>Temperature and sampling</h3>
@@ -699,7 +746,7 @@ $$p_i \;=\; \frac{\exp(\ell_i / T)}{\sum_{j=1}^{V} \exp(\ell_j / T)}$$
   <span class="label">⚠ Mistake 1: Parsing free-form text in production</span>
   <p>
     "It worked on my three test cases" is not production-ready. The
-    moment a user types a report that triggers a colon, a newline, or
+    moment a user types a review that triggers a colon, a newline, or
     an em-dash inside the model's output, your
     <code>.split(":")[-1]</code> breaks. Use <code>Signature</code>.
   </p>
@@ -708,7 +755,7 @@ $$p_i \;=\; \frac{\exp(\ell_i / T)}{\sum_{j=1}^{V} \exp(\ell_j / T)}$$
 <div class="callout warning">
   <span class="label">⚠ Mistake 2: Asking for N answers at once</span>
   <p>
-    "Here are 20 reports, classify all of them in one prompt" sounds
+    "Here are 20 reviews, classify all of them in one prompt" sounds
     efficient. It usually is not. The model's error rate compounds — if
     each row is 95% correct, 20 rows in one prompt is $0.95^{20}
     \approx 36\%$ fully correct. Parallelise with
@@ -717,13 +764,15 @@ $$p_i \;=\; \frac{\exp(\ell_i / T)}{\sum_{j=1}^{V} \exp(\ell_j / T)}$$
 </div>
 
 <div class="callout warning">
-  <span class="label">⚠ Mistake 3: No cost budget</span>
+  <span class="label">⚠ Mistake 3: No spend control on a priced provider</span>
   <p>
-    A bug in a loop that accidentally calls the model 10,000 times with
-    a 2000-token prompt is a real event. It has happened to people you
-    know. Always pass <code>max_llm_cost_usd</code> to
-    <code>Delegate</code> — it is one line that saves you from a
-    surprise invoice.
+    A bug in a loop that accidentally calls a hosted model 10,000 times
+    with a 2,000-token prompt sends 20 million input tokens — a real bill.
+    On a priced provider, give the <code>Delegate</code> a
+    <code>budget_usd=</code> cap and bound agent loops with
+    <code>max_turns</code>. On local Ollama the dollar cap cannot trip
+    (the model is free, and <code>make_delegate()</code> sets it to
+    <code>None</code>), so watch the token counts instead.
   </p>
 </div>
 
@@ -744,18 +793,21 @@ $$p_i \;=\; \frac{\exp(\ell_i / T)}{\sum_{j=1}^{V} \exp(\ell_j / T)}$$
 <div class="try-it">
   <h3>🎯 Exercise A — Measure the zero-shot baseline</h3>
   <p>
-    Run zero-shot classification on the first 10 reports in
-    <code>sg_company_reports.parquet</code>. Count how many categories
-    the model produced that are <em>not</em> in the allowed list. That
-    count is your zero-shot format-compliance error rate.
+    Run zero-shot classification on the first 20 SST-2 rows from
+    <code>get_eval_docs(20)</code>, but print the <em>raw</em> model reply
+    before <code>normalise_label</code> touches it. Count how many replies
+    are not exactly <code>positive</code> or <code>negative</code> (extra
+    words, capitals, punctuation). That count is your zero-shot
+    format-compliance error rate — and the reason
+    <code>normalise_label</code> exists.
   </p>
 </div>
 
 <div class="try-it">
   <h3>🎯 Exercise B — Make CoT pay</h3>
   <p>
-    Find one report where zero-shot and few-shot disagree. Run CoT on
-    that report and read the reasoning. Write one sentence explaining
+    Find one review where zero-shot and few-shot disagree. Run CoT on
+    that review and read the reasoning. Write one sentence explaining
     which strategy you trust more on that specific document, and why.
   </p>
 </div>
@@ -763,10 +815,11 @@ $$p_i \;=\; \frac{\exp(\ell_i / T)}{\sum_{j=1}^{V} \exp(\ell_j / T)}$$
 <div class="try-it">
   <h3>🎯 Exercise C — Extend the Signature</h3>
   <p>
-    Add a new output field <code>risk_flags: list[str]</code> to
-    <code>ReportExtraction</code> that captures any mentions of credit
-    risk, compliance risk, or operational risk. Run the extractor and
-    verify the lists contain plausible strings.
+    Add a new output field <code>sarcasm: bool</code> to
+    <code>ReviewExtraction</code> ("True if the review is sarcastic or
+    ironic"). Add it to the <code>FIELDS</code> check, run the extractor
+    on 10 reviews, and read the rows flagged <code>True</code>: is the
+    small local model's judgement plausible?
   </p>
 </div>
 
@@ -778,7 +831,7 @@ $$p_i \;=\; \frac{\exp(\ell_i / T)}{\sum_{j=1}^{V} \exp(\ell_j / T)}$$
   comes from <strong>Lesson 5.4</strong>. The embedding concept behind
   tokenisation is <strong>Lesson 4.6</strong>. The idea of a
   Python-typed contract (a <code>Signature</code>) is a continuation of
-  the <code>dataclass</code> patterns you first saw in
+  the type hints on function signatures you first wrote in
   <strong>Lesson 1.3</strong>. Lesson 6.2 will take the pre-trained
   model you used here as an API and teach you to fine-tune it directly
   with LoRA. Lesson 6.4 builds a RAG system on top of the
@@ -792,8 +845,8 @@ $$p_i \;=\; \frac{\exp(\ell_i / T)}{\sum_{j=1}^{V} \exp(\ell_j / T)}$$
 <h2>Reflection</h2>
 <p>
   In one lesson you have gone from "I know what a transformer is" to "I
-  can classify a Singapore company report with four different prompting
-  strategies and pull a typed Python object out of an LLM". That is
+  can classify text with four different prompting strategies and pull
+  structured, typed fields out of an LLM". That is
   enough to build 80% of the LLM products currently on the market — no
   fine-tuning, no custom training, just prompting and Signatures.
 </p>
@@ -803,8 +856,8 @@ $$p_i \;=\; \frac{\exp(\ell_i / T)}{\sum_{j=1}^{V} \exp(\ell_j / T)}$$
   over another — is where Lessons 6.2 and 6.3 come in. Fine-tuning
   changes the model; alignment changes its values. Both are earned
   through the same scaffold you built today: <code>Delegate</code> for
-  the call, <code>Signature</code> for the contract, a cost budget for
-  safety.
+  the call, <code>Signature</code> for the contract, token accounting
+  (and, on a priced provider, a budget) for safety.
 </p>
 </div>
 

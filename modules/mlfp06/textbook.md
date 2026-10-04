@@ -849,9 +849,9 @@ You should now be able to:
 
 ## Why This Matters
 
-A fine-tuned model produces domain-specific outputs, but it may still generate unhelpful, verbose, or harmful responses. Preference alignment trains the model to prefer responses that humans prefer. RLHF (Reinforcement Learning from Human Feedback) was the original approach: train a reward model on human preferences, then use PPO to optimise the LLM against that reward model. But RLHF is complex — it requires training and maintaining a separate reward model, and PPO is notoriously unstable.
+A fine-tuned model produces domain-specific outputs, but it may still generate unhelpful, verbose, or harmful responses. Preference alignment trains the model to prefer responses that people prefer. RLHF (Reinforcement Learning from Human Feedback) was the original approach: train a reward model on human preference rankings, then use PPO to optimise the LLM against that reward model. But RLHF is complex — it requires training and maintaining a separate reward model, PPO needs a value network as well, and the whole loop is notoriously sensitive to hyperparameters.
 
-DPO (Direct Preference Optimization) achieves the same goal by bypassing the reward model entirely. It derives a closed-form loss function directly from the preference data. GRPO (Group Relative Policy Optimization), used in DeepSeek-R1, takes a different approach: sample multiple completions, score them relative to the group mean, and optimise using policy gradients. Both are simpler and more stable than RLHF.
+DPO (Direct Preference Optimization) achieves the same goal by bypassing the reward model entirely. It derives a closed-form loss function directly from the preference data. GRPO (Group Relative Policy Optimization), introduced in DeepSeekMath (Shao et al., 2024) and later used to train DeepSeek-R1 (2025), takes a different approach: sample several completions per prompt, score each with a verifier, normalise the scores within the group, and optimise with a PPO-style clipped objective — but without a value network. Both are simpler than full RLHF.
 
 ## Core Concepts
 
@@ -861,7 +861,7 @@ RLHF maximises the expected reward while staying close to the reference policy:
 
 $$\max_\theta \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi_\theta(\cdot \mid x)}\left[r(x, y)\right] - \beta \, \text{KL}(\pi_\theta \| \pi_{\text{ref}})$$
 
-The optimal solution to this constrained optimisation is:
+The optimal solution to this KL-regularised optimisation is:
 
 $$\pi^*(y \mid x) = \frac{1}{Z(x)} \pi_{\text{ref}}(y \mid x) \exp\left(\frac{r(x, y)}{\beta}\right)$$
 
@@ -875,7 +875,7 @@ The Bradley-Terry model defines the probability that response $y_w$ is preferred
 
 $$P(y_w \succ y_l \mid x) = \sigma(r(x, y_w) - r(x, y_l))$$
 
-where $\sigma$ is the sigmoid function. Substituting the reward expression and noting that $\log Z(x)$ cancels:
+where $\sigma$ is the sigmoid function. Substituting the reward expression (with the policy being trained, $\pi_\theta$, in place of $\pi^*$) and noting that $\beta \log Z(x)$ cancels:
 
 $$P(y_w \succ y_l \mid x) = \sigma\left(\beta \log \frac{\pi_\theta(y_w \mid x)}{\pi_{\text{ref}}(y_w \mid x)} - \beta \log \frac{\pi_\theta(y_l \mid x)}{\pi_{\text{ref}}(y_l \mid x)}\right)$$
 
@@ -887,121 +887,253 @@ $$\mathcal{L}_{\text{DPO}} = -\mathbb{E}_{(x, y_w, y_l) \sim \mathcal{D}}\left[\
 
 This is a standard binary classification loss. The model learns to assign higher probability to preferred responses relative to the reference policy. No reward model, no PPO, no RL training loop — just supervised learning on preference pairs.
 
-The hyperparameter $\beta$ controls how much the aligned model can deviate from the reference policy. Small $\beta$: the model stays close to the reference (conservative alignment). Large $\beta$: the model can deviate further (aggressive alignment, risk of degradation).
+**What $\beta$ does.** $\beta$ is the KL-penalty coefficient from the RLHF objective, and the optimal policy is $\pi^* \propto \pi_{\text{ref}} \exp(r/\beta)$. A **large** $\beta$ makes the exponent small, so the aligned model stays **close to the reference** (conservative alignment, little risk of degrading general ability). A **small** $\beta$ makes the exponent large, so the model can **drift far** from the reference to chase the preference signal (aggressive alignment, with a higher risk of over-optimising, verbosity, and losing capabilities). Seen from the loss: the implied reward is $\beta \log(\pi_\theta / \pi_{\text{ref}})$, so to express the same preference margin a smaller $\beta$ requires a larger log-ratio — a bigger move away from the reference. Typical values are 0.1–0.5. If a benchmark such as MMLU drops after DPO, the model has drifted too far: **raise** $\beta$ (or train for fewer steps). Drill 2 measures this directly.
 
 ### THEORY: GRPO — Group Relative Policy Optimization
 
-GRPO (used in DeepSeek-R1, 2025) takes a different approach:
+GRPO (Shao et al., 2024, DeepSeekMath) works as follows:
 
-1. For each prompt $x$, sample $G$ completions from the current policy.
-2. Score each completion using a simple scoring function (not a learned reward model).
-3. Compute the advantage relative to the group mean: $\hat{A}_i = r_i - \bar{r}_G$.
-4. Update the policy using a clipped policy gradient (similar to PPO).
+1. For each prompt $x$, sample a group of $G$ completions $y_1, \dots, y_G$ from the current policy.
+2. Score each completion with a reward $r_i$ — typically a verifier (is the maths answer correct? do the unit tests pass?), not a learned reward model.
+3. Normalise within the group: $\hat{A}_i = \dfrac{r_i - \text{mean}(r_1, \dots, r_G)}{\text{std}(r_1, \dots, r_G) + \epsilon}$.
+4. Maximise a PPO-style clipped objective with a KL penalty to the reference policy:
 
-GRPO shares DPO's advantage of not needing a reward model, but maintains the policy gradient framework. It is particularly effective for reasoning tasks where the scoring function can be binary (correct/incorrect) and multiple samples provide a natural relative ranking.
+$$\mathcal{J}_{\text{GRPO}}(\theta) = \mathbb{E}\left[\frac{1}{G}\sum_{i=1}^{G} \min\Big(\rho_i \hat{A}_i,\; \text{clip}(\rho_i, 1-\varepsilon, 1+\varepsilon)\,\hat{A}_i\Big) - \beta_{\text{KL}}\, \text{KL}(\pi_\theta \,\|\, \pi_{\text{ref}})\right], \qquad \rho_i = \frac{\pi_\theta(y_i \mid x)}{\pi_{\theta_{\text{old}}}(y_i \mid x)}$$
+
+(in the paper the ratio and the average are taken per token). The group mean replaces PPO's learned value network as the baseline, which is what makes GRPO cheap. Dividing by the group standard deviation makes the update independent of the reward's scale: rewards of {0, 1} and {0, 10} give identical advantages. Subtracting the mean alone would not — the advantages would be ten times larger. A group in which every completion gets the same reward has zero advantage everywhere and contributes no learning signal.
+
+```python
+import torch
+from shared.mlfp06.ex_3 import grpo_advantages   # the helper Exercise 6.3 uses
+
+rewards = torch.tensor([[1.0, 0.0, 0.0, 1.0],    # 2 of 4 samples correct
+                        [0.0, 0.0, 0.0, 1.0],    # 1 of 4 correct
+                        [1.0, 1.0, 1.0, 1.0]])   # all correct: no signal
+print(grpo_advantages(rewards))
+# tensor([[ 0.8660, -0.8660, -0.8660,  0.8660],
+#         [-0.5000, -0.5000, -0.5000,  1.5000],
+#         [ 0.0000,  0.0000,  0.0000,  0.0000]])
+print(torch.allclose(grpo_advantages(10 * rewards), grpo_advantages(rewards)))  # True
+```
+
+The rare correct answer in the second group gets the largest push (1.5), because beating your siblings when most of them fail is the most informative event. GRPO shares DPO's advantage of not needing a learned reward model but keeps the online policy-gradient framework, so it suits tasks where the scoring function is cheap and reliable.
 
 ### FOUNDATIONS: LLM-as-Judge
 
 Use one LLM to evaluate another's outputs. The judge LLM rates responses on criteria like helpfulness, factual accuracy, and harmlessness. Known biases:
 
-- **Position bias:** the judge prefers the response that appears first.
+- **Position bias:** the judge tends to prefer the response shown in a particular position (often the first).
 - **Verbosity bias:** the judge prefers longer responses.
 - **Self-enhancement bias:** the judge prefers responses similar to its own style.
 
-Mitigations: swap response positions and average, normalise by length, use multiple judge models.
+Mitigations: judge every pair in both orders and only count a win when the two verdicts agree (or average them); control for length (compare length-matched pairs, or penalise length explicitly); use several judge models. Report how often the judge failed to give a parsable verdict — a parse failure is not a tie.
 
 ### FOUNDATIONS: Evaluation benchmarks
 
-| Benchmark | Tests                             | Format                  |
-| --------- | --------------------------------- | ----------------------- |
-| MMLU      | Multi-task language understanding | Multiple choice         |
-| HellaSwag | Commonsense reasoning             | Sentence completion     |
-| HumanEval | Code generation                   | Function implementation |
-| MT-Bench  | Multi-turn conversation           | Open-ended + judge      |
+| Benchmark | Tests                             | Format                  | Metric                |
+| --------- | --------------------------------- | ----------------------- | --------------------- |
+| MMLU      | Multi-task language understanding | Multiple choice         | Accuracy              |
+| HellaSwag | Commonsense reasoning             | Sentence completion     | Accuracy (normalised) |
+| HumanEval | Code generation                   | Function implementation | pass@1                |
+| MT-Bench  | Multi-turn conversation           | Open-ended + LLM judge  | Judge score 1–10      |
+
+**lm-eval-harness** (EleutherAI) is the standard tool for running the first three with one command, for example `lm_eval --model hf --model_args pretrained=<model> --tasks hellaswag --limit 50`, and running it before and after alignment shows whether DPO cost general capability. Each task reports its own metric key (`acc`/`acc_norm` for multiple choice, `pass@1` for code). MT-Bench is not an lm-eval task; it is run with its own judge-based harness.
 
 ## The Kailash Engine: kailash-align (DPO)
 
-```python
-from kailash_align import AlignmentPipeline, AlignmentConfig
+This is the pattern of `ex_3/03_dpo_training.py`. Exercise 6.3 trains on **UltraFeedback Binarized** — about 2,000 (prompt, chosen, rejected) triples whose preference labels come from GPT-4 ratings (AI feedback), not from human annotators.
 
-config = AlignmentConfig(method="dpo", beta=0.1, epochs=3)
-pipeline = AlignmentPipeline(config)
-pipeline.train(preference_dataset)
+```python
+import os
+from datasets import Dataset
+from kailash_align import AlignmentConfig, AlignmentPipeline, DPOConfig, LoRAConfig
+from shared.mlfp06.ex_3 import load_ultrafeedback, split_preferences
+
+config = AlignmentConfig(
+    method="dpo",
+    base_model_id=os.environ.get("SFT_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct"),
+    lora=LoRAConfig(rank=16, alpha=32, target_modules=("q_proj", "v_proj")),
+    dpo=DPOConfig(beta=0.1, learning_rate=5e-5, num_train_epochs=2),
+)
+
+prefs = load_ultrafeedback()                       # columns: prompt, chosen, rejected
+train_pref, eval_pref = split_preferences(prefs)
+pref_ds = Dataset.from_dict(
+    train_pref.select(["prompt", "chosen", "rejected"]).to_dict(as_series=False)
+)
+
+result = await AlignmentPipeline(config).train(
+    None, adapter_name="ultrafeedback_dpo_v1", preference_dataset=pref_ds
+)
+metrics = result.training_metrics                  # the raw TRL metrics dict
+print(metrics.get("train_loss"), result.adapter_path)
+# Win rate and benchmark deltas are YOUR evaluation step — train() does not compute them.
 ```
 
-## Worked Example: DPO Training on Preference Data
+The learning rate is much lower than for SFT: about 5e-5 with LoRA and around 1e-6 for full-parameter DPO, because DPO pushes on log-probability ratios and diverges easily.
+
+## Worked Example: DPO Loss on Sequence Log-Probabilities
+
+DPO needs one number per (prompt, response): the log-probability of the response tokens given the prompt, summed over tokens. Two details are easy to get wrong. The logits at position $t$ predict token $t+1$, so logits and targets must be shifted by one; and only the response tokens should be scored, not the prompt or the padding.
 
 ```python
 import torch
 import torch.nn.functional as F
 
-def dpo_loss(model, ref_model, chosen_ids, rejected_ids, beta=0.1):
-    # Forward pass for chosen and rejected
-    chosen_logps = get_log_probs(model, chosen_ids)
-    rejected_logps = get_log_probs(model, rejected_ids)
+def sequence_logprob(model, input_ids, attention_mask, prompt_lens):
+    """Sum of log p(response tokens | prompt) for each row of the batch."""
+    logits = model(input_ids=input_ids, attention_mask=attention_mask).logits[:, :-1]
+    targets = input_ids[:, 1:]                      # logits[t] predicts token t+1
+    token_logp = torch.log_softmax(logits, dim=-1).gather(
+        -1, targets.unsqueeze(-1)).squeeze(-1)
+    positions = torch.arange(targets.shape[1], device=input_ids.device)
+    is_response = positions.unsqueeze(0) >= (prompt_lens.unsqueeze(1) - 1)
+    mask = attention_mask[:, 1:] * is_response      # drop prompt and padding
+    return (token_logp * mask).sum(dim=-1)
 
-    with torch.no_grad():
-        ref_chosen_logps = get_log_probs(ref_model, chosen_ids)
-        ref_rejected_logps = get_log_probs(ref_model, rejected_ids)
+def dpo_loss(policy_chosen, policy_rejected, ref_chosen, ref_rejected, beta=0.1):
+    chosen_rewards = beta * (policy_chosen - ref_chosen)        # implied rewards
+    rejected_rewards = beta * (policy_rejected - ref_rejected)
+    return -F.logsigmoid(chosen_rewards - rejected_rewards).mean()
 
-    # DPO loss
-    chosen_rewards = beta * (chosen_logps - ref_chosen_logps)
-    rejected_rewards = beta * (rejected_logps - ref_rejected_logps)
-    loss = -F.logsigmoid(chosen_rewards - rejected_rewards).mean()
-    return loss
-
-def get_log_probs(model, input_ids):
-    logits = model(input_ids).logits
-    log_probs = F.log_softmax(logits, dim=-1)
-    # Sum log probs of actual tokens
-    token_log_probs = log_probs.gather(-1, input_ids[:, 1:].unsqueeze(-1)).squeeze(-1)
-    return token_log_probs.sum(dim=-1)
+def dpo_step(policy, reference, batch, optimizer, beta=0.1):
+    pc = sequence_logprob(policy, batch["chosen_ids"], batch["chosen_mask"], batch["prompt_lens"])
+    pr = sequence_logprob(policy, batch["rejected_ids"], batch["rejected_mask"], batch["prompt_lens"])
+    with torch.no_grad():                            # the reference is frozen
+        rc = sequence_logprob(reference, batch["chosen_ids"], batch["chosen_mask"], batch["prompt_lens"])
+        rr = sequence_logprob(reference, batch["rejected_ids"], batch["rejected_mask"], batch["prompt_lens"])
+    loss = dpo_loss(pc, pr, rc, rr, beta)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    return loss.item()
 ```
+
+At the first step the policy equals the reference, every log-ratio is zero, and the loss is exactly $\log 2 \approx 0.6931$ whatever the data. A first-step loss far from 0.693 means the policy and reference are not the same model, or the masking is wrong.
 
 ## Try It Yourself
 
-**Drill 1.** Implement the DPO loss function from scratch. Verify it decreases during training on a small preference dataset.
+The first two drills use a small synthetic setting that runs on a CPU in seconds, so you can watch DPO and $\beta$ at work before spending GPU time on `ex_3/03`. Each of 50 "prompts" has 4 candidate responses with a hidden true quality; the policy is a table of logits; the preference data are 3,000 noisy Bradley-Terry judgements.
+
+**Drill 1.** Implement the DPO loss from scratch. Verify it decreases during training on a small preference dataset.
 
 **Solution:**
 
 ```python
-# Create synthetic preference pairs
-# Train for 10 epochs, plot loss curve
+import itertools
+import torch
+import torch.nn.functional as F
+from shared.mlfp06.ex_3 import dpo_loss
+
+torch.manual_seed(0)
+N_PROMPTS, K = 50, 4                       # 50 prompts, 4 candidate responses each
+quality = torch.randn(N_PROMPTS, K)         # hidden "true" quality (synthetic)
+ref_logits = torch.randn(N_PROMPTS, K)      # the frozen reference policy
+
+# 10 noisy judgements per response pair: P(a beats b) = sigmoid(quality_a - quality_b)
+rows = []
+for x in range(N_PROMPTS):
+    for a, b in itertools.combinations(range(K), 2):
+        for _ in range(10):
+            a_wins = torch.rand(()) < torch.sigmoid(quality[x, a] - quality[x, b])
+            rows.append((x, a, b) if a_wins else (x, b, a))
+prompt, chosen, rejected = (torch.tensor(c) for c in zip(*rows))
+
+def train_dpo(beta, steps=2000, lr=0.1):
+    logits = ref_logits.clone().requires_grad_(True)     # start AT the reference
+    opt = torch.optim.Adam([logits], lr=lr)
+    ref_logp = F.log_softmax(ref_logits, dim=-1)
+    losses = []
+    for _ in range(steps):
+        logp = F.log_softmax(logits, dim=-1)
+        loss = dpo_loss(logp[prompt, chosen], logp[prompt, rejected],
+                        ref_logp[prompt, chosen], ref_logp[prompt, rejected], beta=beta)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        losses.append(loss.item())
+    with torch.no_grad():
+        logp = F.log_softmax(logits, dim=-1)
+        kl = (logp.exp() * (logp - ref_logp)).sum(-1).mean().item()
+        ratio = logp - ref_logp                  # the implied reward / beta
+        pairs = list(itertools.combinations(range(K), 2))
+        agree = sum(((ratio[:, a] - ratio[:, b]) * (quality[:, a] - quality[:, b]) > 0)
+                    .sum().item() for a, b in pairs) / (N_PROMPTS * len(pairs))
+    return losses, kl, agree
+
+losses, kl, agree = train_dpo(beta=0.1)
+print([round(losses[i], 4) for i in (0, 99, 499, 999, 1999)])
+# [0.6931, 0.5494, 0.5268, 0.5263, 0.5263]
 ```
 
-**Drill 2.** Vary $\beta$ from 0.01 to 1.0 (0.01, 0.05, 0.1, 0.5, 1.0). How does $\beta$ affect the trade-off between alignment and generation quality? Report win rate against the reference model for each $\beta$.
+The loss starts at exactly $\log 2$ (policy = reference) and falls to a plateau of about 0.526. It does not reach zero because the judgements are noisy — 28% of the judgements prefer the lower-quality response, as with real annotators — so no policy can explain every label.
 
-**Solution:**
+**Drill 2.** Vary $\beta$ (0.01, 0.05, 0.1, 0.5, 1.0). How does $\beta$ affect how far the aligned model moves from the reference, and does it change which responses it prefers?
+
+**Solution:** reuse `train_dpo` from Drill 1.
 
 ```python
 for beta in [0.01, 0.05, 0.1, 0.5, 1.0]:
-    # Train DPO with this beta
-    # Evaluate win rate using LLM-as-judge
-    pass
+    _, kl, agree = train_dpo(beta)
+    print(f"beta={beta:<5} KL(pi||ref)={kl:.3f}  ranking agreement={agree:.2f}")
+# beta=0.01  KL(pi||ref)=1.779  ranking agreement=0.88
+# beta=0.05  KL(pi||ref)=1.666  ranking agreement=0.89
+# beta=0.1   KL(pi||ref)=1.493  ranking agreement=0.88
+# beta=0.5   KL(pi||ref)=0.673  ranking agreement=0.89
+# beta=1.0   KL(pi||ref)=0.265  ranking agreement=0.89
 ```
 
-**Drill 3.** Implement LLM-as-judge evaluation. Measure position bias by evaluating the same pair of responses in both orderings. Report the bias magnitude.
+Larger $\beta$ keeps the policy closer to the reference: the KL divergence falls from 1.78 nats at $\beta = 0.01$ to 0.27 at $\beta = 1.0$. The _ranking_ the policy learns (agreement with the hidden quality, about 0.88–0.89) barely changes — it is limited by the noisy data, not by $\beta$. At small $\beta$ the KL levels off because, with only four responses, the policy cannot move further than piling its probability onto the one it prefers. On a real LLM that drift is where general capabilities are lost, which is why you raise $\beta$ when a benchmark drops after DPO. To measure win rates instead, train `ex_3/03` adapters at two $\beta$ values and compare them with the judge from Drill 3.
 
-**Solution:**
+**Drill 3.** Implement LLM-as-judge evaluation. Measure position bias by judging the same pair of responses in both orderings. Report the bias magnitude.
+
+**Solution:** judge UltraFeedback pairs in both orders. A judge without position bias picks the same underlying response both times.
 
 ```python
-class JudgeSignature(Signature):
-    """Judge which response is better."""
-    prompt: str = InputField()
-    response_a: str = InputField()
-    response_b: str = InputField()
-    winner: str = OutputField(description="A or B")
+import re
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+from shared.mlfp06.ex_3 import load_ultrafeedback
 
-# Run with AB order and BA order, measure disagreement rate
+judge = make_delegate(temperature=0.0)
+TEMPLATE = ("Which response answers the prompt better?\n\nPrompt: {p}\n\n"
+            "Response A: {a}\n\nResponse B: {b}\n\nReply with exactly one letter: A or B.")
+
+async def verdict(prompt, first, second):
+    text, _usage, _secs = await run_delegate_text(
+        judge, TEMPLATE.format(p=prompt, a=first[:1500], b=second[:1500]))
+    match = re.search(r"\b([AB])\b", text.strip().upper())
+    return match.group(1) if match else None         # None = unparsable
+
+async def position_bias(pairs):
+    consistent, flipped, unparsed, first_slot_wins = 0, 0, 0, 0
+    for prompt, chosen, rejected in pairs:
+        v1 = await verdict(prompt, chosen, rejected)   # chosen shown as A
+        v2 = await verdict(prompt, rejected, chosen)   # chosen shown as B
+        if v1 is None or v2 is None:
+            unparsed += 1
+            continue
+        first_slot_wins += (v1 == "A") + (v2 == "A")
+        if (v1 == "A") == (v2 == "B"):                 # same response both times
+            consistent += 1
+        else:
+            flipped += 1                               # the verdict followed the slot
+    judged = consistent + flipped
+    print(f"consistent {consistent}/{judged}, flipped {flipped}/{judged}, "
+          f"unparsed {unparsed}; slot A chosen {first_slot_wins / max(2 * judged, 1):.0%}")
+
+sample = load_ultrafeedback().head(30)
+await position_bias(zip(sample["prompt"], sample["chosen"], sample["rejected"]))
 ```
+
+The flip rate is the bias magnitude: every flipped pair is a verdict decided by position rather than content, and "slot A chosen" far from 50% shows which position the judge favours. The mitigation is built into the measurement — only count a win when both orders agree.
 
 **Drill 4.** Compare DPO with supervised fine-tuning (SFT) on the same dataset. SFT trains only on the preferred responses; DPO trains on both preferred and dispreferred. Which produces better alignment? Why does contrastive learning (DPO) help?
 
-**Solution:** DPO outperforms SFT because it learns from both positive and negative examples. SFT only teaches the model what to produce; DPO also teaches what to avoid. The contrastive signal is more informative.
+**Solution:** SFT on the chosen responses only raises the likelihood of good answers; it never tells the model which nearby answers are bad, so the probability of the rejected responses can rise too (they share most of their tokens with the chosen ones). DPO trains on the _difference_ between chosen and rejected log-ratios, so it explicitly pushes probability away from the dispreferred behaviour while the reference term limits drift. In practice the two are combined — SFT first to teach the format and domain, then DPO to sharpen preferences (kailash-align's `method="sft_then_dpo"`) — and which is "better" must be measured on your own judge and benchmark, not assumed.
 
 **Drill 5.** Explain GRPO in three sentences. When would you choose GRPO over DPO? When would you choose DPO over GRPO?
 
-**Solution:** GRPO samples multiple completions per prompt, scores them relative to the group mean, and optimises using policy gradients. Choose GRPO when you have a cheap, reliable scoring function (e.g., code correctness, math verification) that can evaluate completions without human annotation. Choose DPO when you have a fixed dataset of human preferences and want a simpler, offline training procedure.
+**Solution:** GRPO samples several completions per prompt, scores them with a reward function, normalises each score against its group's mean and standard deviation, and updates the policy with a clipped policy-gradient objective plus a KL penalty to the reference. Choose GRPO when you have a cheap, reliable scoring function (code that passes unit tests, a maths answer you can check) and can afford online sampling during training. Choose DPO when you have a fixed dataset of preference pairs, the quality you want is subjective (tone, helpfulness), and you want a simpler, offline, supervised-style training run.
 
 ## Cross-References
 
@@ -1015,8 +1147,9 @@ You should now be able to:
 
 - Derive DPO from the RLHF objective via the Bradley-Terry model.
 - Implement DPO training from scratch.
-- Explain the role of $\beta$ in controlling alignment strength.
-- Evaluate aligned models using LLM-as-judge and standard benchmarks.
+- Explain the role of $\beta$: larger $\beta$ keeps the model closer to the reference; raise it when general ability drops.
+- Compute GRPO's std-normalised group advantages and explain why they are scale-invariant.
+- Evaluate aligned models using LLM-as-judge (measuring position bias) and standard benchmarks via lm-eval-harness.
 - Compare DPO, GRPO, and RLHF and know when each is appropriate.
 
 ---

@@ -69,3 +69,15 @@ Verified in dataflow/core/engine.py (~l.9272): `file_path = db_url.replace("sqli
 Still pending the full-suite run (trestle): recompute every cross-artefact number once from the canonical cleaned
 output and confirm deck/textbook/lesson pages/exercises agree (grep each handoff file for numbers quoted in 2+ artefacts).
 
+## X-NUM verified-consistent (2026-10-05/06) — spot-checked across deck/textbook/lesson pages/exercises
+- M4: ALS holdout RMSE 0.557 (≈0.56), precision@5 0.66, coverage 77%; silhouette 0.182 at K=3 (3,000 customers);
+  from-scratch net ≈ linear regression R² 0.860; LOF masking ring AUC 0.22 (k=20) vs 0.89 (k=50).
+- M6: BM25 hit@1 0.92 / hit@5 0.97 over 8,219 chunks (generated questions — noted honestly); capstone tiers
+  qa public $1 / admin confidential $10 / audit secret $50 (deck, textbook, lesson page, exercise all agree).
+- M1 (from speaker-notes shard): 50,150 HDB rows / 27 towns / 6 flat types / 162 groups; 107 S$10 & 144 S$9M sales
+  vs S$849,124 median (deck slide-7 comment corrected from 849,126); weather 27.47 °C / 171.75 mm; CPI 11 default
+  alerts (6 correlation + 5 cardinality); lesson 04: 0 raw matches → 21/27 after upper-case, 6 unmatched towns /
+  11,032 sales; lesson 05: 3,236/3,240 cells, 4 gaps; lesson 08: 7→44 one-hot columns.
+Open: lesson 1.8 slides use the shorter pipeline (47,547 rows, 7→44 cols, 12/12 alerts) while ex_8 + textbook use
+43,934 / 12→53 — align the 1.8 slides + deck capstone with ex_8 at integration, then re-run the full-suite number pass.
+

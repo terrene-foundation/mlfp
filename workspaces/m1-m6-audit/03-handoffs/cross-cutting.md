@@ -55,3 +55,17 @@ Verified in dataflow/core/engine.py (~l.9272): `file_path = db_url.replace("sqli
   (textbook says 6.7 vs 8.7 "always call") — recompute once and align.
 - torch 2.12 on Apple MPS: 2-layer nn.LSTM with dropout=0.1 trains badly (val MSE 0.15 vs 0.011 CPU / 0.012 MPS no-dropout)
   → check ex_4/03 and ex_4/05 LSTM configs on MPS (S7); upstream torch note.
+
+## X-NUM reconciliation status (2026-10-05) — done without full suite
+- M1 hourly taxi demand: 1,917–2,054 (ex_8-cleaned, 47,547 rows) — fixed in textbook.md (was 1,743–1,893).
+- M4 equal-blend clustered AUC: 0.97 (code 0.9748) — fixed in textbook.md (was 0.98); matches lesson page.
+- M5 5.4 no-positional-encoding: measured 60.8% (majority rate) — fixed in lesson slides (was ~59%).
+- M5 churn RL fixed policies: never ≈ -2.5, always-call ≈ 10.4, random ≈ -0.2, discount ≈ -4.9; DQN ≈ 11.0 —
+  fixed in textbook.md (was 8.7/6.7); DQN now beats the best heuristic (lesson page already teaches).
+- M2 odds definition: p/(1-p) is the ODDS, not the "odds ratio" — fixed in textbook.md.
+- Verified consistent (no change): M2 11,554/arm, CUPED 49%, SRM 40/35/15/10 (variant_c), conversion 19.1% vs 24.8%,
+  R² 0.828, +9,096/sqm, 3,536 rows; M3 t* = 0.130, DI ≥0.97 race/gender & 0.26 age (unweighted) vs 0.94/0.96
+  (class-weighted); M5 MUTAG GCN 68.4/GAT 71.1/GIN 73.7.
+Still pending the full-suite run (trestle): recompute every cross-artefact number once from the canonical cleaned
+output and confirm deck/textbook/lesson pages/exercises agree (grep each handoff file for numbers quoted in 2+ artefacts).
+

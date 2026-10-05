@@ -36,7 +36,7 @@
 </h1>
 
 <p class="lead">
-  Total time: ~55 minutes &nbsp;·&nbsp; 14 slides &nbsp;·&nbsp; ~4 min average
+  Total time: ~55 minutes &nbsp;·&nbsp; 15 slides &nbsp;·&nbsp; ~3.5 min average
 </p>
 
 <p>
@@ -52,7 +52,7 @@
   <p>
     Open with: "Every real question is a join question. HDB prices alone
     tell you a lot, but they tell you far more when you combine them with
-    MRT proximity and school counts. Today we learn how to do that in
+    MRT access and school counts. Today we learn how to do that in
     Polars."
   </p>
   <div class="transition">→ "Three tables, one enriched result."</div>
@@ -62,15 +62,15 @@
   <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Three-table diagram</span></div>
   <h3>Real questions need multiple tables</h3>
   <p>
-    Walk the three source tables on the left. "HDB transactions — 500,000
-    rows, one per sale. MRT stations — one row per town, tells you the
-    closest station. Schools — one row per school, we'll aggregate to one
-    per town."
+    Walk the three source tables on the left. "HDB transactions — 50,150
+    rows, one per sale. MRT stations — one row per <em>station</em>, 150 of
+    them across 32 towns, with coordinates. Schools — one row per school;
+    we'll aggregate to one per town."
   </p>
   <p>
     Then the big joined table on the right. "Every HDB row now carries its
-    town's spatial context — nearest MRT, distance, school count. Ready
-    for analysis."
+    town's amenity context — station count, school count. Ready for
+    analysis."
   </p>
   <div class="transition">→ "Before we join, two Python tools we need."</div>
 </div>
@@ -137,8 +137,14 @@
     <code>on</code> names the key, <code>how</code> is the join type."
   </p>
   <p>
+    Point at the two preparation lines above the join: "We upper-case the
+    MRT towns and collapse the table to one row per town <em>before</em>
+    joining. The raw tables disagree on both counts — the next two slides
+    show exactly why each step exists."
+  </p>
+  <p>
     Print the shape before and after. Make them see that left join
-    preserves row count. "Same number of rows — we added columns without
+    preserves row count. "Same 50,150 rows — we added a column without
     adding or removing rows."
   </p>
   <div class="audience-cue expert">
@@ -174,9 +180,20 @@
   <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>Key overlap check</span></div>
   <h3>Check the keys <em>before</em> joining</h3>
   <p>
-    Run it live. "HDB has 26 towns. MRT has 24 towns. Matched 24. Two HDB
-    towns have no MRT data — those will become nulls under a left join, or
-    disappear under an inner join."
+    Run it live, in two acts. Act one — the raw keys: "HDB has 27 towns.
+    The MRT table has 32. The intersection is… <em>zero</em>. Not one town
+    matches, because HDB writes BISHAN and the MRT table writes Bishan.
+    A raw join here would return all 50,150 rows with nulls in every new
+    column — the row count looks perfectly fine while the join did
+    nothing."
+  </p>
+  <p>
+    Act two — after upper-casing the MRT side: "Now 21 of 27 towns match.
+    The six that don't — BOON LAY, CENTRAL AREA, HOUGANG, KALLANG/WHAMPOA,
+    PUNGGOL, SENGKANG — become nulls under a left join, or disappear
+    silently under an inner join. Read the unmatched names aloud: some are
+    genuinely absent, some are naming variants like KALLANG/WHAMPOA versus
+    KALLANG — and no fill_null can fix a name."
   </p>
   <p>
     Make this a habit they form today. "Every join, key check first. It
@@ -197,11 +214,17 @@
   <p>
     Explain the problem: "Schools has one row per school. If we joined
     directly, every HDB transaction in Bishan would be duplicated for every
-    school in Bishan — eight copies of every row if Bishan has eight
-    schools. We don't want that."
+    school in Bishan — a dozen copies of every row. We don't want that."
   </p>
   <p>
-    Show the fix: group the schools table to one row per town first, then
+    Put the real fan-out number on the board: "The MRT table has 150
+    stations over 32 towns. Case-fixed but unaggregated, joining it onto
+    the 50,150 HDB rows produces 186,997 rows — every sale cloned once per
+    station in its town. That is the Cartesian-product trap, and it is
+    silent."
+  </p>
+  <p>
+    Show the fix: group the right side to one row per town first, then
     join. This is a common pre-join step whenever the 'right side' is
     granular.
   </p>
@@ -212,9 +235,11 @@
   <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Null handling</span></div>
   <h3>Handling nulls after a left join</h3>
   <p>
-    Three options: count, fill, drop. Walk each. The <code>fill_null(0)</code>
-    example is the most common — "no school data" means "zero schools",
-    and filling with zero lets arithmetic continue working.
+    Three options: count, fill, drop. Walk each. On this data the count is
+    11,032 — the sales in the six unmatched towns. The
+    <code>fill_null(0)</code> example is the most common — "no school data"
+    means "zero schools we know about", and filling with zero lets
+    arithmetic continue working.
   </p>
   <p>
     The strict rule: "Never let a post-join null silently propagate. Decide
@@ -250,42 +275,72 @@
   <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>Desirability classifier</span></div>
   <h3>A desirability classifier</h3>
   <p>
-    Walk the function. It uses if/elif/else on two inputs (distance and
-    schools) to classify towns into tiers. Point out the
-    <code>if distance_km is None</code> guard — without it the comparison
-    would fail for unmatched towns.
+    Walk the function. It uses if/elif/else on two inputs — the town's
+    station count and school count — to classify towns into tiers. Point
+    out the <code>if stations is None</code> guard on the first line:
+    without it, comparing <code>None &gt;= 4</code> would raise for the six
+    unmatched towns, and "Unknown" is the honest label for them.
   </p>
   <p>
-    Then show how it connects to the group_by: aggregate to town level,
-    apply the function. This is the full pipeline — load, join, aggregate,
-    classify.
+    Then preview how it connects to the group_by on the next slide:
+    aggregate to town level, apply the function row by row. This is the
+    full pipeline — load, join, aggregate, classify.
   </p>
+  <div class="transition">→ "Now apply it to every town."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Apply per town</span></div>
+  <h3>Applying the classifier per town</h3>
+  <p>
+    Walk the two steps. First the aggregation: "Group the enriched table by
+    town, take the median price, and <code>.first()</code> of the station
+    and school counts — every row in a town shares the same counts, so
+    first is just 'pick any'. One row per town comes out."
+  </p>
+  <p>
+    Then the loop: "For each town row, call the classifier and print the
+    tier. This is the legitimate use of a Python loop from Lesson 1.3 —
+    orchestrating 27 calls, not arithmetic over 50,150 rows."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> read two output lines aloud and ask the
+    room to justify each tier from the numbers — "Toa Payoh: 5 stations, 13
+    schools — why Prime?"
+  </div>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> the same classification could run
+    vectorised with <code>pl.when</code> chains inside a
+    <code>with_columns</code> — the loop is for readability here, and the
+    trade-off is worth naming.
+  </div>
   <div class="transition">→ "Four traps to avoid."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Common mistakes</span></div>
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Common mistakes</span></div>
   <h3>Four traps when joining</h3>
   <p>
     Walk each one. The inner/left mistake is the one that burns everyone.
-    Show it live: run an inner join, show the row count drop, ask what
-    happened. Then the left-join version preserves the count.
+    Show it live: run an inner join, watch 11,032 sales — the six unmatched
+    towns — vanish from the row count. Then the left-join version keeps
+    all 50,150 rows with nulls you can see and handle.
   </p>
   <p>
     The Cartesian-product mistake is less common but catastrophic when it
-    happens. Show the ugly version: join schools directly, watch the row
-    count explode 5× or 10×.
+    happens. Recall the real figure from the earlier slide: 50,150 becomes
+    186,997 — 3.7× — when the MRT table joins unaggregated.
   </p>
   <p>
-    The case-mismatch trap: "BISHAN" vs "Bishan" is a real Singapore
-    example — different agencies capitalise differently. Teach them to
+    The case-mismatch trap: "BISHAN" vs "Bishan" is the course data's own
+    example — different sources capitalise differently. Teach them to
     normalise with <code>str.to_uppercase()</code> before joining.
   </p>
   <div class="transition">→ "Reflect and bridge."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Reflection</span></div>
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Reflection</span></div>
   <h3>What you can now do</h3>
   <p>
     Walk the six bullets. Pause on each. Ask them to silently confirm.

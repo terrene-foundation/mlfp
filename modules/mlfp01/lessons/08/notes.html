@@ -36,7 +36,7 @@
 </h1>
 
 <p class="lead">
-  Total time: ~60 minutes &nbsp;·&nbsp; 19 slides &nbsp;·&nbsp; ~3 min per slide average
+  Total time: ~60 minutes &nbsp;·&nbsp; 20 slides &nbsp;·&nbsp; ~3 min per slide average
 </p>
 
 <p>
@@ -55,8 +55,8 @@
   <p>
     "This is the finale of Module 1. Everything you have learned converges
     into one pipeline. By the end of this lesson you will have built a
-    complete data pipeline that takes messy taxi trip data and produces a
-    clean, model-ready dataset with an HTML report."
+    complete data pipeline that takes 50,000 messy taxi trip records and
+    produces a clean, model-ready dataset with an HTML report."
   </p>
   <div class="audience-cue beginner">
     <strong>If beginners look nervous:</strong> "You already know every
@@ -67,13 +67,22 @@
 
 <!-- Slide 2 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 2</span><span>~2 min</span><span>Pipeline diagram</span></div>
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Pipeline diagram</span></div>
   <h3>Five stages, one pipeline</h3>
   <p>
-    Walk the diagram left to right. Point out the lesson connection for each
-    stage: "Extract — that is Lesson 1.1's data loading. Profile — 1.7's
-    DataExplorer. Transform — 1.2's filtering plus new tools today.
-    Visualise — 1.6's charts. Report — new today, but just HTML output."
+    Walk the diagram left to right, with the real numbers it carries:
+    "Extract — 50,000 rows, 12 columns, planted defects. Profile — 12
+    alerts from DataExplorer, including a correlation of minus one between
+    latitude and longitude, which should be impossible. Transform — down
+    to 47,547 clean rows with hour, weekday and duration engineered.
+    Visualise and report — the deliverables."
+  </p>
+  <p>
+    Point out the lesson connection for each stage: "Extract — that is
+    Lesson 1.1's data loading. Profile — 1.7's DataExplorer. Transform —
+    1.2 through 1.5's Polars plus the new tools today. Visualise — 1.6's
+    charts. Report — new today, and just HTML output. The bottom strip is
+    the promise: data quality measurably improves at each stage."
   </p>
   <div class="transition">→ "What is ETL?"</div>
 </div>
@@ -84,8 +93,9 @@
   <h3>ETL: the universal data pattern</h3>
   <p>
     "ETL stands for Extract, Transform, Load. It is the standard name for
-    what we are building today. Every company that works with data has ETL
-    pipelines — from startups to banks to the Singapore government."
+    what we are building today. Every company that works with data runs
+    ETL pipelines — the tools change from team to team, but the structure
+    never does. Learn the shape once; recognise it everywhere."
   </p>
   <div class="transition">→ "The first new tool: null handling."</div>
 </div>
@@ -99,6 +109,14 @@
     holes are. fill_null() fills them. drop_nulls() removes rows with
     holes. The order matters: inspect first, then decide whether to fill
     or drop."
+  </p>
+  <p>
+    Walk the three code examples — each encodes a <em>decision</em>:
+    "A missing tip almost certainly means no tip — fill with zero.
+    A missing CPI month in a sorted time series — forward-fill carries the
+    last reading forward. A missing distance with 50,000 rows — the median
+    is a robust stand-in. The fill is never mechanical; it is a claim
+    about what the null means."
   </p>
   <p>
     Emphasise the rule: "Never drop nulls without checking how many there
@@ -118,12 +136,15 @@
   <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Imputation strategies</span></div>
   <h3>Which imputation strategy?</h3>
   <p>
-    Walk the three boxes. Forward-fill for time-series data (taxi fares
-    over time). Median for cross-sectional data (robust to outliers).
-    Group-aware for the best accuracy (median fare per zone).
+    Walk the boxes. Forward-fill for time-series data — it assumes
+    continuity, which is exactly right for a CPI series and exactly wrong
+    for unordered rows. Median for cross-sectional data — robust where
+    the mean is not. Group-aware median — per zone, per town — is the
+    least biased when groups differ.
   </p>
   <p>
-    The bottom box: dropping is the last resort.
+    The bottom box: dropping is the last resort — a few percent of
+    uninformative rows, verified with <code>null_count()</code> first.
   </p>
   <div class="transition">→ "Where does data come from? Not always a CSV."</div>
 </div>
@@ -134,13 +155,20 @@
   <h3>Extracting data from APIs</h3>
   <p>
     "Many datasets are live services. Singapore's OneMap API gives you
-    geolocation for any address. The pattern: send a GET request with
-    query parameters, get JSON back."
+    geolocation for any address, and its search endpoint needs no key.
+    The pattern: send a GET request with query parameters, get JSON back.
+    GET asks for data; POST sends data in the request body."
   </p>
   <p>
-    Run the code live if you have network access. Show the JSON response.
-    Point out: "The API returns a dictionary with a 'results' key containing
-    a list of dictionaries. Each dictionary is one search result."
+    Point at the two safety lines: "<code>timeout=10</code> — a slow server
+    cannot hang your pipeline. <code>raise_for_status()</code> — a 404 or
+    500 becomes an exception you can catch with Lesson 1.7's try/except,
+    not silent garbage parsed as data."
+  </p>
+  <p>
+    Run it live if you have network; otherwise say plainly that the
+    response counts on screen are examples — live numbers vary as the
+    service data changes.
   </p>
   <div class="audience-cue beginner">
     <strong>If beginners are confused by APIs:</strong> "Think of it as
@@ -153,11 +181,13 @@
 <!-- Slide 7 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 7</span><span>~2 min</span><span>JSON to DataFrame</span></div>
-  <h3>JSON to DataFrame</h3>
+  <h3>JSON → DataFrame</h3>
   <p>
     Walk the code. "Take the list of dictionaries from the JSON response,
     create a DataFrame, select and rename the columns you need, fix the
-    types."
+    types. <code>pl.DataFrame(list_of_dicts)</code> is the whole trick —
+    the dict keys become column names. The coordinates arrive as text, so
+    <code>cast(pl.Float64)</code> makes them numbers you can compute with."
   </p>
   <div class="transition">→ "Now the second Kailash engine."</div>
 </div>
@@ -165,65 +195,219 @@
 <!-- Slide 8 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>PreprocessingPipeline</span></div>
-  <h3>PreprocessingPipeline: automated cleaning</h3>
+  <h3>PreprocessingPipeline: automated preparation</h3>
   <p>
     "Just like DataExplorer automates profiling, PreprocessingPipeline
-    automates cleaning. Create it, configure it, call fit_transform(). One
-    method does everything: detects types, imputes nulls, encodes
-    categoricals, scales numerics."
+    automates <em>preparation</em> — turning a clean table into
+    model-ready data. The constructor takes no arguments. One call to
+    <code>setup()</code> detects numeric versus categorical columns,
+    imputes nulls, one-hot encodes, scales, and splits into
+    <code>train_data</code> and <code>test_data</code>."
   </p>
   <p>
-    Point out the shape change: "5 columns in, 22 columns out. That is
-    because one-hot encoding expands the pickup_zone column into multiple
-    binary columns."
+    Two things to state precisely. First: "<code>setup()</code> needs a
+    <code>target</code> column — this engine prepares data for a model.
+    It does not repair bad rows; negative fares and duplicate IDs are
+    cleaned with the Polars you already know, <em>before</em> the pipeline."
+  </p>
+  <p>
+    Second, the shape change: "7 columns in, 44 out — one-hot encoding
+    expands payment_type and pickup_zone into binary indicator columns.
+    And <code>result.task_type</code> prints 'regression' — the engine
+    inferred it from the numeric target."
   </p>
   <div class="transition">→ "A critical distinction."</div>
 </div>
 
 <!-- Slide 9 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>fit vs transform</span></div>
-  <h3>fit_transform vs transform</h3>
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>setup vs transform</span></div>
+  <h3>setup() vs transform()</h3>
   <p>
     This is one of the most important concepts in the entire course. Walk
-    the diagram slowly. "fit_transform on training data: the pipeline
-    learns the medians, the category sets, the scaling parameters. Then on
-    test data, you call transform only — applying the same parameters.
-    Never fit on test data."
+    the diagram slowly. "<code>setup()</code> learns — the medians, the
+    category sets, the scaling statistics. <code>transform()</code>
+    applies what was learned to new rows. The pairing is the whole game:
+    learn on training rows, apply to test rows."
   </p>
   <p>
-    "Why? Because if the pipeline learns from test data, the test results
-    are no longer a fair evaluation. This is called data leakage and we
-    will come back to it in Module 3."
+    Then the warning on the slide, word for word: "<code>setup()</code>
+    learns from <em>every</em> row you pass, and splits afterwards. So
+    hold out your test rows <em>first</em>, and pass only training rows
+    to <code>setup()</code>. If test rows reach setup, their statistics
+    leak into the learned rules, and your evaluation stops being honest.
+    That is data leakage — Module 3 holds you to it."
   </p>
   <div class="audience-cue expert">
     <strong>For experts:</strong> "This is the same reason you never
-    standardise before splitting. The test set must be truly unseen."
+    standardise before splitting. The course's shared helpers
+    (<code>split_then_preprocess</code> and friends) wrap exactly this
+    order — split, fit on train, transform test — so the exercises can
+    never get it backwards."
   </div>
-  <div class="transition">→ "Time to build the pipeline."</div>
+  <div class="transition">→ "Time to build the pipeline. First, meet the data."</div>
 </div>
 
-<!-- Slides 10-16 -->
+<!-- Slide 10 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 10-16</span><span>~18 min total</span><span>Pipeline walkthrough</span></div>
-  <h3>Building the taxi trip pipeline (7 slides)</h3>
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>The taxi dataset</span></div>
+  <h3>The dataset: Singapore taxi trips</h3>
   <p>
-    Run these live, step by step. For each slide:
+    Introduce it honestly, as the slide does: "A synthetic trip log built
+    for this course — the zone names and coordinates are realistic
+    Singapore places, but the trips are not real records. 50,000 rows,
+    12 columns: timestamps, zones, distance, fare, tip, payment,
+    passengers, coordinates."
   </p>
-  <ul>
-    <li><strong>Slide 10 (Dataset):</strong> Show the shape and columns. Ask learners to predict what alerts will fire.</li>
-    <li><strong>Slide 11 (Extract):</strong> Load the data. "Same as always."</li>
-    <li><strong>Slide 12 (Profile):</strong> Run DataExplorer. Compare predictions to actual alerts.</li>
-    <li><strong>Slide 13 (Transform):</strong> Parse dates, filter outliers, fill nulls, engineer hour/day features. Walk each line.</li>
-    <li><strong>Slide 14 (Preprocess):</strong> Run PreprocessingPipeline. Show shape change.</li>
-    <li><strong>Slide 15 (Visualise):</strong> Show the hourly demand chart. Point out AM and PM rush peaks. "This is the kind of insight logistics companies pay for."</li>
-    <li><strong>Slide 16 (Re-profile):</strong> Compare before and after. "Always verify your cleaning worked."</li>
-  </ul>
+  <p>
+    Read the planted-defect list as the hunt briefing: "250 rows with
+    latitude and longitude swapped. 1,000 non-positive fares. 500
+    passenger counts below 1. 500 trips dated in the future — 2025 to
+    2027. 15 spellings of 4 payment methods. 500 rows sharing trip_ids.
+    Plus nulls in the zones and tips. Seven defect types — your pipeline
+    must find and handle every one."
+  </p>
   <div class="audience-cue beginner">
-    <strong>If learners fall behind on the live demo:</strong> "Don't worry
-    about typing along. Watch the flow. The exercise will give you time to
-    build it yourself."
+    <strong>For beginners:</strong> "Predict first. Before we profile,
+    which of these do you think DataExplorer will catch automatically —
+    and which need human eyes? Hold your answer for two slides."
   </div>
+  <div class="transition">→ "Step 1 — extract."</div>
+</div>
+
+<!-- Slide 11 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~2 min</span><span>Step 1: Extract</span></div>
+  <h3>Step 1: Extract</h3>
+  <p>
+    Deliberately anticlimactic — that is the point. "Same loader, same
+    pattern, one line. <code>(50000, 12)</code>. By now this should feel
+    boring. Boring is good — boring means the skill is yours."
+  </p>
+  <p>
+    Note the one wrinkle the slide flags in the pipeline diagram: the
+    timestamps are stored as <em>text</em>. Parsing them is Step 3's job.
+  </p>
+  <div class="transition">→ "Step 2 — profile."</div>
+</div>
+
+<!-- Slide 12 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Step 2: Profile</span></div>
+  <h3>Step 2: Profile</h3>
+  <p>
+    Run it live. 12 alerts fire. Read the interesting ones aloud: "high
+    skewness on distance_km. high_nulls on tip_sgd — 78% null. Skew on
+    both coordinate columns. And the smoking gun: high_correlation between
+    pickup_latitude and pickup_longitude, r = <em>minus</em> 1.00."
+  </p>
+  <p>
+    Decode it together: "A perfect negative correlation between a latitude
+    and a longitude is physically odd — these are independent quantities.
+    That is the fingerprint of the 250 swapped rows: for those rows, the
+    latitude is a longitude. The profiler found a GPS defect without
+    knowing what GPS is."
+  </p>
+  <p>
+    Close the loop with the predictions from slide 10: "Negative fares
+    raised <em>no</em> alert — a fare of −49 is statistically
+    unremarkable to the engine. <code>describe()</code>'s min finds them.
+    Engine first, eyes second — you need both."
+  </p>
+  <div class="transition">→ "Step 3 — transform."</div>
+</div>
+
+<!-- Slide 13 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Step 3: Transform</span></div>
+  <h3>Step 3: Transform</h3>
+  <p>
+    Walk the chain block by block, one auditable step per defect: "Parse
+    the two timestamp columns from text. Repair the swapped coordinates —
+    a Singapore latitude can never exceed about 1.5, so a 'latitude' above
+    100 is unambiguously a longitude; swap those pairs back. Normalise the
+    15 payment spellings into 4 labels with lowercase matching. Filter:
+    positive fares, at least one passenger, trips before 2025, and no
+    duplicated trip_ids. Fill the null tips with zero and the null zones
+    with 'Unknown'."
+  </p>
+  <p>
+    Then the feature engineering the slide's diagram promised: "From the
+    parsed timestamps, derive hour, day of week, and trip duration in
+    minutes. One caution that costs students marks every cohort: Polars
+    <code>dt.weekday()</code> is ISO numbering — Monday is 1, Sunday is 7
+    — so the weekend filter is <code>&gt;= 6</code>, and Friday is 5. Get
+    this wrong and every weekday chart is silently mislabelled."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "Notice the design — each defect gets
+    exactly one step, and each step is independently checkable. When a
+    cleaning stage fails review, you can name the line. That is the
+    difference between cleaning and hoping."
+  </div>
+  <div class="transition">→ "Step 4 — prepare for a model."</div>
+</div>
+
+<!-- Slide 14 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Step 4: PreprocessingPipeline</span></div>
+  <h3>Step 4: PreprocessingPipeline</h3>
+  <p>
+    Walk the split-first pattern in the code: "Select the seven feature
+    columns plus the target. Shuffle with a seed. Hold out a fifth of the
+    rows as test. <em>Then</em> create the pipeline and call
+    <code>setup()</code> on the training rows only."
+  </p>
+  <p>
+    Read the output: "(38,038, 7) becomes (38,038, 44) — one-hot encoding
+    expanded payment_type and pickup_zone. And
+    <code>pipeline.transform(test_rows)</code> applies the same learned
+    rules to 9,509 test rows. The test rows never reached
+    <code>setup()</code>, so nothing about them leaked into the medians,
+    category sets, or scaling statistics."
+  </p>
+  <div class="transition">→ "Step 5 — visualise."</div>
+</div>
+
+<!-- Slide 15 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Step 5: Visualise</span></div>
+  <h3>Step 5: Visualise demand by hour</h3>
+  <p>
+    Build the hourly aggregation and show the chart. Then read it
+    honestly: "Every hour has between about 1,917 and 2,054 trips.
+    Flat. There is <em>no</em> morning peak and no evening peak in this
+    synthetic log — a real dispatch feed would show both."
+  </p>
+  <p>
+    Land the professional habit: "The chart says 'no peak'. Report what
+    the data shows, not what you expected. If you write 'demand peaks at
+    8am' because taxis usually peak at 8am, you have invented a fact.
+    This is the same discipline as Lesson 1.5's seasonality test:
+    patterns are claims you must show, not stories you tell."
+  </p>
+  <div class="transition">→ "Step 6 — verify the cleaning worked."</div>
+</div>
+
+<!-- Slide 16 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Step 6: Re-profile</span></div>
+  <h3>Step 6: Re-profile and compare</h3>
+  <p>
+    Run the re-profile and the comparison. Read it the way the slide
+    teaches: "12 alerts before, 12 after — same count, <em>different
+    alerts</em>. The coordinate skew and the impossible r = −1.00 are
+    gone, and something new is visible: distance_km versus fare_sgd at
+    r = 0.97. The real relationship was there all along, masked by the
+    defects. And the shape check: 50,000 rows became 47,547 — about 5%
+    dropped, each one accounted for by a filter you wrote."
+  </p>
+  <p>
+    The rule to repeat: "Always re-profile after cleaning — and read the
+    alerts, not just the count. A flat count can hide a completely
+    changed list. Cleaning can also <em>introduce</em> issues; the
+    re-profile is where you catch your own mistake."
+  </p>
   <div class="transition">→ "How to structure a real project."</div>
 </div>
 
@@ -233,31 +417,56 @@
   <h3>Structuring the project</h3>
   <p>
     "When a pipeline grows beyond 50 lines, split it into modules. Each
-    file has one job: extract.py loads data, transform.py cleans it,
-    visualise.py makes charts, main.py orchestrates."
+    file has one job: <code>extract.py</code> loads data,
+    <code>transform.py</code> cleans and engineers,
+    <code>visualise.py</code> makes charts, <code>report.py</code> writes
+    the HTML, and <code>main.py</code> orchestrates. The layout on screen
+    is the same five-stage pipeline from Slide 2, rendered as files."
   </p>
   <p>
-    "This is the simplest form of software engineering. In Module 3 you
-    will use WorkflowBuilder to do this with automatic error handling and
-    parallel execution."
+    Give the reproducibility test: "Delete the outputs, run
+    <code>main.py</code>, get the same report back. If that fails, there
+    is hidden state somewhere — a hand-edited file, a hardcoded path —
+    and it will fail in production too."
   </p>
-  <div class="transition">→ "Traps."</div>
+  <div class="transition">→ "The four lines that run it all."</div>
 </div>
 
 <!-- Slide 18 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 18</span><span>~2 min</span><span>Mistakes</span></div>
-  <h3>Four mistakes to avoid</h3>
+  <div class="meta"><span class="badge">Slide 18</span><span>~2 min</span><span>Orchestrator</span></div>
+  <h3>The orchestrator: main.py</h3>
   <p>
-    Walk each one quickly. Mistake 2 (fitting on test data) is the most
-    important — it will come back in every module.
+    Read the four lines of orchestration: "Load. Clean. Chart. Report.
+    Each function lives in its own module, is independently testable, and
+    can be swapped without touching the others — a new data source
+    changes <code>extract.py</code> and nothing else."
   </p>
-  <div class="transition">→ "Module 1 complete."</div>
+  <p>
+    Zoom out as the slide does: "Every production data pipeline looks
+    like this at the top level. The tools get fancier — schedulers,
+    orchestration frameworks, the Kailash workflow engine in later
+    modules — but the top-level shape stays these four lines."
+  </p>
+  <div class="transition">→ "Traps."</div>
 </div>
 
 <!-- Slide 19 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 19</span><span>~3 min</span><span>Reflection + bridge</span></div>
+  <div class="meta"><span class="badge">Slide 19</span><span>~2 min</span><span>Mistakes</span></div>
+  <h3>Four mistakes to avoid</h3>
+  <p>
+    Walk each one quickly. Mistake 2 (passing test rows to setup()) is
+    the most important — it will come back in every module. Mistake 3
+    (hardcoded file paths) is why the data loader exists: "A pipeline
+    that only works on your laptop is not a pipeline."
+  </p>
+  <div class="transition">→ "Module 1 complete."</div>
+</div>
+
+<!-- Slide 20 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 20</span><span>~3 min</span><span>Reflection + bridge</span></div>
   <h3>Module 1 complete</h3>
   <p>
     Walk the lesson list. Let each lesson title trigger a memory. Pause
@@ -269,13 +478,13 @@
   <p>
     Bridge to Module 2: "You can now load, clean, and visualise any dataset.
     But you cannot yet answer: is this pattern real or random? How confident
-    should we be? Module 2 gives you the language of uncertainty —
-    probability, hypothesis testing, regression. Same pipeline; much bigger
-    questions."
+    should we be? Module 2 — Statistical Mastery — gives you the language of
+    uncertainty: probability, hypothesis testing, regression. Same pipeline;
+    much bigger questions."
   </p>
   <p>
     End with encouragement: "If you completed the exercises in all eight
-    lessons, you have written more Python in two weeks than most people
+    lessons, you have written more Python in this module than most people
     write in a month. Module 2 builds on everything you know."
   </p>
   <div class="transition">→ End of Module 1. Celebrate.</div>

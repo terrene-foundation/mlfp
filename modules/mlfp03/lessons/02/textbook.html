@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -316,21 +316,31 @@ $$\text{Ridge (L2):}\;\; \mathcal{L}(\boldsymbol{\beta}) + \lambda \sum_{j}\beta
 </p>
 
 <p>
-  Assume Gaussian likelihood
-  $y \mid x, \boldsymbol{\beta} \sim \mathcal{N}(\boldsymbol{\beta}^\top x, \tau^2)$
-  and a Gaussian prior $\boldsymbol{\beta} \sim \mathcal{N}(\boldsymbol{0}, \tfrac{\tau^2}{\lambda} I)$.
-  The log-posterior is, up to a constant:
+  Assume Gaussian noise with variance $\sigma^2$,
+  $y \mid x, \boldsymbol{\beta} \sim \mathcal{N}(\boldsymbol{\beta}^\top x, \sigma^2)$,
+  and a Gaussian prior with variance $\tau^2$ on each coefficient,
+  $\boldsymbol{\beta} \sim \mathcal{N}(\boldsymbol{0}, \tau^2 I)$.
+  The log-posterior is, up to an additive constant:
 </p>
 
-$$\log p(\boldsymbol{\beta} \mid \text{data}) \;\propto\; -\frac{1}{2\tau^2}\sum_{i}(y_i - \boldsymbol{\beta}^\top x_i)^2 \;-\; \frac{\lambda}{2\tau^2}\sum_j \beta_j^2$$
+$$\log p(\boldsymbol{\beta} \mid \text{data}) \;=\; -\frac{1}{2\sigma^2}\sum_{i}(y_i - \boldsymbol{\beta}^\top x_i)^2 \;-\; \frac{1}{2\tau^2}\sum_j \beta_j^2 \;+\; \text{const}$$
 
 <p>
-  Maximising this log-posterior is <em>algebraically identical</em> to
-  minimising the ridge loss $\mathcal{L}(\boldsymbol{\beta}) + \lambda\|\boldsymbol{\beta}\|_2^2$.
+  Multiply by $-2\sigma^2$ and maximising this log-posterior becomes
+  <em>algebraically identical</em> to minimising the ridge loss
+  $\mathcal{L}(\boldsymbol{\beta}) + \lambda\|\boldsymbol{\beta}\|_2^2$ with
+</p>
+
+$$\lambda \;=\; \frac{\sigma^2}{\tau^2}.$$
+
+<p>
   Ridge regression is Bayesian regression with a Gaussian prior. The
-  regularisation strength $\lambda$ is the inverse prior variance: small
-  $\lambda$ = flat prior = weak shrinkage, large $\lambda$ = narrow prior =
-  strong pull toward zero.
+  regularisation strength is the ratio of noise variance to prior
+  variance: a wide prior (large $\tau^2$) means small $\lambda$ and weak
+  shrinkage; a narrow prior means large $\lambda$ and a strong pull toward
+  zero. Noisy data (large $\sigma^2$) also calls for more shrinkage. The
+  benefit fades as $n$ grows: the likelihood term scales with $n$ while
+  the penalty does not, so with plenty of data the prior barely matters.
 </p>
 
 <p>
@@ -342,9 +352,12 @@ $$\log p(\boldsymbol{\beta} \mid \text{data}) \;\propto\; -\frac{1}{2\tau^2}\sum
 $$\text{Ridge} \;\equiv\; \text{MAP under Gaussian prior}\qquad \text{Lasso} \;\equiv\; \text{MAP under Laplace prior}$$
 
 <p>
-  The Laplace prior has a sharp point at zero that the Gaussian lacks. That
-  sharp point is the Bayesian image of the diamond corner — probability
-  mass concentrates on exactly zero. Two pictures, same story.
+  The Laplace prior has a sharp, non-differentiable peak at zero that the
+  Gaussian lacks. That kink is the Bayesian image of the diamond corner: it
+  is what makes the posterior <em>mode</em> (the MAP estimate) land exactly
+  on zero for weak coefficients. (The prior itself is continuous and puts
+  no probability mass exactly at zero, so the posterior mean is not sparse
+  — sparsity is a property of the MAP point.) Two pictures, same story.
 </p>
 
 <div class="callout advanced">
@@ -356,6 +369,17 @@ $$\text{Ridge} \;\equiv\; \text{MAP under Gaussian prior}\qquad \text{Lasso} \;\
     practice, Elastic Net is what you reach for when Lasso oversimplifies
     correlated features (it picks one arbitrarily) and Ridge refuses to
     zero anything.
+  </p>
+  <p>
+    Watch the names when you move to code. In scikit-learn,
+    <code>ElasticNet(alpha=..., l1_ratio=...)</code> uses
+    <code>alpha</code> for the overall strength (our $\lambda$) and
+    <code>l1_ratio</code> for the mix (our $\alpha$). sklearn's
+    <code>Lasso</code> and <code>ElasticNet</code> also divide the squared
+    error by $2n$ (and put ½ on the L2 term), whereas <code>Ridge</code>
+    uses the plain sum of squares — so the same numeric <code>alpha</code>
+    means a far stronger penalty in <code>Lasso</code> than in
+    <code>Ridge</code>.
   </p>
 </div>
 
@@ -477,64 +501,91 @@ for train_idx, test_idx in outer.split(X):
     search.fit(X_tr, y_tr)
     outer_scores.append(search.score(X_te, y_te))
 
-print(f"Nested CV score: {np.mean(outer_scores):.4f} ± {np.std(outer_scores):.4f}")
+# score() returns NEGATIVE MSE for this scoring, so flip the sign
+print(f"Nested-CV MSE: {-np.mean(outer_scores):.4f} ± {np.std(outer_scores):.4f}")
 </code></pre>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Overfitting HDB Prices</h2>
+<h2>Worked Example: Overfitting a Noisy Sine, Then Regularising Credit Data</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Use the HDB resale dataset from Module 1. Fit polynomial models of
-    increasing degree (1, 2, 3, 5, 9) and plot training vs validation MSE.
-    Then fit Ridge and Lasso at a range of $\lambda$ values and plot the
-    coefficient paths. Observe bias-variance in action.
+    Two datasets, both used in Exercise 3.2. First a <strong>synthetic</strong>
+    noisy sine, $y = \sin(2\pi x) + \varepsilon$ with $\sigma = 0.2$, where we
+    know the truth and the noise floor $\sigma^2 = 0.04$ exactly — so every
+    term of the decomposition is visible. Then the synthetic Singapore credit
+    data, predicting each applicant's (standardised) <code>savings_balance</code>
+    from 32 features with only 300 training rows, where Ridge and Lasso have
+    real work to do.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — Polynomial fits.</span>
-    <pre><code class="language-python">import polars as pl, numpy as np
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.linear_model import LinearRegression, Ridge, Lasso
-from sklearn.model_selection import cross_val_score
-from sklearn.pipeline import Pipeline
+    <span class="step-label">Step 1 — Polynomial fits on the sine.</span>
+    <pre><code class="language-python">from sklearn.metrics import mean_squared_error
+from shared.mlfp03.ex_2 import make_poly_pipeline, make_sine_dataset
 
-from shared import MLFPDataLoader
-df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
-X = df.select(["floor_area_sqm", "flat_age", "distance_to_mrt_km"]).to_numpy()
-y = df["resale_price_sgd"].to_numpy()
-
-for degree in [1, 2, 3, 5, 9]:
-    model = Pipeline([
-        ("poly", PolynomialFeatures(degree, include_bias=False)),
-        ("lin",  LinearRegression()),
-    ])
-    mse = -cross_val_score(model, X, y, cv=5,
-                            scoring="neg_mean_squared_error").mean()
-    print(f"degree={degree:<2d}  CV MSE = {mse:,.0f}")</code></pre>
+# 40 training points, 1,000 independent test points
+x_tr, y_tr, x_te, y_te, noise_var = make_sine_dataset()
+for degree in [1, 2, 4, 6, 9, 12, 15, 20]:
+    model = make_poly_pipeline(degree).fit(x_tr, y_tr)
+    tr = mean_squared_error(y_tr, model.predict(x_tr))
+    te = mean_squared_error(y_te, model.predict(x_te))
+    print(f"d={degree:>2}: train {tr:.4f}  test {te:.4f}")</code></pre>
+    <pre><code class="language-text">d= 1: train 0.2068  test 0.2476
+d= 2: train 0.1981  test 0.2566
+d= 4: train 0.0217  test 0.0478
+d= 6: train 0.0185  test 0.0444
+d= 9: train 0.0185  test 0.0456
+d=12: train 0.0184  test 0.0461
+d=15: train 0.0184  test 0.0464
+d=20: train 0.0175  test 0.0603</code></pre>
     <p>
-      You will see CV MSE fall from degree 1 to degree 3, then rise again
-      at degree 5 and explode at degree 9. The training MSE (not shown)
-      falls monotonically. That gap between train and validation is
-      variance.
+      Read it against the decomposition. Degrees 1–2 underfit: both errors
+      sit near 0.25, far above the noise floor — that excess is bias².
+      Degrees 4–9 reach a test MSE just above $\sigma^2 = 0.04$; the best is
+      degree 6 at 0.044. By degree 20 training error is still falling while
+      test error has climbed to 0.060 — that widening gap is variance. Notice
+      that training MSE drops <em>below</em> the noise floor: the model is
+      fitting noise.
     </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2 — Regularisation path.</span>
-    <pre><code class="language-python">from kailash_ml import PreprocessingPipeline, ModelVisualizer
+    <span class="step-label">Step 2 — Ridge and Lasso paths on credit data.</span>
+    <pre><code class="language-python">import numpy as np
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+from shared.mlfp03.ex_2 import load_credit_data
 
-for alpha in [0.01, 0.1, 1, 10, 100, 1000]:
-    ridge = Ridge(alpha=alpha).fit(X, y)
-    lasso = Lasso(alpha=alpha, max_iter=10_000).fit(X, y)
-    print(f"alpha={alpha:<6g}  "
-          f"ridge_coef={ridge.coef_.round(2)}  "
-          f"lasso_coef={lasso.coef_.round(2)}")</code></pre>
+# IDs, the default outcome and the planted leak column are dropped inside
+X_tr, y_tr, X_te, y_te, names = load_credit_data()   # 300 train, 5,000 test
+
+ols = LinearRegression().fit(X_tr, y_tr)
+print(f"OLS   train {mean_squared_error(y_tr, ols.predict(X_tr)):.2f}  "
+      f"test {mean_squared_error(y_te, ols.predict(X_te)):.2f}")
+
+for alpha in [0.1, 1, 10, 100, 1000]:
+    ridge = Ridge(alpha=alpha).fit(X_tr, y_tr)
+    print(f"ridge alpha={alpha:<5g} test "
+          f"{mean_squared_error(y_te, ridge.predict(X_te)):.2f}  "
+          f"|coef|={np.linalg.norm(ridge.coef_):.2f}")
+
+for alpha in [0.001, 0.01, 0.03, 0.1, 0.3]:   # Lasso's alpha is on a smaller scale
+    lasso = Lasso(alpha=alpha, max_iter=10_000).fit(X_tr, y_tr)
+    print(f"lasso alpha={alpha:<5g} test "
+          f"{mean_squared_error(y_te, lasso.predict(X_te)):.2f}  "
+          f"nonzero={np.sum(lasso.coef_ != 0)}/{len(lasso.coef_)}")</code></pre>
     <p>
-      Lasso zeros out coefficients as $\alpha$ grows; Ridge only shrinks
-      them. At $\alpha = 100$ Lasso may already have set one or two
-      coefficients to exactly zero; Ridge simply pulled them closer to zero.
+      Because the target is standardised, an MSE of 1.0 means "no better than
+      predicting the mean". Unregularised OLS overfits visibly: training MSE
+      about 0.65, test MSE about 0.87. Ridge shrinks the coefficient norm
+      steadily as $\alpha$ grows (from about 1.4 to about 0.15) and test MSE
+      improves to about 0.84 around $\alpha = 100$, then worsens again as
+      shrinkage turns into bias. Lasso <em>removes</em> features: about 22
+      of 32 survive at $\alpha = 0.01$, about 5 at $\alpha = 0.1$ (test MSE
+      about 0.84, as good as the best Ridge with a fraction of the
+      features), and only 2 at $\alpha = 0.3$, where test MSE jumps back
+      above 0.9. Ridge only shrinks; Lasso selects.
     </p>
   </div>
 
@@ -542,21 +593,30 @@ for alpha in [0.01, 0.1, 1, 10, 100, 1000]:
     <span class="step-label">Step 3 — Nested CV to pick $\alpha$.</span>
     <pre><code class="language-python">from sklearn.model_selection import GridSearchCV, KFold
 
+grid = {"alpha": np.logspace(-2, 3, 20)}
 outer = KFold(5, shuffle=True, random_state=0)
 scores = []
-for tr, te in outer.split(X):
+for tr, te in outer.split(X_tr):
     inner = KFold(3, shuffle=True, random_state=0)
-    search = GridSearchCV(Ridge(), {"alpha": np.logspace(-2, 3, 20)},
-                          cv=inner, scoring="neg_mean_squared_error")
-    search.fit(X[tr], y[tr])
-    scores.append(search.score(X[te], y[te]))
+    search = GridSearchCV(Ridge(), grid, cv=inner,
+                          scoring="neg_mean_squared_error")
+    search.fit(X_tr[tr], y_tr[tr])
+    scores.append(search.score(X_tr[te], y_tr[te]))
+print(f"Nested-CV MSE: {-np.mean(scores):.3f} ± {np.std(scores):.3f}")
 
-print(f"Unbiased MSE estimate: {-np.mean(scores):,.0f}")</code></pre>
+single = GridSearchCV(Ridge(), grid, cv=KFold(5, shuffle=True, random_state=0),
+                      scoring="neg_mean_squared_error").fit(X_tr, y_tr)
+print(f"Single-loop best_score_: {-single.best_score_:.3f}")</code></pre>
     <p>
-      Compare this number against the best-score reported by a single-loop
-      <code>GridSearchCV</code>. The single-loop number is always smaller —
-      that gap is the bias you get when the same data chose the
-      hyperparameter <em>and</em> reported the score.
+      On this data the two numbers come out almost identical (both about
+      0.77), and the fold-to-fold spread (about ±0.12) dwarfs any gap.
+      Picking one smooth hyperparameter out of 20 values buys very little
+      optimism. The optimism of <code>best_score_</code> grows with the
+      number of candidates you compare — many model families, many
+      hyperparameters, many feature sets — which is exactly when nested CV
+      earns its cost. Also notice that both estimates are below the
+      held-out test MSE of the refitted model (about 0.83): with 300 rows,
+      every CV estimate is itself noisy.
     </p>
   </div>
 </div>

@@ -660,3 +660,226 @@ ready for Lesson 1.3.
 aggregate data by groups."
 
 ---
+
+## Slide 25: Lesson 1.3: Functions and Aggregation
+
+**Time:** ~2 min · Foundations
+
+**Hook:** "Stop copy-pasting. Today you learn to write code that writes your
+analysis for you."
+
+This lesson bridges Python fundamentals — functions, lists, dictionaries, loops —
+with the data-analysis pattern that matters most: `group_by` plus aggregation.
+Functions make analysis reusable; instead of copy-pasting a filter-aggregate
+block per town, you call a function with a town name.
+
+**Beginner cue:** "A function is a recipe. You write it once, cook from it many
+times."
+
+**Advanced cue:** Higher-order functions and lambdas arrive in later modules; for
+now, named `def` blocks with docstrings are the professional baseline.
+
+**Transition:** "Let us define our first function."
+
+---
+
+## Slide 26: Defining Functions
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "A vending machine: coins in, drink out. Parameters in, return value
+out."
+
+Walk the anatomy of `def` slowly — name, parameters, body, `return`. The
+triple-quoted docstring documents what the function does; insist on it from day
+one, because six weeks from now the docstring is the only documentation anyone
+reads. Default parameters let callers omit arguments with sensible defaults —
+show one call with the default and one overriding it.
+
+**Beginner cue:** Trace one call end to end on the whiteboard: argument values
+flow in, the body runs, the return value flows out.
+
+**Advanced cue:** Mention type hints (`def price_per_sqm(price: float, area:
+float) -> float`) — the course adds them as functions grow; they are
+documentation the editor can check.
+
+**Key question:** "What is the difference between printing inside a function and
+returning a value?" The distinction matters the moment functions compose.
+
+**Transition:** "Functions work on single values. Let us also work with
+collections."
+
+---
+
+## Slide 27: Lists, Dictionaries, and Loops
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Lists are numbered checklists; dictionaries are phone books."
+
+Lists are ordered and accessed by index — zero-based, which everyone off-by-ones
+once. Dictionaries are accessed by key. `for` loops iterate over any collection,
+and the pattern `for item in collection` reads like English by design.
+
+Then the warning, in bold: Polars expressions are faster than loops for data
+operations. Loops are for orchestration — calling a function per town — not for
+arithmetic over a column. If a learner writes `for row in df.iter_rows()` this
+week, gently redirect them to expressions.
+
+**Beginner cue:** Live-code one loop that prints three town names, then show the
+same result with a Polars expression — the contrast sticks.
+
+**Advanced cue:** Preview list and dict comprehensions as the idiomatic shorthand
+they will meet in the readings.
+
+**Transition:** "Now let us combine functions with Polars to do group-level
+aggregation."
+
+---
+
+## Slide 28: Group-By and Aggregation
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "This one pattern — group, aggregate — answers most business questions
+ever asked of data."
+
+`group_by("town").agg(...)` answers "what is the average price per town?" — the
+archetypal analytical question. Show that multiple aggregations live in one
+`agg()` call — mean, median, row count, standard deviation — each with a clear
+`.alias()`. The output is a new DataFrame with one row per group, which means it
+chains like anything else.
+
+**Beginner cue:** "Sort students into classrooms, then compute the average grade
+per classroom. `group_by` sorts; `agg` computes."
+
+**Advanced cue:** Polars group-by is multi-threaded — groups process in parallel,
+which is why 50,000 rows aggregate in milliseconds.
+
+**Key question:** "After grouping by town, how many rows does the result have —
+and why 27?" Connect the output shape to the data's 27 towns.
+
+**Transition:** "Let us see the available aggregation functions."
+
+---
+
+## Slide 29: Aggregation Functions
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Each of these collapses a pile of rows into one number. Choose the
+number that answers your question."
+
+Walk the table as column expressions — `pl.col("resale_price").mean()`,
+`.median()`, `.std()`, and so on. Two correctness notes to say aloud: bare
+`pl.mean()` needs a column name, so teach the expression form from the start;
+and use `pl.len()` for row counts — the old `pl.count()` is deprecated and prints
+a warning.
+
+Multiple group keys give finer breakdowns — town and flat type together. And
+`n_unique()` is the cardinality probe: how many distinct towns (27), flat types
+(6), or months.
+
+**Beginner cue:** "Mean is the average, median is the middle value, `pl.len()` is
+how many rows. Start with those three."
+
+**Advanced cue:** `quantile()` unlocks percentile analysis — P10/P90 bands are how
+professionals bracket uncertainty on skewed prices.
+
+**Transition:** "Let us write a reusable helper function that combines
+everything."
+
+---
+
+## Slide 30: Reusable Analysis Functions
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "One function call, a full district report. This is what reusable
+means."
+
+The function on screen encapsulates the whole mini-pipeline: filter to a
+district, group by flat type, aggregate, sort. The type hints —
+`df: pl.DataFrame, district: str` — document the contract. Call it for two
+different towns live and let the room see identical structure, different numbers.
+
+**Beginner cue:** "Give it a dataset and a district name; it hands back a summary
+table. You never touch the inside again."
+
+**Advanced cue:** Discuss the extension path: optional parameters for custom
+aggregations, or a list of towns returning one concatenated report — this is the
+seed of the capstone's pipeline structure.
+
+**Transition:** "Here is the exercise for this lesson."
+
+---
+
+## Slide 31: Looping Over Districts
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Loop for orchestration, expressions for arithmetic — together they
+scale."
+
+The slide shows the loop-plus-function pattern: iterate over towns, call the
+summary function, collect results. Two precision points to make. First,
+`unique()` returns towns in no particular order, so `.sort()` makes "the first
+five" reproducible rather than luck. Second, read the code's output label
+carefully: the summary groups by flat type and sorts by average price
+descending, so row zero is the town's *most expensive flat type* — not the town
+average. The label must say what the number is.
+
+Repeat the performance note: `group_by` is vectorised across the whole column;
+loops are sequential over their iterations. Loop over 27 towns freely; never
+loop over 50,150 rows.
+
+**Beginner cue:** Focus on the pattern — iterate, call, collect. The fluency
+comes with practice.
+
+**Advanced cue:** A list comprehension is the more Pythonic collector here; `pl`
+'s `concat` then stacks the per-town frames into one report.
+
+**Transition:** "Time for the exercise."
+
+---
+
+## Slide 32: Exercise 1.3: District-Level Statistics
+
+**Time:** ~2 min (exercise work time ~10 min) · Foundations
+
+**Hook:** "Write the function once. Answer for every district."
+
+This exercise tests function writing and group-by aggregation together. The key
+assessment criterion is reusability: functions must accept parameters — a town
+name, a dataframe — not hardcode "TAMPINES" in the body. Circulate and check for
+hardcoded strings; that is the tell of copy-paste thinking.
+
+**Beginner cue:** Get the `group_by().agg()` working on the full data first, then
+wrap it in `def`.
+
+**Advanced cue:** Early finishers add 25th/75th percentile columns with
+`quantile()` and interpret the spread per town.
+
+**Transition:** "In Lesson 1.4, we learn to combine multiple datasets using
+joins."
+
+---
+
+## Slide 33: Lesson 1.3 Recap
+
+**Time:** ~1 min · Foundations
+
+**Hook:** "Two tools earned today: functions and group-by."
+
+Functions make code reusable; `group_by().agg()` compresses data into summaries.
+Together they turn one-off analysis into a reporting tool.
+
+**Beginner cue:** If they can write one working `def` and one working
+`group_by().agg()`, the lesson has landed.
+
+**Advanced cue:** Natural break point — take questions before joins.
+
+**Transition:** "Lesson 1.4 introduces conditionals, imports, and joins for
+combining multiple data sources."
+
+---

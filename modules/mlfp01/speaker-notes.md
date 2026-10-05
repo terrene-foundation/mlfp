@@ -1113,3 +1113,228 @@ two-session delivery, this is the split.
 **Transition:** "Lesson 1.5 introduces window functions and lazy frames."
 
 ---
+
+## Slide 43: Lesson 1.5: Window Functions and Trends
+
+**Time:** ~2 min · Foundations
+
+**Hook:** "Aggregation collapsed your rows. What if you want the group statistic
+*and* your rows?"
+
+Window functions compute values across rows without collapsing them — the missing
+tool between raw rows and group-by summaries. Frame the lesson's three stops:
+`over()` for per-group enrichment, rolling windows for smoothing, and `shift()`
+for period-over-period change. Lazy frames close the lesson as the Advanced
+performance topic.
+
+**Beginner cue:** "A window function is like writing each classroom's average
+next to every student — everyone keeps their row."
+
+**Advanced cue:** The lazy-evaluation slides at the end are where Polars' query
+optimiser earns its keep — do not skip them if performance matters to you.
+
+**Transition:** "Let us start with over(), the heart of window operations."
+
+---
+
+## Slide 44: Window Functions with over()
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Same data, two verbs: group_by shrinks the table, over() leaves it
+exactly as tall."
+
+The contrast is the whole slide: `group_by("town").agg(mean)` returns 27 rows —
+one per town. `mean().over("town")` returns all 50,150 rows with the town mean
+broadcast onto each. This enables row-versus-group comparisons — how far is this
+flat's price from its town's average? — which is the seed of feature engineering.
+
+**Beginner cue:** "`group_by` gives the class average as one number. `over()`
+writes it next to every student."
+
+**Advanced cue:** `over()` accepts multiple partition columns and even expressions
+— per-town-per-year stats are one call away.
+
+**Key question:** "After `.over("town")`, how many rows does the result have?"
+50,150 — the answer anchors the broadcast intuition.
+
+**Transition:** "Now let us apply this to time-series data with rolling
+averages."
+
+---
+
+## Slide 45: Rolling Averages
+
+**Time:** ~3 min · Theory
+
+**Hook:** "Raw monthly prices jitter. A rolling average is how you see the
+signal."
+
+Rolling averages smooth noisy series — essential for spotting trends in property
+prices. Two load-bearing details. First, `.over("town")` makes the window restart
+per town; without it, one town's history bleeds into the next. Second, and
+subtler: **windows count rows, not months**. The course town-by-month grid has
+3,236 of 3,240 cells — BUKIT TIMAH has no sales in 2015-10, 2017-02 and 2022-07,
+CENTRAL AREA none in 2015-08. Without completing the calendar first, a 3-row
+window silently spans 4 months in those towns. The slide's grid-join code is the
+fix: build every town × every month, left-join the data, then roll.
+
+**Beginner cue:** Draw a 3-month sliding window on the whiteboard — current row
+plus the two before it — and show why the first two rows per town are null.
+
+**Advanced cue:** Exponentially weighted moving averages weight recent months
+more heavily; the row-alignment problem applies to them identically.
+
+**Key question:** "If a town is missing a month, what does a 3-row window
+actually average?" Let them discover the 4-month span.
+
+**Transition:** "Let us compute year-on-year changes."
+
+---
+
+## Slide 46: Year-on-Year Changes with shift()
+
+**Time:** ~3 min · Theory
+
+**Hook:** "Did prices rise or fall versus the same month last year? One shift
+answers it."
+
+`shift(12)` moves the column down by 12 rows — and that equals "same month last
+year" **only because the calendar was completed on the previous slide**. Without
+the grid, 40 rows compare against the wrong month — CENTRAL AREA 2016-03 would be
+compared with 2015-02, and the "year-on-year" number would be fiction. With the
+grid, a missing month yields a null YoY instead of a wrong one. Nulls are honest;
+wrong numbers are not.
+
+The formula is on screen: `(current − previous) / previous × 100`, rounded for
+display. Positive means prices rose versus last year; negative means they fell.
+
+**Beginner cue:** "YoY asks one question: compared to the same month last year,
+up or down?"
+
+**Advanced cue:** CAGR is the multi-year summary alternative — and equally
+dependent on correct alignment.
+
+**Transition:** "Let us test what patterns actually live in this series."
+
+---
+
+## Slide 47: Identifying Trends and Seasonality
+
+**Time:** ~3 min · Theory
+
+**Hook:** "Trend, seasonality, cyclicality, noise — every time series is these
+four ingredients in different proportions."
+
+Define the four components crisply: trend is long-term direction; seasonality is
+a pattern repeating within each year; cyclicality is multi-year waves (in
+Singapore property, cooling measures); noise is everything left over. Then the
+professional habit: **seasonality is a hypothesis you test, not a pattern you
+assume**. The slide's group-by on calendar month is the test.
+
+Report the course-data result honestly: the 12 calendar-month averages sit within
+about ±2% of each other (roughly S$875k in October to S$908k in September), and
+monthly transaction counts are similar (about 4,000-4,300). No seasonal pattern.
+The HDB file is synthetic, so it carries no real market seasonality — and with
+real data, this exact code is how you would find it. A claimed "Chinese New Year
+dip" must show up in the output before anyone says it aloud.
+
+**Beginner cue:** "Trend: going up or down overall. Seasonality: same pattern
+every year. That distinction is enough for today."
+
+**Advanced cue:** Additive versus multiplicative decomposition arrives in Module
+2 — the calendar-month group-by here is the poor-man's version.
+
+**Key question:** "What would a real seasonal pattern look like in this output —
+and what does ours show instead?"
+
+**Transition:** "Now let us look at lazy frames for performance."
+
+---
+
+## Slide 48: Lazy Frames: Make It Faster
+
+**Time:** ~3 min · Advanced
+
+**Hook:** "Everything so far computed immediately. What if Polars planned the
+whole computation first?"
+
+Lazy frames load nothing until `.collect()` — instead Polars builds a query plan
+and optimises it: skip unread columns, push filters into the scan, eliminate
+redundant work. The code uses `loader.load_raw()` to get the local file path
+(downloading first if needed) because `scan_parquet` needs a path, not a frame.
+
+Label this slide honestly: it is Advanced material. Every exercise in the module
+works in eager mode, and beginners may skip this without penalty.
+
+**Beginner cue:** "Skim and move on — come back when a dataset is slow."
+
+**Advanced cue:** Run `.explain()` on the lazy frame and read the plan together —
+projection pushdown is visible in the output.
+
+**Transition:** "Let us inspect the query plan."
+
+---
+
+## Slide 49: Inspecting the Query Plan
+
+**Time:** ~3 min · Advanced
+
+**Hook:** "`explain()` is Polars' X-ray — SQL veterans know it as EXPLAIN."
+
+Read the plan bottom-up like SQL: the scan, the pushed-down filter, the projected
+columns. The headline optimisation is projection pushdown — columns never
+selected are never read from disk, which is why lazy pipelines on wide parquet
+files can be dramatically faster than eager ones.
+
+**Beginner cue:** Purely optional — note it exists and come back later.
+
+**Advanced cue:** Streaming mode extends this to datasets larger than memory;
+same plan, chunked execution.
+
+**Transition:** "Time for the exercise."
+
+---
+
+## Slide 50: Exercise 1.5: HDB Price Trends
+
+**Time:** ~2 min (exercise work time ~15 min) · Foundations
+
+**Hook:** "Build the monthly series, complete the calendar, then smooth and
+compare — the full trend workflow."
+
+This exercise composes `group_by`, the calendar grid, `rolling_mean`, `shift`,
+and sorting. Name the two pitfalls explicitly. Pitfall 1: `rolling_mean` and
+`shift` must carry `.over("town")`, or towns contaminate each other. Pitfall 2:
+`shift(12)` counts rows — complete the town × month calendar first, or YoY
+compares the wrong months. That alignment is exactly what the module assessment
+means by "proper time alignment".
+
+**Beginner cue:** Build steps 1-3 first (monthly series, grid, rolling average);
+tackle YoY and ranking only after those print sensibly.
+
+**Advanced cue:** Early finishers rewrite the whole pipeline lazily and compare
+`.explain()` plans.
+
+**Transition:** "Lesson 1.5 recap."
+
+---
+
+## Slide 51: Lesson 1.5 Recap
+
+**Time:** ~1 min · Theory
+
+**Hook:** "Two concepts earned: window functions and lazy frames."
+
+`over()` enriches rows without collapsing them; rolling and shift smooth and
+compare — provided the calendar is complete. Lazy frames defer and optimise.
+If one function survives the week, make it `over()`.
+
+**Beginner cue:** "`over()` is the one to remember — group statistics on every
+row."
+
+**Advanced cue:** Natural break point before visualisation.
+
+**Transition:** "Lesson 1.6 makes numbers visible."
+
+---

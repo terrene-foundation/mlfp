@@ -1338,3 +1338,239 @@ row."
 **Transition:** "Lesson 1.6 makes numbers visible."
 
 ---
+
+## Slide 52: Lesson 1.6: Data Visualisation
+
+**Time:** ~2 min · Foundations
+
+**Hook:** "A chart is not decoration — it is a computation your eyes perform."
+
+Visualisation is how you find patterns statistics hide and how you communicate
+findings to people who do not read tables. The lesson runs why-before-how: the
+case for charting, the attributes of good charts, the Gestalt principles, a
+selection guide, and then the tooling — Plotly Express and Kailash
+ModelVisualizer.
+
+**Beginner cue:** "We start with *why* before *how* — thirty minutes of why saves
+you years of misleading charts."
+
+**Advanced cue:** The Gestalt and perceptual-ranking material is real design
+theory — it will change how you review other people's dashboards.
+
+**Transition:** "Why bother with charts when you have describe()?"
+
+---
+
+## Slide 53: Why Visualise?
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Four datasets. Identical means, identical variances, identical
+correlations. Completely different shapes."
+
+Anscombe's Quartet is the argument: summary statistics alone cannot distinguish
+a clean line, a curve, a vertical scatter, and one outrageous outlier — only a
+plot can. If the room has not seen it, show the four panels and let the gasp
+happen. The lesson: `describe()` is necessary and never sufficient.
+
+**Beginner cue:** Show the Quartet visually, not just the numbers — the visual
+*is* the argument.
+
+**Advanced cue:** The Datasaurus Dozen pushes the same point harder — a
+tyrannosaur hiding in summary statistics.
+
+**Key question:** "If two columns have the same correlation, can the relationship
+still be completely different?" The Quartet is the permanent answer.
+
+**Transition:** "What makes a chart good?"
+
+---
+
+## Slide 54: Attributes of Good Charts
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Four words: simple, clean, subtle, truthful."
+
+Walk the four attributes with a counterexample for each — a 3-D exploding pie for
+"simple", gridline noise for "clean", gratuitous colour for "subtle", a truncated
+axis for "truthful". The truthful attribute deserves the most time: axis choices
+and bin choices are editorial decisions, and they can lie.
+
+**Beginner cue:** "When in doubt, use a bar chart or a line chart. The exotic
+types earn their place rarely."
+
+**Advanced cue:** Tufte's data-ink ratio formalises "clean" — every pixel should
+carry information or be removed.
+
+**Transition:** "Gestalt principles explain how our brains group visual
+elements."
+
+---
+
+## Slide 55: Gestalt Principles
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Your brain groups what it sees before you think. Chart design exploits
+that — or fights it."
+
+Gestalt principles come from psychology: proximity, similarity, connection,
+enclosure, and friends explain why some charts read instantly and others
+confuse. Tie each principle to a chart choice — legend spacing (proximity),
+colour coding (similarity), line continuity (connection). Designers use these
+deliberately; analysts should at least not violate them accidentally.
+
+**Beginner cue:** "Remember two: proximity and similarity. Things close together
+and things that look alike are read as groups."
+
+**Advanced cue:** Pre-attentive attributes — colour, size, position — are
+processed in milliseconds; that is what makes a good dashboard scannable.
+
+**Transition:** "Now let us pick the right chart for the right data."
+
+---
+
+## Slide 56: Chart Selection Guide
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "The question chooses the chart — never the other way round."
+
+Walk the table as a decision procedure: distribution → histogram; change over
+time → line; comparison across categories → bar; relationship between two
+numbers → scatter; composition → stacked bar; matrix of correlations → heatmap.
+Have the room chant the mapping for two or three question types; it is the
+single most reusable artefact of the lesson.
+
+**Beginner cue:** "Histogram, line, bar — those three cover 80% of your needs
+this year."
+
+**Advanced cue:** Small multiples and faceting answer "same chart, per group" —
+Plotly makes them one argument.
+
+**Transition:** "Let us build these charts with Plotly Express."
+
+---
+
+## Slide 57: Plotly Express: Interactive Charts
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "One function per chart type, and every chart is interactive out of the
+box."
+
+Plotly Express charts hover, zoom and pan with zero configuration — show it live;
+interactivity is the moment learners realise these are not static pictures. And
+one correction to say out loud because older tutorials get it wrong: **pass the
+Polars DataFrame straight in**. Plotly 6 reads Polars natively — there is no
+`.to_pandas()` step anywhere in this course.
+
+**Beginner cue:** "Copy the pattern, change the column names. That is a
+legitimate workflow for your first ten charts."
+
+**Advanced cue:** Plotly Graph Objects is the lower-level API for fine control —
+Express is built on it.
+
+**Transition:** "Let us see how Kailash ModelVisualizer simplifies this."
+
+---
+
+## Slide 58: Kailash ModelVisualizer
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "The second Kailash engine of the day — charts with the defaults
+already right."
+
+ModelVisualizer wraps Plotly with sensible ML defaults. The EDA-relevant methods
+to teach by name and signature: `histogram(data, column, bins=, title=)`,
+`scatter(data, x, y, color=, title=)`, and `box_plot(data, column, group_by=,
+title=)`. Most of the engine's other methods serve models — `confusion_matrix`
+takes `y_true`/`y_pred` label vectors, **not** a correlation matrix — which is
+why the correlation heatmap on the next slide is built with Plotly directly.
+
+It is Polars-native, so no conversion step exists. Position it honestly: a
+shortcut for the standard charts; fall back to Plotly Express when you need
+something custom.
+
+**Beginner cue:** "It is a shortcut, not a cage. Custom chart? Plotly Express."
+
+**Advanced cue:** The engine is extensible with custom themes — and note its
+ExperimentalWarning on construction is a known upstream quirk, not a bug in
+student code.
+
+**Transition:** "Let us build a heatmap and stacked bar chart."
+
+---
+
+## Slide 59: Heatmaps and Stacked Bars
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Two chart types the selection guide promised: a correlation heatmap
+and a stacked bar."
+
+For the heatmap, compute the correlation matrix in Polars (`corr()`), then plot
+with `px.imshow` on the numeric array. The colour scale matters: with `RdBu_r`
+and `zmin=-1, zmax=1`, **red is positive, blue is negative, white is zero** — and
+without the pinned `zmin/zmax`, the colour midpoint floats off zero and the chart
+misleads. Read the course data together: floor area versus price is r = 0.47 —
+a moderate relationship — while lease commencement year versus price is about 0;
+the synthetic data carries no age effect, and the chart proves it.
+
+The stacked bar shows composition per category — flat-type mix by town — and sets
+up the exercise's sixth chart.
+
+**Beginner cue:** Focus on reading these charts, not memorising the code —
+where is the red? what does the tallest stack mean?
+
+**Advanced cue:** Pearson correlation misses non-linear relationships — a zero on
+this heatmap does not prove independence.
+
+**Key question:** "Area explains r = 0.47, so about 22% of price variance. What
+explains the other 78%?" Let them hypothesise — it previews feature engineering.
+
+**Transition:** "Time for the exercise."
+
+---
+
+## Slide 60: Exercise 1.6: Six Charts from HDB Data
+
+**Time:** ~2 min (exercise work time ~15 min) · Foundations
+
+**Hook:** "Six chart types, one dataset, one per question from the selection
+guide."
+
+The exercise walks every chart type from the guide — histogram, scatter, bar,
+line, heatmap, stacked bar. The assessment criterion to repeat: **no misleading
+axes**. Titles must state the takeaway, axes must be labelled, and colour scales
+must be pinned where zero matters.
+
+**Beginner cue:** Start with the histogram and the bar — simplest first, momentum
+matters.
+
+**Advanced cue:** Early finishers add annotations and a deliberate colour
+palette — and defend their choices in Gestalt terms.
+
+**Transition:** "Lesson 1.6 recap."
+
+---
+
+## Slide 61: Lesson 1.6 Recap
+
+**Time:** ~1 min · Foundations
+
+**Hook:** "Visualisation is art *and* science — the science is the selection
+guide, the art is the honesty."
+
+Bookmark the chart selection guide; it is the lesson's takeaway artefact.
+Tomorrow they will judge charts by it — including, happily, the instructor's.
+
+**Beginner cue:** "Question first, chart second — you now have the map."
+
+**Advanced cue:** Natural break before the Kailash engines arrive in force.
+
+**Transition:** "Lesson 1.7 introduces DataExplorer for automated profiling."
+
+---

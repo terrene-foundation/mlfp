@@ -50,9 +50,23 @@ def discover_topics(docs: list[str], n_topics: int) -> dict:
     M = vec.fit_transform([clean(d) for d in docs]).toarray()
     vocab = np.array(vec.get_feature_names_out())
     frame = pl.from_numpy(M, schema=[f"t{i}" for i in range(M.shape[1])])
-    res = DimReductionEngine().reduce(frame, algorithm="nmf", n_components=n_topics, seed=0, init="nndsvd", max_iter=500)
-    W = np.asarray(res.transformed, dtype=float)
-    H = np.array([nnls(W, M[:, j])[0] for j in range(M.shape[1])]).T  # (k, vocab)
+    engine = DimReductionEngine()
+    # NMF is high-variance on small corpora: a single nndsvd seed can split a
+    # section or leave one topic nearly empty. Fit several seeded runs and keep
+    # the one whose reconstruction of the aggregated tfidf profile is most
+    # faithful, so the chosen factorisation is best-of-n, not the luck of one seed.
+    profile = M.sum(axis=0) / M.sum()
+    best = None
+    for seed in range(16):
+        res = engine.reduce(frame, algorithm="nmf", n_components=n_topics, seed=seed,
+                            init="nndsvd", max_iter=3000)
+        W = np.asarray(res.transformed, dtype=float)
+        H = np.array([nnls(W, M[:, j])[0] for j in range(M.shape[1])]).T  # (k, vocab)
+        recon = W @ H / max((W @ H).sum(), 1e-12)
+        fidelity = 1.0 - float(np.linalg.norm(recon - profile) / (np.linalg.norm(profile) + 1e-12))
+        if best is None or fidelity > best[0]:
+            best = (fidelity, W, H)
+    _, W, H = best
     top_words = [vocab[np.argsort(-H[k])[:10]].tolist() for k in range(n_topics)]
     return {"doc_topics": [int(v) for v in W.argmax(axis=1)], "top_words": top_words}
 

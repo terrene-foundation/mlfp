@@ -447,7 +447,7 @@ model = TinyTransformer(n_tokens=2, d_model=32, n_heads=4,
 <section>
   <h2>Four traps</h2>
   <ul style="font-size: 0.85em;">
-    <li><strong>Forgetting positional encoding</strong> — model becomes a set classifier; on the task above it cannot beat ~59% (the majority-class rate)</li>
+    <li><strong>Forgetting positional encoding</strong> — model becomes a set classifier; on the task above it cannot beat ~60.8% (the majority-class rate, measured)</li>
     <li><strong>Missing √d_k</strong> — softmax saturates, gradients vanish</li>
     <li><strong>Wrong mask type</strong> — attn_mask vs key_padding_mask are different</li>
     <li><strong>O(L²) memory</strong> — doubling L quadruples RAM; use FlashAttention or Longformer for very long contexts</li>

@@ -78,6 +78,8 @@ output and confirm deck/textbook/lesson pages/exercises agree (grep each handoff
   vs S$849,124 median (deck slide-7 comment corrected from 849,126); weather 27.47 °C / 171.75 mm; CPI 11 default
   alerts (6 correlation + 5 cardinality); lesson 04: 0 raw matches → 21/27 after upper-case, 6 unmatched towns /
   11,032 sales; lesson 05: 3,236/3,240 cells, 4 gaps; lesson 08: 7→44 one-hot columns.
-Open: lesson 1.8 slides use the shorter pipeline (47,547 rows, 7→44 cols, 12/12 alerts) while ex_8 + textbook use
-43,934 / 12→53 — align the 1.8 slides + deck capstone with ex_8 at integration, then re-run the full-suite number pass.
+RESOLVED 2026-10-06: ex_8 canonical pipeline = GPS/fare/passenger/date/dedup → 47,569 rows (hourly 1,917–2,054),
+then 2–120 km/h speed filter → 43,934 rows (hourly 1,743–1,893). Textbook + ex_8 use the canonical 43,934/1,743–1,893;
+lesson 1.8 slides + notes were the outliers (47,547) and are now aligned. The deck capstone slides should be checked
+for the same pre-filter figure at integration.
 

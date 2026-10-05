@@ -75,7 +75,7 @@
       <!-- Stage 3: Transform -->
       <rect x="330" y="20" width="130" height="80" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
       <text x="395" y="42" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">Transform</text>
-      <text x="395" y="62" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#0D9488">47,547 rows</text>
+      <text x="395" y="62" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#0D9488">43,934 rows</text>
       <text x="395" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#0D9488">15 columns</text>
       <text x="395" y="92" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488">+hour, +weekday, +duration</text>
       <rect x="335" y="104" width="120" height="16" rx="3" fill="#CCFBF1"/>
@@ -118,7 +118,7 @@
       <g font-family="JetBrains Mono" font-size="9" fill="#94A3B8">
         <text x="75" y="200" text-anchor="middle">50,000 rows</text>
         <text x="75" y="212" text-anchor="middle">7 defect types</text>
-        <text x="395" y="200" text-anchor="middle">47,547 rows</text>
+        <text x="395" y="200" text-anchor="middle">43,934 rows</text>
         <text x="395" y="212" text-anchor="middle">0% null</text>
         <text x="700" y="200" text-anchor="middle">clean +</text>
         <text x="700" y="212" text-anchor="middle">visualised</text>
@@ -395,7 +395,7 @@ df = (
                            - pl.col("pickup_datetime")).dt.total_seconds() / 60,
     )
 )
-print(f"Clean: {df.shape}")   # → Clean: (47547, 15)
+print(f"Clean: {df.shape}")   # → Clean: (43934, 15)
   </code></pre>
   <p style="font-size: 0.7em; color: #64748B;">Needs <code>from datetime import datetime</code>. Polars weekdays are ISO: Monday = 1, weekend = 6 and 7.</p>
 </section>
@@ -484,7 +484,7 @@ comparison = run_compare(df_raw, df_out)
 
 print(f"Alerts before: {len(profile.alerts)}")        # 12 (2 warnings)
 print(f"Alerts after:  {len(profile_clean.alerts)}")  # 12 (1 warning)
-print(comparison["shape_comparison"])   # rows 50000 -> 47547
+print(comparison["shape_comparison"])   # rows 50000 -> 43934
   </code></pre>
   <div style="background: #F0FDF4; padding: 12px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em;">
     Same count, different alerts: the swapped-coordinate skew and r = −1.00 are gone,

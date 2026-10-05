@@ -57,3 +57,9 @@ For the textbook (S3) and notes (S4) shards — follow the corrected slides:
 - Data facts: 3,298 HDB records sold before lease start (age unknown), 94 of them with no remaining lease; MRT table has
   one row per station per line (interchanges repeat); 4 town-months have no sales.
 - REST extraction not assessed (graders offline).
+
+---
+# Additions from the speaker-notes shard (S4, merged c5968f0a)
+- deck.html slide 7 code comment says median 849,126 — true Polars median is 849,124 (mid values 849122/849126) — fix.
+- X-NUM still open: lesson 1.8 slides use the shorter pipeline (47,547 rows, 7→44 cols, 12/12 alerts) while ex_8 + textbook use 43,934 / 12→53 — integration must align the 1.8 slides + deck capstone with ex_8, then re-check.
+- Verified lesson facts now in notes: 50,150 HDB rows / 27 towns / 6 flat types / 162 groups; 107 S$10 & 144 S$9M sales vs ~S$849k median; weather means 27.47°C / 171.75mm; CPI 11 default alerts (6 correlation + 5 cardinality), 5% nulls silent under >0.05; lesson 04: 0 raw matches → 21/27 after upper-case, 6 unmatched towns / 11,032 sales; lesson 05: 3,236/3,240 cells, 4 gaps; lesson 08: 7→44 one-hot cols.

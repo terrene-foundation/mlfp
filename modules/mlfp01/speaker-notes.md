@@ -883,3 +883,233 @@ Together they turn one-off analysis into a reporting tool.
 combining multiple data sources."
 
 ---
+
+## Slide 34: Lesson 1.4: Joins and Multi-Table Data
+
+**Time:** ~2 min · Foundations
+
+**Hook:** "No real dataset lives alone. Today your data makes friends."
+
+Real-world analysis almost always spans multiple tables — transactions here,
+stations there, schools somewhere else. This lesson adds two tools at once:
+Python `if/else` for decisions in code, and joins for combining tables on a
+shared key. The lesson's destination is an enriched HDB table with town-level
+features.
+
+**Beginner cue:** "Joining is merging two spreadsheets on a common column. You
+have done it by eye; now it becomes code."
+
+**Advanced cue:** Polars joins are parallel hash joins — a 50,000-row join takes
+milliseconds, so the interesting problems are semantic (keys, cardinality), not
+performance.
+
+**Transition:** "First, let us learn Python's if/else for making decisions in
+code."
+
+---
+
+## Slide 35: Conditional Statements
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Code that makes decisions — this is where programs stop being
+calculators."
+
+`if/elif/else` is Python's branching logic: the first condition that is True
+wins, and order matters. Walk the price-tier example as a decision tree — read
+each branch aloud as "if the price is over a million, luxury; otherwise if over
+700 thousand, premium; otherwise…". Note the spelling: `elif`, not "else if" —
+a Python-specific quirk that trips up learners coming from other languages.
+
+**Beginner cue:** Indentation is syntax in Python — the block under each branch
+must be indented consistently, or the program means something else.
+
+**Advanced cue:** Row-level `if/else` inside a loop is the slow path; two slides
+from now, `pl.when().then().otherwise()` does it vectorised.
+
+**Key question:** "If the first two conditions are both True, which branch runs?"
+Establish "first True wins" before the exercise.
+
+**Transition:** "Now let us learn to import external packages."
+
+---
+
+## Slide 36: Imports and Packages
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Importing is plugging in an appliance — the capability arrives
+instantly."
+
+`import` makes external code available; `as` creates the alias everyone uses
+(`polars as pl`). `from X import Y` pulls specific names and avoids the `X.`
+prefix — show both forms in the same file and when each reads better. This is
+also the moment to demystify the course's own `from shared import MLFPDataLoader`
+— it is just an import of course-provided helper code.
+
+**Beginner cue:** "If a name is not defined, you forgot an import. Read the
+error's last line first — it names the missing thing."
+
+**Advanced cue:** `__init__.py` and package structure come in later modules; for
+now, the takeaway is that "packages are folders with code you can import".
+
+**Transition:** "Now the main event: joining multiple DataFrames."
+
+---
+
+## Slide 37: Vectorised Conditionals in Polars
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "The if/else you just learned, applied to 50,000 rows at once."
+
+`pl.when().then().otherwise()` is the vectorised equivalent of `if/elif/else` —
+same logic, evaluated on the entire column in one pass. Put the two side by side:
+the Python loop version for readability, the Polars version for speed. Chained
+`when` calls handle multiple tiers exactly like `elif`.
+
+**Beginner cue:** "Same decision tree — it just runs on all rows simultaneously
+instead of one at a time."
+
+**Advanced cue:** `when/then` compiles into the same query plan as the
+surrounding expressions — there is no hidden loop.
+
+**Transition:** "Now let us learn about joins."
+
+---
+
+## Slide 38: Join Concepts
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Every join asks one question: which rows from the left deserve extra
+columns from the right?"
+
+Joins combine two tables on a shared key — here, `town`. Draw the Venn diagram:
+inner is the overlap, left is the whole left circle, outer is both circles. Then
+the rule of the course: **left join is the safe default for enrichment** — it
+keeps every primary record — while an inner join silently drops unmatched rows,
+which is a gotcha, not a feature.
+
+Before any join, check two things about the key: does the *format* match (HDB
+towns are UPPERCASE; the MRT and schools tables are Title Case), and is the key
+*unique* on the right side (the MRT table has several stations per town — it is
+one row per station, not per town). These two checks prevent the two classic
+join disasters, which the next slide demonstrates live.
+
+**Beginner cue:** The Venn diagram is the whole mental model — inner, left,
+outer. Keep it visible.
+
+**Advanced cue:** Polars also supports anti-joins ("rows with no match") and
+cross joins — worth knowing exist.
+
+**Transition:** "Let us see joins in action with Polars."
+
+---
+
+## Slide 39: Polars Joins in Practice
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Two traps. Both silent. Both on this slide."
+
+Walk the two traps exactly as the code comment frames them. **Trap 1, case:** HDB
+towns are UPPERCASE, MRT and school towns are Title Case — join raw and every one
+of the 50,150 rows gets nulls, yet the row count still looks "correct", so the
+failure hides. **Trap 2, fan-out:** the MRT table has 150 stations over 32 towns;
+fix the case but skip aggregation and the join explodes to 186,997 rows — every
+sale duplicated once per station in its town. The fix is the pattern in the code:
+normalise the key with `str.to_uppercase()`, aggregate the right side to one row
+per town, then `how="left"`, always explicit.
+
+**Beginner cue:** After every join, print `.shape` and compare with the left
+table. Row count changed unexpectedly? Stop and find out why.
+
+**Advanced cue:** `left_on`/`right_on` handle keys with different names; also
+mention validating join cardinality before production use.
+
+**Key question:** "Why did the naive join return exactly 50,150 rows *and* zero
+matches?" Make them articulate why row count alone proves nothing.
+
+**Transition:** "What about rows that do not match?"
+
+---
+
+## Slide 40: Handling Missing Joins
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "After every left join, your first move is `null_count()`."
+
+Nulls after a left join are the unmatched rows made visible. On the course data,
+6 HDB towns — 11,032 sales — have no station in the MRT table: BOON LAY, CENTRAL
+AREA, HOUGANG, KALLANG/WHAMPOA, PUNGGOL, SENGKANG. Read the names with the room:
+some are genuinely absent from the station table, others are *naming mismatches*
+(KALLANG/WHAMPOA on one side, KALLANG on the other). `fill_null` papers over
+absence but cannot fix a name mismatch — that takes an explicit mapping.
+
+The `replace()` method with a dictionary is the quick way to remap values, as
+the region-map example shows. And repeat the slide's caution: equal row counts
+after a left join mean "right key unique" *or* "nothing matched" — only the null
+count tells which.
+
+**Beginner cue:** "Null means no data. Left join keeps the row and leaves a hole
+where the match would be."
+
+**Advanced cue:** Discuss one-to-many duplication and how `validate="m:1"` would
+have caught the fan-out at join time.
+
+**Transition:** "Here is your exercise for this lesson."
+
+---
+
+## Slide 41: Exercise 1.4: Multi-Table HDB Analysis
+
+**Time:** ~2 min (exercise work time ~15 min) · Foundations
+
+**Hook:** "Three tables in, one enriched dataset out — with no silent losses."
+
+Set the expected solution shape: upper-case the town keys, aggregate MRT and
+schools to one row per town, left-join onto HDB so all 50,150 records survive,
+then check nulls. The features are honest town-level ones: **station count** as
+the MRT-access proxy, typical **station spacing**, and the haversine distance
+from each town's station centroid to the CBD — the feature that actually tracks
+price (r ≈ −0.55).
+
+Be direct about what the data cannot support: the MRT table's
+`distance_to_mrt_km` column measures the gap between neighbouring *stations*, and
+the HDB data has no flat coordinates — so a per-flat "distance to MRT" cannot be
+computed from these tables. The old "walkability" framing was mislabelled data;
+the exercise builds the honest version instead.
+
+**Beginner cue:** Start with an inner join, look at the row count, then switch to
+left and compare — the difference teaches more than the join itself.
+
+**Advanced cue:** Challenge them to detect duplicate join keys programmatically
+before joining.
+
+**Transition:** "Lesson 1.5 takes us into time-series territory with window
+functions."
+
+---
+
+## Slide 42: Lesson 1.4 Recap
+
+**Time:** ~1 min · Foundations
+
+**Hook:** "Joins are a daily operation — choose the type deliberately every
+time."
+
+Recap the flow: conditionals make decisions, imports bring in power, joins
+combine tables, and null checks verify them. The one-sentence rule: left join is
+the safe default for enrichment.
+
+**Beginner cue:** "If you remember nothing else: upper-case the keys, one row per
+town on the right, `how="left"`."
+
+**Advanced cue:** Natural break point before time-series concepts — if running a
+two-session delivery, this is the split.
+
+**Transition:** "Lesson 1.5 introduces window functions and lazy frames."
+
+---

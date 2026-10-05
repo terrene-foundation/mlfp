@@ -36,7 +36,7 @@
 </h1>
 
 <p class="lead">
-  Total time: ~45 minutes &nbsp;·&nbsp; 14 slides &nbsp;·&nbsp; ~3 min per slide average
+  Total time: ~45 minutes &nbsp;·&nbsp; 15 slides &nbsp;·&nbsp; ~3 min per slide average
 </p>
 
 <p>
@@ -159,7 +159,7 @@
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Distributions</span></div>
-  <h3>Distributions — the shapes of uncertainty</h3>
+  <h3>Distributions -- the shapes of uncertainty</h3>
   <p>
     Show three curves: Normal, Beta, Poisson. Say when you reach for each
     one. "Normal for measurements. Beta for probabilities. Poisson for
@@ -186,10 +186,6 @@
     the slide — this derivation will be invoked in 2.2 (MLE) and 2.5
     (R-squared), so it is worth getting right now.
   </p>
-  <div class="audience-cue expert">
-    <strong>For experts:</strong> the computational form $E[X^2] - \mu^2$
-    is what numpy uses under the hood for one-pass variance.
-  </div>
   <div class="transition">→ "Integrals are hard — conjugate priors make them unnecessary."</div>
 </div>
 
@@ -215,16 +211,18 @@
   <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>HDB worked example</span></div>
   <h3>HDB 4-room Tampines — the update</h3>
   <p>
-    Walk the code line by line. Set the prior. Set the data. Compute
-    precisions. Compute posterior mean as precision-weighted average.
-    Compute posterior std as $\sqrt{1 / \text{total precision}}$. Print
-    the three numbers.
+    Walk the code line by line. Set the prior ($\mu_0 = 480K$,
+    $\sigma_0 = 40K$). Set the data ($\bar{x} = 542K$, $\sigma = 60K$,
+    $n = 30$). Compute precisions. Compute posterior mean as
+    precision-weighted average. Compute posterior std as
+    $\sqrt{1 / \text{total precision}}$. Print the three numbers.
   </p>
   <p>
-    Interpret: "The posterior mean $533K$ sits between the prior $480K$
-    and the sample mean $542K$. It's pulled closer to the sample because
-    $n=30$ gives the data more precision than the prior. The posterior std
-    $9.6K$ is smaller than either input — we're more confident."
+    Interpret: "The posterior mean $537.7K$ sits between the prior $480K$
+    and the sample mean $542K$. It's pulled much closer to the sample
+    because $n=30$ gives the data far more precision than the prior. The
+    posterior std $10.6K$ is smaller than either input — we're more
+    confident."
   </p>
   <div class="audience-cue beginner">
     <strong>If beginners flinch at the code:</strong> "Copy it first,
@@ -277,8 +275,8 @@
     Deliver as a fun fact: "Your friends, on average, have more friends
     than you do. It's true. Not because you're unpopular — because of how
     we sampled." Point at the formula. "The expected degree along a random
-    edge is $E[X^2]/E[X]$, which is always at least $E[X]$ by
-    Cauchy–Schwarz."
+    edge is $E[X^2]/E[X]$, which is always at least $E[X]$ because
+    variance is non-negative."
   </p>
   <p>
     Then land the practical point: "Any time you sample through
@@ -291,15 +289,28 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Recap + bridge to 2.2</span></div>
-  <h3>Three rookie mistakes + what next</h3>
+  <div class="meta"><span class="badge">Slide 14</span><span>~2 min</span><span>Rookie mistakes</span></div>
+  <h3>Three rookie mistakes</h3>
   <p>
-    Walk the three mistakes. Then hit the recap bullets on the next slide.
-    Tease 2.2: "Today we had a prior. Tomorrow we'll ask: what if I only
-    have data and no prior? The answer is maximum likelihood estimation —
-    find the parameter that makes the observed data most likely. Then
-    we'll derive the sample variance formula you already know
-    ($s^2 = \sum(x_i - \bar{x})^2 / (n-1)$) and I promised you in 1.1."
+    Walk the three mistakes. One: confusing $P(A|B)$ with $P(B|A)$ —
+    sensitivity is not positive predictive value; use Bayes. Two: ignoring
+    the base rate — "90% accurate" is useless without $P(T)$. Three:
+    treating priors as fixed — two analysts with different priors get
+    different posteriors, and data eventually reconciles them.
+  </p>
+  <div class="transition">→ "Recap and what comes next."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~2 min</span><span>Recap + bridge to 2.2</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the recap bullets. Tease 2.2: "Today we had a prior. Tomorrow
+    we'll ask: what if I only have data and no prior? The answer is
+    maximum likelihood estimation — find the parameter that makes the
+    observed data most likely. Then we'll derive the sample variance
+    formula you already know ($s^2 = \sum(x_i - \bar{x})^2 / (n-1)$)
+    and show why it's $n-1$ and not $n$."
   </p>
   <div class="transition">→ End of Lesson 2.1. Take 10 minutes.</div>
 </div>

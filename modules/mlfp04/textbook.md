@@ -1366,7 +1366,7 @@ for name, sc in [("Z-score", z_scores), ("Isolation Forest", iforest_scores),
 | Z-score | 0.81 | 0.15 | 61 | 1.00 | 0.55 | 0.97 |
 | Isolation Forest | 0.77 | 0.03 | 3 | 0.78 | 0.67 | 0.98 |
 | LOF ($k = 50$) | 0.97 | 0.63 | 121 | 1.00 | 0.98 | 0.89 |
-| Equal blend | 0.91 | 0.19 | 56 | 0.99 | 0.80 | 0.98 |
+| Equal blend | 0.91 | 0.19 | 56 | 0.99 | 0.80 | 0.97 |
 
 Read the table by column, not just by the overall AUC.
 

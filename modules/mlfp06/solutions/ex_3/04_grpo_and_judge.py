@@ -182,32 +182,37 @@ print("=" * 70)
 preflight_ollama(required_models=[MODEL_NAME])
 
 
+# ── LLM-as-judge helper ───────────────────────────────────────────────────────
 class JudgeParseError(ValueError):
-    """The judge replied, but not with a usable JSON verdict."""
+    pass  # the judge replied, but not with a usable JSON verdict
 
 
 async def llm_judge(prompt: str, response_a: str, response_b: str) -> dict:
-    """Ask an LLM to pick between two responses. Returns the parsed verdict.
-
-    Raises JudgeParseError when the reply is not a valid verdict — the
-    caller decides how to count it. It is NEVER silently turned into a tie.
-    """
+    # Ask an LLM to pick between two responses. Returns the parsed verdict.
+    # Raises JudgeParseError when the reply is not a valid verdict — the
+    # caller decides how to count it. It is NEVER silently turned into a tie.
     # make_delegate() reads the model from OLLAMA_CHAT_MODEL and backs the
     # call with the local Ollama daemon (no API keys, no OpenAI fallback).
     delegate = make_delegate(temperature=0.0)
-    judge_prompt = f"""You are an impartial judge evaluating two responses to a user query.
-
-Query: {prompt[:500]}
-
-Response A:
-{response_a[:500]}
-
-Response B:
-{response_b[:500]}
-
-Evaluate on: helpfulness, accuracy, clarity, safety.
-Output ONLY a JSON object:
-{{"winner": "A" or "B" or "tie", "score_a": 1-10, "score_b": 1-10, "reasoning": "..."}}"""
+    # Build the prompt without any triple-quoted literal: the notebook
+    # generator treats every `"""` as a docstring boundary, and a prompt that
+    # contains `"""` (or lives in one) would be cut mid-statement.
+    judge_prompt = "\n".join(
+        [
+            "You are an impartial judge evaluating two responses to a user query.",
+            "",
+            f"Query: {prompt[:500]}",
+            "",
+            f"Response A: {response_a[:500]}",
+            "",
+            f"Response B: {response_b[:500]}",
+            "",
+            "Evaluate on: helpfulness, accuracy, clarity, safety.",
+            "Output ONLY a JSON object: "
+            '{"winner": "A" or "B" or "tie", "score_a": 1-10, "score_b": 1-10, '
+            '"reasoning": "..."}',
+        ]
+    )
 
     response, *_ = await run_delegate_text(delegate, judge_prompt)
 
@@ -224,6 +229,7 @@ Output ONLY a JSON object:
     return verdict
 
 
+# ── Swap-averaged judge ──────────────────────────────────────────────────────
 async def swap_averaged_judge(prompt: str, x: str, y: str) -> dict:
     """Mitigate position bias: judge (x, y) AND (y, x), average each answer's score.
 
@@ -264,6 +270,7 @@ JUDGE_PAIRS = [
 ]
 
 
+# ── Position bias test ───────────────────────────────────────────────────────
 async def measure_position_bias() -> dict:
     """Judge each pair in both orders.
 

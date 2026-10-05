@@ -1759,3 +1759,270 @@ receipt, and specific error handling — the lesson in one breath.
 **Transition:** "The final lesson brings everything together."
 
 ---
+
+## Slide 69: Lesson 1.8: Data Pipelines and End-to-End Project
+
+**Time:** ~2 min · Foundations
+
+**Hook:** "Everything from the last seven lessons, assembled into one machine."
+
+This is the capstone lesson. The pipeline is the morning's skills in order —
+load, profile, clean, prepare, visualise, report — plus two production topics:
+pulling data from REST APIs, and structuring a project so it can be rerun. The
+destination is a complete exploratory data analysis on 50,000 messy taxi trips.
+
+**Beginner cue:** "You already know every step. Today is about order and
+automation, not new concepts."
+
+**Advanced cue:** The API and project-structure segments are where professional
+practice enters — pay attention even if the Polars feels familiar.
+
+**Transition:** "Let us start with missing values."
+
+---
+
+## Slide 70: Handling Null Values
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Nulls are the most common defect in real data — and the most commonly
+mishandled."
+
+Three strategies, each with a cost. Drop the rows — simplest, but you lose data
+and can bias the sample. Fill with a statistic (mean, median, zero) — keeps rows,
+invents values; median is the robust default for skewed money. Forward/backward
+fill — propagate neighbouring values, right for ordered series, wrong for
+unordered ones. The professional question is never "how do I remove nulls" but
+"why are they null, and what does each strategy claim about that?"
+
+**Beginner cue:** "Null means *no data*. Dropping is simplest; filling is
+smarter; knowing which is the job."
+
+**Advanced cue:** MCAR/MAR/MNAR — the missingness mechanism decides whether
+imputation is safe, and the data rarely tells you which one you have.
+
+**Transition:** "Now let us extract data from APIs."
+
+---
+
+## Slide 71: REST APIs: Extracting Data
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "So far every byte came from a file. Real pipelines pull from the
+network."
+
+REST APIs are how external services hand you data. The running example is
+OneMap, Singapore's public mapping API, whose search endpoint needs no key.
+`GET` asks for data — query parameters go in `params=`; `POST` sends data in the
+request body — `requests.post(url, json={...})`. Both usually answer in JSON,
+which `response.json()` turns into Python dicts and lists — the collections from
+Lesson 1.3.
+
+Two non-negotiables: always set a `timeout` so a slow server cannot hang the
+pipeline, and always wrap API calls in `try/except` — networks fail and servers
+go down; Lesson 1.7's error handling is what makes extraction production-safe.
+Note for delivery: the live calls need network access; the printed counts on the
+slide are examples, not guarantees.
+
+**Beginner cue:** "An API is like ordering food — you send a request, you get a
+response. Sometimes the kitchen is closed; plan for it."
+
+**Advanced cue:** Pagination, rate limiting and async extraction are the
+follow-up topics for large pulls.
+
+**Transition:** "Now let us automate cleaning with PreprocessingPipeline."
+
+---
+
+## Slide 72: Kailash PreprocessingPipeline
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "The third engine: a dishwasher for data — same cycle, every time."
+
+`PreprocessingPipeline()` takes no constructor arguments. `setup(data=…,
+target=…)` learns the preparation rules — imputation medians, category
+inventories, scaling statistics — and returns a `SetupResult` carrying
+`train_data`/`test_data`; `transform()` applies the same learned rules to new
+rows later. `result.summary` reports what it did.
+
+Two facts to state precisely. First, `setup()` **needs a target column** — it
+prepares data for a model; it does not repair bad rows. Cleaning (negative
+fares, duplicate IDs) happens *before* the pipeline, with the Polars skills from
+this morning. Second, `setup()` learns from **every row it is given and splits
+afterwards** — so hold out your test rows *first* and pass only training rows to
+`setup()`, or test-set statistics leak into training. The shared helpers
+(`split_then_preprocess` family) exist for exactly this.
+
+**Beginner cue:** "Dishwasher: same cycle every time, no hand-scrubbing. But you
+still scrape the plates first — that is the cleaning step."
+
+**Advanced cue:** `pipeline.get_config()` returns the full configuration, so the
+same preparation can be reproduced exactly — that is the reproducibility story.
+
+**Key question:** "Why must the pipeline never see the test rows?" Make them say
+"leakage" in their own words.
+
+**Transition:** "The ETL pattern."
+
+---
+
+## Slide 73: The ETL Pattern
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Extract, Transform, Load — the assembly line every data team on earth
+runs."
+
+ETL is the standard data-engineering pattern, and the capstone is one: extract
+from files and APIs, transform with the cleaning and feature code from this
+morning, load the result to Parquet. Two details from the code: `Path` comes
+from `pathlib` (imported back in Lesson 1.4), and `mkdir(parents=True,
+exist_ok=True)` creates the output folder if missing. On formats: CSV is for
+humans, **Parquet is for computers** — typed, compressed, and fast to scan, which
+is why every course dataset ships as Parquet.
+
+**Beginner cue:** "Raw materials in one end, finished product out the other —
+and the line runs the same way every day."
+
+**Advanced cue:** Airflow and Dagster orchestrate ETL at scale; the Kailash
+workflow engine is the course's own path there in later modules.
+
+**Transition:** "Project structure."
+
+---
+
+## Slide 74: Project Structure
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "A pipeline you cannot rerun is a one-off. Structure is what makes it
+a pipeline."
+
+Walk the layout: `data/raw/` is sacred — **never modify raw data**; `data/processed/`
+holds outputs; scripts are small and single-purpose; `main.py` orchestrates. The
+reproducibility test to give every learner: delete the output folder, run
+`main.py`, get the same results. If that fails, there is hidden state — a
+hand-edited file, a hardcoded path — and it will fail in production too.
+
+**Beginner cue:** "Copy this template for every project this year. Future you
+says thanks."
+
+**Advanced cue:** Cookiecutter templates and virtual environments standardise
+this across teams.
+
+**Transition:** "Capstone exercise."
+
+---
+
+## Slide 75: Exercise 1.8: Full EDA Pipeline
+
+**Time:** ~2 min (exercise work time ~30-45 min) · Foundations
+
+**Hook:** "50,000 taxi trips, six defect types, one pipeline. This is the module
+in miniature."
+
+Introduce the dataset honestly: a **synthetic** trip log built for this course —
+the zone names and coordinates are realistic Singapore places, but the trips are
+not real records — and it is deliberately dirty. Enumerate the planted defects so
+the room knows the shape of the hunt: swapped GPS coordinates in 250 rows, 1,000
+non-positive fares, 500 passenger counts below 1, 500 trips dated in the future
+(2025-2027), 15 spellings of 4 payment methods, and 500 rows sharing trip_ids.
+
+One technical landmine to defuse before it fires: Polars `dt.weekday()` is ISO
+numbering — **Monday = 1 through Sunday = 7** — so the weekend filter is
+`weekday >= 6`, and Friday is 5. Off-by-one here silently mislabels every chart.
+And scope the API expectation: the exercise loads from a file; pulling extra
+context from an API, as on the REST slide, is an extension, not a requirement.
+
+**Beginner cue:** "Follow the ETL steps in order — extract, profile, clean,
+prepare, visualise, report. The checklist on the slide is your map."
+
+**Advanced cue:** Extensions: API enrichment, lazy evaluation of the whole
+pipeline, and parameterising it into a reusable script per the project-structure
+slide.
+
+**Transition:** "Reference implementation."
+
+---
+
+## Slide 76: Capstone Pipeline Code
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Six blocks. Every block is a skill you earned today."
+
+Read the reference implementation block by block and name the lesson each came
+from: extract (1.1), profile with `run_profile` — 12 alerts on the raw taxi data
+(1.7), clean with one auditable step per problem found (1.2, 1.4), compare
+original versus cleaned with `run_compare` (1.7), prepare for a model with
+PreprocessingPipeline (1.8), visualise with ModelVisualizer (1.6), and write the
+HTML report with `run_report` (1.7). The wrappers — `run_profile`, `run_compare`,
+`run_report` — are the shared sync shims around DataExplorer's async `profile`,
+`compare` and `to_html`; they work identically in scripts and Colab.
+
+Be transparent about scope: this is the short version for the slide. The full
+`solutions/ex_8.py` adds GPS repair, timestamp parsing and future-date filtering,
+payment-label normalisation, and the temporal/spatial feature engineering — and
+it holds out test rows before `setup()`, as the leakage rule requires.
+
+**Beginner cue:** "Copy this structure and modify it — that is how every pipeline
+in industry starts."
+
+**Advanced cue:** Parameterise the blocks into a reusable pipeline class; the
+project-structure slide is the template.
+
+**Key question:** "Which block would break first in production, and what protects
+it?" Aim them at try/except around extract, and assertions after clean.
+
+**Transition:** "Lesson 1.8 recap."
+
+---
+
+## Slide 77: Lesson 1.8 Recap
+
+**Time:** ~1 min · Foundations
+
+**Hook:** "Load, profile, clean, prepare, visualise, report — say it with me."
+
+The pipeline order is the lesson. Recap slides make good study material — point
+learners at the full series of them when revising for the assessment.
+
+**Beginner cue:** "If you can name the six stages in order, you passed Lesson
+1.8."
+
+**Advanced cue:** Ready for the module summary.
+
+**Transition:** "Module 1 summary."
+
+---
+
+## Slide 78: Module 1 Summary
+
+**Time:** ~2 min · Foundations
+
+**Hook:** "This morning you had never written Python. Read this slide — you now
+own every item on it."
+
+Walk both columns slowly and have learners tick items off mentally: variables
+and f-strings; DataFrames, `describe()`, schemas; filter, select, sort,
+`with_columns`; functions, loops, `group_by().agg()`; conditionals, imports,
+joins with key hygiene; window functions on a complete calendar; the chart
+selection guide and honest axes; DataExplorer profiles, alerts and comparisons;
+null strategies, REST extraction, PreprocessingPipeline, ETL, project structure.
+The callout bridges forward: Module 2 is statistical mastery for machine
+learning — feature engineering and experiment design build directly on these
+pipeline skills.
+
+Close the loop with the opening question: "Can you trust a number you didn't
+explore yourself?" They now have the tools to answer it — and the habit of
+exploring first.
+
+**Beginner cue:** "This slide is your study checklist for the assessment. Every
+item on it is something you did with your own hands today."
+
+**Advanced cue:** "Module 2 adds the statistical layer — distributions,
+inference, experiment design — on top of exactly these pipelines."
+
+**Transition:** "Thank you. See you in Module 2."

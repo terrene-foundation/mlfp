@@ -1,70 +1,72 @@
-# MLFP04 — Task 1: Customer Segmentation by Clustering
+# MLFP04 — Task 1: Customer Segments and Mixture Models
 
-**Weight**: 25 marks · **Difficulty**: Hard · **Dataset**: deterministic synthetic
-loyalty cohort (fixed seed `20260401`, 1,200 customers, 5 RFM-style features —
-generated inside the task, no file needed)
+**Weight**: 20 marks · **Outcomes**: 4.1 (clustering, choosing K, scaling decisions, interpreting segments), 4.2 (EM for Gaussian mixtures, soft assignments, local optima)
+**Data**: loyalty-programme customer tables in the format below. `dev_customers.parquet` (shipped with the task) is one such table for development; the grader uses its own.
 
 ## Scenario
 
-A Singapore e-commerce loyalty team hands you a behavioural table with five
-numeric features per customer: `recency_days`, `frequency`, `monetary_sgd`,
-`tenure_months`, `avg_basket_sgd`. They believe there are a handful of distinct
-spending personas hidden in the data but have **no labels** — this is pure
-unsupervised discovery. Four genuine personas were planted in the data
-generator (champions, new-low-value, dormant-at-risk, loyal-big-basket); your
-job is to recover them without ever seeing the planted labels.
+**Segmentation.** A Singapore retailer's loyalty team exports one row per
+customer from its CRM and asks you to find the customer personas in it. Nobody
+knows how many personas there are; it differs between the cohorts you will be
+given. The CRM export looks like this:
 
-You must use the **kailash-ml `ClusteringEngine`** (`from kailash_ml.engines.clustering import ClusteringEngine`).
-Raw `sklearn` clustering is not permitted — the engine is the framework-first
-surface for this module.
+| Column                | Meaning                                       |
+| --------------------- | --------------------------------------------- |
+| `customer_id`         | CRM identifier                                |
+| `signup_channel`      | where the customer joined (app/web/store/...) |
+| `recency_days`        | days since the last order                     |
+| `orders_12m`          | orders in the last 12 months                  |
+| `spend_12m_sgd`       | spend in the last 12 months, S$               |
+| `tenure_months`       | months since joining                          |
+| `avg_basket_sgd`      | average order value, S$                       |
+| `pct_discount_orders` | share of orders that used a discount          |
+| `app_sessions_30d`    | app sessions in the last 30 days              |
 
-Implement `solve() -> dict`.
+The columns are in very different units, and money and order counts are
+heavily skewed. A small number of corporate bulk-buying accounts are mixed in
+with ordinary shoppers. The team plans retention campaigns per persona, so
+the first thing they want is to know which persona is drifting away (has gone
+longest without ordering).
 
-## Required pipeline
+**Mixture model.** The data science lead wants a soft-assignment model they
+can inspect line by line, so the Gaussian mixture must be fitted by your own
+expectation-maximisation code rather than a library fit.
 
-1. **Generate** the deterministic customer table (the helper is given in the
-   starter — do not change the seed or sizes).
-2. **Standardise** every feature to a z-score (subtract mean, divide by std) in
-   Polars. The raw features span wildly different scales (`monetary_sgd` ≈ 2000
-   vs `frequency` ≈ 50); without standardisation distance is dominated by one
-   column and recovery collapses. Standardisation is **load-bearing**.
-3. **Select K** objectively with `ClusteringEngine.sweep_k(zdf, range(2, 9),
-algorithm="kmeans", criterion="silhouette")`. Read `optimal_k` — do **not**
-   hardcode the answer.
-4. **Fit** `ClusteringEngine.fit(zdf, algorithm="kmeans", n_clusters=optimal_k)`
-   and read `labels` and `silhouette_score` off the `ClusterResult`.
+## What to submit
 
-## Output contract — `solve()` returns a `dict` with exactly these keys
+`starter.py` with two functions (signatures fixed):
 
-| Key          | Type        | Meaning                                             |
-| ------------ | ----------- | --------------------------------------------------- |
-| `labels`     | `list[int]` | cluster id per customer, in the generated row order |
-| `n_clusters` | `int`       | the K recovered by the silhouette sweep             |
-| `silhouette` | `float`     | silhouette score of the final fit                   |
+| Function                       | Returns                                                                                                                                                                                                                                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `segment_customers(customers)` | dict: `labels` (one int segment id per row, in row order), `profiles` (polars DataFrame, one row per segment: `segment`, `n_customers`, and the **median** of each of the seven behaviour columns in original units), `at_risk_segment` (the id of the persona that has gone longest without ordering) |
+| `fit_mixture(X, k, seed)`      | dict for a `k`-component full-covariance Gaussian mixture fitted to the numpy array `X` (n × d): `weights` (k,), `means` (k, d), `covariances` (k, d, d), `responsibilities` (n, k), `log_likelihood` (total over all rows, natural log)                                                               |
 
-`len(labels)` must equal 1,200. Each label is an integer in `[0, n_clusters)`.
+## Acceptance criteria
 
-## Visible sanity checks
-
-After a correct implementation:
-
-- `result["n_clusters"] == 4` (the sweep recovers the planted persona count)
-- `result["silhouette"] > 0.55` (well-separated personas)
-- all four clusters are non-empty
-- the partition matches the planted personas (adjusted Rand index ≈ 1.0 — the
-  grader checks this against the hidden labels)
-
-## Grading (10 automated checks, all must pass)
-
-returns a dict · required keys present · `labels` length 1,200 · `n_clusters == 4`
-· exactly 4 distinct non-empty clusters · grader-recomputed silhouette ≥ 0.55 ·
-self-reported silhouette matches the grader (±0.05) · **adjusted Rand index vs
-the planted personas ≥ 0.90** · adjusted mutual information ≥ 0.85 · labels are
-valid integers in range.
+- The grader simulates three customer cohorts you have not seen, each with a
+  secret number of planted personas (3 to 6) and different sizes.
+- Your segments must recover the planted personas: adjusted Rand index of at
+  least 0.90 on ordinary customers in **every** cohort, and the number of
+  segments holding at least 3% of customers must equal the number of planted
+  personas. A tiny extra segment of unusual accounts is acceptable.
+- `profiles` must agree exactly with the medians and counts of your own
+  labels; `at_risk_segment` must be the planted persona with the longest time
+  since last order.
+- The grader simulates three overlapping Gaussian mixtures (2 to 4
+  dimensions, 2 to 4 components). Your returned parameters must be valid
+  (weights positive and summing to 1, covariances symmetric
+  positive-definite); your responsibilities and log-likelihood must be the
+  ones your parameters imply; your log-likelihood per row must be within 0.01
+  of the best of ten well-initialised maximum-likelihood fits; and one more EM
+  iteration from your parameters must not improve the log-likelihood per row
+  by more than 1e-4.
+- Structural checks (format, consistency, framework use) earn marks only when
+  the outcome checks in the same part pass.
 
 ## Rules
 
-- **kailash-ml `ClusteringEngine` only** — raw sklearn clustering is blocked.
-- **Polars only** — no pandas.
-- Deterministic — keep the given seed; no extra randomness.
-- The placeholder in `starter.py` fails grading by design.
+- Segmentation runs through kailash-ml `ClusteringEngine`.
+- `fit_mixture` is your own EM in numpy / scipy: `sklearn.mixture` and the
+  engine's mixture algorithm are not allowed there.
+- Polars for data handling (no pandas). Your functions must work from their
+  arguments alone: the grader never passes the same data twice.

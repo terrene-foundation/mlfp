@@ -121,8 +121,9 @@ def reciprocal_rank_fusion(ranked_lists: list[list[dict]], k: int = 60) -> list[
     return [{"text": texts[i], "score": s, "chunk_idx": i} for i, s in fused]
 
 
+# ── Judge helpers ─────────────────────────────────────────────────────────────
 class JudgeParseError(ValueError):
-    """The LLM replied, but not with the number the prompt asked for."""
+    pass  # the LLM replied, but not with the number the prompt asked for.
 
 
 def parse_score(response: str, low: float, high: float) -> float:

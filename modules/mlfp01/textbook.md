@@ -4150,7 +4150,7 @@ fig_dist = viz.histogram(taxi_clean, "distance_km", bins=50, title="Trip Distanc
 fig_dist.write_html("taxi_distance_distribution.html")
 ```
 
-Open the charts. The cleaned fares run from S$3.90 to S$50.72 with a median of S$9.64 — no more negative values. The hourly chart is the surprise: it is flat. Every hour of the day has between 1,743 and 1,893 trips, with no morning or evening commute peak. Real taxi demand has a strong daily rhythm; this synthetic log was generated without one, so the honest reading is "no hourly pattern in this data". (Check it by grouping by `time_period` too: average fares are S$9.71–9.74 in every period.) Notice the `update_traces(x=...)` line: without it, `training_history` would label the hours 1–24 instead of 0–23.
+Open the charts. The cleaned fares run from S$3.90 to S$50.72 with a median of S$9.64 — no more negative values. The hourly chart is the surprise: it is flat. Every hour of the day has between 1,917 and 2,054 trips, with no morning or evening commute peak. Real taxi demand has a strong daily rhythm; this synthetic log was generated without one, so the honest reading is "no hourly pattern in this data". (Check it by grouping by `time_period` too: average fares are S$9.71–9.74 in every period.) Notice the `update_traces(x=...)` line: without it, `training_history` would label the hours 1–24 instead of 0–23.
 
 ### Step 7: Re-profile and compare original vs cleaned
 

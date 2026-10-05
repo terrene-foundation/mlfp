@@ -457,3 +457,206 @@ stretch before filtering.
 and transforming it."
 
 ---
+
+## Slide 17: Lesson 1.2: Filtering and Transforming Data
+
+**Time:** ~2 min · Foundations
+
+**Hook:** "Every data question begins the same way: show me only the rows where…"
+
+Filtering is how you ask questions of data — "show me only Queenstown flats under
+S$700k". Frame the lesson: booleans, filters, column selection, computed columns,
+and chaining them together. Note the forward reference on the slide: students will
+see True/False values now, but Python `if/else` control flow is deliberately
+deferred to Lesson 1.4 — say so, so nobody thinks it was forgotten.
+
+**Beginner cue:** Compare filtering to a spreadsheet's filter dropdown — same
+idea, but the condition is code, which means it is repeatable and shareable.
+
+**Advanced cue:** Polars expressions compile to a query plan rather than iterating
+row by row — the idiom is declarative: describe what you want, not how to loop.
+
+**Transition:** "Let us start with boolean logic, the foundation of all filtering."
+
+---
+
+## Slide 18: Booleans and Comparisons
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "The number one beginner bug in all of programming is on this slide."
+
+`==` checks equality; `=` assigns a value. Say it twice and demonstrate the
+mistake live — assign when you meant to compare — because every learner will make
+it within the week. In Polars expressions, conditions combine with `&` and `|`,
+not Python's `and` and `or`; the reasons (operator overloading on expressions)
+can stay behind the curtain for now.
+
+**Beginner cue:** "True and False are just yes/no answers to questions about
+data. `price > 500000` asks a question; the answer is a column of yeses and nos."
+
+**Advanced cue:** Mention short-circuit evaluation and that parentheses control
+precedence — `&` binds tighter than comparison operators in Python, so the
+parentheses on the slide are load-bearing, not style.
+
+**Key question:** "Why does `a == 1 | b == 2` raise, but `(a == 1) | (b == 2)`
+works?" Let the parentheses discussion happen before revealing.
+
+**Transition:** "Now let us apply these comparisons to filter entire DataFrames."
+
+---
+
+## Slide 19: Filtering Rows with filter()
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "One line of Polars replaces a thousand spreadsheet clicks."
+
+`pl.col("town")` builds an expression referring to the town column; comparing it
+with `==` produces a boolean mask; `df.filter(mask)` keeps the rows where the mask
+is True. Read the code on screen as English: "filter where the town column equals
+Queenstown and the price is below 700 thousand."
+
+Two details to call out: parentheses around each condition are required when
+combining with `&` or `|` — omit them and Python's precedence rules bite. And
+`700_000` uses an underscore as a visual separator; Python ignores it, so use it
+freely for money.
+
+**Beginner cue:** Read every filter aloud as a sentence before running it. If the
+sentence is wrong, the code is wrong.
+
+**Advanced cue:** In lazy mode Polars pushes filter predicates into the scan, so
+unmatched rows may never be read from disk — filtering early is also a
+performance habit.
+
+**Transition:** "Filtering selects rows. Let us also select specific columns."
+
+---
+
+## Slide 20: Selecting Columns and Sorting
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Choose your columns, choose your order — that is half of reporting."
+
+`select()` picks columns; `filter()` picks rows. Those two verbs answer most
+everyday data questions. Columns can be named as plain strings or as `pl.col()`
+expressions — expressions let you transform on the fly, which previews
+`with_columns` on the next slide.
+
+Sorting by multiple keys reads left to right: first by town alphabetically, then
+by price within each town. Demonstrate `descending=True` and ask what happens to
+ties — a natural segue to deterministic ordering.
+
+**Beginner cue:** "`select` is which columns do I want to see; `sort` is in what
+order. Two separate questions, two separate methods."
+
+**Advanced cue:** `select` accepts regex selectors like `pl.col("^price.*$")` —
+handy on wide tables later in the course.
+
+**Transition:** "Now the power move: creating new columns from existing ones."
+
+---
+
+## Slide 21: Creating Computed Columns
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Every feature you will ever engineer starts as a `with_columns` call."
+
+`with_columns` is the most important transformation method in the course: it adds
+new columns (or overwrites existing ones) from expressions. Walk the three
+examples. Price per square metre — division, the canonical derived metric.
+Remaining lease parsed from text — `remaining_lease` arrives as strings in two
+formats ("71 years 11 months" and plain "92"), so `str.extract` pulls the leading
+number and `cast` makes it an integer; about 1,474 rows have no remaining lease
+and correctly stay null. A high-value flag — a boolean column from a comparison.
+
+`.alias()` names the result; without it Polars names the column from the
+expression, which gets unreadable fast.
+
+**Beginner cue:** "It is the spreadsheet formula column, except the formula is
+code and applies to 50,000 rows at once."
+
+**Advanced cue:** Polars compiles the expressions in one `with_columns` call into
+a single pass over the data — batch related derivations together.
+
+**Key question:** "Why does the lease parse extract `^(\d+)` and not the whole
+string?" Connect it to the two text formats in the data.
+
+**Transition:** "Let us chain multiple operations together."
+
+---
+
+## Slide 22: Method Chaining
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Read this chain top to bottom — it is a sentence, not a program."
+
+Method chaining is the Polars house style: each step transforms the frame and
+hands the result to the next. Read the example as a sentence: "Take the data,
+filter for Tampines, compute price per square metre, select these columns, sort,
+show the top ten." Learners who can read a chain as prose can write one.
+
+The parentheses trick — wrap the whole chain in parentheses so each method gets
+its own line — is essential for readability and diff-friendliness. Show the same
+logic written with intermediate variables first, then refactored into a chain,
+so the equivalence is visible.
+
+**Beginner cue:** If a chain confuses, break it into `df1 = …; df2 = …` steps,
+verify each, then re-chain.
+
+**Advanced cue:** The chain mirrors SQL structure — FROM, WHERE, computed SELECT,
+ORDER BY, LIMIT — and Polars can optimise across the whole chain at once.
+
+**Transition:** "Time to practise. Here is your exercise."
+
+---
+
+## Slide 23: Exercise 1.2: HDB Resale Filtering
+
+**Time:** ~2 min (exercise work time ~10 min) · Foundations
+
+**Hook:** "Five steps, one fluent chain by the end."
+
+Walk the five steps on the slide — each maps to a method just learned: filter,
+derive, select, sort, limit. The stretch goal is to express all five as one
+chained expression; encourage it, but let beginners land the stepped version
+first and verify each intermediate output.
+
+One honest expectation to set: some filters in this exercise return empty
+results on the synthetic data (for example, a 4-room flat in Ang Mo Kio under
+S$500k does not exist in this dataset). An empty result is an answer, not a
+crash — check the shape before assuming the code is wrong.
+
+**Beginner cue:** Do each step separately, print the shape after each, then chain
+once all five work.
+
+**Advanced cue:** Early finishers add a date-range condition and a second sort
+key — and should explain why the chain order changes the row count.
+
+**Transition:** "Next lesson: we learn to write our own functions and compute
+group-level statistics."
+
+---
+
+## Slide 24: Lesson 1.2 Recap
+
+**Time:** ~1 min · Foundations
+
+**Hook:** "Four verbs: filter, select, sort, with_columns."
+
+These four methods cover roughly 80% of everyday data manipulation. Everything
+else in the course composes them. Quick oral quiz: which verb picks rows? Which
+adds a column? Which orders?
+
+**Beginner cue:** If they can name what each of the four verbs does, they are
+ready for Lesson 1.3.
+
+**Advanced cue:** Natural break point before functions — take questions here.
+
+**Transition:** "In Lesson 1.3, we learn to write reusable functions and
+aggregate data by groups."
+
+---

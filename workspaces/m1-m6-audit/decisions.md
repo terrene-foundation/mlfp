@@ -1,0 +1,21 @@
+# M1–M6 Audit — Decisions
+
+Audit date: 2026-10-02/03. Findings: 513 (104 BLOCKING, 199 MAJOR, 210 MINOR) — see `01-analysis/`.
+
+| #   | Decision                                                                                                                                                  | Chosen                                                     | Consequence for fixes                                                                                                                                                       |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | kailash-pact 0.14.1 `verify_action` auto-approves unknown and envelope-less roles (fail-open), contradicting the fail-closed principle the course teaches | **Teach the real behaviour only**; nothing raised upstream | M6 states the actual default; every deny-path demo/test attaches an envelope first (`set_role_envelope`); spec 6.7 corrected to match                                       |
+| D2  | Invented statistics, incidents and deployments attributed to real banks, hospitals, regulators, universities (M2–M6)                                      | **Anonymise**                                              | Replace with generic actors ("a Singapore bank", "a local university"); figures marked illustrative; keep a real public reference only where the fact is real and checkable |
+| D3  | Remediation scope                                                                                                                                         | **Everything** — all 513 findings                          | Phase A (correctness) then Phase B (spec-gap content, assessment redesign to non-dictated tasks, MINORs) in the same programme                                              |
+| D4  | `speaker-notes.md` for M1/M2/M5 written for older decks                                                                                                   | **Regenerate from the current decks**                      | Rebuild each from the deck's per-slide `<aside class="notes">`, then correct facts/API                                                                                      |
+| D5  | Fleet hosts lack git-lfs, so trestle cannot snapshot this repo                                                                                            | Operator installs git-lfs                                  | Heavy verification (exercise execution, PDF builds) goes through `trestle run` once installed; fixers verify statically until then                                          |
+
+Source of truth for every correction: the INSTALLED stack (`.venv`, kailash-ml 2.2.2, kailash-pact 0.14.1, …) and the actual data files in `data/`. Where `specs/module-N.md` contradicts the installed stack, the spec is corrected too.
+
+## Pending owner decisions surfaced during remediation (2026-10-04)
+- P1 ICU data (M3 ex_1): only 198/416,526 vital readings fall in the first 24h → first-24h features carry no signal (AUC ≈ 0.50). Regenerate dataset, move the cutoff, or reframe ex_1.
+- P2 HDB data quality (M1/M2/M4): S$10 / S$9M prices, negative lease ages, letter-O storey typos — keep as deliberate M1 teaching defects with one shared cleaner downstream, or ship a clean variant.
+- P3 mlxtend `.to_pandas()` at the call boundary (M4 4.5 + ex_5) vs the polars-only mandate.
+- P4 Default model fallbacks: `SFT_BASE_MODEL` → "Qwen/Qwen2.5-0.5B-Instruct" (shared/mlfp06 ex_2/ex_3, slides), Ollama bootstrap defaults — env var first with a documented default (zero-config Colab) vs env-models.md "never hardcode".
+- P5 Spec assessment lines ("Quiz + project") vs shipped auto-graded tasks — reconcile after the S5 redesign.
+- P6 Upstream SDK issues (kailash-ml setup() leak, kailash-dataflow relative sqlite path, ONNX external data, Nexus CORS preflight 401, A2A un-awaited coroutine, HumanApprovalAgent placeholder, …) — D1 "no upstream" covered PACT only; decide whether to file the rest.

@@ -3,8 +3,8 @@ MACHINE LEARNING WITH LANGUAGE MODELS AND AGENTIC WORKFLOWS
 
 MLFP — ML Foundations for Professionals — Terrene Open Academy
 
-"The best LLM application is not a chatbot. It is an engineer that reasons, acts, and
-governs itself."
+"The best LLM application is not a chatbot. It is an engineer that reasons, acts,
+and governs itself."
 
 MLFP Module 6 — Terrene Open Academy
 
@@ -14,52 +14,87 @@ Terrene Foundation • Kailash Python SDK
 WHAT YOU WILL LEARN
 BY THE END OF MODULE 6
 
-THREE DEPTH LAYERS
-
 Prompt engineer LLMs with 5+ techniques for
-FOUNDATIONS — Everyone follows. Plain language,
 structured output
-Fine-tune models with LoRA and adapter layers analogies.
-from scratch
-THEORY
-—
-Mathematical
-depth.
-Derivations,
-code.
+Fine-tune models with LoRA and adapter layers from
+scratch
 Align models with DPO and GRPO preference
 optimization
-ADVANCED — Paper references, edge cases for experts.
-Build RAG systems with dense, sparse, and
-hybrid retrieval
+Build RAG systems with dense, sparse, and hybrid
+retrieval
+Create AI agents with ReAct reasoning and tool use
+Orchestrate multi-agent systems with MCP servers
+Govern AI with PACT access controls and operating
+envelopes
+Deploy production platforms via Nexus (API + CLI +
+MCP)
+
+THREE DEPTH LAYERS
+
+FOUNDATIONS — Everyone follows. Plain language,
+analogies.
+THEORY — Mathematical depth. Derivations, code.
+ADVANCED — Paper references, edge cases for
+experts.
 A product manager and a research engineer sit in the same
-Create AI agents with ReAct reasoning and tool classroom. Both leave having learned something new.
-use
-Orchestrate multi-agent systems with MCP
-servers
-Govern AI with PACT access controls and
-operating envelopes
-Deploy production platforms via Nexus (API +
+classroom. Both leave having learned something new.
 
 MLFP Module 6 — Terrene Open Academy
 2
 
 YOUR JOURNEY: 8 LESSONS
+#
 
-# Lesson
+Lesson
+
 You Will Be Able To...
-6.1 LLM Fundamentals & Prompt Engineering Use 5+ prompting techniques for structured output
-6.2 LoRA, Adapters & Fine-tuning Landscape Implement LoRA and adapters from scratch
-6.3 Preference Alignment — DPO & GRPO Train models to follow human preferences
-6.4 RAG Systems
+
+6.1
+
+LLM Fundamentals & Prompt Engineering
+
+Use 5+ prompting techniques for structured output
+
+6.2
+
+LoRA, Adapters & Fine-tuning Landscape
+
+Implement LoRA and adapters from scratch
+
+6.3
+
+Preference Alignment — DPO & GRPO
+
+Train models to follow human preferences
+
+6.4
+
+RAG Systems
+
 Build retrieval-augmented generation pipelines
-6.5 AI Agents — ReAct & Tool Use
+
+6.5
+
+AI Agents — ReAct & Tool Use
+
 Build agents that reason and act with cost budgets
-6.6 Multi-Agent Orchestration & MCP
+
+6.6
+
+Multi-Agent Orchestration & MCP
+
 Coordinate specialist agents and expose tools via MCP
-6.7 AI Governance Engineering
+
+6.7
+
+AI Governance Engineering
+
 Implement PACT access controls and operating envelopes
-6.8 Capstone — Full Production Platform
+
+6.8
+
+Capstone — Full Production Platform
+
 Deploy a governed AI system via Nexus
 
 MLFP Module 6 — Terrene Open Academy
@@ -70,57 +105,78 @@ KAIZEN
 
 PACT
 
-Delegate
+Delegate — LLM calls with streaming, cost
 
-GovernanceEngine
+GovernanceEngine — D/T/R access controls,
 
-— LLM calls with streaming, cost
 tracking, structured output.
-BaseAgent — Custom agents with tool use and
-reasoning.
-Signature — Type-safe input/output schemas.
+BaseAgent — Custom agents with tool use
+and reasoning.
+Signature — Type-safe input/output
+schemas.
 KAILASH-ALIGN
 
-— DPO, GRPO, and LoRA
-fine-tuning.
-AdapterRegistry — Store, version, and swap
-adapters.
-AlignmentPipeline
+AlignmentPipeline — DPO, GRPO, and LoRA
 
-— D/T/R access controls, fivedimension constraint envelopes.
+fine-tuning.
+
+five-dimension constraint envelopes.
 GovernedSupervisor (from kaizen_agents ) —
 Agents with built-in pact governance.
 NEXUS
+Nexus — Deploy one codebase as API + CLI +
 
-— Deploy one codebase as API + CLI +
-MCP simultaneously. JWT auth, middleware, rate
-limiting.
-Nexus
+MCP simultaneously. JWT auth, middleware,
+rate limiting.
+
+AdapterRegistry — Store, version, and swap
+
+adapters.
 
 MLFP Module 6 — Terrene Open Academy
 4
 
-WHERE WE ARE
+FOUNDATIONS
 
-FOUNDATIONS
+WHERE WE ARE
+Module
 
-Module You Learned
+You Learned
+
 Key Engines
-M1
-Python, Polars, data pipelines
-DataExplorer, ModelVisualizer
-M2
-Statistics, probability, hypothesis testing ExperimentTracker
-M3
-Supervised ML, evaluation, pipelines
-TrainingPipeline, HyperparameterSearch
-M4
-Unsupervised ML, NLP, anomaly detection AutoMLEngine, DriftMonitor
-M5
-Deep learning, CNNs, RNNs, transformers OnnxBridge, InferenceServer
 
-Today: We take the transformer architecture from M5 and give it the ability to reason, act, learn from feedback, and govern
-itself. Everything you built before becomes a tool an agent can wield.
+M1
+
+Python, Polars, data pipelines
+
+DataExplorer, ModelVisualizer
+
+M2
+
+Statistics, probability, hypothesis testing
+
+ExperimentTracker
+
+M3
+
+Supervised ML, evaluation, pipelines
+
+TrainingPipeline, HyperparameterSearch
+
+M4
+
+Unsupervised ML, NLP, anomaly detection
+
+AutoMLEngine, DriftMonitor
+
+M5
+
+Deep learning, CNNs, RNNs, transformers
+
+OnnxBridge, InferenceServer
+
+Today: We take the transformer architecture from M5 and give it the ability to reason, act, learn from feedback, and
+govern itself. Everything you built before becomes a tool an agent can wield.
 
 MLFP Module 6 — Terrene Open Academy
 5
@@ -130,10 +186,10 @@ SIX LENSES
 
 What separates amateur prompt-play from production LLM engineering
 
-"M5 gave you a Doctor's Bag for deep networks. M6 needs an Observatory, because
-a generation is not a loss value."
-Turn to your neighbour (2 min): name a time you deployed an LLM and something weird happened — and how you figured
-out what. (Self-study: jot it in your notebook.)
+"M5 gave you a Doctor's Bag for deep networks. M6 needs an Observatory,
+because a generation is not a loss value."
+Turn to your neighbour (2 min): name a time you deployed an LLM and something weird happened — and how you
+figured out what. (Self-study: jot it in your notebook.)
 
 MLFP Module 6 — Terrene Open Academy
 6
@@ -175,7 +231,6 @@ policy?
 GOVERN
 
 Each lens answers one question.
-
 First four diagnose the running system. Fifth evaluates the training signal.
 Sixth is the organisational contract — did the system stay inside its envelope?
 
@@ -186,34 +241,33 @@ MLFP Module 6 — Terrene Open Academy • LLM Observatory
 
 LENS 1: OUTPUT — THE STETHOSCOPE, EVOLVED
 ASKS: IS THE GENERATION COHERENT, FACTUAL, ONTASK?
-
 Bounded tasks: perplexity, ROUGE, BLEU, BERTScore
-Open-ended: LLM-as-judge (bias-mitigated — swap positions,
-normalise length)
+Open-ended: LLM-as-judge (bias-mitigated — swap
+positions, normalise length)
 Hallucination: self-consistency (sample n, measure
 agreement) + retrieval grounding
 Refusal calibration: refuse harmful prompts, do NOT overrefuse benign ones
-
 Why this lens first? 80% of production LLM failures surface
 here. If Output is clean, you rarely need to open the Attention
 lens.
 
 Faithful
 
-prompt: "refund policy?"
-answer cites retrieved
-policy verbatim
-
-→ ship
-
 Hallucinated
 
 prompt: "refund policy?"
+
+prompt: "refund policy?"
+
+answer cites retrieved
+policy verbatim
+
 answer invents a
 30-day window
 
-→ raise faithfulness
+→ ship
 
+→ raise faithfulness
 Metrics to run
 
 perplexity
@@ -229,12 +283,13 @@ safety calibration
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 8
 
-LENS 1: OUTPUT — CODE
+THEORY
 
-THEORY
+LENS 1: OUTPUT — CODE
 
 Routes through DeepEval + a Kaizen Delegate judge. No raw openai.chat.completions.create .
 from shared.mlfp06.diagnostics import LLMObservatory
+
 obs = LLMObservatory()
 
 # lazy init, no network call here
@@ -242,25 +297,28 @@ obs = LLMObservatory()
 # ── Faithfulness against retrieved context ───────────────────
 df = obs.output.faithfulness(
 response="Refunds within 14 days, no exceptions.",
-context=["Refund policy: 30-day window for unused items."],
-)
+context=["Refund policy: 30-day window for unused items."])
 # df columns: claim, supported, support_source, grounding_score
 # ── Bias-mitigated LLM-as-judge (positions swapped, lengths normalised)
 verdict = obs.output.llm_as_judge(
 prompt="Summarise the Q3 earnings call in 3 bullets.",
-response=draft_answer,
-criteria="coherence, factual_accuracy, completeness",
-)
+response=draft_answer, criteria="coherence, factual_accuracy, completeness")
 # verdict.score in [0, 1], verdict.rationale is a short string
 # ── Hallucination via self-consistency ───────────────────────
 result = obs.output.self_consistency(
-prompt="What is the SGX listing rule for board independence?",
-n=5,
-)
+prompt="What is the SGX listing rule for board independence?", n=5)
 # result.agreement_rate, result.flagged_as_hallucination
+# ── Refusal calibration ──────────────────────────────────────
+obs.output.refusal_rate(harmful_prompts)
+# should be high
+obs.output.over_refusal(benign_prompts)
+# should be near zero
+obs.output.plot_output_dashboard().show()
 
-Budget note: each judge call costs money. The observatory caps spend at ~$2 per student per module run via small eval sets and
-result caching.
+# single figure, all 4 metrics
+
+Budget note: each judge call costs money. The observatory caps spend at ~$2 per student per module run via small eval sets
+and result caching.
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 9
 
@@ -269,7 +327,6 @@ MLFP Module 6 — Terrene Open Academy • LLM Observatory
 LENS 2: ATTENTION — THE X-RAY
 ASKS: WHAT DOES THE MODEL ATTEND TO,
 INTERNALLY?
-
 Attention heatmaps — token-to-token weights per head
 Logit lens — read the model's prediction at every layer
 (nostalgebraist / Neel Nanda)
@@ -277,14 +334,19 @@ Sparse autoencoders — load Gemma Scope features, read
 what each latent fires on
 Circuits — the minimal subgraph that produces a token
 (activation patching)
+Mech interp in 2026: we read features, not neurons. The
+course default for SAE work is Gemma-2-2B — Gemma
+Scope is the best-covered pre-trained SAE suite available.
 
-Mech interp in 2026: we read features, not neurons. The course
-default for SAE work is Gemma-2-2B — Gemma Scope is the
-best-covered pre-trained SAE suite available.
+Attention heatmap — layer 8, head 3
+The cat
 
-Attention
-heatmap — layer 8, head 3
-The cat sat on the mat
+sat
+
+on
+
+the mat
+
 The
 cat
 sat
@@ -297,41 +359,40 @@ Read: "mat" attends strongly to "cat" and "sat"
 Complement with: logit_lens (what layer predicts?)
 and sae_features (what concept fires?)
 
-API-only models (GPT, Claude, Gemini) cannot be Xrayed. The lens reports "not applicable" and falls back
-to Output + Agent Trace.
+API-only models (GPT, Claude, Gemini) cannot be
+X-rayed. The lens reports "not applicable" and
+falls back to Output + Agent Trace.
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
-
 10
 
-LENS 2: ATTENTION — CODE
+ADVANCED
 
-ADVANCED
+LENS 2: ATTENTION — CODE
 
 Wraps transformer_lens + sae_lens . Open-weight models only; API models report not_applicable .
 from shared.mlfp06.diagnostics import LLMObservatory
+
 obs = LLMObservatory()
 # ── Attention heatmap for one head ───────────────────────────
 fig = obs.attention.attention_heatmap(
-prompt="The cat sat on the mat.",
-model="google/gemma-2-2b",
-layer=8,
-head=3,
-)
+prompt="The cat sat on the mat.", model="google/gemma-2-2b", layer=8, head=3)
 fig.show()
 # ── Logit lens: what does each layer predict? ────────────────
 df = obs.attention.logit_lens(
-prompt="The Eiffel Tower is located in the city of",
-model="google/gemma-2-2b",
-)
+prompt="The Eiffel Tower is located in the city of", model="google/gemma-2-2b")
 # df columns: layer, top_token, top_prob — crystallisation point surfaces
 # ── Sparse autoencoder features (Gemma Scope) ────────────────
 features = obs.attention.sae_features(
 prompt="I felt genuinely happy when the result came in.",
-model="google/gemma-2-2b",
-layer=12,
-top k=10,
+model="google/gemma-2-2b", layer=12, top_k=10)
+# features: [(feature_id, activation, human_readable_label), ...]
+# ── Circuit trace: minimal subgraph for a target token ───────
+circuit = obs.attention.circuit_trace(
+prompt="Paris is the capital of", target_token=" France", model="google/gemma-2-2b")
+# circuit.nodes: {(layer, component): attribution_score}
 
-Non-goal: we do NOT train SAEs in this course. We READ pre-trained ones. SAE training is a research topic; SAE reading is an M6 skill.
+Non-goal: we do NOT train SAEs in this course. We READ pre-trained ones. SAE training is a research topic; SAE reading is an
+M6 skill.
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 11
 
@@ -340,17 +401,15 @@ MLFP Module 6 — Terrene Open Academy • LLM Observatory
 LENS 3: RETRIEVAL — THE RAG DIAGNOSTIC
 ASKS: DID WE FETCH THE RIGHT CONTEXT, AND DID
 WE USE IT?
-
 recall@k / precision@k / MRR — classical IR metrics
 chunk relevance — per-chunk LLM-as-judge score
 context utilisation — did the generator actually USE the
 retrieved chunks?
-retriever bake-off — BM25 vs dense vs hybrid vs HyDE, same
-queries
-
-The hidden failure: retrieval can be perfect AND the answer still
-wrong, because the generator ignored the chunks. You need
-BOTH recall AND context-utilisation.
+retriever bake-off — BM25 vs dense vs hybrid vs HyDE,
+same queries
+The hidden failure: retrieval can be perfect AND the answer
+still wrong, because the generator ignored the chunks. You
+need BOTH recall AND context-utilisation.
 
 RAG pipeline — metrics per stage
 Query
@@ -369,60 +428,58 @@ faithfulness
 utilisation
 
 Retriever leaderboard — 50 SG policy queries
-
 retriever
+
+recall@5
+
+faithfulness
 
 BM25
 dense (bge-m3)
 hybrid
 HyDE
 
-recall@5
-
 0.71
 0.78
 0.83
 0.80
-
-faithfulness
 
 0.88
 0.81
 0.73
 0.84
 
-hybrid wins recall, loses faithfulness — more chunks, more ignored con
+hybrid wins recall, loses faithfulness — more chunks, more ignored conte
 
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 12
 
-LENS 3: RETRIEVAL — CODE
+THEORY
 
-THEORY
+LENS 3: RETRIEVAL — CODE
 
 Backs onto ragas + trulens-eval . Works for any retriever that exposes retrieve(query, k) .
 from shared.mlfp06.diagnostics import LLMObservatory
+
 obs = LLMObservatory()
 # ── Standard IR metrics ──────────────────────────────────────
 df = obs.retrieval.recall_at_k(
-queries=eval_queries,
-relevant_ids=gold_chunk_ids,
-retriever=my_retriever,
-k=5,
-)
+queries=eval_queries, relevant_ids=gold_chunk_ids, retriever=my_retriever, k=5)
 # ── Retriever bake-off on identical queries ──────────────────
 leaderboard = obs.retrieval.compare_retrievers(
 retrievers={"bm25": bm25, "dense": dense, "hybrid": hybrid, "hyde": hyde},
-queries=eval_queries,
-relevant_ids=gold_chunk_ids,
-k=5,
-)
+queries=eval_queries, relevant_ids=gold_chunk_ids, k=5)
 # leaderboard: Polars DataFrame with recall@k, precision@k, faithfulness, latency_ms
 # ── Did the generator actually USE the context? ──────────────
 util = obs.retrieval.context_utilisation(
-response=generated_answer,
-context=retrieved_chunks,
-)
+response=generated_answer, context=retrieved_chunks)
+# util.grounded_claims / util.total_claims, util.unused_chunks
+# ── Chunk-size sweep: find the empirical sweet spot ──────────
+sweep = obs.retrieval.chunk_size_sweep(
+documents=policy_corpus, sizes=[256, 512, 1024, 2048], queries=eval_queries)
+obs.retrieval.plot_retrieval_dashboard().show()
+
+# recall + leaderboard + sweep
 
 First use: Exercise 6.4 — Singapore policy RAG leaderboard across four retrievers.
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
@@ -431,20 +488,19 @@ MLFP Module 6 — Terrene Open Academy • LLM Observatory
 FOUNDATIONS
 
 LENS 4: AGENT TRACE — WHAT DID THE AGENT ACTUALLY DO?
-
 ReAct capture: structured Thought / Action / Observation /
 Done events as JSONL
-Tool usage: per-tool call count, success rate, p50/p99 latency,
-cost share
+Tool usage: per-tool call count, success rate, p50/p99
+latency, cost share
 Loop detection: repeated (thought, action) pairs flagged as
 cycles
-Budget timeline: cumulative cost vs wall clock — where did the
-money go?
-Context utilisation: tokens consumed vs model window over
-time
-Backend: Langfuse self-hosted for production (OTEL-native,
-Foundation-independence compliant). Colab falls back to a
-Plotly-based viewer because Docker is unavailable.
+Budget timeline: cumulative cost vs wall clock — where did
+the money go?
+Context utilisation: tokens consumed vs model window
+over time
+Backend: Langfuse self-hosted for production (OTELnative, Foundation-independence compliant). Colab falls
+back to a Plotly-based viewer because Docker is
+unavailable.
 
 Annotated ReAct trace — task: "summarise Q3 filings"
 1. Thought: list Q3 filings
@@ -460,11 +516,9 @@ $0.004
 842ms
 
 4. Thought: try "Q3 earnings" — narrower?
-
-loop start
-
 5-14. Action/Obs: re-search 10x
 
+loop start
 $0.14 burned
 
 Budget timeline
@@ -484,6 +538,7 @@ FOUNDATIONS
 Wraps Kaizen agent event streams into OpenTelemetry-compatible JSONL.
 from shared.mlfp06.diagnostics import LLMObservatory
 from kaizen_agents import ReActAgent
+
 obs = LLMObservatory()
 agent = ReActAgent(tools=[search, calculator, summarise])
 # ── Capture a run with full trace ────────────────────────────
@@ -501,6 +556,12 @@ obs.agent.budget_timeline(trace).show()
 # ── Counterfactual replay: what if step 3 returned differently?
 replay = obs.agent.replay(
 trace,
+step=3,
+modified_output="0 results",
+)
+# replay.diverged_at_step, replay.new_total_cost, replay.new_outcome
+# ── Optional: export to Langfuse for the UI ──────────────────
+obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
 
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 15
@@ -508,8 +569,7 @@ MLFP Module 6 — Terrene Open Academy • LLM Observatory
 ADVANCED
 
 LENS 5: ALIGNMENT — IS THE TRAINING SIGNAL HONEST?
-ASKS: HAS THE POLICY DRIFTED? DID IT REWARDHACK?
-
+Training curve — reward hacking signature
 divergence zone
 
 proxy
@@ -517,17 +577,17 @@ KL ↑
 
 eulav
 
-KL from reference — per-prompt divergence from the frozen
-base policy
-Reward margin — DPO chosen-minus-rejected log-prob gap
-distribution
+ASKS: HAS THE POLICY DRIFTED? DID IT REWARDHACK?
+KL from reference — per-prompt divergence from the
+frozen base policy
+Reward margin — DPO chosen-minus-rejected log-prob
+gap distribution
 Bias-mitigated win rate — position swap + length
 normalisation against base
-Benchmark delta — MMLU / HellaSwag / TruthfulQA before-vsafter, flags regressions
+Benchmark delta — MMLU / HellaSwag / TruthfulQA
+before-vs-after, flags regressions
 Reward hacking scan — high proxy score + failed held-out
 rubric = red flag
-
-Training curve — reward hacking signature
 
 held-o
 training steps
@@ -542,11 +602,10 @@ MLFP Module 6 — Terrene Open Academy • LLM Observatory
 LENS 6: GOVERNANCE — PACT AUDIT
 ASKS: IS THE SYSTEM INSIDE ITS ENVELOPE, IS THE
 AUDIT CHAIN INTACT?
-
-Envelope snapshot — Financial, Operational, Temporal, Data
-Access, Communication per role
-Budget consumption — spend, tokens, tool calls against each
-envelope dimension
+Envelope snapshot — Financial, Operational, Temporal,
+Data Access, Communication per role
+Budget consumption — spend, tokens, tool calls against
+each envelope dimension
 Audit chain verification — hash-linked log, tamper-evident,
 returns first bad index on failure
 D/T/R addressing — who decided, who trusted, who
@@ -556,6 +615,7 @@ positive regression test
 
 Governance decision flow
 Action requested
+
 no
 
 verify_action
@@ -567,73 +627,145 @@ deny + audit
 yes
 
 execute + audit
+
 hash-chained audit log
 
 verify_chain() → True | tampered_index
 
 Native to Kailash: this lens has zero external dependencies.
-PACT is the Foundation's own governance framework — the lens
-inspects GovernanceEngine, not a third-party policy engine.
+PACT is the Foundation's own governance framework — the
+lens inspects GovernanceEngine, not a third-party policy
+engine.
 
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 17
 
-MODERN LLM OBSERVABILITY STACK (2026)
+ADVANCED
 
-ADVANCED
-
+MODERN LLM OBSERVABILITY STACK (2026)
 Layer
+
 Tool
+
 Purpose
-Output eval DeepEval, RAGAS
+
+Output eval
+
+DeepEval, RAGAS
+
 Faithfulness, hallucination, LLM-as-judge (bias-mitigated)
-Interpretability TransformerLens, nnterp, Gemma Scope SAEs Attention heatmaps, logit lens, feature reading (read, not train)
-Retrieval eval RAGAS, TruLens
-recall@k, chunk relevance, context utilisation, retriever bake-off
-Agent trace Langfuse (self-hosted), LangSmith, Phoenix TAOD capture, OTEL spans, replay; Plotly viewer fallback for Colab
+
+TransformerLens, nnterp, Gemma Scope
+Interpretability SAEs
+
+Attention heatmaps, logit lens, feature reading (read, not train)
+
+Retrieval eval
+
+RAGAS, TruLens
+
+recall@k, chunk relevance, context utilisation, retriever bakeoff
+
+Agent trace
+
+Langfuse (self-hosted), LangSmith, Phoenix
+
+TAOD capture, OTEL spans, replay; Plotly viewer fallback for
+Colab
+
 Alignment
+
 TRL (DPO/GRPO), lm-evaluation-harness
+
 KL, reward margin, bench deltas, reward-hacking scans
-Governance PACT (Foundation-native)
+
+Governance
+
+PACT (Foundation-native)
+
 Envelope, audit chain, D/T/R addressing, negative verdict drill
-Why this stack? Every tool is open-source or Foundation-native. Langfuse self-hosted over LangSmith; DeepEval over proprietary
-evals. Independence is a design constraint, not a suggestion.
+
+Why this stack? Every tool is open-source or Foundation-native. Langfuse self-hosted over LangSmith; DeepEval over
+proprietary evals. Independence is a design constraint, not a suggestion.
 
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 18
 
-HOW THE OBSERVATORY THREADS THROUGH M6
+FOUNDATIONS
 
-FOUNDATIONS
+HOW THE OBSERVATORY THREADS THROUGH M6
+Lesson
 
-Lesson Topic
-Primary lens Secondary lens
+Topic
+
+Primary lens
+
+Secondary lens
+
 6.1
-Prompting & structured output Output
-Attention (preview only — API models)
-6.2
-LoRA & adapters
-Alignment Attention + Output (attribution)
-6.3
-DPO & GRPO
-Alignment Output (bias-mitigated judging)
-6.4
-RAG systems
-Retrieval
-Output (faithfulness)
-6.5
-ReAct agents & tool use
-Agent Trace Output (answer quality)
-6.6
-Multi-agent + MCP
-Agent Trace Governance (envelope breaches)
-6.7
-AI governance engineering
-Governance Agent Trace (deny patterns)
-6.8
-Capstone — production platform ALL SIX — full observatory dashboard
 
-Every lesson's first exercise begins with: "Run the observatory. Report the relevant lens readings. Then build."
+Prompting & structured output
+
+Output
+
+Attention (preview only — API models)
+
+6.2
+
+LoRA & adapters
+
+Alignment
+
+Attention + Output (attribution)
+
+6.3
+
+DPO & GRPO
+
+Alignment
+
+Output (bias-mitigated judging)
+
+6.4
+
+RAG systems
+
+Retrieval
+
+Output (faithfulness)
+
+6.5
+
+ReAct agents & tool use
+
+Agent Trace
+
+Output (answer quality)
+
+6.6
+
+Multi-agent + MCP
+
+Agent Trace
+
+Governance (envelope breaches)
+
+6.7
+
+AI governance engineering
+
+Governance
+
+Agent Trace (deny patterns)
+
+6.8
+
+Capstone — production platform
+
+ALL SIX — full observatory dashboard
+
+Every lesson's first exercise begins with: "Run the observatory. Report the relevant lens readings. Then
+build."
 
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 19
@@ -648,11 +780,13 @@ Five checks, then a decision.
 1. Run 10 probe prompts (smoke test, not full eval)
 2. Output lens — faithfulness & judge scores on the 10
 3. Retrieval lens (if RAG) — recall@5 + context utilisation
-4. Agent Trace lens (if agentic) — loop detection + cost budget
+4. Agent Trace lens (if agentic) — loop detection + cost
+budget
 5. Governance lens (always, if PACT wired) — verify_chain +
 envelope
-Decision: all pass → full eval. Any fails → open the relevant lens's
-deep-dive methods; change ONE thing; re-run.
+
+Decision: all pass → full eval. Any fails → open the relevant
+lens's deep-dive methods; change ONE thing; re-run.
 
 1. Run 10 probe prompts
 2. Output lens check
@@ -660,8 +794,8 @@ deep-dive methods; change ONE thing; re-run.
 re-run
 
 Cardinal rule: one change per iteration. Change prompt +
-retriever + judge model simultaneously and you cannot attribute
-the fix.
+retriever + judge model simultaneously and you cannot
+attribute the fix.
 
 4. Agent Trace (if agentic)
 5. Governance check
@@ -694,31 +828,24 @@ MLFP Module 6 — Terrene Open Academy
 HOW LLMS LEARN: PRE-TRAINING
 NEXT TOKEN PREDICTION (GPT-STYLE)
 
-Given tokens t , t , … , t , predict t
+Given tokens t1 , t2 , … , tn , predict tn+1
 Trained on trillions of tokens from the internet
-The model learns grammar, facts, reasoning — all
-from prediction
+The model learns grammar, facts, reasoning
+— all from prediction
 Autoregressive: each token depends on all
 previous tokens
-1
+​
 
 ​
 
-2
-
 ​
-
-n
-
-​
-
-n+1
 
 ​
 
 MASKED LANGUAGE MODELLING (BERT-STYLE)
 
-Mask 15% of tokens, predict the masked ones
+Mask 15% of tokens, predict the masked
+ones
 Bidirectional: sees both left and right context
 Better for classification; worse for generation
 
@@ -735,24 +862,28 @@ L = − ∑ log P (ti ∣ t1 , … , ti−1 ; θ)
 
 i=1
 
-Cross-entropy loss: maximise the probability of the next correct token
+Cross-entropy loss: maximise the probability of the next correct
+token
 
 Key insight: Pre-training does not teach the model to
-follow instructions. It teaches it to complete text. Alignment
-(RLHF/DPO) is what makes it helpful.
+follow instructions. It teaches it to complete text.
+Alignment (RLHF/DPO) is what makes it helpful.
 
 MLFP Module 6 — Terrene Open Academy
 22
 
-SCALING LAWS: PARAMETERS, DATA, COMPUTE
+THEORY
+
+SCALING LAWS: PARAMETERS, DATA, COMPUTE
 THE SCALING HYPOTHESIS
 
 Performance improves predictably with more
 parameters, data, and compute
 Kaplan et al. (2020): power-law relationship
 between loss and each factor
-Chinchilla (2022): optimal allocation is roughly
-equal scaling of params and data
+Chinchilla (2022): optimal allocation is
+roughly equal scaling of params and data
+
 α
 
 α
@@ -766,20 +897,48 @@ D
 
 ​
 
-THEORY
-
 NOTABLE MODELS
+Model
 
-Model Params
+Params
+
 Key Innovation
-GPT-4 ~1.8T (MoE) Mixture of Experts
-Claude Undisclosed Constitutional AI
-Llama 3 8B-405B Open weights, GQA
-Mistral 7B-8x22B Sliding window attn
-Gemma 2 2B-27B
+
+GPT-4
+
+~1.8T (MoE)
+
+Mixture of Experts
+
+Claude
+
+Undisclosed
+
+Constitutional AI
+
+Llama 3
+
+8B-405B
+
+Open weights, GQA
+
+Mistral
+
+7B-8x22B
+
+Sliding window attn
+
+Gemma 2
+
+2B-27B
+
 Knowledge distillation
+
 Phi-3
-3.8B-14B High-quality data curation
+
+3.8B-14B
+
+High-quality data curation
 
 ​
 
@@ -797,52 +956,56 @@ MLFP Module 6 — Terrene Open Academy
 THEORY
 
 FROM PREDICTION TO HELPFULNESS: RLHF
+Pre-trained LLM
 
-Pre-trained LLM → SFT (Supervised Fine-tuning) → Reward Model → PPO (RL) → Aligned LLM
+→ SFT (Supervised Fine-tuning) → Reward Model → PPO (RL) → Aligned LLM
 
 WHY RLHF?
 
-Pre-training optimises prediction, not helpfulness
+Pre-training optimises prediction, not
+helpfulness
 SFT teaches format (instruction following)
-RLHF teaches quality (prefer helpful, harmless,
-honest)
+RLHF teaches quality (prefer helpful,
+harmless, honest)
 
 THE COMPLEXITY PROBLEM
 
 Requires training a separate reward model
 PPO is notoriously unstable for LLMs
 Two models in memory: policy + reward
-Lesson 6.3 solution: DPO eliminates the reward
-model entirely
+Lesson 6.3 solution: DPO eliminates the
+reward model entirely
 
 MLFP Module 6 — Terrene Open Academy
 24
 
-PROMPT ENGINEERING: ZERO-SHOT & FEW-SHOT
+FOUNDATIONS
+
+PROMPT ENGINEERING: ZERO-SHOT & FEW-SHOT
 ZERO-SHOT
 
+FEW-SHOT
+
 Task description only. No examples.
+
+Provide examples to set the pattern.
+
 prompt = """Classify the sentiment of this review
 as 'positive' or 'negative':
-Review: "The food was terrible and the service slow.
+Review: "The food was terrible and the service slow."
 Sentiment:"""
 
 Works well for simple, well-defined tasks. Fails on
 ambiguous or domain-specific problems.
 
-FOUNDATIONS
-
-FEW-SHOT
-
-Provide examples to set the pattern.
-prompt = """Classify sentiment as 'positive' or 'neg
+prompt = """Classify sentiment as 'positive' or 'negative':
 Review: "Amazing experience!" -> positive
 Review: "Would not recommend." -> negative
-Review: "The food was terrible and the service slow.
+Review: "The food was terrible and the service slow."
 Sentiment:"""
 
-Few-shot is in-context learning: the model infers the task
-from examples without weight updates.
+Few-shot is in-context learning: the model infers the
+task from examples without weight updates.
 
 MLFP Module 6 — Terrene Open Academy
 25
@@ -871,18 +1034,22 @@ A: Let's think step by step."""
 Let's think step by step."""
 
 Kojima et al. (2022): Adding "Let's think step by step"
-improves accuracy on GSM8K from 17.7% to 78.7% (zeroshot CoT vs standard zero-shot).
+improves accuracy on GSM8K from 17.7% to 78.7%
+(zero-shot CoT vs standard zero-shot).
 
 MLFP Module 6 — Terrene Open Academy
 26
 
-SELF-CONSISTENCY & STRUCTURED PROMPTING
+THEORY
+
+SELF-CONSISTENCY & STRUCTURED PROMPTING
 SELF-CONSISTENCY
 
 Sample multiple CoT reasoning paths
 (temperature > 0)
 Majority vote on final answers
-More robust than single CoT — reduces variance
+More robust than single CoT — reduces
+variance
 
 # Sample 5 CoT paths, take majority answer
 answers = []
@@ -893,15 +1060,14 @@ prompt, temperature=0.7
 answers.append(extract_answer(response))
 final = majority_vote(answers)
 
-THEORY
-
 STRUCTURED OUTPUT
 
-Specify output format: JSON, tables, schemas
+Specify output format: JSON, tables,
+schemas
 Critical for production: free-form text is
 unparseable
-Kaizen Signature enforces this at the framework
-level
+Kaizen Signature enforces this at the
+framework level
 
 prompt = """Analyse this text and return JSON:
 {
@@ -915,32 +1081,67 @@ Text: "The quarterly results exceeded..."
 MLFP Module 6 — Terrene Open Academy
 27
 
-PROMPT ENGINEERING: THE COMPLETE TOOLKIT
+FOUNDATIONS
 
-FOUNDATIONS
-
+PROMPT ENGINEERING: THE COMPLETE TOOLKIT
 Technique
+
 When to Use
+
 Cost
+
 Accuracy Gain
+
 Zero-shot
+
 Simple, well-defined tasks
+
 Lowest
+
 Baseline
+
 Few-shot
-Pattern-matching, classification Low-Medium +10-30%
-CoT (few-shot) Multi-step reasoning
+
+Pattern-matching, classification
+
+Low-Medium
+
++10-30%
+
+CoT (few-shot)
+
+Multi-step reasoning
+
 Medium
+
 +20-60%
-Zero-shot CoT Reasoning without examples Low
-+15-50%
-Self-consistency High-stakes decisions
-High (Nx) +5-15% over CoT
-Structured output Production pipelines
+
+Zero-shot CoT
+
+Reasoning without examples
+
 Low
+
++15-50%
+
+Self-consistency
+
+High-stakes decisions
+
+High (Nx)
+
++5-15% over CoT
+
+Structured output
+
+Production pipelines
+
+Low
+
 Parseability, not accuracy
 
-Engineering rule: Start with zero-shot. Add few-shot if accuracy is insufficient. Add CoT if reasoning is needed. Add selfconsistency only if the cost is justified by the stakes.
+Engineering rule: Start with zero-shot. Add few-shot if accuracy is insufficient. Add CoT if reasoning is needed. Add
+self-consistency only if the cost is justified by the stakes.
 
 MLFP Module 6 — Terrene Open Academy
 28
@@ -959,6 +1160,7 @@ class SentimentSignature(Signature):
 review: str = InputField(description="Product review text")
 sentiment: str = OutputField(description="positive, negative, or neutral")
 confidence: float = OutputField(description="Confidence score 0.0 to 1.0")
+
 @dataclass
 class SentimentConfig:
 llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
@@ -966,17 +1168,21 @@ model: str = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 temperature: float = 0.2
 budget_limit_usd: float = 1.0
 class SentimentAgent(BaseAgent):
-def
-init (self, config: SentimentConfig):
+def __init__(self, config: SentimentConfig):
+super().__init__(config=config, signature=SentimentSignature())
 
-Why Signature? Free-form text output is brittle. Signature enforces a schema: the LLM must return typed fields. If it does
-Kaizen
-retries
-MLFPnot,
-Module 6
-— Terrene
-Open with
-Academycorrective prompting.
+agent = SentimentAgent(SentimentConfig())
+result = await agent.run_async(
+review="The battery life is incredible but the screen is dim."
+)
+print(result["sentiment"])
+# "mixed" or "neutral"
+print(result["confidence"])
+# 0.72
+
+Why Signature? Free-form text output is brittle. Signature enforces a schema: the LLM must return typed fields. If
+it does not, Kaizen retries with corrective prompting.
+MLFP Module 6 — Terrene Open Academy
 29
 
 ADVANCED
@@ -994,58 +1200,60 @@ computation during autoregressive
 generation. Reduces latency by 2-5x.
 
 Use a small draft model to propose
-tokens, then verify in batch with the large
-model. Acceptance rate typically 70-90%.
-Faster without quality loss.
+tokens, then verify in batch with the
+large model. Acceptance rate typically
+70-90%. Faster without quality loss.
 
-New requests join the batch as slots free
-up, rather than waiting for the entire batch
-to complete. Maximises GPU utilisation for
-serving.
+New requests join the batch as slots
+free up, rather than waiting for the
+entire batch to complete. Maximises
+GPU utilisation for serving.
 
-Production relevance: You will not implement these yourself. But understanding them explains why some APIs are faster than
-others and why batch pricing exists. Lesson 6.8 covers vLLM for production serving.
+Production relevance: You will not implement these yourself. But understanding them explains why some APIs are
+faster than others and why batch pricing exists. Lesson 6.8 covers vLLM for production serving.
 
 MLFP Module 6 — Terrene Open Academy
 30
 
-EXERCISE 6.1: PROMPT ENGINEERING SHOWDOWN
+FOUNDATIONS
 
-FOUNDATIONS
-
+EXERCISE 6.1: PROMPT ENGINEERING SHOWDOWN
 TASK
 
 Build a classification system using Kaizen
 Delegate
-Compare zero-shot vs few-shot vs CoT on the
-same dataset
-Measure cost and accuracy for each approach
+
+Compare zero-shot vs few-shot vs CoT on
+the same dataset
+Measure cost and accuracy for each
+approach
 Use Signature for all outputs
-
 ASSESSMENT CRITERIA
-
-All three prompting techniques demonstrated
-Accuracy comparison shows when each
-technique helps
-Cost tracking working — total spend reported
 
 # Skeleton
 import os
-from kaizen import Signature, InputField, OutputFiel
+from kaizen import Signature, InputField, OutputField
 from kaizen_agents import Delegate
 class ClassificationResult(Signature):
 """Classify news article topic."""
 article: str = InputField()
 topic: str = OutputField()
 reasoning: str = OutputField()
+
 delegate = Delegate(
-model=os.environ.get("LLM_MODEL", "gpt-4o-mini")
+model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
 budget_usd=0.50,
 signature=ClassificationResult,
 )
 # TODO: Implement zero_shot_classify()
 # TODO: Implement few_shot_classify()
-# TODO: Implement cot classify()
+# TODO: Implement cot_classify()
+# TODO: Compare accuracy & cost
+
+All three prompting techniques demonstrated
+Accuracy comparison shows when each
+technique helps
+Cost tracking working — total spend reported
 
 MLFP Module 6 — Terrene Open Academy
 31
@@ -1070,32 +1278,26 @@ MLFP Module 6 — Terrene Open Academy
 LORA: LOW-RANK ADAPTATION
 CORE IDEA
 
-Pre-trained weights W are frozen
+Pre-trained weights W0 are frozen
 Weight update decomposed into two small
 matrices
-Instead of updating all d × d parameters, learn d ×
-r and r × d
+Instead of updating all d × d parameters, learn
+d × r and r × d
 Rank r ≪ d — typically 4, 8, or 16
-0
-
 ​
 
-M4 Connection: LoRA IS SVD applied to weight updates.
-The low-rank matrices B and A approximate the full update
-ΔW just like truncated SVD approximates a matrix.
+M4 Connection: LoRA IS SVD applied to weight
+updates. The low-rank matrices B and A approximate
+the full update ΔW just like truncated SVD
+approximates a matrix.
 
 W = W0 + ΔW = W0 + BA
 ​
 
-W0 ∈ Rd×d
 ​
 
+W0 ∈ Rd×d (frozen) | B ∈ Rd×r | A ∈ Rr×d
 ​
-
-(frozen) | B ∈ R | A ∈ R
-d×r
-
-r×d
 
 h = W0 x + BAx
 ​
@@ -1104,13 +1306,13 @@ Forward pass: original output + low-rank adaptation
 
 Parameter savings: For d = 4096, r = 8: full update = 16.7M
 params. LoRA = 65K params. 256x reduction.
+
 MLFP Module 6 — Terrene Open Academy
 33
 
-LORA: FROM-SCRATCH IMPLEMENTATION
+THEORY
 
-THEORY
-
+LORA: FROM-SCRATCH IMPLEMENTATION
 import torch
 import torch.nn as nn
 class LoRALayer(nn.Module):
@@ -1121,6 +1323,7 @@ self.rank = rank
 # Frozen original weights
 self.linear = nn.Linear(in_features, out_features, bias=False)
 self.linear.weight.requires_grad = False
+
 # Low-rank matrices
 self.A = nn.Parameter(torch.randn(rank, in_features) * 0.01)
 self.B = nn.Parameter(torch.zeros(out_features, rank))
@@ -1132,8 +1335,8 @@ original = self.linear(x)
 adaptation = (x @ self.A.T) @ self.B.T # x @ A^T @ B^T = (BA)x
 return original + adaptation
 
-Why B=0? At initialisation, BA = 0, so the model starts as the original pre-trained model. Training gradually learns the
-adaptation. This is why LoRA is safe: you cannot make the model worse at the start.
+Why B=0? At initialisation, BA = 0, so the model starts as the original pre-trained model. Training gradually learns
+the adaptation. This is why LoRA is safe: you cannot make the model worse at the start.
 
 MLFP Module 6 — Terrene Open Academy
 34
@@ -1146,14 +1349,16 @@ ARCHITECTURE
 Insert small bottleneck modules between
 transformer layers
 Down-project → Non-linearity → Up-project
-Residual connection: if adapter output is zero,
-original behaviour preserved
+Residual connection: if adapter output is
+zero, original behaviour preserved
 Only adapter weights are trained; transformer
 weights frozen
 
-Input h → Down W
+Input h
 
-d
+→ Down
+
+Wd
 
 ​
 
@@ -1162,6 +1367,8 @@ d
 Wu
 
 ​
+
+→
 
 class AdapterLayer(nn.Module):
 def __init__(self, hidden_size: int,
@@ -1175,9 +1382,6 @@ bottleneck, hidden_size)
 # Init up-project near zero
 nn.init.zeros_(self.up.weight)
 nn.init.zeros_(self.up.bias)
-
-→
-
 def forward(self, x: torch.Tensor):
 residual = x
 x = self.down(x)
@@ -1190,77 +1394,130 @@ h + f (h)
 MLFP Module 6 — Terrene Open Academy
 35
 
-LORA VS ADAPTERS: HEAD-TO-HEAD
+THEORY
 
-THEORY
-
+LORA VS ADAPTERS: HEAD-TO-HEAD
 Dimension
+
 LoRA
+
 Adapters
-Parameter update Low-rank additive (W + BA)
+
+Parameter update
+
+Low-rank additive (W0 + BA)
+
 Bottleneck modules (down/up projection)
-Parameter efficiency Higher (rank controls size)
+
+Parameter efficiency
+
+Higher (rank controls size)
+
 Lower (bottleneck size controls)
-Inference latency Zero overhead (merge weights) Adds sequential computation per layer
+
+Inference latency
+
+Zero overhead (merge weights)
+
+Adds sequential computation per layer
+
 Modularity
+
 Can merge into base weights
+
 Separate modules, hot-swappable
+
 Flexibility
+
 Applied to any weight matrix
+
 Inserted at fixed positions
+
 Typical use
-Production fine-tuning (dominant) Multi-task serving (swap adapters)
-0
+
+Production fine-tuning (dominant)
+
+Multi-task serving (swap adapters)
 
 ​
 
-Engineering verdict: LoRA dominates production use because merged weights have zero inference overhead. Adapters
-remain useful when you need to swap between many tasks without reloading the model.
+Engineering verdict: LoRA dominates production use because merged weights have zero inference overhead.
+Adapters remain useful when you need to swap between many tasks without reloading the model.
 
 MLFP Module 6 — Terrene Open Academy
 36
 
-THE FINE-TUNING LANDSCAPE: 10 TECHNIQUES
+THEORY
+
+THE FINE-TUNING LANDSCAPE: 10 TECHNIQUES
 Technique
-LoRA
-Adapters
-Prefix Tuning
-Prompt Tuning
-Full Fine-tuning
-LLRD
-Progressive Freezing
-Distillation
-DP-SGD
-EWC
 
 What Changes
-Low-rank matrices
-Bottleneck modules
-K/V prefix vectors
-Soft prompt tokens
-All parameters
-All params, variable LR
-Top layers first
-Student model
-All params + noise
-All params + Fisher penalty
-
-THEORY
 
 Key Idea
+
+LoRA
+
+Low-rank matrices
+
 Additive weight decomposition
+
+Adapters
+
+Bottleneck modules
+
 Sequential down/up projection
+
+Prefix Tuning
+
+K/V prefix vectors
+
 Task-specific attention context
+
+Prompt Tuning
+
+Soft prompt tokens
+
 Learnable input embeddings
+
+Full Fine-tuning
+
+All parameters
+
 LR scheduler + gradient clipping + mixed precision
+
+LLRD
+
+All params, variable LR
+
 Lower LR for earlier (general) layers
+
+Progressive Freezing
+
+Top layers first
+
 Unfreeze top-down over epochs
+
+Distillation
+
+Student model
+
 Teacher soft labels + KL divergence
+
+DP-SGD
+
+All params + noise
+
 Gradient noise for privacy guarantees
+
+EWC
+
+All params + Fisher penalty
+
 Prevent catastrophic forgetting
 
-Decision rule: Start with LoRA (fastest, cheapest). Full fine-tuning only if domain is very different from pre-training data.
-Distillation for deployment on constrained hardware. DP-SGD when privacy is a legal requirement.
+Decision rule: Start with LoRA (fastest, cheapest). Full fine-tuning only if domain is very different from pre-training
+data. Distillation for deployment on constrained hardware. DP-SGD when privacy is a legal requirement.
 MLFP Module 6 — Terrene Open Academy
 37
 
@@ -1279,77 +1536,88 @@ Trim small values, elect sign by
 majority, merge. Resolves sign
 conflicts between adapters.
 
-Drop and rescale: randomly drop
-weight deltas, rescale survivors.
-Reduces interference.
+Drop and rescale: randomly
+drop weight deltas, rescale
+survivors. Reduces
+interference.
 
 Spherical linear interpolation
-between weight vectors. Smooth
-blending of two models.
+between weight vectors.
+Smooth blending of two
+models.
 
 Add or subtract task vectors:
-τ = W − W . Combine: W =
-W + λ(τ + τ ).
-ft
-
-0
-
+τ = Wft − W0 . Combine: W =
+W0 + λ(τ1 + τ2 ).
 ​
 
-0
-
 ​
-
-1
 
 ​
 
 ​
 
-2
-
 ​
 
-Application: Train separate LoRA adapters for sentiment analysis and summarisation. Merge them with TIES to get a model
-that does both — without retraining.
+Application: Train separate LoRA adapters for sentiment analysis and summarisation. Merge them with TIES to get a
+model that does both — without retraining.
 
 MLFP Module 6 — Terrene Open Academy
 38
 
-QUANTISATION: RUNNING LARGE MODELS ON SMALL HARDWARE
+ADVANCED
+
+QUANTISATION: RUNNING LARGE MODELS ON SMALL HARDWARE
 QUANTISATION METHODS
-
 Method
-Bits Approach
-GPTQ
-4-bit Post-training, layer-wise
-AWQ
-4-bit Activation-aware weights
-GGUF
-2-8 bit CPU-optimised format
-bitsandbytes 4/8-bit Dynamic quantisation
 
-ADVANCED
+Bits
+
+Approach
+
+GPTQ
+
+4-bit
+
+Post-training, layer-wise
+
+AWQ
+
+4-bit
+
+Activation-aware weights
+
+GGUF
+
+2-8 bit
+
+CPU-optimised format
+
+bitsandbytes
+
+4/8-bit
+
+Dynamic quantisation
 
 QLORA: THE BEST OF BOTH
 
 Quantise base model to 4-bit (NF4 datatype)
 Add LoRA adapters in full precision (BF16)
 Train LoRA while base stays quantised
-Result: Fine-tune a 65B model on a single 48GB
-GPU
+Result: Fine-tune a 65B model on a single
+48GB GPU
 
 Dettmers et al. (2023): QLoRA matches full 16-bit finetuning quality while using 4x less memory.
 
 MLFP Module 6 — Terrene Open Academy
 39
 
-KAILASH-ALIGN: FINE-TUNING WITH ALIGNMENTPIPELINE
+FOUNDATIONS
 
-FOUNDATIONS
-
+KAILASH-ALIGN: FINE-TUNING WITH ALIGNMENTPIPELINE
 ALIGNMENTPIPELINE — FROM THEORY TO ONE CALL
 from kailash_align import AlignmentPipeline, AlignmentConfig, AdapterRegistry
+
 # Configure LoRA fine-tuning
 config = AlignmentConfig(
 method="lora",
@@ -1382,20 +1650,22 @@ TASKS
 2. Implement AdapterLayer from scratch
 3. Fine-tune on IMDB sentiment with both
 approaches
-4. Compare: accuracy, parameter count, training time
+4. Compare: accuracy, parameter count,
+training time
 5. Merge two LoRA adapters with TIES
 
 ASSESSMENT CRITERIA
 
 Both from-scratch implementations produce
 correct gradients
-LoRA achieves comparable accuracy to full finetuning
+LoRA achieves comparable accuracy to full
+fine-tuning
 Quantitative comparison table produced
 Merged model retains both capabilities
 
 Common mistake: Forgetting to freeze the original
-weights. If W_0.requires_grad = True, you are doing
-full fine-tuning, not LoRA.
+weights. If W_0.requires_grad = True, you are
+doing full fine-tuning, not LoRA.
 
 MLFP Module 6 — Terrene Open Academy
 41
@@ -1418,56 +1688,42 @@ MLFP Module 6 — Terrene Open Academy
 DPO: DIRECT PREFERENCE OPTIMIZATION
 FROM RLHF TO DPO
 
-RLHF objective: maximise reward while staying
-close to reference policy
-π (y ∣x)
-π (y ∣x)
-L
-=
-[
-log
-σ
-(
-β
-log
-−
-β
-log
-)
-−E
+RLHF objective: maximise reward while
+staying close to reference policy
+πθ (yw ∣x)
+πθ (yl ∣x)
+LDPO = −E [log σ (β log
+− β log
+)]
+πref (yw ∣x)
+πref (yl ∣x)
 Rafailov et al. (2023): the optimal policy has a
-π (y ∣x)
-π (y ∣x)
 closed-form solution
-Rearranging: we can express the reward in terms
-= preferred response | = rejected response | = deviation
-of the policy directly
-penalty
-Result: train directly on preference pairs — no
-Intuition: Increase probability of relative to reference.
-reward model needed
-Decrease probability of relative to reference. controls how far
-DPO
+y = preferred response | y = rejected response | β = deviation penalty
+Rearranging: we can express the reward in
+terms of the policy directly
+Intuition: Increase probability of yw relative to reference.
+Decrease probability of yl relative to reference. β controls
+Result: train directly on preference pairs —
+how far the policy can deviate.
+no reward model needed
+​
 
-yw
+​
 
-θ
+​
+
+​
+
+​
+
+​
+
+​
 
 w
 
-l
-
-θ
-
 ​
-
-ref
-
-yl
-
-​
-
-the policy can deviate.
 
 l
 
@@ -1477,45 +1733,15 @@ l
 
 ​
 
-yl
-
-​
-
-w
-
-​
-
-​
-
-ref
-
-​
-
-​
-
-l
-
-​
-
-β
-
-​
-
-yw
-
-Bradley-Terry model: The probability that response y is
-preferred over y follows a logistic function of their reward
-difference.
-
-w
-
 ​
 
 ​
 
 ​
 
-β
+Bradley-Terry model: The probability that response yw
+is preferred over yl follows a logistic function of their
+reward difference.
 
 ​
 
@@ -1524,10 +1750,9 @@ w
 MLFP Module 6 — Terrene Open Academy
 43
 
-DPO: TRAINING LOOP
+THEORY
 
-THEORY
-
+DPO: TRAINING LOOP
 import torch
 import torch.nn.functional as F
 def dpo_loss(
@@ -1545,6 +1770,7 @@ chosen_rewards = beta * (policy_chosen_logps - ref_chosen_logps)
 rejected_rewards = beta * (policy_rejected_logps - ref_rejected_logps)
 loss = -F.logsigmoid(chosen_rewards - rejected_rewards).mean()
 return loss
+
 # Training loop (simplified)
 for batch in preference_dataloader:
 chosen_logps = model.log_prob(batch["chosen"])
@@ -1559,44 +1785,64 @@ optimizer.step()
 MLFP Module 6 — Terrene Open Academy
 44
 
-GRPO: GROUP RELATIVE POLICY OPTIMIZATION
+ADVANCED
+
+GRPO: GROUP RELATIVE POLICY OPTIMIZATION
 KEY INNOVATION (DEEPSEEK-R1, 2025)
 
 Sample G completions for each prompt
 Score each completion with a verifier (not a
 learned reward model)
 Compute advantage relative to group mean
-Update policy with clipped objective (like PPO, but
-group-normalised)
+Update policy with clipped objective (like
+PPO, but group-normalised)
+
 ri − mean(r)
 A^i =
 std(r)
+​
 
-ADVANCED
+​
+
+​
 
 DPO VS GRPO
-
 Aspect
+
 DPO
+
 GRPO
+
 Input data
-Preference pairs Single prompts
-Reward signal Implicit (from pairs) Verifier scores
+
+Preference pairs
+
+Single prompts
+
+Reward
+signal
+
+Implicit (from
+pairs)
+
+Verifier scores
+
 Best for
-Subjective quality Objective tasks (code, math)
+
+Subjective quality
+
+Objective tasks (code,
+math)
+
 Stability
+
 Very stable
+
 Stable (group norm)
 
-When to use GRPO: Tasks with verifiable answers (code
-passes tests, math has correct answer). DPO is better for
-open-ended quality alignment.
-
-​
-
-​
-
-​
+When to use GRPO: Tasks with verifiable answers
+(code passes tests, math has correct answer). DPO is
+better for open-ended quality alignment.
 
 Advantage of completion i relative to group statistics
 
@@ -1618,56 +1864,84 @@ Return JSON:
 "score_a": 1-5, "score_b": 1-5}"""
 
 KNOWN BIASES
-
 Bias
-Mitigation
-Position bias
-Swap A/B order, average scores
-Verbosity bias
-Normalise by response length
-Self-enhancement Use different model as judge
 
-Never trust a single judge call. Always: swap positions,
-run multiple times, aggregate. LLM-as-judge is a statistical
-estimator, not a deterministic oracle.
+Mitigation
+
+Position bias
+
+Swap A/B order, average scores
+
+Verbosity bias
+
+Normalise by response length
+
+Self-enhancement
+
+Use different model as judge
+
+Never trust a single judge call. Always: swap
+positions, run multiple times, aggregate. LLM-as-judge
+is a statistical estimator, not a deterministic oracle.
 
 MLFP Module 6 — Terrene Open Academy
 46
 
-EVALUATION BENCHMARKS
+ADVANCED
 
-ADVANCED
+EVALUATION BENCHMARKS
+Benchmark
 
-Benchmark Measures
+Measures
+
 Task Type
+
 MMLU
-Multi-task language understanding 57 subjects, multiple choice
-HellaSwag Commonsense reasoning
+
+Multi-task language understanding
+
+57 subjects, multiple choice
+
+HellaSwag
+
+Commonsense reasoning
+
 Sentence completion
-HumanEval Code generation
+
+HumanEval
+
+Code generation
+
 Python function completion
-MT-Bench Multi-turn conversation quality
+
+MT-Bench
+
+Multi-turn conversation quality
+
 LLM-as-judge scoring
+
 GSM8K
+
 Grade-school math reasoning
+
 Word problems
+
 # lm-eval-harness: unified evaluation framework
 pip install lm-eval
 lm_eval --model hf --model_args pretrained=my-model \
 --tasks mmlu,hellaswag,gsm8k --batch_size 8
 
-Best practice: Run benchmarks before and after alignment. If MMLU drops more than 2%, your alignment is degrading
-general capability. This is the alignment tax.
-
+Best practice: Run benchmarks before and after alignment. If MMLU drops more than 2%, your alignment is
+degrading general capability. This is the alignment tax.
 MLFP Module 6 — Terrene Open Academy
 47
 
-KAILASH-ALIGN: DPO TRAINING
+FOUNDATIONS
 
-FOUNDATIONS
-
+KAILASH-ALIGN: DPO TRAINING
 ALIGNMENTPIPELINE WITH METHOD="DPO"
 from kailash_align import AlignmentPipeline, AlignmentConfig
+
 config = AlignmentConfig(
 method="dpo",
 model_name="meta-llama/Llama-3-8B",
@@ -1695,18 +1969,22 @@ MLFP Module 6 — Terrene Open Academy
 EXERCISE 6.3: PREFERENCE ALIGNMENT
 TASKS
 
-1. Fine-tune a model with DPO on preference data
-2. Evaluate using LLM-as-judge (measure position
-and verbosity bias)
+1. Fine-tune a model with DPO on preference
+data
+2. Evaluate using LLM-as-judge (measure
+position and verbosity bias)
 3. Run lm-eval benchmarks before and after
 alignment
-4. Report the alignment tax (capability degradation)
+4. Report the alignment tax (capability
+degradation)
 
 ASSESSMENT CRITERIA
 
 DPO training converges (loss decreases)
-LLM-as-judge biases measured and mitigated
-Benchmarks show alignment impact quantitatively
+LLM-as-judge biases measured and
+mitigated
+Benchmarks show alignment impact
+quantitatively
 Win rate vs reference model reported
 
 MLFP Module 6 — Terrene Open Academy
@@ -1728,27 +2006,30 @@ MLFP Module 6 — Terrene Open Academy
 FOUNDATIONS
 
 RAG: RETRIEVAL-AUGMENTED GENERATION
+Documents
 
-Documents → Chunk → Embed → Index → Query → Retrieve → Generate
+→ Chunk → Embed → Index → Query → Retrieve → Generate
 
 WHY RAG?
 
-LLMs have a knowledge cutoff — no real-time
-information
-LLMs hallucinate — confidently wrong answers
+LLMs have a knowledge cutoff — no realtime information
+LLMs hallucinate — confidently wrong
+answers
 RAG grounds the model in actual documents
-Cheaper than fine-tuning: update documents, not
-weights
+Cheaper than fine-tuning: update
+documents, not weights
 
 THE CORE PATTERN
 
-1. Offline: Chunk documents, embed chunks, store
-in vector DB
-2. Online: Embed user query, retrieve similar chunks
-3. Generate: Pass query + retrieved chunks to LLM
+1. Offline: Chunk documents, embed chunks,
+store in vector DB
+2. Online: Embed user query, retrieve similar
+chunks
+3. Generate: Pass query + retrieved chunks to
+LLM
 
-RAG is an open-book exam for the LLM: it can look up the
-answer instead of relying on memory.
+RAG is an open-book exam for the LLM: it can look up
+the answer instead of relying on memory.
 
 MLFP Module 6 — Terrene Open Academy
 51
@@ -1756,30 +2037,58 @@ MLFP Module 6 — Terrene Open Academy
 THEORY
 
 CHUNKING STRATEGIES
+Strategy
 
-Strategy Method
+Method
+
 Pros
-Cons
-Fixed-size Split every N tokens
-Simple, predictable Breaks mid-sentence
-Sentence Split on sentence boundaries
-Coherent units
-Variable size
-Paragraph Split on paragraph breaks
-Preserves context Can be too large
-Semantic Embed sentences, cluster similar Meaning-preserving Expensive to compute
-OVERLAP
 
-Chunks overlap by 10-20% to preserve context at
-boundaries. Without overlap, a fact split across two
-chunks is lost to both.
+Cons
+
+Fixed-size
+
+Split every N tokens
+
+Simple, predictable
+
+Breaks mid-sentence
+
+Sentence
+
+Split on sentence boundaries
+
+Coherent units
+
+Variable size
+
+Paragraph
+
+Split on paragraph breaks
+
+Preserves context
+
+Can be too large
+
+Semantic
+
+Embed sentences, cluster similar
+
+Meaning-preserving
+
+Expensive to compute
+
+OVERLAP
 
 CHUNK SIZE TRADEOFFS
 
+Chunks overlap by 10-20% to preserve context at
+boundaries. Without overlap, a fact split across
+two chunks is lost to both.
+
 Small chunks (128-256 tokens): precise retrieval,
 more noise.
-Large chunks (512-1024 tokens): more context, less
-precise matching.
+Large chunks (512-1024 tokens): more context,
+less precise matching.
 Sweet spot: 256-512 tokens for most use cases.
 
 MLFP Module 6 — Terrene Open Academy
@@ -1800,13 +2109,13 @@ cosine similarity. Captures semantic
 meaning.
 
 Term frequency + inverse document
-frequency. Exact keyword matching. Fast,
-interpretable, no GPU needed.
+frequency. Exact keyword matching.
+Fast, interpretable, no GPU needed.
 
 Combine dense + sparse scores.
 Reciprocal rank fusion. Best of both
-worlds: semantic understanding + exact
-matching.
+worlds: semantic understanding +
+exact matching.
 
 from sentence_transformers import (
 SentenceTransformer)
@@ -1842,8 +2151,8 @@ CROSS-ENCODER RE-RANKING
 First-stage retrieval: fast but approximate (biencoder)
 Second-stage re-ranking: slow but accurate
 (cross-encoder)
-Cross-encoder sees query + document together
-— much better relevance scoring
+Cross-encoder sees query + document
+together — much better relevance scoring
 
 from sentence_transformers import (
 CrossEncoder)
@@ -1858,12 +2167,12 @@ HYDE (HYPOTHETICAL DOCUMENT EMBEDDINGS)
 
 Problem: query and document are in different
 "language spaces"
-Solution: ask the LLM to generate a hypothetical
-answer
-Embed the hypothetical answer instead of the
-query
-The hypothetical answer is in "document space"
-— better cosine similarity
+Solution: ask the LLM to generate a
+hypothetical answer
+Embed the hypothetical answer instead of
+the query
+The hypothetical answer is in "document
+space" — better cosine similarity
 
 hypothetical = delegate.generate(
 f"Write a passage that answers: {query}"
@@ -1874,23 +2183,42 @@ hyde_embedding = model.encode(hypothetical)
 MLFP Module 6 — Terrene Open Academy
 54
 
-RAGAS: RAG EVALUATION FRAMEWORK
+THEORY
 
-THEORY
-
+RAGAS: RAG EVALUATION FRAMEWORK
 Metric
+
 Measures
+
 How
+
 Faithfulness
-Is the answer supported by retrieved context? LLM checks each claim against context
-Answer Relevance Does the answer address the question?
+
+Is the answer supported by retrieved context?
+
+LLM checks each claim against context
+
+Answer Relevance
+
+Does the answer address the question?
+
 Generate questions from answer, compare to original
-Context Relevance Are retrieved chunks relevant to the question? LLM scores each chunk's relevance
+
+Context Relevance
+
+Are retrieved chunks relevant to the question?
+
+LLM scores each chunk's relevance
+
 Context Recall
+
 Did we retrieve all needed information?
+
 Compare retrieved context to ground truth
+
 from ragas import evaluate
 from ragas.metrics import faithfulness, answer_relevancy, context_relevancy
+
 results = evaluate(
 dataset=eval_dataset, # questions + ground truth + retrieved contexts + answers
 metrics=[faithfulness, answer_relevancy, context_relevancy],
@@ -1905,7 +2233,8 @@ MLFP Module 6 — Terrene Open Academy
 EXERCISE 6.4: BUILD A RAG SYSTEM
 TASKS
 
-1. Build RAG system on Singapore policy documents
+1. Build RAG system on Singapore policy
+documents
 2. Implement BM25, dense, and hybrid retrieval
 3. Evaluate with RAGAS metrics
 4. Implement HyDE and measure improvement
@@ -1913,7 +2242,8 @@ TASKS
 ASSESSMENT CRITERIA
 
 RAG pipeline end-to-end functional
-Three retrieval methods compared quantitatively
+Three retrieval methods compared
+quantitatively
 RAGAS metrics computed for each approach
 HyDE measurably improves retrieval quality
 
@@ -1941,27 +2271,41 @@ MLFP Module 6 — Terrene Open Academy
 WHAT IS AN AI AGENT?
 THE CORE LOOP
 
-Observe → Think → Act → Observe
+Observe
+
+→ Think → Act → Observe
+
 Repeat until task is complete or budget is exhausted.
 
 An agent is an LLM that can use tools. Instead of just
-generating text, it can search the web, run code, query
-databases, call APIs.
+generating text, it can search the web, run code,
+query databases, call APIs.
 
 AGENT VS PIPELINE
-
 Pipeline
-Agent
-Fixed sequence of steps Dynamic: decides next step
-Deterministic
-Non-deterministic
-Fast, predictable
-Flexible, adaptive
-Use when path is known Use when path varies
 
-Engineering rule: If a pipeline can solve it, do not use an
-agent. Agents add complexity and cost. Use agents when
-the problem requires reasoning about which tools to use.
+Agent
+
+Fixed sequence of steps
+
+Dynamic: decides next step
+
+Deterministic
+
+Non-deterministic
+
+Fast, predictable
+
+Flexible, adaptive
+
+Use when path is known
+
+Use when path varies
+
+Engineering rule: If a pipeline can solve it, do not use
+an agent. Agents add complexity and cost. Use agents
+when the problem requires reasoning about which
+tools to use.
 
 MLFP Module 6 — Terrene Open Academy
 58
@@ -1974,42 +2318,40 @@ THE REACT LOOP
 Thought: I need to find the average HDB price in 2024.
 Action:
 
-data_explorer.describe(df.filter(pl.col("ye
-ar") == 2024))
+data_explorer.describe(df.filter(pl.col("year
+") == 2024))
 
 Observation: Mean price: $523,000. Median: $480,000.
 Count: 12,345.
-Thought: I have the average. Now I should check the trend
-over the last 5 years.
+Thought: I have the average. Now I should check the
+trend over the last 5 years.
 Action: visualizer.line_chart(df, x="year",
+y="price")
 
 WHY EXPLICIT REASONING?
 
-Without "Thought" steps, agents make random
-tool calls
-Reasoning before acting improves tool selection
-accuracy
-The trace is debuggable: you can see why the
-agent did what it did
+Without "Thought" steps, agents make
+random tool calls
+Reasoning before acting improves tool
+selection accuracy
+The trace is debuggable: you can see why
+the agent did what it did
 
-Yao et al. (2023): ReAct outperforms act-only agents on
-HotpotQA by 6% and reduces hallucination rate by 40%.
-The "Thought" step is not overhead; it is the mechanism.
-
-y="price")
+Yao et al. (2023): ReAct outperforms act-only agents
+on HotpotQA by 6% and reduces hallucination rate by
+40%. The "Thought" step is not overhead; it is the
+mechanism.
 
 Observation: Upward trend from $420K (2020) to $523K
 (2024).
-Thought:
-haveOpenenough
-MLFP
-Module 6 — ITerrene
-Academyinformation to answer the user's
+Thought: I have enough information to answer the user's
 question.
-
+MLFP Module 6 — Terrene Open Academy
 59
 
-FUNCTION CALLING: STRUCTURED TOOL USE
+THEORY
+
+FUNCTION CALLING: STRUCTURED TOOL USE
 JSON SCHEMA DEFINITIONS
 tools = [{
 "name": "search_database",
@@ -2030,24 +2372,31 @@ tools = [{
 }
 }]
 
-THEORY
-
 TOOL CHOICE PARAMETER
-
 Value
 
 Behaviour
+
 auto
+
 Model decides whether to call a tool
-required Must call at least one tool
-specific Must call a named tool
+
+required
+
+Must call at least one tool
+
+specific
+
+Must call a named tool
+
 PARALLEL FUNCTION CALLING
 
-Models can invoke multiple tools simultaneously when
-the calls are independent. Reduces latency for multitool queries.
-Function calling is how agents actually do things. The LLM
-generates a structured JSON call; your code executes it
-and returns the result.
+Models can invoke multiple tools simultaneously
+when the calls are independent. Reduces latency
+for multi-tool queries.
+Function calling is how agents actually do things. The
+LLM generates a structured JSON call; your code
+executes it and returns the result.
 
 MLFP Module 6 — Terrene Open Academy
 60
@@ -2057,34 +2406,35 @@ MLFP Module 6 — Terrene Open Academy
 AGENT DESIGN: THE HIRING FRAMEWORK
 FOUR QUESTIONS
 
-1. What is our goal? Clear, measurable outcome
+1. What is our goal? Clear, measurable
+outcome
 2. What is our thought process? Step-by-step
 reasoning
-3. What specialist would we hire? Be sharp: "HR
-research specialist" not "researcher"
+3. What specialist would we hire? Be sharp:
+"HR research specialist" not "researcher"
 4. What tools do they need? Versatile, faulttolerant, caching
 
 DESIGN CONSIDERATIONS
 
 Iterative refinement: Add a critic agent that
-reviews output and recommends improvements
+reviews output and recommends
+improvements
 Human-in-the-loop: Pause workflow for
 validation on high-stakes decisions
-Monitoring: Real-time tracking of intermediate
-outputs for debugging
-Cost budget: Set a maximum spend per task to
-prevent runaway API calls
+Monitoring: Real-time tracking of
+intermediate outputs for debugging
+Cost budget: Set a maximum spend per task
+to prevent runaway API calls
 
-Think like a hiring manager: You would not hire a "general analyst." You would hire a "financial fraud investigator with
-experience in transaction pattern analysis." The more specific your agent's role, the better it performs.
+Think like a hiring manager: You would not hire a "general analyst." You would hire a "financial fraud investigator
+with experience in transaction pattern analysis." The more specific your agent's role, the better it performs.
 
 MLFP Module 6 — Terrene Open Academy
 61
 
-KAIZEN: BUILDING AGENTS
+FOUNDATIONS
 
-FOUNDATIONS
-
+KAIZEN: BUILDING AGENTS
 BASEAGENT — CUSTOM AGENT WITH TOOLS
 import os
 from kaizen_agents.agents.specialized.react import ReActAgent
@@ -2097,6 +2447,7 @@ def train_model(dataset: str, target: str) -> dict:
 pipeline = TrainingPipeline(task="classification")
 result = pipeline.fit(dataset, target=target)
 return {"accuracy": result.accuracy, "model_id": result.model_id}
+
 agent = ReActAgent(
 model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
 tools=[explore_data, train_model],
@@ -2110,27 +2461,28 @@ result = await agent.run(
 MLFP Module 6 — Terrene Open Academy
 62
 
-COST BUDGETS: PREVENTING RUNAWAY SPENDING
+FOUNDATIONS
+
+COST BUDGETS: PREVENTING RUNAWAY SPENDING
 THE PROBLEM
 
 Agents make LLM calls in a loop
-A confused agent can make hundreds of calls
-before realising it is stuck
+A confused agent can make hundreds of
+calls before realising it is stuck
 At $0.003/call, 500 calls = $1.50 per request
 Production system with 10K daily users =
 $15,000/day
-
-FOUNDATIONS
 
 THE SOLUTION: MAX_LLM_COST_USD
 import os
 from kaizen_agents.agents.specialized.react import (
 ReActAgent,
 )
+
 # Budget lives on the agent itself — no
 # separate LLMCostTracker class in 2.7.
 agent = ReActAgent(
-model=os.environ.get("LLM_MODEL", "gpt-4o-mini")
+model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
 tools=[explore_data, train_model],
 max_llm_cost_usd=0.50,
 )
@@ -2141,8 +2493,8 @@ max_llm_cost_usd=0.50,
 result = await agent.run("Analyse HDB data")
 print(result)
 
-Non-negotiable in production: Every agent must have a cost budget. No exceptions. An unbounded agent is a financial
-liability.
+Non-negotiable in production: Every agent must have a cost budget. No exceptions. An unbounded agent is a
+financial liability.
 MLFP Module 6 — Terrene Open Academy
 63
 
@@ -2152,7 +2504,8 @@ EXERCISE 6.5: BUILD A DATA ANALYSIS AGENT
 TASKS
 
 1. Build ReAct agent wrapping DataExplorer,
-TrainingPipeline, and ModelVisualizer as tools
+TrainingPipeline, and ModelVisualizer as
+tools
 2. Agent autonomously: explores data, selects
 model, trains, reports
 3. Implement cost budget enforcement
@@ -2160,10 +2513,11 @@ model, trains, reports
 
 ASSESSMENT CRITERIA
 
-Agent reasons through steps (not random tool
-calls)
+Agent reasons through steps (not random
+tool calls)
 Tools correctly invoked with valid parameters
-Cost budget respected — agent stops gracefully
+Cost budget respected — agent stops
+gracefully
 Results interpretable and correct
 
 MLFP Module 6 — Terrene Open Academy
@@ -2206,27 +2560,27 @@ Best for: pipeline-like tasks
 Multiple agents work
 simultaneously. Results
 aggregated. Best for:
-independent sub-tasks (search +
-compute + visualise).
+independent sub-tasks (search
++ compute + visualise).
 
 Agent transfers to specialist
 when topic changes. Stateful:
 context passed along. Best for:
 multi-domain conversations.
 
-Decision rule: Start with sequential (simplest). Add parallelism if sub-tasks are independent. Use supervisor-worker only when
-task decomposition is dynamic.
+Decision rule: Start with sequential (simplest). Add parallelism if sub-tasks are independent. Use supervisor-worker
+only when task decomposition is dynamic.
 
 MLFP Module 6 — Terrene Open Academy
 66
 
-MULTI-AGENT: SUPERVISOR-WORKER IN KAIZEN
+THEORY
 
-THEORY
-
+MULTI-AGENT: SUPERVISOR-WORKER IN KAIZEN
 KAIZEN MULTI-AGENT ORCHESTRATION
 import os
 from kaizen_agents import Delegate, Pipeline
+
 data_scientist = Delegate(
 model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
 tools=[explore_data],
@@ -2259,22 +2613,23 @@ LONG-TERM MEMORY
 ENTITY MEMORY
 
 Current conversation context. Managed
-by the LLM's context window. Lost when
-the session ends. Used for: multi-turn
-reasoning within one task.
+by the LLM's context window. Lost
+when the session ends. Used for:
+multi-turn reasoning within one task.
 
 Persistent knowledge across sessions.
-Stored in a vector database. Retrieved by
-semantic similarity. Used for: learning
-from past interactions.
+Stored in a vector database. Retrieved
+by semantic similarity. Used for:
+learning from past interactions.
 
 Structured knowledge about specific
-entities (people, projects, datasets). Keyvalue store with entity extraction. Used
-for: maintaining facts about recurring
-subjects.
+entities (people, projects, datasets).
+Key-value store with entity extraction.
+Used for: maintaining facts about
+recurring subjects.
 
-Production pattern: Short-term memory for the current task. Long-term memory for domain knowledge. Entity memory for
-user-specific context. Never rely on context window alone for production agents.
+Production pattern: Short-term memory for the current task. Long-term memory for domain knowledge. Entity
+memory for user-specific context. Never rely on context window alone for production agents.
 
 MLFP Module 6 — Terrene Open Academy
 68
@@ -2284,23 +2639,24 @@ MLFP Module 6 — Terrene Open Academy
 MCP: MODEL CONTEXT PROTOCOL
 WHAT IS MCP?
 
-Standardised protocol for exposing tools to AI
-agents
+Standardised protocol for exposing tools to
+AI agents
 Tool registration with JSON schemas
 Transport: stdio (local) or HTTP/SSE (remote)
-Any agent from any framework can use your MCP
-server
+Any agent from any framework can use your
+MCP server
 
 WHY MCP?
 
-Without MCP: every agent framework has its own
-tool format
+Without MCP: every agent framework has its
+own tool format
 With MCP: one server, any client
-Like REST APIs for humans, MCP is APIs for AI
-agents
+Like REST APIs for humans, MCP is APIs for
+AI agents
 
 from kailash_mcp import MCPServer, tool
 from kailash_ml import DataExplorer
+
 server = MCPServer("ml-tools")
 @server.tool
 def profile_dataset(
@@ -2328,23 +2684,22 @@ MLFP Module 6 — Terrene Open Academy
 A2A: AGENT-TO-AGENT COMMUNICATION
 STRUCTURED COMMUNICATION
 
-Agents exchange typed messages, not free-form
-text
-Agent Cards: metadata about capabilities, tools,
-supported tasks
-Task lifecycle: submit → working → input-required
-→ completed
+Agents exchange typed messages, not freeform text
+Agent Cards: metadata about capabilities,
+tools, supported tasks
+Task lifecycle: submit → working → inputrequired → completed
 Streaming support for long-running tasks
 
 SECURITY CONSIDERATIONS
 
 Data leakage: Agents must not share data
 beyond their authorisation
-Prompt injection: One agent's output becomes
-another's input — sanitise
-Escalation attacks: Agent A asks Agent B to do
-something Agent A is not allowed to do
-Lesson 6.7: PACT governance solves all three
+Prompt injection: One agent's output
+becomes another's input — sanitise
+Escalation attacks: Agent A asks Agent B to
+do something Agent A is not allowed to do
+Lesson 6.7: PACT governance solves all
+three
 
 MLFP Module 6 — Terrene Open Academy
 70
@@ -2355,18 +2710,19 @@ EXERCISE 6.6: MULTI-AGENT ML PIPELINE
 TASKS
 
 1. Build multi-agent pipeline: DataScientist →
-FeatureEngineer → ModelSelector → ReportWriter
+FeatureEngineer → ModelSelector →
+ReportWriter
 2. Build MCP server exposing ML tools
 3. Test cross-agent coordination
 4. Verify structured outputs between agents
 
 ASSESSMENT CRITERIA
 
-Multi-agent pipeline produces correct end-to-end
-results
-MCP server functional and callable from agents
-Agents communicate via structured outputs (not
-free-form)
+Multi-agent pipeline produces correct endto-end results
+MCP server functional and callable from
+agents
+Agents communicate via structured outputs
+(not free-form)
 Each agent stays within its specialisation
 
 MLFP Module 6 — Terrene Open Academy
@@ -2390,33 +2746,31 @@ MLFP Module 6 — Terrene Open Academy
 FOUNDATIONS
 
 PACT: D/T/R ADDRESSING
-DEPARTMENT / TASK / ROLE
+DEPARTMENT / TEAM / ROLE
 
-Department (D): The top-level organisational unit
-Task (T): A task nested inside a department or
-team
-Role (R): The responsible role that owns a D or T
-leaf
+Department (D): The top-level organisational
+unit
+Team (T): A team nested inside a department
+Role (R): The responsible role that owns a D
+or T leaf
 
 Grammar: Dash-delimited path. Every D or T MUST be
 immediately followed by exactly one R.
-Example: D1-R1-T1-R1 (department 1 head owns task 1,
-delegated to its responsible).
+Example: D1-R1-T1-R1 (department 1 head owns
+team 1, delegated to its responsible).
 
 GOVERNANCEENGINE
 from pact import (
 GovernanceEngine, load_org_yaml, Address)
+
 loaded = load_org_yaml("finance_org.yaml")
 engine = GovernanceEngine(loaded.org_definition)
 # Role address grammar: D1-R1-T1-R1
-#
-D1
+# D1
 = department 1
-#
-R1
+# R1
 = that department's head
-#
-T1-R1 = task 1, owned by its responsible
+# T1-R1 = team 1, owned by its responsible
 addr = Address.parse("D1-R1-T1-R1")
 verdict = engine.verify_action(
 role_address="D1-R1-T1-R1",
@@ -2436,21 +2790,21 @@ MLFP Module 6 — Terrene Open Academy
 
 OPERATING ENVELOPES
 WHAT ARE OPERATING ENVELOPES?
-
 A ConstraintEnvelopeConfig defines the
+
 boundaries of what a role can do
 Five canonical dimensions: Financial,
 Operational, Temporal, Data Access,
-Communication — plus a confidentiality clearance
-and a delegation-depth cap
-Monotonic tightening: child envelopes must be
-≤ parent on every dimension; the framework
-catches violations via
+Communication — plus a confidentiality
+clearance and a delegation-depth cap
+Monotonic tightening: child envelopes must
+be ≤ parent on every dimension; the
+framework catches violations via
 RoleEnvelope.validate_tightening
 
-Fail-closed: If the governance check fails (error, timeout),
-access is denied. Never fail-open. A broken guard is not a
-free pass.
+Fail-closed: If the governance check fails (error,
+timeout), access is denied. Never fail-open. A broken
+guard is not a free pass.
 
 from pact import (
 ConstraintEnvelopeConfig,
@@ -2463,6 +2817,7 @@ ConfidentialityLevel,
 RoleEnvelope,
 MonotonicTighteningError,
 )
+
 parent = ConstraintEnvelopeConfig(
 id="parent",
 description="Analyst envelope",
@@ -2480,6 +2835,14 @@ communication=
 CommunicationConstraintConfig(),
 max_delegation_depth=3,
 )
+# Monotonic tightening enforced by the
+# framework — child must be ≤ parent
+# on every dimension.
+try:
+RoleEnvelope.validate_tightening(
+parent, child)
+except MonotonicTighteningError as exc:
+print(f"Escalation blocked: {exc}")
 
 MLFP Module 6 — Terrene Open Academy
 74
@@ -2506,6 +2869,7 @@ DataAccessConstraintConfig,
 CommunicationConstraintConfig,
 ConfidentialityLevel,
 )
+
 # Budget cascading is expressed as financial
 # dimensions on each role's envelope. The
 # parent envelope has max_spend_usd=10.00;
@@ -2524,18 +2888,25 @@ allowed_actions=[
 temporal=TemporalConstraintConfig(),
 data_access=DataAccessConstraintConfig(),
 communication=
-Comm nicationConstraintConfig()
+CommunicationConstraintConfig(),
+max_delegation_depth=3,
+)
+# Child envelopes follow the same shape with
+# max_spend_usd ∈ {3.00, 2.00, 4.00, 1.00}.
+# The framework halts a child when its cap
+# is exhausted; the supervisor's remaining
+# budget is never touched.
 
 MLFP Module 6 — Terrene Open Academy
 75
 
-GOVERNEDSUPERVISOR: GOVERNANCE BUILT IN
+FOUNDATIONS
 
-FOUNDATIONS
-
+GOVERNEDSUPERVISOR: GOVERNANCE BUILT IN
 AGENT + GOVERNANCE = GOVERNEDSUPERVISOR
 from pact import GovernanceEngine, load_org_yaml
 from kaizen_agents import GovernedSupervisor
+
 loaded = load_org_yaml("finance_org.yaml")
 engine = GovernanceEngine(loaded.org_definition)
 governed = GovernedSupervisor(
@@ -2549,6 +2920,7 @@ async def executor(spec, inputs):
 return {"result": "...", "cost": 0.01,
 "prompt_tokens": 100,
 "completion_tokens": 50}
+
 # Governed run — supervisor plans, executor runs.
 result = await governed.run(
 objective="Analyse Q4 revenue data",
@@ -2572,7 +2944,8 @@ MLFP Module 6 — Terrene Open Academy
 GOVERNANCE TESTING: PROVING SAFETY
 THE TESTING IMPERATIVE
 
-Governance without tests is governance theatre
+Governance without tests is governance
+theatre
 Test that allowed actions succeed
 Test that denied actions are blocked
 Test that envelopes tighten correctly
@@ -2604,9 +2977,8 @@ parent_env, loosened_child_env)
 def test_zero_budget_stops_agent():
 result = await governed.run(
 objective="Analyse data",
-t
-d
-t )
+execute_node=executor)
+assert result.budget_consumed <= 2.00
 
 Red team your own governance. If you cannot write a test that proves your access control works, it does not work.
 MLFP Module 6 — Terrene Open Academy
@@ -2618,8 +2990,8 @@ AUDIT TRAILS & CLEARANCE LEVELS
 AUDIT TRAIL
 
 Every access decision is logged
-Who requested, what was requested, what was
-the decision, why
+Who requested, what was requested, what
+was the decision, why
 Immutable: append-only log
 Required for: regulatory compliance, incident
 investigation, accountability
@@ -2636,27 +3008,41 @@ f"{entry['reason']}")
 assert governed.audit.verify_chain()
 
 CLEARANCE LEVELS
-
 Level
-Access
-Public
-Public data, read-only tools
-Internal* Internal data, analysis tools
-Confidential PII, financial data
-Restricted System admin, model deployment
 
-Clearance levels map to role addresses. A role at D1-R1T1-R1 might carry "Confidential" clearance; a public
-support bot carries "Public".
-*In pact 0.8.1 the canonical five-level ladder is PUBLIC <
-RESTRICTED < CONFIDENTIAL < SECRET <
-TOP_SECRET. The course's "Internal" label is a historical
-alias that maps to RESTRICTED at the same tier as
-"Restricted" in the course ladder.
+Access
+
+Public
+
+Public data, read-only tools
+
+Internal*
+
+Internal data, analysis tools
+
+Confidential
+
+PII, financial data
+
+Restricted
+
+System admin, model deployment
+
+Clearance levels map to role addresses. A role at D1R1-T1-R1 might carry "Confidential" clearance; a
+public support bot carries "Public".
+*In pact 0.8.1 the canonical five-level ladder is PUBLIC
+< RESTRICTED < CONFIDENTIAL < SECRET <
+TOP_SECRET. The course's "Internal" label is a
+historical alias that maps to RESTRICTED at the same
+
+tier as "Restricted" in the course ladder.
 
 MLFP Module 6 — Terrene Open Academy
 78
 
-EXERCISE 6.7: GOVERNED MULTI-AGENT SYSTEM
+THEORY
+
+EXERCISE 6.7: GOVERNED MULTI-AGENT SYSTEM
 TASKS
 
 1. Define D/T/R organisational structure
@@ -2666,13 +3052,13 @@ hierarchy
 4. Write governance tests (allow + deny)
 5. Generate and inspect audit trail
 
-THEORY
-
 ASSESSMENT CRITERIA
 
-Governance correctly denies unauthorised access
+Governance correctly denies unauthorised
+access
 Operating envelopes enforce boundaries
-Budget cascading works (agents stop at limit)
+Budget cascading works (agents stop at
+limit)
 Tests prove governance works
 Audit trail captures all decisions
 
@@ -2693,13 +3079,13 @@ Prerequisites: All of M6 (6.1–6.7). Scaffolding: ~40%. Students connect existi
 MLFP Module 6 — Terrene Open Academy
 80
 
-NEXUS: ONE CODEBASE, THREE INTERFACES
+FOUNDATIONS
 
-FOUNDATIONS
-
+NEXUS: ONE CODEBASE, THREE INTERFACES
 NEXUS MULTI-CHANNEL DEPLOYMENT
 from nexus import Nexus
 from kailash.workflow.builder import WorkflowBuilder
+
 # Describe the analysis workload as a built workflow
 analysis_wf = WorkflowBuilder()
 analysis_wf.add_node(
@@ -2711,10 +3097,12 @@ analysis_wf.add_node(
 app = Nexus()
 # JWT middleware + rate limiting configured in project settings
 app.register("analysis", analysis_wf.build())
-# app.start()
-# serve on the configured port
+# app.start() # serve on the configured port
 
-One Codebase → REST API + CLI + MCP Server
+One Codebase
+
+→ REST API + CLI + MCP Server
+
 MLFP Module 6 — Terrene Open Academy
 81
 
@@ -2736,10 +3124,8 @@ app = Nexus()
 app.register("analyse", analyse_wf.build())
 app.register("deploy", deploy_wf.build())
 # Inside each node (pseudo-code):
-#
-caller_role = parameters["auth"]["role_address"]
-#
-verdict = engine.verify_action(
+# caller_role = parameters["auth"]["role_address"]
+# verdict = engine.verify_action(
 #
 role_address=caller_role,
 #
@@ -2748,8 +3134,7 @@ action="deploy",
 context={"data_classification":
 #
 "restricted"})
-#
-if not verdict.allowed:
+# if not verdict.allowed:
 #
 raise PermissionError(verdict.reason)
 
@@ -2770,62 +3155,95 @@ headers={
 json={"query": "Analyse Q4 data"}
 )
 
-Unauthenticated requests must be rejected with 401. No
-exceptions.
+Unauthenticated requests must be rejected with 401.
+No exceptions.
 
 MLFP Module 6 — Terrene Open Academy
 82
 
-FULL PLATFORM INTEGRATION
+FOUNDATIONS
 
-FOUNDATIONS
+FULL PLATFORM INTEGRATION
+TrainingPipeline
 
-TrainingPipeline → DataFlow → Kaizen Agent → PACT Govern → Nexus Deploy → DriftMonitor
+→ DataFlow → Kaizen Agent → PACT Govern → Nexus Deploy →
 
+DriftMonitor
 THE FULL STACK
+Step
 
-Step Package
+Package
+
 Purpose
+
 1
+
 kailash-ml
+
 Train model
-2 kailash-dataflow Persist to database
-3 kailash-kaizen Wrap in agent
-4 kailash-pact
+
+2
+
+kailash-dataflow
+
+Persist to database
+
+3
+
+kailash-kaizen
+
+Wrap in agent
+
+4
+
+kailash-pact
+
 Add governance
-5 kailash-nexus Deploy multi-channel
-6 kailash-ml
+
+5
+
+kailash-nexus
+
+Deploy multi-channel
+
+6
+
+kailash-ml
+
 Monitor for drift
 
-This is the entire MLFP stack. Six packages, one pipeline.
-Every module you have completed contributes a piece. M6
-is where it all comes together.
+This is the entire MLFP stack. Six packages, one
+pipeline. Every module you have completed
+contributes a piece. M6 is where it all comes together.
 Debugging traces: Every agent action, governance
-decision, and API call is traceable. When something fails in
-production, you can reconstruct the entire chain.
+decision, and API call is traceable. When something
+fails in production, you can reconstruct the entire
+chain.
 
 MLFP Module 6 — Terrene Open Academy
 83
 
-PRODUCTION MONITORING: DRIFTMONITOR
+THEORY
 
-THEORY
-
+PRODUCTION MONITORING: DRIFTMONITOR
 WHY MONITOR?
 
-Models degrade over time as data distributions
-shift
-An accurate model today may be wrong tomorrow
+Models degrade over time as data
+distributions shift
+An accurate model today may be wrong
+tomorrow
 Drift detection triggers retraining or alerts
 
 TYPES OF DRIFT
 
 Data drift: Input distribution changes
-Concept drift: Relationship between inputs and
-outputs changes
-Performance drift: Model accuracy degrades
+Concept drift: Relationship between inputs
+and outputs changes
+Performance drift: Model accuracy
+degrades
 
 from kailash_ml import DriftMonitor
+
 monitor = DriftMonitor(
 reference_data=training_data,
 model_id="sentiment-v1",
@@ -2862,14 +3280,29 @@ print(f" Decision: {step.decision}")
 print(f" Reason: {step.reason}")
 
 COMMON DEBUGGING PATTERNS
-
 Symptom
+
 Likely Cause
-Agent loops forever Ambiguous goal or missing tool
-Wrong tool selected Tool descriptions too similar
-Governance blocked Missing permission in envelope
-Budget exhausted Too many retries; simplify task
-Incoherent reasoning Context window overflow
+
+Agent loops forever
+
+Ambiguous goal or missing tool
+
+Wrong tool selected
+
+Tool descriptions too similar
+
+Governance blocked
+
+Missing permission in envelope
+
+Budget exhausted
+
+Too many retries; simplify task
+
+Incoherent reasoning
+
+Context window overflow
 
 MLFP Module 6 — Terrene Open Academy
 85
@@ -2879,13 +3312,14 @@ MLFP Module 6 — Terrene Open Academy
 TESTING AGENTIC SYSTEMS
 WHAT TO TEST
 
-Tool correctness: Each tool produces expected
-output for known input
-Reasoning quality: Agent selects correct tools
-for a given task
+Tool correctness: Each tool produces
+expected output for known input
+Reasoning quality: Agent selects correct
+tools for a given task
 Governance: Blocked actions stay blocked
 Budget: Agent stops at budget limit
-End-to-end: Full task produces correct final result
+End-to-end: Full task produces correct final
+result
 
 def test_tool_selection():
 """Agent selects explore tool for
@@ -2915,7 +3349,8 @@ VLLM: PRODUCTION LLM SERVING
 
 PagedAttention: efficient KV-cache memory
 management
-Continuous batching: maximise GPU throughput
+Continuous batching: maximise GPU
+throughput
 Tensor parallelism: split model across GPUs
 OpenAI-compatible API: drop-in replacement
 
@@ -2927,65 +3362,69 @@ python -m vllm.entrypoints.openai.api_server \
 FLASH ATTENTION
 
 Tiling-based attention computation
-Reduces memory from O(n ) to O(n)
+Reduces memory from O(n2 ) to O(n)
 2-4x faster than standard attention
-Used by default in modern serving frameworks
-2
+Used by default in modern serving
+frameworks
 
 You do not implement these. You configure them. The
-engineering skill is knowing which optimisation applies to
-your deployment constraint (latency, throughput, memory).
+engineering skill is knowing which optimisation applies
+to your deployment constraint (latency, throughput,
+memory).
 
 MLFP Module 6 — Terrene Open Academy
 87
 
-MULTIMODAL LLMS (BRIEF AWARENESS)
+ADVANCED
+
+MULTIMODAL LLMS (BRIEF AWARENESS)
 VISION-LANGUAGE MODELS
 
 GPT-4V: Text + image understanding
-Gemini: Native multimodal (text, image, video,
-audio)
+Gemini: Native multimodal (text, image,
+video, audio)
 LLaVA: Open-source vision-language model
 
 APPLICATIONS
 
 Document understanding (OCR + reasoning)
-Chart interpretation (read graphs, extract data)
+Chart interpretation (read graphs, extract
+data)
 Visual question answering
 Multimodal RAG: retrieve images + text
 
-ADVANCED
-
-Trajectory: LLMs are becoming multimodal by default. The
-text-only era is ending. Future agents will see, hear, and
-read simultaneously. The same Kaizen patterns (Delegate,
-BaseAgent, tools) apply to multimodal models.
+Trajectory: LLMs are becoming multimodal by default.
+The text-only era is ending. Future agents will see,
+hear, and read simultaneously. The same Kaizen
+patterns (Delegate, BaseAgent, tools) apply to
+multimodal models.
 For this module: Awareness only. The engineering
-patterns you have learned (prompting, agents, governance)
-transfer directly to multimodal systems. The tools change;
-the architecture does not.
+patterns you have learned (prompting, agents,
+governance) transfer directly to multimodal systems.
+The tools change; the architecture does not.
 
 MLFP Module 6 — Terrene Open Academy
 88
 
-EXERCISE 6.8: CAPSTONE — DEPLOY A GOVERNED AI PLATFORM
+FOUNDATIONS
+
+EXERCISE 6.8: CAPSTONE — DEPLOY A GOVERNED AI PLATFORM
 TASKS
 
 1. Deploy the M6 multi-agent system via Nexus
 2. Add JWT authentication with RBAC
-3. Integrate DriftMonitor for production monitoring
+3. Integrate DriftMonitor for production
+monitoring
 4. Test end-to-end: query via API, CLI, and MCP
-5. Verify governance enforces access controls at
-deployment level
-
-FOUNDATIONS
+5. Verify governance enforces access controls
+at deployment level
 
 ASSESSMENT CRITERIA
 
 System deployed and accessible via all 3
 channels
-Auth works (unauthenticated requests rejected
-with 401)
+Auth works (unauthenticated requests
+rejected with 401)
 Drift monitoring active and alerting
 Governance enforced in production
 Complete audit trail generated
@@ -3006,22 +3445,22 @@ dk
 ​ ​
 
 From M5: the foundation of every LLM. Q = queries, K = keys, V = values, d_k = key dimension
+
 WHERE IT APPEARS IN M6
 
-6.1: LLMs use multi-head attention at every layer
+6.1: LLMs use multi-head attention at every
+layer
 6.2: LoRA targets attention weight matrices
 (q_proj, v_proj)
 6.4: Dense retrieval uses attention-based
 embeddings
-6.8: Flash Attention optimises this computation in
-production
+6.8: Flash Attention optimises this
+computation in production
 
-The d scaling prevents dot products from growing too
-large, which would push softmax into saturated regions
-(near-zero gradients). This is why training is stable at scale.
-k
-
-​
+The dk scaling prevents dot products from growing
+too large, which would push softmax into saturated
+regions (near-zero gradients). This is why training is
+stable at scale.
 
 MLFP Module 6 — Terrene Open Academy
 90
@@ -3029,11 +3468,7 @@ MLFP Module 6 — Terrene Open Academy
 THEORY
 
 M6 FORMULA SUMMARY
-
-W = W0 + BA
-
-(LoRA)
-
+W = W0 + BA (LoRA)
 ​
 
 LDPO = −E[log σ (β log
@@ -3078,31 +3513,67 @@ std(r)
 
 (GRPO advantage)
 
+QK T
+Attention(Q, K, V ) = softmax(
+)V
+dk
+​
+
+​ ​
+
+Four formulas, four concepts: LoRA decomposes weight updates, DPO aligns with preferences, GRPO normalises
+rewards within a group, Attention is the computation substrate for all of them.
+
 MLFP Module 6 — Terrene Open Academy
 91
 
-THE COMPLETE KAILASH STACK
+FOUNDATIONS
 
-FOUNDATIONS
+THE COMPLETE KAILASH STACK
+kailash-ml
 
-kailash-ml → kailash-dataflow → kaizen → kailash-align → pact → nexus
+→ kailash-dataflow → kaizen → kailash-align → pact → nexus
 
 Package
+
 M6 Role
+
 Key APIs Used
-kaizen / kaizen_agents LLM calls, agent framework BaseAgent, Signature, Delegate, ReActAgent, GovernedSupervisor
+
+kaizen / kaizen_agents
+
+LLM calls, agent framework
+
+BaseAgent, Signature, Delegate, ReActAgent, GovernedSupervisor
+
 kailash-align
+
 Fine-tuning, alignment
+
 AlignmentPipeline, AlignmentConfig, AdapterRegistry
+
 pact
-Governance, access control GovernanceEngine, load_org_yaml, ConstraintEnvelopeConfig, RoleEnvelope
+
+Governance, access control
+
+GovernanceEngine, load_org_yaml, ConstraintEnvelopeConfig, RoleEnvelope
+
 nexus
-Multi-channel deployment Nexus, app.register(name, built_workflow), JWT middleware
+
+Multi-channel deployment
+
+Nexus, app.register(name, built_workflow), JWT middleware
+
 kailash-ml
+
 Training, monitoring
+
 TrainingPipeline, DriftMonitor, DataExplorer
+
 kailash-mcp
+
 Tool protocol server
+
 MCPServer, @tool decorator
 
 MLFP Module 6 — Terrene Open Academy
@@ -3113,25 +3584,45 @@ MLFP Module 6 — Terrene Open Academy
 THE M6 JOURNEY
 6.1
 
+6.2
+
+6.3
+
+6.4
+
+6.5
+
+6.6
+
+6.7
+
+6.8
+
 LLM
 Fundamentals
-
-6.2
 
 LoRA &
 Fine-tuning
 
-THE ARC
-
-6.3
-
 DPO &
 GRPO
 
-6.4
-
 RAG
 Systems
+
+ReAct
+Agents
+
+Multi-Agent
+& MCP
+
+PACT
+Governance
+
+Capstone
+Deploy
+
+THE ARC
 
 Understand (6.1): How LLMs work
 Customise (6.2-6.3): Fine-tune and align
@@ -3141,29 +3632,10 @@ coordination
 Govern (6.7): Enforce safety
 Ship (6.8): Deploy to production
 
-6.5
-
-ReAct
-Agents
-
-6.6
-
-Multi-Agent
-& MCP
-
-6.7
-
-PACT
-Governance
-
-6.8
-
-Capstone
-Deploy
-
 Every concept produces runnable code. There is no
-theory-only lesson in M6. If you completed the exercises,
-you have built a production-ready AI platform.
+theory-only lesson in M6. If you completed the
+exercises, you have built a production-ready AI
+platform.
 
 MLFP Module 6 — Terrene Open Academy
 93
@@ -3175,71 +3647,129 @@ TYPICAL LLM COURSE
 
 MLFP MODULE 6
 
+"Call the API, parse the response, build a chatbot."
+
+Implement LoRA from scratch. Derive DPO. Build governed
+multi-agent systems. Deploy with monitoring.
+
 TYPICAL AGENT TUTORIAL
 
 MLFP MODULE 6
 
-"Call the API, parse the response, build a chatbot."
 "Install LangChain, run the example, done."
 
-Implement LoRA from scratch. Derive DPO. Build governed multiagent systems. Deploy with monitoring.
-Design agents with the hiring framework. Enforce cost budgets.
-Test governance. Ship production.
+Design agents with the hiring framework. Enforce cost
+budgets. Test governance. Ship production.
 
-The difference: We teach you to build systems that are safe, tested, governed, and deployed. Not just systems that work in a
-notebook.
+The difference: We teach you to build systems that are safe, tested, governed, and deployed. Not just systems that
+work in a notebook.
 
 MLFP Module 6 — Terrene Open Academy
 94
 
-DECISION FRAMEWORK: WHEN TO USE WHAT
+FOUNDATIONS
 
-FOUNDATIONS
-
+DECISION FRAMEWORK: WHEN TO USE WHAT
 Problem
+
 Solution
+
 Lesson
-Need LLM output in production Structured prompting + Kaizen Signature 6.1
-Model needs domain knowledge LoRA fine-tuning via AlignmentPipeline 6.2
+
+Need LLM output in production
+
+Structured prompting + Kaizen Signature
+
+6.1
+
+Model needs domain knowledge
+
+LoRA fine-tuning via AlignmentPipeline
+
+6.2
+
 Model output quality is poor
+
 DPO alignment with preference data
+
 6.3
-Need factual, grounded answers RAG with hybrid retrieval
+
+Need factual, grounded answers
+
+RAG with hybrid retrieval
+
 6.4
-Task requires multi-step reasoning ReAct agent with tools
+
+Task requires multi-step reasoning
+
+ReAct agent with tools
+
 6.5
-Complex task with sub-problems Multi-agent orchestration
+
+Complex task with sub-problems
+
+Multi-agent orchestration
+
 6.6
-Need access control and safety PACT governance + operating envelopes 6.7
+
+Need access control and safety
+
+PACT governance + operating envelopes
+
+6.7
+
 Ship to users
+
 Nexus multi-channel deployment
+
 6.8
 
 MLFP Module 6 — Terrene Open Academy
 95
 
-COMMON MISTAKES TO AVOID
+FOUNDATIONS
 
-FOUNDATIONS
-
+COMMON MISTAKES TO AVOID
 Mistake
+
 Why It Fails
+
 Correct Approach
-Fine-tuning when RAG would work Expensive, slow, model goes stale Try RAG first; fine-tune only if insufficient
+
+Fine-tuning when RAG would work
+
+Expensive, slow, model goes stale
+
+Try RAG first; fine-tune only if insufficient
+
 Agent without cost budget
+
 Runaway API spending
+
 Always set max_cost on every agent
+
 No governance on agents
+
 Security liability
+
 GovernedSupervisor with pact operating envelopes
+
 Testing LLM exact output
+
 Non-deterministic; tests flake
+
 Test tool selection, governance, budget
+
 Deploying without monitoring
+
 Model degrades silently
+
 DriftMonitor on every deployed model
+
 Using agents for simple tasks
+
 Adds cost and latency
+
 Pipeline first; agent only if reasoning needed
 
 MLFP Module 6 — Terrene Open Academy
@@ -3251,22 +3781,25 @@ M6 IN THE MLFP CURRICULUM
 WHAT M6 BUILDS ON
 
 M1: Python, Polars, data pipelines
-M2: Statistics, probability (evaluation foundations)
-M3: Supervised ML, pipelines (TrainingPipeline)
+M2: Statistics, probability (evaluation
+foundations)
+M3: Supervised ML, pipelines
+(TrainingPipeline)
 M4: NLP, embeddings (retrieval foundations)
-M5: Deep learning, transformers, RL (architecture
-+ PPO)
+M5: Deep learning, transformers, RL
+(architecture + PPO)
 
 WHAT M6 DELIVERS
 
 Complete LLM engineering skillset
-From-scratch implementations of key algorithms
+From-scratch implementations of key
+algorithms
 Production deployment with governance
 The full Kailash stack integrated end-to-end
 
 M6 is the culmination of the MLFP programme. Every
-module contributed a building block. M6 assembles them
-into a production AI platform.
+module contributed a building block. M6 assembles
+them into a production AI platform.
 
 MLFP Module 6 — Terrene Open Academy
 97
@@ -3274,16 +3807,28 @@ MLFP Module 6 — Terrene Open Academy
 THEORY
 
 THE ML SPECTRUM: WHERE LLMS FIT
+Module
 
-Module Spectrum Position
-M1-M2 Data understanding & statistics
+Spectrum Position
+
+M1-M2
+
+Data understanding & statistics
+
 M3
+
 Supervised prediction
+
 M4
+
 Pattern discovery & language
+
 M5
+
 Representation learning
+
 M6
+
 Reasoning, agency, governance
 
 M6 LESSON SPECTRUM
@@ -3337,22 +3882,23 @@ END-OF-MODULE ASSESSMENT
 CAPSTONE PROJECT
 
 Deploy a complete governed AI system
-Must include: prompting, fine-tuning, RAG, agents,
-governance, deployment
+Must include: prompting, fine-tuning, RAG,
+agents, governance, deployment
 Presentation: 15 minutes + 5 minutes Q&A
 Demo: live queries via API, CLI, and MCP
 
 COMPREHENSIVE QUIZ
 
 Covers all 8 lessons
-Mix of: conceptual, code interpretation, formula
-application
-Open-book: you may reference your exercises
+Mix of: conceptual, code interpretation,
+formula application
+Open-book: you may reference your
+exercises
 Duration: 60 minutes
 
-Assessment focus: Can you build it, deploy it, govern it,
-and explain why your design decisions are correct? The
-code IS the answer.
+Assessment focus: Can you build it, deploy it, govern
+it, and explain why your design decisions are correct?
+The code IS the answer.
 
 MLFP Module 6 — Terrene Open Academy
 100
@@ -3361,47 +3907,46 @@ MLFP Module 6 — Terrene Open Academy
 
 RESOURCES & REFERENCES
 PAPERS
-
-KAILASH DOCUMENTATION
-
 Hu et al. (2021) — LoRA: Low-Rank Adaptation
-kailash-kaizen: Agent framework & Delegate
 Houlsby et al. (2019) — Parameter-Efficient Transfer
-kailash-align: Fine-tuning & alignment pipelines
 Learning
-kailash-pact: Governance & access control
 Rafailov et al. (2023) — DPO: Direct Preference
-kailash-nexus: Multi-channel deployment
 Optimization
-kailash-mcp: MCP server framework
 Shao et al. (2024) — DeepSeek-R1 (GRPO)
 Yao et al. (2023) — ReAct: Reasoning and Acting
-TOOLS
 Wei et al. (2022) — Chain-of-Thought Prompting
-lm-eval-harness: Evaluation framework
 Kojima et al. (2022) — Zero-shot CoT
+Lewis et al. (2020) — RAG: Retrieval-Augmented
+Generation
+
+KAILASH DOCUMENTATION
+kailash-kaizen: Agent framework & Delegate
+kailash-align: Fine-tuning & alignment pipelines
+kailash-pact: Governance & access control
+kailash-nexus: Multi-channel deployment
+kailash-mcp: MCP server framework
+TOOLS
+lm-eval-harness: Evaluation framework
 RAGAS: RAG evaluation
-Lewis et al. (2020) — RAG: Retrieval-Augmented Generation
 vLLM: Production LLM serving
 
 MLFP Module 6 — Terrene Open Academy
 101
 
-KEY TAKEAWAYS
+FOUNDATIONS
 
-1. Prompting is an engineering skill. Start simple,
-escalate by measured need.
+KEY TAKEAWAYS
+1. Prompting is an engineering skill. Start
+simple, escalate by measured need.
 2. LoRA democratised fine-tuning. 256x fewer
 parameters, same quality.
-3. DPO eliminated the reward model. Alignment is
-now accessible.
-4. RAG is the production default. Ground LLMs in
-facts, not memory.
+3. DPO eliminated the reward model.
+Alignment is now accessible.
+4. RAG is the production default. Ground LLMs
+in facts, not memory.
 
-FOUNDATIONS
-
-5. Agents need tools, not just prompts. ReAct =
-reasoning + action.
+5. Agents need tools, not just prompts. ReAct
+= reasoning + action.
 6. Multi-agent systems need coordination
 protocols. MCP for tools, A2A for agents.
 7. Governance is engineering, not philosophy.
@@ -3412,34 +3957,61 @@ DriftMonitor is a liability.
 MLFP Module 6 — Terrene Open Academy
 102
 
-FOR THE INSTRUCTOR: PACING NOTES
+ADVANCED
 
-ADVANCED
-
+FOR THE INSTRUCTOR: PACING NOTES
 Lesson
-Estimated Time Key Risk
-6.1 LLM Fundamentals 2.5 hours
+
+Estimated Time
+
+Key Risk
+
+6.1 LLM Fundamentals
+
+2.5 hours
+
 Prompt engineering feels "too easy" — push to structured output
+
 6.2 Fine-tuning
+
 3.5 hours
+
 From-scratch implementations need careful debugging
+
 6.3 DPO/GRPO
+
 2.5 hours
+
 DPO formula derivation is dense — go slow
+
 6.4 RAG
+
 3 hours
+
 Chunking mistakes cascade — verify before retrieval
+
 6.5 Agents
+
 3 hours
+
 Cost overruns if budgets not enforced
+
 6.6 Multi-Agent
+
 2.5 hours
+
 Agent coordination debugging is non-trivial
+
 6.7 Governance
+
 2.5 hours
+
 Students may skip tests — make tests mandatory
+
 6.8 Capstone
+
 4 hours
+
 Integration issues — allocate debugging time
 
 MLFP Module 6 — Terrene Open Academy
@@ -3450,22 +4022,23 @@ MLFP Module 6 — Terrene Open Academy
 DISCUSSION QUESTIONS
 REFLECT
 
-1. When should you use RAG vs fine-tuning? Give a
-concrete example where each is the right choice.
+1. When should you use RAG vs fine-tuning?
+Give a concrete example where each is the
+right choice.
 2. What happens if you deploy an agent without
 governance? What is the worst case?
-3. Why does DPO not need a reward model while
-RLHF does? Explain in plain language.
+3. Why does DPO not need a reward model
+while RLHF does? Explain in plain language.
 
 APPLY
 
-4. Your company has 10,000 internal documents.
-Describe how you would build a system that
-answers employee questions about company
-policy.
-5. You need to deploy an AI assistant that handles
-customer enquiries. What Kailash packages would
-you use and why?
+4. Your company has 10,000 internal
+documents. Describe how you would build a
+system that answers employee questions
+about company policy.
+5. You need to deploy an AI assistant that
+handles customer enquiries. What Kailash
+packages would you use and why?
 
 MLFP Module 6 — Terrene Open Academy
 104
@@ -3475,8 +4048,8 @@ MACHINE LEARNING WITH LANGUAGE MODELS AND AGENTIC WORKFLOWS
 
 You can now build, fine-tune, align, ground, govern, and deploy production AI systems.
 
-"The goal is not to use AI. The goal is to deploy AI that is safe, tested, governed, and
-useful."
+"The goal is not to use AI. The goal is to deploy AI that is safe, tested,
+governed, and useful."
 MLFP — ML Foundations for Professionals — Terrene Open Academy
 Powered by Kailash Python SDK — Terrene Foundation
 

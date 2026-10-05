@@ -8,6 +8,7 @@ Run: .venv/bin/python scripts/redline-check.py [--module mlfpNN]
 """
 from __future__ import annotations
 
+import ast
 import json
 import re
 import subprocess
@@ -36,28 +37,69 @@ def finding(module: str, redline: str, severity: str, detail: str) -> None:
     print(f"  [{marker}] R{redline}: {detail}")
 
 
+_DEVICE_HELPERS = {"device", "DEVICE", "get_device", "init_environment"}
+
+
+def _selects_device(source: str) -> bool:
+    """True if the file picks its device automatically (Redline 8).
+
+    Accepted: calling get_device() / init_environment() (both wrap
+    kailash_helpers.get_device), importing ``device`` / ``DEVICE`` from a
+    shared helper module (shared/mlfpNN/ex_N.py sets it via get_device()), or
+    following a Hugging Face model's own placement (``model.device``).
+    """
+    if "get_device(" in source or "init_environment(" in source or "model.device" in source:
+        return True
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(node, ast.ImportFrom)
+        and (node.module or "").startswith("shared")
+        and any(a.name in _DEVICE_HELPERS for a in node.names)
+        for node in ast.walk(tree)
+    )
+
+
+def _places_on_device(source: str) -> bool:
+    """True if the file moves tensors/models to a device (not just prose)."""
+    return bool(re.search(r"\.to\(\s*\w*device|device\s*=\s*\w*device", source, re.I))
+
+
 def check_module(module: str) -> None:
     print(f"\n{'='*60}")
     print(f"  {module.upper()}")
     print(f"{'='*60}")
 
     sol_dir = REPO_ROOT / "modules" / module / "solutions"
-    deck_file = REPO_ROOT / "modules" / module / "deck.html"
+
+    # Exercises are either single files (solutions/ex_N.py, M1) or R10
+    # directories of technique files (solutions/ex_N/*.py, M2-M6). Globbing
+    # only ex_*.py silently skipped every R10 module — R1/R7/R8 checked nothing.
+    exercises: dict[str, list[Path]] = {}
+    for p in sorted(sol_dir.glob("ex_*.py")):
+        exercises[p.stem] = [p]
+    for d in sorted(q for q in sol_dir.glob("ex_*") if q.is_dir()):
+        files = sorted(f for f in d.glob("*.py") if not f.name.startswith("_"))
+        if files:
+            exercises[d.name] = files
+    sol_files = [f for files in exercises.values() for f in files]
 
     # ── Redline 7: Blocked imports ──
-    for sol in sorted(sol_dir.glob("ex_*.py")):
+    for sol in sol_files:
         content = sol.read_text()
         for blocked in BLOCKED_IMPORTS:
             if blocked in content:
                 finding(module, "7", "BLOCKING", f"{sol.name}: uses '{blocked}'")
 
     # ── Redline 8: GPU/MPS ──
-    for sol in sorted(sol_dir.glob("ex_*.py")):
+    for sol in sol_files:
         content = sol.read_text()
         if 'torch.device("cuda" if torch.cuda.is_available()' in content:
             finding(module, "8", "BLOCKING", f"{sol.name}: cuda-only device (no MPS)")
-        if "import torch" in content and "get_device" not in content:
-            if "device" in content:
+        if "import torch" in content and not _selects_device(content):
+            if _places_on_device(content):
                 finding(
                     module,
                     "8",
@@ -68,9 +110,8 @@ def check_module(module: str) -> None:
     # ── Redline 1: Exercise depth (LOC as proxy) ──
     total_loc = 0
     ex_count = 0
-    for sol in sorted(sol_dir.glob("ex_*.py")):
-        loc = len(sol.read_text().splitlines())
-        total_loc += loc
+    for files in exercises.values():
+        total_loc += sum(len(f.read_text().splitlines()) for f in files)
         ex_count += 1
     if ex_count > 0:
         avg_loc = total_loc // ex_count
@@ -89,26 +130,10 @@ def check_module(module: str) -> None:
         f"  [INFO] {ex_count} exercises, {total_loc} total LOC, avg {total_loc//max(ex_count,1)} LOC/ex"
     )
 
-    # ── Redline 3: Deck code overflow (static heuristic) ──
-    if deck_file.exists():
-        deck = deck_file.read_text()
-        overflow_count = 0
-        for match in re.finditer(
-            r"<pre[^>]*><code[^>]*>(.*?)</code></pre>", deck, re.DOTALL
-        ):
-            lines = match.group(1).strip().split("\n")
-            pre_tag = match.group(0)[: match.group(0).index(">") + 1]
-            if len(lines) > 18 and "font-size" not in pre_tag:
-                overflow_count += 1
-        if overflow_count > 0:
-            finding(
-                module,
-                "3",
-                "BLOCKING",
-                f"{overflow_count} code blocks >18 lines without size fix",
-            )
-        else:
-            print(f"  [PASS] R3 (static): No unfixed code overflow in deck")
+    # Redline 3 (deck overflow) is checked only by the rendered audit in
+    # run_visual_overflow_check() — scripts/check-deck-overflow.js is the single
+    # canonical detector. The old static "<pre> >18 lines without font-size"
+    # heuristic contradicted it (false FAILs on .code-fit slides) and was removed.
 
     # ── Redline 6: MCQ check ──
     mcq_file = REPO_ROOT / "modules" / module / "quiz_mcq.py"
@@ -132,7 +157,7 @@ def check_module(module: str) -> None:
         "FeatureStore",
     ]
     engines_found = set()
-    for sol in sorted(sol_dir.glob("ex_*.py")):
+    for sol in sol_files:
         content = sol.read_text()
         for eng in engine_keywords:
             if eng in content:

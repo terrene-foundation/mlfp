@@ -36,14 +36,14 @@
 </h1>
 
 <p class="lead">
-  Total time: ~50 minutes &nbsp;·&nbsp; 15 slides &nbsp;·&nbsp; ~3 min per slide
+  Total time: ~50 minutes &nbsp;·&nbsp; 16 slides &nbsp;·&nbsp; ~3 min per slide
 </p>
 
 <p>
   This is the first lesson where learners meet a real dataset. The jump from
-  12 rows to 500,000 is psychologically important — they need to feel that
+  12 rows to 50,000 is psychologically important — they need to feel that
   Polars has actually scaled. Run everything live, show the timings, let
-  them see that filtering half a million rows takes less than a second.
+  them see that filtering 50,000 rows takes less than a second.
 </p>
 
 <!-- Slide 1 -->
@@ -52,7 +52,8 @@
   <h3>Filtering and Transforming Data</h3>
   <p>
     Open with the scale statement: "Yesterday we looked at 12 rows of weather.
-    Today we jump to half a million rows of real HDB transactions. The three
+    Today we jump to 50,150 rows of HDB resale transactions — a synthetic
+    dataset modelled on the public resale data. The three
     verbs you learn today — filter, with_columns, select — are the tools
     every professional reaches for first when they open a new dataset."
   </p>
@@ -68,7 +69,7 @@
 <!-- Slide 2 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Narrowing pipeline diagram</span></div>
-  <h3>From 500,000 rows to the question</h3>
+  <h3>From 50,000 rows to the question</h3>
   <p>
     Walk the diagram left to right. "Start with everything. Filter to the
     rows that matter — BISHAN, 4-room. Then select only the columns you
@@ -135,18 +136,48 @@
     before running a single line — because every step is a description, not
     an action."
   </div>
-  <div class="transition">→ "Your first filter."</div>
+  <div class="transition">→ "So what does filter actually do with that recipe?"</div>
 </div>
 
 <!-- Slide 5 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Single-town filter</span></div>
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Filter mask diagram</span></div>
+  <h3>What filter does to rows</h3>
+  <p>
+    This diagram is the mental model for everything today, so take it slowly.
+    Three panels: the input table on the left, the boolean mask in the middle,
+    the result on the right. "Filter evaluates the expression on
+    <em>every</em> row — town equals BISHAN, true or false — and keeps only
+    the rows where the answer is True. Three of six rows survive here."
+  </p>
+  <p>
+    Point at the mask column explicitly: "This column of Trues and Falses is
+    a real intermediate object — a boolean Series the same height as the
+    table. Filter is not magic; it is 'compute a mask, then keep the True
+    rows'. When a filter misbehaves later, print the mask and look at it."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "The rows that survive keep their original
+    order and their original values. Filter never changes data — it only
+    discards rows. You cannot break anything with a filter."
+  </div>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> the mask is why filters compose — AND two
+    conditions and Polars ANDs two masks elementwise, which connects straight
+    to the truth tables on the Boolean-algebra slide.
+  </div>
+  <div class="transition">→ "Your first filter."</div>
+</div>
+
+<!-- Slide 6 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Single-town filter</span></div>
   <h3>Your first filter</h3>
   <p>
     Run it live. Load the HDB parquet. Filter to Ang Mo Kio. Print the
-    count. Make a point of saying "we just scanned 500,000 rows and it took
-    less than a second". This is the moment to make them feel Polars is
-    fast.
+    count — 2,486 transactions. Make a point of saying "we just scanned
+    50,150 rows and it took less than a second". This is the moment to make
+    them feel Polars is fast.
   </p>
   <p>
     Read the filter aloud in plain English: "Filter hdb to rows where the
@@ -156,9 +187,9 @@
   <div class="transition">→ "Real filters have more than one condition."</div>
 </div>
 
-<!-- Slide 6 -->
+<!-- Slide 7 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Compound filters</span></div>
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Compound filters</span></div>
   <h3>Combining conditions with <code>&amp;</code> and <code>|</code></h3>
   <p>
     Walk both examples. Point out that the parentheses are not optional.
@@ -179,9 +210,9 @@
   <div class="transition">→ "For sets, there's a cleaner way."</div>
 </div>
 
-<!-- Slide 7 -->
+<!-- Slide 8 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 7</span><span>~2 min</span><span>is_in</span></div>
+  <div class="meta"><span class="badge">Slide 8</span><span>~2 min</span><span>is_in</span></div>
   <h3><code>is_in</code>: cleaner than chained ORs</h3>
   <p>
     Show the ugly version first — four ORs chained together. Then the clean
@@ -195,9 +226,9 @@
   <div class="transition">→ "Filtering picks rows — with_columns adds columns."</div>
 </div>
 
-<!-- Slide 8 -->
+<!-- Slide 9 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>with_columns</span></div>
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>with_columns</span></div>
   <h3><code>with_columns</code>: derive new features</h3>
   <p>
     Walk the two examples. Start with price_per_sqm — the most useful
@@ -218,9 +249,9 @@
   <div class="transition">→ "What if the new column depends on a condition?"</div>
 </div>
 
-<!-- Slide 9 -->
+<!-- Slide 10 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>when / then / otherwise</span></div>
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>when / then / otherwise</span></div>
   <h3>Conditional columns: <code>when / then</code></h3>
   <p>
     Walk the price-tier example line by line. "When price is below 350k,
@@ -244,16 +275,16 @@
   <div class="transition">→ "Now let's put it all together."</div>
 </div>
 
-<!-- Slide 10 -->
+<!-- Slide 11 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Chain diagram</span></div>
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Chain diagram</span></div>
   <h3>Method chaining: the pipeline</h3>
   <p>
     Walk the diagram top to bottom. Point at each intermediate row count.
-    "We start with 500,000. After filtering to 2020+ we have 180,000. After
-    filtering to premium/luxury we have 32,000. After select we still have
-    32,000 but only four columns. After sort we have the same rows but in
-    order by price."
+    "We start with 50,150. After filtering to 2020 and later we have 24,904.
+    After filtering to premium and luxury tiers we have 23,254. After select
+    we still have 23,254 rows but only five columns. After sort we have the
+    same rows in order by price."
   </p>
   <p>
     Make the point that each box is a <em>real</em> DataFrame — but Polars
@@ -264,9 +295,9 @@
   <div class="transition">→ "Same chain in code."</div>
 </div>
 
-<!-- Slide 11 -->
+<!-- Slide 12 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>Chain code</span></div>
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>Chain code</span></div>
   <h3>The chain in code</h3>
   <p>
     Read the code aloud top to bottom. "Take hdb. Filter to recent years.
@@ -291,27 +322,27 @@
   <div class="transition">→ "A brief look at what's happening underneath."</div>
 </div>
 
-<!-- Slide 12 -->
+<!-- Slide 13 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Boolean algebra</span></div>
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Boolean algebra</span></div>
   <h3>Boolean algebra under the hood</h3>
   <p>
     Walk the two definitions and the truth table. Don't dwell. The point is
     not to become a logician — it's to know that Polars is evaluating these
-    tables across hundreds of thousands of rows simultaneously, and that
+    tables across tens of thousands of rows simultaneously, and that
     the rules are entirely standard.
   </p>
   <p>
-    Make the throughput point: "A single vectorised AND across 500,000 rows
-    is about 500,000 truth-table lookups. Polars does that in milliseconds
+    Make the throughput point: "A single vectorised AND across 50,000 rows
+    is about 50,000 truth-table lookups. Polars does that in milliseconds
     using SIMD instructions on your CPU."
   </p>
   <div class="transition">→ "One useful identity — De Morgan's laws."</div>
 </div>
 
-<!-- Slide 13 -->
+<!-- Slide 14 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>De Morgan</span></div>
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>De Morgan</span></div>
   <h3>🔵 Theory: De Morgan's laws</h3>
   <p>
     Introduce as "the useful trick for flipping filters". Walk the two
@@ -332,10 +363,10 @@
   <div class="transition">→ "Traps to avoid."</div>
 </div>
 
-<!-- Slide 14 -->
+<!-- Slide 15 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Common mistakes</span></div>
-  <h3>Three traps to avoid</h3>
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Common mistakes</span></div>
+  <h3>Four traps to avoid</h3>
   <p>
     Walk each one. The parentheses trap will burn every learner at least
     once — make sure they have seen it now so they recognise the error
@@ -350,15 +381,22 @@
   <p>
     The assign trap catches everyone once. Show it live: run
     <code>hdb.filter(pl.col("town") == "BISHAN")</code>, print
-    <code>hdb.height</code>, watch them see that hdb still has 500,000 rows.
+    <code>hdb.height</code>, watch them see that hdb still has 50,150 rows.
     The lightbulb moment is worth ten minutes of lecture.
+  </p>
+  <p>
+    The fourth trap is the newest, from the <code>when / then</code> slide:
+    a bare string in <code>.then("budget")</code> makes Polars search for a
+    column named budget. "If you get a ColumnNotFoundError naming your
+    <em>label</em>, you forgot <code>pl.lit</code>. The error message reads
+    like nonsense until you know this rule — now you know it."
   </p>
   <div class="transition">→ "Reflect, then break."</div>
 </div>
 
-<!-- Slide 15 -->
+<!-- Slide 16 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Reflection + bridge</span></div>
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Reflection + bridge</span></div>
   <h3>What you can now do</h3>
   <p>
     Run through the five bullets. Pause after each and ask them to silently

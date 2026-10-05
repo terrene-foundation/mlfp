@@ -36,7 +36,7 @@
 </h1>
 
 <p class="lead">
-  Total time: ~55 minutes &nbsp;·&nbsp; 14 slides &nbsp;·&nbsp; ~4 min per slide
+  Total time: ~55 minutes &nbsp;·&nbsp; 16 slides &nbsp;·&nbsp; ~3.5 min per slide
 </p>
 
 <p>
@@ -51,7 +51,7 @@
   <h3>Functions and Aggregation</h3>
   <p>
     Open with: "Yesterday you filtered one town at a time. Today we make
-    that obsolete. By the end of this lesson you will produce a 26-row
+    that obsolete. By the end of this lesson you will produce a 27-row
     summary of every HDB town with one call, and you'll have written your
     first reusable Python functions."
   </p>
@@ -62,7 +62,7 @@
   <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Before/after diagram</span></div>
   <h3>The productivity jump</h3>
   <p>
-    Walk the left side first — 26 filter calls in a red block. Make them
+    Walk the left side first — 27 filter calls in a red block. Make them
     feel the pain. Then the right side: one <code>group_by</code> call.
     Ask them which one they'd want to maintain.
   </p>
@@ -150,7 +150,7 @@
   <p>
     Say: "Polars scans the input once, hashes each town, drops the row into
     the right bucket. For every bucket it then computes the aggregations
-    you asked for. The output has one row per unique town — 26 rows for 26
+    you asked for. The output has one row per unique town — 27 rows for 27
     towns."
   </p>
   <div class="audience-cue expert">
@@ -166,19 +166,20 @@
   <h3>group_by in code</h3>
   <p>
     Run it live. Read it aloud: "Group hdb by town. For each group, compute
-    four aggregations: count, mean, median, std. Alias each one. Sort by
-    median descending."
+    six aggregations: count, mean, median, std, and the two quartiles. Alias
+    each one. Sort by median descending."
   </p>
   <p>
     Print <code>district_stats.head(5)</code> and walk the output. "Look —
-    26 rows, five columns (town plus four stats), already sorted. The most
+    27 rows, seven columns (town plus six stats), already sorted. The most
     expensive towns rise to the top."
   </p>
   <p>
-    Emphasise the <code>.alias</code> calls. Without them you'd see columns
-    named by guesswork — and with multiple aggregations on the same column,
-    Polars would number them <code>resale_price</code>,
-    <code>resale_price_2</code>, which nobody wants to read.
+    Emphasise the <code>.alias</code> calls — they are required, not
+    decoration. Two aggregations on the same column both want the name
+    <code>resale_price</code>, they collide, and Polars raises a
+    <code>DuplicateError</code>. Show it live once so the error message is
+    familiar when they meet it in the exercise.
   </p>
   <div class="transition">→ "Multi-key grouping."</div>
 </div>
@@ -188,12 +189,13 @@
   <h3>Multi-key grouping</h3>
   <p>
     Show the example. "Group by town <em>and</em> flat type. Every unique
-    combination becomes one row. If a town has all 7 flat types, it gets
-    7 rows in the output."
+    combination becomes one row. If a town has all 6 flat types, it gets
+    6 rows in the output."
   </p>
   <p>
-    Tell them to expect roughly 180 rows — 26 towns × 7 flat types, minus
-    some combinations that don't appear.
+    Tell them what to expect: on this dataset every one of the 27 towns sells
+    every one of the 6 flat types, so the result is exactly 162 rows — 27 × 6,
+    no missing combinations.
   </p>
   <div class="audience-cue beginner">
     <strong>For beginners:</strong> "Think pivot table — a spreadsheet
@@ -212,20 +214,46 @@
   </p>
   <p>
     The rule of thumb: "Mean is pulled by outliers; median is not." Give
-    the concrete Singapore example: one billion-dollar HDB in a district
-    of 300 flats moves the mean by several thousand dollars but leaves the
-    median unchanged.
+    the course data as the example: 144 sales recorded at S$9,000,000 —
+    planted defects in this synthetic dataset — drag the mean up to about
+    S$882k while the median sits at about S$849k. The next slide shows it.
   </p>
   <div class="audience-cue beginner">
     <strong>For beginners:</strong> "If Jeff Bezos walks into your coffee
     shop, the average net worth of the customers becomes a billion dollars.
     The median stays what it was. That's why median is the 'typical' value."
   </div>
+  <div class="transition">→ "Let's see the pull happen on our own data."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Skew picture</span></div>
+  <h3>Mean vs Median on skewed data</h3>
+  <p>
+    Read the histogram together. "Most transactions sit between about S$400k
+    and S$1.2M — that is the fat body of the distribution. Then a long right
+    tail stretches all the way to S$9M. The median, S$849k, sits in the
+    body where a typical transaction lives. The mean, S$882k, is pulled
+    right by the tail — 144 sales at S$9M do that."
+  </p>
+  <p>
+    Make the reporting rule explicit: "For skewed data like property prices,
+    quote the <em>median</em> for 'what does a typical flat cost' and the
+    <em>mean</em> only when the total market value matters — the mean times
+    the count is the total. Saying 'average price' without saying which one
+    is how headlines mislead."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> the gap between mean and median is itself
+    a skew signal — DataExplorer reports a skewness statistic for every
+    numeric column in Lesson 1.7, and 11.4 on resale_price is exactly this
+    picture compressed into one number.
+  </div>
   <div class="transition">→ "And spread — IQR."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>IQR</span></div>
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>IQR</span></div>
   <h3>Measure of spread: IQR</h3>
   <p>
     Walk the definition. Q1 at 25%, Q3 at 75%, IQR = Q3 - Q1. The spread of
@@ -239,7 +267,7 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Coefficient of variation</span></div>
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Coefficient of variation</span></div>
   <h3>🔵 Theory: Coefficient of variation</h3>
   <p>
     Walk the formula. "Standard deviation divided by mean, times 100.
@@ -247,10 +275,12 @@
     with very different means."
   </p>
   <p>
-    Concrete example: "Bishan and Jurong both have std of 80k. Bishan's
-    mean is 700k, so CV ≈ 11%. Jurong's mean is 400k, so CV ≈ 20%. Jurong's
-    prices are <em>relatively</em> more spread out — more mixed housing
-    stock."
+    Concrete example as a hypothetical: "Imagine two towns both with a
+    standard deviation of S$80k. Town A's mean is S$700k, so CV ≈ 11%.
+    Town B's mean is S$400k, so CV ≈ 20%. Town B's prices are
+    <em>relatively</em> more spread out — more mixed housing stock. Have the
+    class compute the CVs from their own district_stats table and find the
+    town with the most mixed stock."
   </p>
   <div class="audience-cue expert">
     <strong>For experts:</strong> "CV is also the inverse of signal-to-noise
@@ -261,7 +291,7 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Derived aggregates</span></div>
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Derived aggregates</span></div>
   <h3>Derived aggregates with <code>with_columns</code></h3>
   <p>
     Show the pattern: first aggregate, then derive. Point out that after
@@ -278,7 +308,7 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>for + function</span></div>
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>for + function</span></div>
   <h3>Iterating with <code>for</code> + functions</h3>
   <p>
     Walk the code. The helper function takes a dict (one row) and produces
@@ -298,27 +328,45 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Mistakes + reflection</span></div>
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Mistakes</span></div>
   <h3>Three mistakes to avoid</h3>
   <p>
     Walk each one. The hardcoding mistake is about turning scripts into
     libraries — functions without parameters are just namespaces.
   </p>
   <p>
-    The alias mistake is about output readability — Polars will let you
-    skip alias but the result will be ugly. Make them see it live: run an
-    aggregation without alias, show the auto-names.
+    The alias mistake is a hard failure, not a style issue. Make them see it
+    live: run an aggregation with two un-aliased aggregations on the same
+    column and let Polars raise <code>DuplicateError</code>. "The alias is
+    how every output column gets a unique, readable name."
   </p>
   <p>
     The loop-vs-group_by mistake is the big one. "If you ever find
     yourself writing <code>for town in towns: subset = df.filter(...)</code>,
     stop. There's a group_by that does the same thing 50× faster."
   </p>
+  <div class="transition">→ "Reflect, then we move on to joins."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~2 min</span><span>Reflection + bridge</span></div>
+  <h3>What you can now do</h3>
   <p>
-    Close by teasing 1.4: "Today we aggregated within one table. Tomorrow
+    Run through the six bullets. Pause after each and ask them to silently
+    confirm. The two that matter most: write a function with parameters and
+    type hints, and aggregate with <code>group_by</code> + <code>agg</code>.
+    If either feels shaky, point them at the matching textbook section
+    before the exercise.
+  </p>
+  <p>
+    Close by teasing 1.4: "Today we aggregated within one table. Next lesson
     we combine data from three tables — HDB transactions, MRT stations,
-    schools. You'll meet join, and you'll meet Python's if/elif/else for
-    code-level decisions."
+    schools. You'll meet <code>join</code>, and you'll meet Python's
+    if/elif/else for code-level decisions."
+  </p>
+  <p>
+    Take 5 minutes for questions, then assign the exercise (ex_3.py) and
+    circulate.
   </p>
   <div class="transition">→ End of Lesson 1.3.</div>
 </div>

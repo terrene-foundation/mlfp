@@ -48,3 +48,7 @@
 - Lesson pages (S3b) align: 4.1 3,000-customer sample, K=3, silhouette 0.182; 4.3 5 comps → 92.2%, 6 → 98.0% (slides' "90%/95%" thresholds consistent); 4.4 credit-application benchmark; 4.6 AG News; 4.7 300×120 ratings, ALS RMSE 0.557.
 - Honest results: from-scratch net ≈ linear regression (R² 0.860 both); equal-weight blend < LOF alone; Apriori faster than FP-Growth on this small data.
 - BERTopic verified with TOPIC_EMBED_MODEL=all-MiniLM-L6-v2 (40 topics, 25% outliers).
+
+---
+# Assessment shard merged (S5, merged from audit/m04-s5-assessment)
+- Deck + spec assessment slide: "5 auto-graded coding tasks, 100 marks, outcome-mapped" (P5).

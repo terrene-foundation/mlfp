@@ -1574,3 +1574,188 @@ Tomorrow they will judge charts by it — including, happily, the instructor's.
 **Transition:** "Lesson 1.7 introduces DataExplorer for automated profiling."
 
 ---
+
+## Slide 62: Lesson 1.7: Automated Data Profiling
+
+**Time:** ~2 min · Foundations
+
+**Hook:** "Everything you did by hand this morning — types, spreads, nulls,
+duplicates — one engine call now does for you."
+
+DataExplorer automates the manual inspection ritual from Lessons 1.1-1.3.
+Position learners as *users* of the engine, not builders of it — the skill is
+reading a profile and turning alerts into a cleaning plan. That plan-driven
+framing is what separates profiling from sightseeing.
+
+**Beginner cue:** "Think of it as a data-quality doctor — it reads the whole
+chart and hands you a list of symptoms."
+
+**Advanced cue:** The 8 alert types cover most automated data-quality checks you
+would otherwise hand-roll; the thresholds are all configurable.
+
+**Transition:** "Let us profile a dataset with one call."
+
+---
+
+## Slide 63: DataExplorer: One-Call Profiling
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "One call: 50,150 rows read, every column summarised, every problem
+flagged."
+
+Run it live on the HDB data. `run_profile(df)` is the course's small sync wrapper
+around DataExplorer's async `profile()` — it works identically in scripts and in
+Colab/Jupyter, so students can use the engine before async is taught. Read the
+headline numbers together: `n_rows` 50,150, `n_columns` 11, `duplicate_count`
+300, and the alerts list.
+
+Two API details to say precisely. Alerts are **dicts** with keys `type`, `column`
+(or `columns` for a correlated pair), `value` and `severity` ("info" or
+"warning") — access them as `alert["type"]`, not `alert.type`. And connect the
+output back to the opening story: the high-skewness alert on `resale_price`
+(skew 11.4) is exactly the S$10 / S$9M planted prices.
+
+**Beginner cue:** Run the code, read the alerts aloud — that is the whole skill
+for today.
+
+**Advanced cue:** Inspect `profile.columns["resale_price"]`: `outlier_count` is
+646 by the IQR rule even though no "outlier" alert exists — outliers are a
+per-column statistic, not an alert type.
+
+**Key question:** "Which alert would have caught the flash-crash scenario before
+the dashboard shipped?" The skewness alert.
+
+**Transition:** "What if the default thresholds are wrong for your data?"
+
+---
+
+## Slide 64: AlertConfig: Custom Thresholds
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Defaults are opinions. AlertConfig lets you argue with them."
+
+Every `AlertConfig` argument is optional; omitted ones keep the defaults shown in
+the slide's comments. Walk the direction rule: **lower thresholds mean more
+alerts, higher mean fewer** — and make the concrete HDB example: `remaining_lease`
+is 2.9% null, silent at the 0.05 default, flagged at 0.02. Note that moving the
+null threshold *up* (say 0.10) *relaxes* the alert — direction mistakes are
+common.
+
+One field needs special care: `constant_threshold` is a **count of unique
+values** (a column with at most 1 distinct value is constant), not a fraction —
+a 0.99 there means something entirely different from what most people expect.
+
+**Beginner cue:** "Defaults are fine to start. Tune only when an alert you
+expected did not fire — or one fired that you do not care about."
+
+**Advanced cue:** Outliers are still not an alert — each `ColumnProfile` carries
+`outlier_count`/`outlier_pct` under the IQR rule for you to judge in domain
+terms.
+
+**Key question:** "There are exactly eight alert types — can the room name four?"
+(high_nulls, constant, high_skewness, high_zeros, high_cardinality,
+high_correlation, duplicates, imbalanced.)
+
+**Transition:** "DataExplorer can also compare two datasets."
+
+---
+
+## Slide 65: Comparing Datasets
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Cleaning claims are cheap. `compare()` is the receipt."
+
+`compare()` takes two **DataFrames** — not two profiles — and returns a dict:
+`shape_comparison`, per-column `column_deltas`, both full `profile_a`/`profile_b`,
+and `missing_in_a`/`missing_in_b` for schema drift. The course wrapper is
+`run_compare(df_a, df_b)`.
+
+The before/after on HDB is the teaching moment: after deduplicating and filtering
+prices to a sane band, the skewness alert disappears (11.4 → 0.39) — and a **new**
+high-correlation alert appears: floor area versus price, r = 0.91. The bad prices
+were hiding the real relationship all along. Cleaning did not just remove noise;
+it revealed signal.
+
+**Beginner cue:** "It is a before-and-after photo of your data."
+
+**Advanced cue:** For distribution shift beyond summary stats, KS tests and
+Population Stability Index are the follow-up tools.
+
+**Key question:** "Why did cleaning *add* an alert?" Make them connect removed
+outliers to the unmasked correlation.
+
+**Transition:** "Let us add error handling."
+
+---
+
+## Slide 66: Error Handling with try/except
+
+**Time:** ~3 min · Foundations
+
+**Hook:** "Programs that crash on bad input are demos. Programs that handle it
+are tools."
+
+`try/except` prevents crashes on *expected* errors — and the discipline is to
+catch specific exception types, never a bare `except`. Demonstrate with the
+loader: `MLFPDataLoader.load()` raises `FileNotFoundError` for a name it cannot
+find — change the filename, watch the first `except` branch run, then read the
+error message together. "Fail loudly, handle specifically" is the habit to
+install.
+
+**Beginner cue:** "Try this — but if it fails in *this specific way*, do that
+instead."
+
+**Advanced cue:** Custom exceptions and context managers are the next rung; the
+rule against bare `except` never lifts.
+
+**Transition:** "Exercise time."
+
+---
+
+## Slide 67: Exercise 1.7: Profile and Compare
+
+**Time:** ~2 min (exercise work time ~15 min) · Foundations
+
+**Hook:** "Three messy datasets, one profiler, and a cleaning plan you must
+defend."
+
+The exercise profiles three deliberately messy synthetic datasets modelled on
+Singapore statistics — illustrative values throughout: mixed granularity, three
+date formats inside one column, gaps, COVID-era outliers, and near-zero JPY
+rates. The assessment asks for the *plan*, not just the alerts: read every alert,
+decide the fix, justify it.
+
+Set the division of labour honestly: the original-versus-cleaned `compare()` is
+the capstone's job — Exercise 1.8 runs `run_compare(raw, cleaned)` end to end.
+Here, the deliverable is profile literacy.
+
+**Beginner cue:** Run the default profiler first, read *every* alert, and only
+then decide how to clean.
+
+**Advanced cue:** Write the cleaning as an automated function — profiling-driven
+cleaning, not hand-patched.
+
+**Transition:** "Lesson 1.7 recap."
+
+---
+
+## Slide 68: Lesson 1.7 Recap
+
+**Time:** ~1 min · Foundations
+
+**Hook:** "DataExplorer profiles; try/except protects. Together: robust
+profiling."
+
+One-call profiling with tunable alerts, dataset comparison as the cleaning
+receipt, and specific error handling — the lesson in one breath.
+
+**Beginner cue:** "DataExplorer plus try/except equals profiling you can trust."
+
+**Advanced cue:** Natural break before the capstone.
+
+**Transition:** "The final lesson brings everything together."
+
+---

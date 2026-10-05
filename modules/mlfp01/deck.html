@@ -244,7 +244,7 @@ Transition: "What does a summary hide? Let us look."
         <strong>The Fix:</strong>
         <pre><code class="language-python">df.select(
     pl.col("resale_price").min(),     # 10
-    pl.col("resale_price").median(),  # 849,126
+    pl.col("resale_price").median(),  # 849,124
     pl.col("resale_price").max(),     # 9,000,000
 )</code></pre>
         A <span class="nomath">S$10</span> flat (107 rows) and a <span class="nomath">S$9,000,000</span> flat (144 rows). The median never noticed.

@@ -116,9 +116,7 @@ def to_store_frame(df: pl.DataFrame, schema: Any) -> pl.DataFrame:
     non_nullable = [f.name for f in schema.fields if not f.nullable]
     if non_nullable:
         frame = frame.drop_nulls(subset=non_nullable)
-    # The nullable rolling fields' warm-up nulls still break the store's NOT NULL
-    # columns; drop those too (they are exactly the first 6 months per town).
-    return frame.drop_nulls()
+    return frame
 
 
 async def materialize_features(fs: Any, schema: Any, df: pl.DataFrame) -> Any:

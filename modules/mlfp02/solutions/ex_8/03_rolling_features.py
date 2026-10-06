@@ -216,7 +216,13 @@ print(f"    New fields: town_median_price, town_transaction_volume, town_price_t
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert property_schema_v2.version == 2, "Task 3: v2 schema must be version 2"
 assert len(property_schema_v2.fields) == 7, "Task 3: v2 must have 7 features"
-assert stored_v2.height == features_v2.height, "Task 3: every v2 row must be stored"
+n_usable = features_v2.drop_nulls(
+    subset=["town_median_price", "town_transaction_volume", "town_price_trend"]
+).height
+assert stored_v2.height == n_usable, (
+    f"Task 3: all {n_usable:,} rows with usable market context must be stored "
+    f"(got {stored_v2.height:,}); warm-up nulls are dropped at the store boundary"
+)
 print("\n[ok] Checkpoint 2 passed — v2 features materialised and read back\n")
 
 

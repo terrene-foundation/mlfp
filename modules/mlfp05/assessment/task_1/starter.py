@@ -1,116 +1,62 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP05 — Assessment Task 1: Autoencoder Anomaly Detection
+MLFP05 — Assessment Task 1: Handwritten Postcode Reader
 
-Complete the `solve()` function. Read problem.md for the full specification.
+Implement `solve()`. problem.md holds the model contract and the acceptance
+criteria. The grader scores your RETURNED model on held-out data it splits
+itself — an untrained network or a constant predictor fails.
 
-Train an UNDERCOMPLETE autoencoder on healthy-only sensor cycles, then score the
-test set by reconstruction error. The grader checks the detector actually separates
-the planted anomalies (ROC-AUC >= 0.90).
-
-    python grader.py starter.py     # grade your attempt
-    python grader.py solution.py    # verify the reference passes
-
-No GPU required — trains on CPU in well under 15 seconds.
+    python starter.py               # (you) train + smoke-test your model
+    python grader.py starter.py     # (instructor) grade an attempt
 """
 from __future__ import annotations
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
 
-INPUT_DIM = 12
-SEED = 7
+torch.set_num_threads(2)  # tiny CPU model; two threads is plenty
 
 
-def make_dataset() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Deterministic synthetic sensor telemetry — DO NOT EDIT.
+def load_digits_train() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The training mail: a fixed, documented stratified split of the bundled
+    8x8 digits (seed 7, 80/20). Pixels are scaled to [0, 1].
 
-    Returns (X_train, X_test, y_test):
-      X_train (800, 12) float32 — healthy cycles only.
-      X_test  (400, 12) float32 — healthy + anomalous mix.
-      y_test  (400,)    int     — 0 = healthy, 1 = anomaly (eval only).
+    Returns:
+        (x_train, y_train, x_val, y_val) — x arrays are (N, 1, 8, 8) float32,
+        y arrays are int64 class labels 0-9.
+
+    The grader evaluates on ITS OWN split, drawn with a fresh secret seed, so
+    do not tune to this particular validation slice.
     """
-    rng = np.random.default_rng(SEED)
-    # Healthy manifold: 3 latent factors projected into 12 channels + small noise.
-    basis = rng.normal(size=(3, INPUT_DIM))
+    from sklearn.datasets import load_digits
+    from sklearn.model_selection import train_test_split
 
-    def healthy(n: int) -> np.ndarray:
-        z = rng.normal(size=(n, 3))
-        return (z @ basis + 0.15 * rng.normal(size=(n, INPUT_DIM))).astype(np.float32)
-
-    def anomaly(n: int) -> np.ndarray:
-        # Off-manifold: independent per-channel signal that breaks the correlation.
-        return (2.5 * rng.normal(size=(n, INPUT_DIM))).astype(np.float32)
-
-    X_train = healthy(800)
-    n_test_healthy, n_test_anom = 320, 80
-    X_test = np.vstack([healthy(n_test_healthy), anomaly(n_test_anom)])
-    y_test = np.concatenate(
-        [np.zeros(n_test_healthy, dtype=int), np.ones(n_test_anom, dtype=int)]
+    x, y = load_digits(return_X_y=True)
+    x = (x / 16.0).astype(np.float32).reshape(-1, 1, 8, 8)
+    x_train, x_val, y_train, y_val = train_test_split(
+        x, y.astype(np.int64), test_size=0.2, stratify=y, random_state=7
     )
-    perm = rng.permutation(len(y_test))
-    return X_train, X_test[perm], y_test[perm]
+    return x_train, y_train, x_val, y_val
 
 
 def solve() -> dict:
-    """Train an undercomplete AE on healthy data; return scored test set.
+    """Train a convolutional classifier on the digits training data.
 
-    See problem.md for the exact return contract.
+    Returns:
+        {"model": nn.Module, "history": {"train_loss": [...], "val_loss": [...]}}
+        where the model maps (N, 1, 8, 8) float32 in [0, 1] to (N, 10) logits.
     """
-    torch.manual_seed(SEED)
-    X_train, X_test, y_test = make_dataset()
-
-    # TODO 1: choose a bottleneck size that is STRICTLY smaller than INPUT_DIM (12).
-    #         A value around 3-5 captures the healthy manifold without copying input.
-    latent_dim = 0  # <- replace with your undercomplete bottleneck (1..11)
-
-    # TODO 2: build an undercomplete autoencoder as a torch.nn.Module.
-    #         encoder: INPUT_DIM -> ... -> latent_dim
-    #         decoder: latent_dim -> ... -> INPUT_DIM
-    #         forward(x) should return the reconstruction (same shape as x).
-    class AE(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            # self.encoder = nn.Sequential(...)
-            # self.decoder = nn.Sequential(...)
-
-        def forward(self, x):
-            # return self.decoder(self.encoder(x))
-            return x  # <- replace
-
-    model = AE()
-
-    # TODO 3: train the AE with MSE reconstruction loss on X_train ONLY.
-    #         ~40 epochs of Adam (lr=1e-3) on batches of healthy cycles is plenty.
-    #         Hint: loss = F.mse_loss(model(batch), batch)
-    # train_tensor = torch.tensor(X_train)
-    # loader = DataLoader(TensorDataset(train_tensor), batch_size=64, shuffle=True)
-    # optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
-    # for epoch in range(40): ...
-
-    # TODO 4: score the test set — per-row mean squared reconstruction error.
-    #         model.eval(); no_grad; scores = ((X_test - recon) ** 2).mean(axis=1)
-    scores = np.zeros(len(y_test), dtype=float)  # <- replace with real scores
-
-    return {
-        "model": model,
-        "scores": scores,
-        "y_test": y_test,
-        "input_dim": INPUT_DIM,
-        "latent_dim": latent_dim,
-    }
+    raise NotImplementedError("Implement solve() — see problem.md")
 
 
 if __name__ == "__main__":
-    from sklearn.metrics import roc_auc_score
-
+    x_train, y_train, x_val, y_val = load_digits_train()
+    print(f"Train {x_train.shape}, val {x_val.shape}")
     out = solve()
-    auc = roc_auc_score(out["y_test"], out["scores"])
-    s = out["scores"]
-    yt = out["y_test"]
-    sep = s[yt == 1].mean() / max(s[yt == 0].mean(), 1e-9)
-    print(f"latent_dim={out['latent_dim']}  AUC={auc:.3f}  separation={sep:.2f}")
+    model = out["model"]
+    model.eval()
+    with torch.no_grad():
+        logits = model(torch.tensor(x_val))
+    acc = (logits.argmax(1).numpy() == y_val).mean()
+    print(f"Your val accuracy: {acc:.3f}  (grader uses its own split)")

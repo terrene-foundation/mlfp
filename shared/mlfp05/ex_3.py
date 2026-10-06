@@ -50,6 +50,10 @@ TICKERS = {
 SEQ_LEN = 20  # 20-day lookback (4 trading weeks)
 FORECAST_HORIZON = 5  # predict next 5 days
 FEATURES = ["Close", "High", "Low", "Volume"]
+# Indicator-augmented feature set for 06_technical_indicators.py. Every
+# indicator is computed from PAST closes only (rolling/ewm windows), so no
+# future information leaks into the features.
+INDICATOR_FEATURES = FEATURES + ["RSI", "MACD_hist", "BB_pctB"]
 HIDDEN_DIM = 64
 EPOCHS = 15
 LR = 1e-3
@@ -119,17 +123,134 @@ def load_stock_data() -> tuple[dict[str, pl.DataFrame], str, pl.DataFrame]:
     return stock_data, primary, primary_df
 
 
+# ── Technical Indicators (polars-native) ─────────────────────────────
+def add_technical_indicators(df: pl.DataFrame) -> pl.DataFrame:
+    """Append RSI(14), MACD(12,26,9) and Bollinger %B(20,2) in polars.
+
+    All three are the canonical definitions:
+      RSI:   Wilder's smoothed gain/loss ratio, 100 - 100/(1 + RS)
+      MACD:  EMA(12) - EMA(26); signal = EMA(9) of MACD; hist = MACD - signal
+      %B:    (Close - lower) / (upper - lower) with 20-day mean +/- 2 sd
+
+    Every expression uses backward-looking rolling/ewm windows only, so the
+    indicator on day t is computable at the close of day t — no lookahead.
+    The first ~26 rows carry nulls (window warm-up); callers should
+    ``drop_nulls()`` before building windowed datasets.
+    """
+    return df.with_columns(
+        # ── RSI(14), Wilder's smoothing (ewm alpha = 1/14) ──────────
+        pl.col("Close").diff().alias("_delta"),
+    ).with_columns(
+        pl.when(pl.col("_delta") > 0)
+        .then(pl.col("_delta"))
+        .otherwise(0.0)
+        .alias("_gain"),
+        pl.when(pl.col("_delta") < 0)
+        .then(-pl.col("_delta"))
+        .otherwise(0.0)
+        .alias("_loss"),
+    ).with_columns(
+        pl.col("_gain").ewm_mean(alpha=1 / 14, adjust=False).alias("_avg_gain"),
+        pl.col("_loss").ewm_mean(alpha=1 / 14, adjust=False).alias("_avg_loss"),
+    ).with_columns(
+        (
+            100.0
+            - 100.0 / (1.0 + pl.col("_avg_gain") / (pl.col("_avg_loss") + 1e-12))
+        ).alias("RSI"),
+        # ── MACD(12, 26, 9) ─────────────────────────────────────────
+        (
+            pl.col("Close").ewm_mean(span=12, adjust=False)
+            - pl.col("Close").ewm_mean(span=26, adjust=False)
+        ).alias("_macd"),
+    ).with_columns(
+        pl.col("_macd").ewm_mean(span=9, adjust=False).alias("_macd_signal"),
+        # ── Bollinger %B(20, 2) ─────────────────────────────────────
+        pl.col("Close").rolling_mean(20).alias("_bb_mid"),
+        pl.col("Close").rolling_std(20).alias("_bb_std"),
+    ).with_columns(
+        (pl.col("_macd") - pl.col("_macd_signal")).alias("MACD_hist"),
+        (
+            (
+                pl.col("Close")
+                - (pl.col("_bb_mid") - 2.0 * pl.col("_bb_std"))
+            )
+            / (4.0 * pl.col("_bb_std") + 1e-12)
+        ).alias("BB_pctB"),
+    ).drop("_delta", "_gain", "_loss", "_avg_gain", "_avg_loss",
+           "_macd", "_macd_signal", "_bb_mid", "_bb_std")
+
+
+# ── Text Corpus (character-level modelling) ───────────────────────────
+TEXT_DIR = REPO_ROOT / "data" / "mlfp05" / "text"
+TINY_SHAKESPEARE_URL = (
+    "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/"
+    "tinyshakespeare/input.txt"
+)
+
+
+def load_text_corpus() -> tuple[str, str]:
+    """Load a character-level text corpus, cached locally.
+
+    Primary source: tiny-shakespeare (~1.1 MB of Shakespeare dialogue, the
+    canonical char-RNN corpus), downloaded once and cached under
+    ``data/mlfp05/text/``. If the download is unavailable (offline lab),
+    the module's own textbook is used — the model then learns to write
+    course-style prose, which is itself a fun demonstration.
+
+    Returns: (text, corpus_name)
+    """
+    TEXT_DIR.mkdir(parents=True, exist_ok=True)
+    cache = TEXT_DIR / "tiny_shakespeare.txt"
+    if cache.exists():
+        return cache.read_text(encoding="utf-8"), "tiny-shakespeare (cached)"
+
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(TINY_SHAKESPEARE_URL, timeout=30) as resp:
+            text = resp.read().decode("utf-8")
+        cache.write_text(text, encoding="utf-8")
+        return text, "tiny-shakespeare (downloaded)"
+    except Exception as exc:
+        textbook = REPO_ROOT / "modules" / "mlfp05" / "textbook.md"
+        if textbook.exists():
+            print(
+                f"  tiny-shakespeare unavailable ({type(exc).__name__}); "
+                "using the module textbook as corpus"
+            )
+            return textbook.read_text(encoding="utf-8"), "mlfp05 textbook"
+        raise RuntimeError(
+            f"No text corpus available: download failed ({exc}) and no "
+            f"local textbook at {textbook}"
+        ) from exc
+
+
 # ── Windowed Datasets ───────────────────────────────────────────────────
 def build_dataset(
     df: pl.DataFrame,
     seq_len: int = SEQ_LEN,
     horizon: int = FORECAST_HORIZON,
+    feature_cols: list[str] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
     """Build (seq_len window) -> (next horizon closes) arrays with z-score normalisation.
 
+    Args:
+        df: OHLCV frame (optionally indicator-augmented)
+        seq_len: lookback window length
+        horizon: forecast horizon
+        feature_cols: columns to use as features (default: FEATURES).
+            The TARGET is always the first column of feature_cols and must
+            be "Close" — normalisation stats for the target come from the
+            train split only.
+
     Returns: X, y, mean, std, n_train_windows
     """
-    data = df.select(FEATURES).to_numpy().astype(np.float32)
+    cols = FEATURES if feature_cols is None else feature_cols
+    if cols[0] != "Close":
+        raise ValueError(
+            f"feature_cols[0] must be 'Close' (the forecast target); got {cols[0]!r}"
+        )
+    data = df.select(cols).to_numpy().astype(np.float32)
     n = len(data)
     split_n = int(0.8 * n)
     train_data = data[:split_n]
@@ -149,6 +270,7 @@ def build_dataset(
 def prepare_dataloaders(
     primary_df: pl.DataFrame,
     device: torch.device,
+    feature_cols: list[str] | None = None,
 ) -> tuple[
     DataLoader,
     DataLoader,
@@ -166,7 +288,9 @@ def prepare_dataloaders(
     Returns: train_loader, val_loader, X_train_t, y_train_t, X_val_t, y_val_t,
              norm_mean, norm_std, n_train_w, n_features
     """
-    X_all, y_all, norm_mean, norm_std, n_train_w = build_dataset(primary_df)
+    X_all, y_all, norm_mean, norm_std, n_train_w = build_dataset(
+        primary_df, feature_cols=feature_cols
+    )
     print(
         f"Built {len(X_all)} windows (seq_len={SEQ_LEN}, horizon={FORECAST_HORIZON}); "
         f"train {n_train_w}, val {len(X_all) - n_train_w}"

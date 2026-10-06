@@ -18,6 +18,7 @@ echoes its input, or hands back an untrained model cannot pass.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib.util
 import json
 import secrets
@@ -27,13 +28,24 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+def quiet() -> contextlib.AbstractContextManager:
+    """Redirect stdout to stderr while student code runs.
+
+    Submissions print (training logs, torch.onnx progress, ...). The grader's
+    own stdout is the JSON report, so student output is diverted to stderr —
+    visible for debugging, never corrupting the report.
+    """
+    return contextlib.redirect_stdout(sys.stderr)
+
+
 def load_student_module(path: Path, name: str):
     """Import the submission file at ``path`` as a fresh module."""
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot load module from {path}")
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    with quiet():
+        spec.loader.exec_module(mod)
     return mod
 
 

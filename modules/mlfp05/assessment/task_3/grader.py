@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from grading_harness import Checks, finalize, load_student_module, main  # noqa: E402
+from grading_harness import Checks, finalize, load_student_module, main, quiet  # noqa: E402
 
 WEIGHT = 25
 NAIVE_RATIO = 0.97
@@ -70,7 +70,8 @@ def grade(student_path: Path, seed: int) -> dict:
     if not callable(getattr(st, "solve", None)):
         return finalize(checks, WEIGHT, seed, "Module does not define solve()", GATES)
     try:
-        r = st.solve()
+        with quiet():
+            r = st.solve()
     except Exception as e:
         return finalize(checks, WEIGHT, seed, f"solve() raised {type(e).__name__}: {e}", GATES)
 

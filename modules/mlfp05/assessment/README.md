@@ -1,96 +1,90 @@
-# MLFP05 — Module Assessment: Deep Learning (Vision & Sequences)
+# MLFP05 — End-of-Module Assessment: Deep Learning (Vision, Sequences & Deployment)
 
-Four practical, auto-graded coding tasks covering the four pillars of Module 5:
-**autoencoders, CNNs, RNNs/sequences, and transformers**. No multiple choice. Every
-task builds and trains a real PyTorch model and is graded on an **outcome** (AUC,
-test accuracy, MSE-below-baseline). Each grader imports your submission, re-derives
-its data independently, re-runs your model on it (so hand-tuned output arrays are
-caught), and prints a JSON report.
+Four practical coding tasks covering the module's working skills: training a
+CNN that beats a classical baseline, reading failing training runs with the
+DLDiagnostics toolkit, training a recurrent forecaster that beats the naive
+forecast, and shipping a trained model as an ONNX artefact. There is no
+multiple choice.
 
-## No GPU required
+The tasks state **goals, data, constraints and acceptance criteria**. They do
+not give architectures or training recipes. Choosing them is part of every
+task.
 
-Every task is **CPU-shaped**: tiny models, small or synthetic data, few epochs, fixed
-seeds. Each reference solution runs to completion on a laptop CPU in **well under 60
-seconds** (most in 5–25s). You can complete and pass all four tasks without any GPU.
-No large pretrained backbones are downloaded (no ResNet/BERT) — where a topic was
-GPU-heavy in the exercises, it is adapted to a small-from-scratch equivalent that
-tests the same skill (documented in each `problem.md`).
+**Duration**: 3 hours · **Total**: 100 marks · **Open book**: documentation is
+allowed; AI assistants are **not** allowed.
 
 ## Tasks
 
-| Task | Weight | Difficulty | Topic            | Dataset                                 | Skill graded                                       |
-| ---- | ------ | ---------- | ---------------- | --------------------------------------- | -------------------------------------------------- |
-| 1    | 25%    | Hard       | Autoencoders     | Synthetic sensor telemetry (in-process) | Undercomplete AE anomaly detection, ROC-AUC ≥ 0.90 |
-| 2    | 25%    | Hard       | CNNs             | `sklearn` 8×8 digits (bundled)          | CNN from scratch, test accuracy ≥ 0.90             |
-| 3    | 25%    | Hard       | RNNs / sequences | Synthetic AR(2) series (in-process)     | GRU forecast beats naive last-value (≤ 0.97× MSE)  |
-| 4    | 25%    | Hard       | Transformers     | AG News slice (bundled parquet)         | Tiny transformer text classifier, accuracy ≥ 0.72  |
+| Task | Marks | Data                                       | What it assesses                                                                                          | Spec lessons |
+| ---- | ----- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ------------ |
+| 1    | 25    | 8×8 digits (bundled with scikit-learn)     | Build and train a CNN from scratch that beats the grader's own classical baseline on grader-held mail     | 5.2          |
+| 2    | 25    | none — the grader hands you live models    | Triage training runs with kailash-ml DLDiagnostics: dead neurons, gradient flow, loss trend               | 5.1–5.4      |
+| 3    | 25    | synthetic load series (generator provided) | Train a recurrent forecaster that beats the naive "tomorrow = today" forecast on series you never see     | 5.3          |
+| 4    | 25    | 8×8 digits (bundled)                       | Train a classifier and ship it as an ONNX artefact via OnnxBridge; parity + accuracy scored by the grader | 5.2, 5.7     |
 
-**Total: 25 + 25 + 25 + 25 = 100 marks.** Each task is worth 25 marks and passes only
-when **every** check in its `grader.py` returns `true`.
+Each task directory contains:
 
-### Why some datasets are synthetic
+- `problem.md`: the scenario, the interface, the acceptance criteria and the
+  rules;
+- `starter.py`: data loading, the function signatures and a local runner. You
+  complete it and submit it.
 
-- **Task 1** plants off-manifold anomalies into a low-rank healthy signal so a
-  bottleneck AE has something real to separate (deterministic, no download).
-- **Task 3** uses a damped AR(2) + seasonal series because **real equity returns are
-  a random walk that no model can beat** — grading "beat the baseline" on a random
-  walk would be impossible. AR(2) has genuine autocorrelation a GRU can exploit.
+Instructors also hold `solution.py` (the reference), `grader.py`, and the
+shared `grading_harness.py`. These are not given to students.
 
-Tasks 2 and 4 use **bundled** real data committed to the repo (`sklearn` digits ship
-inside scikit-learn; AG News parquet lives under `data/mlfp05/`).
+## No GPU required
 
-## Each task directory contains
+Every task is **CPU-shaped**: tiny models, small or bundled data, few epochs,
+fixed seeds. Each reference solution runs in well under a couple of minutes on
+a laptop CPU, and each grader in about the same.
 
-- `problem.md` — scenario, weight, difficulty, dataset source, exact return
-  contract, performance target, visible sanity check, grading checklist, rules, and
-  any CPU adaptation notes.
-- `starter.py` — light scaffold with numbered `# TODO` markers. The placeholder
-  **fails** grading. This is the file you complete and submit.
-- `solution.py` — instructor reference that passes every check (**withheld** from the
-  student portal).
-- `grader.py` — automated grader (**withheld** from the student portal).
+## How grading works
 
-## How to run
+Every grader measures **outcomes on ground truth you cannot influence**. No
+number that a submission reports about itself is trusted. In particular:
+
+- Task 1 draws its own stratified split of the digits with a fresh secret
+  seed, trains its own logistic-regression baseline, and scores **your
+  returned model's** predictions against its own labels — plus a forward-hook
+  check that a `Conv2d` actually fires, and an intensity-jittered variant for
+  generalisation.
+- Task 2 builds the ward itself: fresh models with planted pathologies (a
+  zeroed layer, a deep tiny-init tanh stack, a diverging recorded loss).
+  Your labels are compared against the planted truth.
+- Task 3 regenerates the load series with fresh secret seeds and computes the
+  naive and mean forecasts itself, then runs your returned model.
+- Task 4 loads your `.onnx` artefact with onnxruntime itself, checks
+  numerical parity with your torch model on grader-built batches, and scores
+  accuracy against grader-held labels.
+
+Marks are awarded per check: weight × (checks passed / checks). Tasks 1, 3
+and 4 have **gates** (a returned model honouring the input/output contract);
+if a gate fails, the task scores 0. An untrained model, a constant predictor,
+an echoed input or a hard-coded answer fails every task.
+
+Run a grader (instructors):
 
 ```bash
-cd modules/mlfp05/assessment/task_1
-uv run python grader.py starter.py     # grade your attempt
-uv run python grader.py solution.py    # verify the reference passes
+python modules/mlfp05/assessment/task_1/grader.py path/to/submission.py
+python modules/mlfp05/assessment/task_1/grader.py path/to/submission.py --seed 123  # replay
 ```
 
-Exit code `0` = passed, `1` = failed. The grader prints a JSON report:
+It prints a JSON report with each check, the marks, and diagnostic notes.
 
-```json
-{
-  "passed": true,
-  "checks": { "returns_dict": true, "auc_at_least_0p90": true, "...": true },
-  "total": 8,
-  "max": 8
-}
-```
+## How to work
 
-A task is **passed** when `total == max` (every check `true`).
-
-## Exam conditions
-
-- **Duration**: 3 hours.
-- **Open-book, no-AI**: you may consult the Module 5 exercises, the kailash-ml docs,
-  and PyTorch docs. You may **not** use AI assistants — the graders measure outcomes
-  on data they re-derive, and an AI-generated skeleton that does not train a real
-  model will not pass.
-- **Submit your completed `starter.py` files to the portal.** Graders are withheld;
-  your submissions are run against them.
+1. Read `task_N/problem.md` in full.
+2. Implement `solve()` / `diagnose_model()` in `task_N/starter.py`. Run it —
+   the runner trains your model and prints a summary on documented dev data.
+3. Submit your completed `starter.py` files. Do not rename the functions or
+   change their contracts.
 
 ## Rules
 
-- **No GPU** — CPU only; keep models tiny and seeds fixed.
-- Raw **PyTorch** (`torch.nn`) is allowed throughout — Module 5 is the deep-learning
-  module and its exercises build models directly in `torch.nn`.
-- **No large pretrained backbones / downloads** (no ResNet, no BERT, no HuggingFace
-  weights) — build models from scratch.
-- **Polars** for any tabular/parquet work — **no pandas**.
-- Fix all seeds (`torch.manual_seed`) for reproducibility. Where exact reproduction
-  is impossible, tasks grade on outcome thresholds with margin.
-- Never train on the held-out test labels. No hardcoded API keys or model names.
-- **AI-resilient**: each grader re-derives its data, re-runs your returned model, and
-  checks the model itself produces the claimed result — a faked output array fails.
+- Raw PyTorch (`torch.nn`) throughout — Module 5 is the deep-learning module.
+- **No pretrained weights or downloads**; CPU only; fix your seeds.
+- Task 2 diagnoses with the kailash-ml DLDiagnostics instruments
+  (`kailash_ml.diagnostics.run_diagnostic_checkpoint`); Task 4 exports with
+  the kailash-ml `OnnxBridge` (`framework="torch"`, a `sample_input` in the
+  serving shape; `export` returns a result object — read `.success`).
+- Graders replay: the same `--seed` reproduces the same grading run.

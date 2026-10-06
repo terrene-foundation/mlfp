@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from grading_harness import Checks, finalize, load_student_module, main  # noqa: E402
+from grading_harness import Checks, finalize, load_student_module, main, quiet  # noqa: E402
 
 WEIGHT = 25
 VALID = ("healthy", "dead_neurons", "vanishing_gradients", "diverging_loss")
@@ -184,7 +184,8 @@ def grade(student_path: Path, seed: int) -> dict:
     errors: list[str] = []
     for truth, model, loader, loss_fn, train_losses in ward:
         try:
-            lab = fn(model, loader, loss_fn, train_losses=list(train_losses))
+            with quiet():
+                lab = fn(model, loader, loss_fn, train_losses=list(train_losses))
         except Exception as e:
             lab = f"__raised_{type(e).__name__}"
             errors.append(f"{truth}: {type(e).__name__}: {e}")
@@ -214,8 +215,9 @@ def grade(student_path: Path, seed: int) -> dict:
 
     def repeat():
         truth, model, loader, loss_fn, tl = ward[0]
-        a = fn(model, loader, loss_fn, train_losses=list(tl))
-        b = fn(model, loader, loss_fn, train_losses=list(tl))
+        with quiet():
+            a = fn(model, loader, loss_fn, train_losses=list(tl))
+            b = fn(model, loader, loss_fn, train_losses=list(tl))
         return {
             "consistent_repeat": (
                 str(a) == str(b),

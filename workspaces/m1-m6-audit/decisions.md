@@ -67,3 +67,12 @@ or compare against raw margins consistently.
    the sklearn family too (error text becomes the family failure). Course
    handling: ex_0/00 exempted from the strict suite gate with the reason in
    the file header; suite runner has STRICT_SKIP.
+
+### P6 — one more (2026-10-07): LocalRuntime._record_execution_metrics arity
+
+kailash 2.44.1 logs `Error tracking conditional execution performance:
+LocalRuntime._record_execution_metrics() missing 4 required positional
+arguments: 'execution_time', 'node_count', 'skipped_nodes', 'execution_mode'`
+when a SwitchNode-pruned plan completes (seen in mlfp03 ex_7/05 output).
+Upstream logging-path bug; non-fatal but noise in every conditional
+workflow run.

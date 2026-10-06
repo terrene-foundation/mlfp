@@ -30,8 +30,9 @@
 #   10. Chart gallery summary and export
 #
 # DATASET: Singapore HDB resale flat transactions
-#   Source: Housing & Development Board (data.gov.sg)
-#   Rows: ~500,000 transactions | Aggregated differently per chart
+#   Source: synthetic course dataset (hdb_resale.parquet) modelled on the
+#   public HDB resale records — the numbers are not real market data
+#   Rows: ~50,000 transactions | Aggregated differently per chart
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -96,14 +97,27 @@ os.makedirs("charts", exist_ok=True)
 # - 3D charts: depth perception distorts values
 # - Pie charts (>5 slices): hard to compare similar-sized slices
 # - Dual y-axis: readers confuse which line uses which scale
+# - Bars that mix units on one axis (S$ next to S$/sqm): the small one vanishes
+#
+# ModelVisualizer was built for MODEL results, so two of its charts carry
+# model-flavoured defaults: metric_comparison() labels its axes
+# "Model"/"Score", and training_history() plots every series against
+# 1, 2, 3, ... with the x-axis titled "Epoch". When you reuse them for
+# data, set the real x values and axis titles yourself — a chart with the
+# wrong axis is a misleading chart.
 
 print("=== Chart Type Reference ===")
-print("  histogram()         -> Distribution shape")
-print("  scatter()           -> Two-variable relationship")
-print("  feature_importance() / metric_comparison() -> Category comparison")
-print("  confusion_matrix()  -> Heatmap (any 2D grid)")
-print("  training_history()  -> Line chart (time series)")
-print("  feature_distribution() -> Single-feature distribution")
+print("  histogram(data, column)        -> Distribution shape")
+print("  scatter(data, x, y)            -> Two-variable relationship")
+print("  box_plot(data, column, group_by=...) -> Distribution per group")
+print("  metric_comparison(dict)        -> Grouped bars comparing categories")
+print("                                    (set xaxis_title / yaxis_title)")
+print("  training_history(dict)         -> Line chart against 1..N")
+print("                                    (set the real x values for time)")
+print("  Heatmap / stacked / horizontal bars -> plotly.graph_objects (go.*)")
+print("  confusion_matrix(), feature_importance(), roc_curve() -> model")
+print("    evaluation charts — they need predictions or a fitted model,")
+print("    so they are not used for raw data in this exercise")
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
 assert viz is not None, "ModelVisualizer should be initialised"
@@ -126,11 +140,24 @@ fig_hist = viz.histogram(
     bins=50,
     title="HDB Resale Price Distribution (All Years)",
 )
+fig_hist.update_layout(xaxis_title="Resale Price (S$)", yaxis_title="Count")
 fig_hist.write_html("charts/ex6_price_histogram.html")
 print("Saved: charts/ex6_price_histogram.html")
-# INTERPRETATION: Right-skewed distribution — most transactions cluster
-# in S$350k-600k, with a long tail of >S$800k transactions. Mean > median
-# because expensive outliers pull the average upward.
+
+price = hdb["resale_price"]
+print(f"  Median: S${price.median():,.0f}   Mean: S${price.mean():,.0f}")
+print(
+    f"  Middle 80% (P10-P90): S${price.quantile(0.10):,.0f} - "
+    f"S${price.quantile(0.90):,.0f}"
+)
+print(f"  Min: S${price.min():,.0f}   Max: S${price.max():,.0f}")
+print(f"  Skewness: {price.skew():.2f}")
+# INTERPRETATION: Read the shape from the numbers you just printed, not
+# from assumptions about the market. When the mean sits above the median
+# and the skewness is positive, a long right tail of expensive sales pulls
+# the average up. Check the min and max too: a S$10 "sale" or a
+# multi-million outlier stretches the x-axis so far that the bulk of the
+# data is squeezed into a few bars — a reason to clip or log-scale.
 
 # --- 2b: Price per sqm distribution ---
 hdb_clean = hdb.filter(pl.col("price_per_sqm").is_not_null())
@@ -179,9 +206,23 @@ fig_compare.update_layout(
 )
 fig_compare.write_html("charts/ex6_price_by_flat_type.html")
 print("Saved: charts/ex6_price_by_flat_type.html")
-# INTERPRETATION: Overlaid histograms show how flat type segments the market.
-# 3-room flats have a tighter, lower distribution; 5-room extends further right.
-# The overlap zone (S$400-600k) is where size and location trade off.
+
+flat_ranges = (
+    hdb.filter(pl.col("flat_type").is_in(["3 ROOM", "4 ROOM", "5 ROOM"]))
+    .group_by("flat_type")
+    .agg(
+        pl.col("resale_price").quantile(0.10).alias("p10"),
+        pl.col("resale_price").median().alias("median"),
+        pl.col("resale_price").quantile(0.90).alias("p90"),
+    )
+    .sort("median")
+)
+print(flat_ranges)
+# INTERPRETATION: Overlaid histograms show how flat type segments the
+# market. Compare each type's P10-P90 range in the table above: where one
+# type's P90 is above the next type's P10, the distributions overlap, and
+# in that overlap a smaller flat in one town costs as much as a bigger
+# flat in another.
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert os.path.exists("charts/ex6_price_histogram.html")
@@ -207,9 +248,16 @@ fig_scatter = viz.scatter(
 )
 fig_scatter.write_html("charts/ex6_price_vs_area.html")
 print("Saved: charts/ex6_price_vs_area.html")
-# INTERPRETATION: Positive relationship but with wide vertical spread.
-# At 100 sqm, prices range from S$400k to S$900k+. This spread is
-# explained by location, floor level, and remaining lease.
+
+around_100 = hdb.filter(pl.col("floor_area_sqm").is_between(95, 105))["resale_price"]
+print(
+    f"  Flats of 95-105 sqm: P5 S${around_100.quantile(0.05):,.0f} to "
+    f"P95 S${around_100.quantile(0.95):,.0f}"
+)
+# INTERPRETATION: Bigger flats cost more, but at any one size the price
+# still varies widely — the P5-P95 range printed above for ~100 sqm flats
+# spans hundreds of thousands of dollars. Floor area alone does not set
+# the price; town, floor level and remaining lease account for the rest.
 
 # --- 3b: Scatter with colour by town category ---
 central_towns = ["BISHAN", "TOA PAYOH", "QUEENSTOWN", "BUKIT MERAH"]
@@ -292,7 +340,11 @@ price_by_town = {
 }
 # TODO: Call viz.metric_comparison() with price_by_town dict
 fig_bar = viz.metric_comparison(____)  # Hint: price_by_town
-fig_bar.update_layout(title="Median HDB Price by Town")
+fig_bar.update_layout(
+    title="Median HDB Price by Town",
+    xaxis_title="Town",
+    yaxis_title="Median resale price (S$)",
+)
 fig_bar.write_html("charts/ex6_median_price_by_town.html")
 print("Saved: charts/ex6_median_price_by_town.html")
 
@@ -307,27 +359,38 @@ volume_by_town = {
     )
 }
 fig_volume = viz.metric_comparison(volume_by_town)
-fig_volume.update_layout(title="Transaction Volume by Town")
+fig_volume.update_layout(
+    title="Transaction Volume by Town",
+    xaxis_title="Town",
+    yaxis_title="Number of transactions",
+)
 fig_volume.write_html("charts/ex6_volume_by_town.html")
 print("Saved: charts/ex6_volume_by_town.html")
 
-# --- 4c: Price per sqm by town (normalised comparison) ---
-psm_by_town = {
-    town: {"Price per sqm (S$)": float(psm)}
-    for town, psm in zip(
-        district_prices.sort("median_price_sqm", descending=True)["town"].to_list(),
-        district_prices.sort("median_price_sqm", descending=True)[
-            "median_price_sqm"
-        ].to_list(),
+# --- 4c: Price per sqm by town — horizontal bars with go.Bar ---
+# metric_comparison() always draws vertical bars. With 27 long town names,
+# horizontal bars are easier to read: every label sits level, left of its
+# bar. Sorting ascending puts the most expensive town at the top.
+psm_sorted = district_prices.sort("median_price_sqm")
+fig_psm = go.Figure(
+    go.Bar(
+        x=psm_sorted["median_price_sqm"].to_list(),
+        y=psm_sorted["town"].to_list(),
+        orientation="h",
+        marker_color="#636EFA",
     )
-}
-fig_psm = viz.metric_comparison(psm_by_town)
-fig_psm.update_layout(title="Median Price per sqm by Town")
+)
+fig_psm.update_layout(
+    title="Median Price per sqm by Town",
+    xaxis_title="Median price per sqm (S$)",
+    yaxis_title="Town",
+    height=700,
+)
 fig_psm.write_html("charts/ex6_psm_by_town.html")
 print("Saved: charts/ex6_psm_by_town.html")
-# INTERPRETATION: The bar chart immediately reveals the price hierarchy.
-# Gestalt principle of continuity: horizontal bars are easier to compare
-# than vertical ones when labels are long.
+# INTERPRETATION: The sorted bars reveal the price hierarchy at a glance.
+# Price per sqm removes the effect of flat size, so a town ranks high here
+# only if its space itself is expensive, not because it sells bigger flats.
 
 # --- 4d: Flat type comparison ---
 flat_stats = (
@@ -341,16 +404,23 @@ flat_stats = (
     .sort("median_price")
 )
 
+print(flat_stats)
+
+# One unit per chart: median price (~S$1M) and price per sqm (~S$10k) on
+# the same axis would make the per-sqm bars invisible.
 flat_metrics = {
-    ft: {"Median Price": float(price), "Median PSM": float(psm)}
-    for ft, price, psm in zip(
+    ft: {"Median Price (S$)": float(price)}
+    for ft, price in zip(
         flat_stats["flat_type"].to_list(),
         flat_stats["median_price"].to_list(),
-        flat_stats["median_psm"].to_list(),
     )
 }
 fig_flat = viz.metric_comparison(flat_metrics)
-fig_flat.update_layout(title="Price Metrics by Flat Type")
+fig_flat.update_layout(
+    title="Median Price by Flat Type",
+    xaxis_title="Flat type",
+    yaxis_title="Median resale price (S$)",
+)
 fig_flat.write_html("charts/ex6_flat_type_comparison.html")
 print("Saved: charts/ex6_flat_type_comparison.html")
 
@@ -406,10 +476,34 @@ print(header)
 for col_a, row in zip(numeric_cols, corr_data):
     row_str = f"{col_a:>20}" + "".join(f"{v:>16.3f}" for v in row)
     print(row_str)
-# INTERPRETATION: Diagonal is always 1.0. Off-diagonal values show:
-# - resale_price vs floor_area: moderate positive (bigger = more expensive)
-# - resale_price vs year: positive (prices have risen over time)
-# - floor_area vs price_per_sqm: near-zero (bigger flats in cheaper towns)
+
+
+def strength(r: float) -> str:
+    """Label the size of a correlation coefficient."""
+    if abs(r) < 0.1:
+        return "negligible"
+    if abs(r) < 0.3:
+        return "weak"
+    if abs(r) < 0.7:
+        return "moderate"
+    return "strong"
+
+
+print("\n  Pairs to read:")
+for col_a, col_b in [
+    ("resale_price", "floor_area_sqm"),
+    ("resale_price", "year"),
+    ("floor_area_sqm", "price_per_sqm"),
+]:
+    r = corr_data[numeric_cols.index(col_a)][numeric_cols.index(col_b)]
+    print(f"    {col_a} vs {col_b}: r = {r:+.3f} ({strength(r)}), r^2 = {r * r:.2f}")
+# INTERPRETATION: The diagonal is always 1.0. Read each off-diagonal pair
+# from the printed labels, not from expectation. A negligible
+# resale_price-vs-year correlation means this data has no market-wide
+# price trend over the years — whatever you may know about the real
+# market. r^2 tells you how much of one variable's variation a straight
+# line on the other explains: even r = 0.5 explains only 25%.
+# RdBu_r colours: red = positive, blue = negative, white = zero.
 
 # --- 5c: Extended correlation with more features ---
 hdb_extended = hdb.with_columns(
@@ -475,7 +569,8 @@ for town in top_5_towns:
     by_year = dict(
         zip(town_data["year"].to_list(), town_data["median_price"].to_list())
     )
-    price_series[town] = [float(by_year.get(y, 0) or 0) for y in years]
+    # A missing year stays None (a gap in the line), never a fake 0
+    price_series[town] = [by_year.get(y) for y in years]
 
 # TODO: Call viz.training_history() with metrics=price_series, labelled axes
 fig_line = viz.training_history(
@@ -483,6 +578,9 @@ fig_line = viz.training_history(
     x_label=____,  # Hint: "Year"
     y_label=____,  # Hint: "Median Resale Price (S$)"
 )
+# training_history() plots against 1..N — put the real years on the x-axis
+# TODO: Replace every trace's x values with the real years
+fig_line.update_traces(x=____)  # Hint: years
 fig_line.update_layout(title="Annual Median HDB Price — Top 5 Towns")
 fig_line.write_html("charts/ex6_price_trends_top5.html")
 print("Saved: charts/ex6_price_trends_top5.html")
@@ -508,6 +606,7 @@ fig_national = viz.training_history(
     x_label="Year",
     y_label="Median Resale Price (S$)",
 )
+fig_national.update_traces(x=national_annual["year"].to_list())
 fig_national.update_layout(title="Singapore HDB National Price Trend")
 fig_national.write_html("charts/ex6_national_price_trend.html")
 print("Saved: charts/ex6_national_price_trend.html")
@@ -521,6 +620,7 @@ fig_vol_trend = viz.training_history(
     x_label="Year",
     y_label="Number of Transactions",
 )
+fig_vol_trend.update_traces(x=national_annual["year"].to_list())
 fig_vol_trend.update_layout(title="Annual HDB Transaction Volume")
 fig_vol_trend.write_html("charts/ex6_volume_trend.html")
 print("Saved: charts/ex6_volume_trend.html")
@@ -536,12 +636,22 @@ fig_psm_trend = viz.training_history(
     x_label="Year",
     y_label="Median Price per sqm (S$)",
 )
+fig_psm_trend.update_traces(x=national_annual["year"].to_list())
 fig_psm_trend.update_layout(title="National Price per sqm Trend")
 fig_psm_trend.write_html("charts/ex6_psm_trend.html")
 print("Saved: charts/ex6_psm_trend.html")
-# INTERPRETATION: Line charts reveal divergence between towns over time.
-# The Gestalt principle of connection applies: lines make temporal
-# patterns visible in a way bar charts cannot.
+first_med = national_annual["median_price"][0]
+last_med = national_annual["median_price"][-1]
+print(
+    f"  National median {national_annual['year'][0]}: S${first_med:,.0f} -> "
+    f"{national_annual['year'][-1]}: S${last_med:,.0f} "
+    f"({(last_med - first_med) / first_med * 100:+.1f}%)"
+)
+# INTERPRETATION: Line charts reveal whether, and how, towns diverge over
+# time. The Gestalt principle of connection applies: lines make temporal
+# patterns visible in a way bar charts cannot. Check the y-axis range
+# before reading a "trend": Plotly zooms the axis to the data, so a
+# change of a fraction of a percent can look like a steep line.
 
 # ── Checkpoint 6 ─────────────────────────────────────────────────────
 assert os.path.exists("charts/ex6_price_trends_top5.html")
@@ -628,9 +738,10 @@ fig_pct.update_layout(
 )
 fig_pct.write_html("charts/ex6_flat_composition_pct.html")
 print("Saved: charts/ex6_flat_composition_pct.html")
-# INTERPRETATION: 100% stacked bars show composition, not volume.
-# Some towns are dominated by 4-room flats; others have a more even mix.
-# Towns with many executive flats tend to be mature estates.
+# INTERPRETATION: 100% stacked bars show composition, not volume: every
+# bar has the same height, so you compare each colour's SHARE across
+# towns. The count-stacked chart above answers a different question
+# (which towns trade most). Pick the chart that matches the question.
 
 # ── Checkpoint 7 ─────────────────────────────────────────────────────
 assert os.path.exists("charts/ex6_flat_composition_stacked.html")
@@ -655,9 +766,25 @@ fig_box.update_layout(
 )
 fig_box.write_html("charts/ex6_box_by_year.html")
 print("Saved: charts/ex6_box_by_year.html")
+
+yearly_spread = (
+    hdb.filter(pl.col("year").is_in(recent_years))
+    .group_by("year")
+    .agg(
+        pl.col("resale_price").median().alias("median"),
+        (
+            pl.col("resale_price").quantile(0.75)
+            - pl.col("resale_price").quantile(0.25)
+        ).alias("iqr"),
+    )
+    .sort("year")
+)
+print(yearly_spread)
 # INTERPRETATION: Box plots show the median (line), IQR (box), and
-# outliers (dots) for each year. Rising medians confirm price appreciation;
-# widening boxes show increasing price dispersion.
+# outliers (dots) for each year. Rising medians year after year would
+# mean appreciation; widening boxes would mean growing dispersion. Check
+# the printed medians and IQRs: if they barely move, the honest
+# conclusion is "no trend in this data".
 
 # --- 8b: Violin plot for flat types ---
 fig_violin = go.Figure()
@@ -681,26 +808,25 @@ if len(recent_years) >= 2:
     first_year = recent_years[0]
     last_year = recent_years[-1]
 
+    # Price per sqm only: one unit on the axis (see "CHARTS TO AVOID")
     yr_comparison = {
         f"{first_year}": {
-            "Median Price": float(
-                hdb.filter(pl.col("year") == first_year)["resale_price"].median()
-            ),
-            "Median PSM": float(
+            "Median price per sqm (S$)": float(
                 hdb.filter(pl.col("year") == first_year)["price_per_sqm"].median()
             ),
         },
         f"{last_year}": {
-            "Median Price": float(
-                hdb.filter(pl.col("year") == last_year)["resale_price"].median()
-            ),
-            "Median PSM": float(
+            "Median price per sqm (S$)": float(
                 hdb.filter(pl.col("year") == last_year)["price_per_sqm"].median()
             ),
         },
     }
     fig_yr_comp = viz.metric_comparison(yr_comparison)
-    fig_yr_comp.update_layout(title=f"Price Comparison: {first_year} vs {last_year}")
+    fig_yr_comp.update_layout(
+        title=f"Median Price per sqm: {first_year} vs {last_year}",
+        xaxis_title="Year",
+        yaxis_title="Median price per sqm (S$)",
+    )
     fig_yr_comp.write_html("charts/ex6_year_comparison.html")
     print("Saved: charts/ex6_year_comparison.html")
 
@@ -804,11 +930,11 @@ descriptions = {
     "ex6_price_by_flat_type.html": "Price distribution by flat type — market segments",
     "ex6_price_vs_area.html": "Price vs area scatter — size-price relationship",
     "ex6_price_area_by_location.html": "Central vs non-central scatter",
-    "ex6_psm_over_time.html": "Price per sqm over time — appreciation scatter",
+    "ex6_psm_over_time.html": "Price per sqm over time — scatter by year",
     "ex6_median_price_by_town.html": "Median price by town — price hierarchy",
     "ex6_volume_by_town.html": "Transaction volume by town — market activity",
     "ex6_psm_by_town.html": "Price per sqm by town — normalised comparison",
-    "ex6_flat_type_comparison.html": "Flat type price metrics",
+    "ex6_flat_type_comparison.html": "Median price by flat type",
     "ex6_correlation_heatmap.html": "Feature correlation matrix",
     "ex6_extended_correlation.html": "Extended correlation with temporal features",
     "ex6_price_trends_top5.html": "Price trends — top 5 towns by volume",

@@ -44,9 +44,10 @@
   automation. Learners who have been writing <code>describe()</code> and
   <code>null_count()</code> for six lessons should feel the relief of
   having one engine do it all. Experts should appreciate the configurable
-  thresholds and the compare() feature. Use the messy economic dataset
-  throughout — its three date formats and mixed null representations are
-  common in real Singapore government data releases.
+  thresholds and the compare() feature. Use the messy CPI dataset
+  throughout — a synthetic course dataset modelled on published
+  statistics, with three date formats in one column and exactly 5% nulls.
+  Its value is that the mess is realistic while the values are illustrative.
 </p>
 
 <!-- Slide 1 -->
@@ -84,15 +85,16 @@
   <p>
     Walk the diagram. Left side: what they have been doing. Right side: what
     DataExplorer does. Emphasise the gap: "Manual profiling catches the
-    obvious — nulls, shape, basic stats. But it misses the subtle: a date
-    column with three different formats, a column that is 98% zero, two
-    columns that are 99% correlated. Those are the issues that cost you hours
-    downstream when your model behaves strangely."
+    obvious — nulls, shape, basic stats. But it is easy to skip checks:
+    duplicate rows, a column that is mostly zeros, two columns that are
+    99.8% correlated, a category present in 1% of rows. Those are the issues
+    that cost you hours downstream when your model behaves strangely."
   </p>
   <p>
-    Real example: "I once spent three hours debugging a regression model
-    before discovering that the date column had been silently parsed as a
-    string in half the rows. DataExplorer catches that in the first second."
+    Anchor it in the lesson's dataset: "By hand, would you check whether the
+    CPI components correlate with each other? Whether the date column is
+    nearly unique? DataExplorer checks all of it, every column, every time —
+    and the same call works on every dataset you will ever load."
   </p>
   <div class="transition">→ "Here's how the engine is structured."</div>
 </div>
@@ -130,18 +132,37 @@
   </div>
   <h3>Eight alert types</h3>
   <p>
-    Walk the table row by row. For each alert type, give the intuition:
+    Walk the table row by row, with the course-data example for each:
   </p>
   <ol>
-    <li>"high_nulls: more than 5% of values missing. Decide whether to impute, drop, or investigate."</li>
-    <li>"outliers: values beyond 3 IQR fences. Could be errors or genuine extremes."</li>
-    <li>"duplicates: identical rows. Could be double-counting."</li>
-    <li>"high_skewness: distribution is lopsided. May need log transform."</li>
-    <li>"high_correlation: two columns carry almost the same information. Multicollinearity risk."</li>
-    <li>"low_cardinality: fewer than 3 unique values. Possibly should be treated as categorical."</li>
-    <li>"constant: zero variance. Useless as a predictor — drop it."</li>
-    <li>"type_inference: stored as string but looks like a number, or mixed formats."</li>
+    <li>"high_nulls: null share above 5%. The CPI columns are <em>exactly</em>
+        5% null — the rule is strictly greater-than, so they stay silent at
+        the default. Tighten to 2% and they fire."</li>
+    <li>"constant: at most 1 unique value. A column that is all 'SG' carries
+        no information — drop it. Note the threshold is a <em>count</em> of
+        unique values, not a fraction."</li>
+    <li>"high_skewness: |skew| above 2.0. HDB resale_price hits 11.4 — the
+        planted S$10 and S$9M records from Lesson 1.1."</li>
+    <li>"high_zeros: more than half the values are zero. A tip column that is
+        mostly 0 — worth checking whether zero means 'no tip' or 'not
+        recorded'."</li>
+    <li>"high_cardinality: unique-values-per-row above 0.9 — a near-unique
+        column. The CPI date column scores 1.00: every value is distinct
+        text."</li>
+    <li>"high_correlation: |r| above 0.9 for a column pair. cpi_all_items and
+        cpi_housing correlate at 0.998 — a domain fact to note, not
+        automatically a defect."</li>
+    <li>"duplicates: any duplicate rows. The HDB data carries 300."</li>
+    <li>"imbalanced: rarest category under 10%. HDB flat_type is flagged —
+        MULTI-GENERATION is about 1% of sales."</li>
   </ol>
+  <p>
+    Two honest limitations to say aloud, because they are on the slide:
+    "Outliers are <em>not</em> an alert — each column reports an
+    outlier_count statistic for you to judge. And mixed date formats are
+    not detected at all — the engine sees unique text, not three formats.
+    That check stays yours."
+  </p>
   <div class="audience-cue beginner">
     <strong>For beginners:</strong> "Don't memorise the thresholds. Memorise
     the eight kinds of problem. If you can name the problem, you can
@@ -157,14 +178,23 @@
   </div>
   <h3>Running your first profile</h3>
   <p>
-    Run this live. The dataset is the messy Singapore economic indicators
-    file with three date formats and mixed null representations. Walk each
-    line: "Create the engine, load the data, profile it, print the alerts."
+    Run this live. The dataset is <code>sg_cpi.csv</code> — 300 monthly CPI
+    rows, synthetic but realistically messy. Walk each line: "Load the data,
+    hand it to <code>run_profile</code>, print the alerts."
   </p>
   <p>
-    When the alerts print, read them aloud. Compare to what they would
-    have found by hand: "Would you have caught that the date column has
-    three formats? Probably not until something broke."
+    Explain the wrapper once, clearly: "DataExplorer's methods are
+    <em>async</em> — a Python feature from a later module.
+    <code>run_profile(df)</code> is a small course wrapper that runs the
+    async profile for you, so it works identically in a script and in
+    Colab. Same story for <code>run_compare</code> later."
+  </p>
+  <p>
+    When the 11 alerts print, read them aloud and point at the access
+    pattern: "Each alert is a <em>dict</em> — keys are type, column (or
+    columns, for a correlated pair), value, severity. So it is
+    <code>alert['type']</code>, not <code>alert.type</code> — and the
+    <code>.get('column', .get('columns'))</code> idiom handles both shapes."
   </p>
   <div class="transition">→ "Let's look at the full profile output."</div>
 </div>
@@ -176,15 +206,17 @@
   </div>
   <h3>What the profile returns</h3>
   <p>
-    Walk the two boxes. Left: the alerts list — these are the headlines.
-    Right: the column_stats dictionary — this is the detail. "For every
-    column, you get mean, std, null percentage, skewness, unique count, and
-    more. The alerts are just the statistics that crossed a threshold."
+    Walk the two boxes. Left: the alerts list — the headlines, with i for
+    info and ⚠ for warning. Right: the per-column statistics — the detail.
+    "For every column you get mean, std, null percentage, skewness, and an
+    outlier_count. The alerts are just the statistics that crossed a
+    threshold."
   </p>
   <p>
-    Point out that you can access the raw stats programmatically:
-    <code>profile.column_stats["cpi"].mean</code>. This is useful when you
-    want to build automated cleaning rules based on the profile.
+    Show the programmatic access: <code>profile.columns["cpi_all_items"].mean</code>
+    reads a single statistic; <code>profile.correlation_matrix</code> and
+    <code>profile.duplicate_count</code> sit alongside. This is how you
+    build automated cleaning rules from a profile.
   </p>
   <div class="transition">→ "Now let's tune the thresholds."</div>
 </div>
@@ -197,18 +229,21 @@
   <h3>Configuring thresholds</h3>
   <p>
     "Default thresholds are the engine's opinion. Your domain might disagree.
-    Economic data with 10% nulls might be fine — government agencies revise
-    figures quarterly. Medical trial data with 2% nulls might be a crisis."
+    Economic data with 10% nulls might be fine — agencies revise figures.
+    Medical trial data with 2% nulls might be a crisis."
   </p>
   <p>
-    Walk the code: "We create an AlertConfig with custom thresholds and pass
-    it to run_profile. Now only alerts that cross our custom thresholds fire."
+    Walk the code and the direction rule: "Lower thresholds mean more
+    alerts; higher mean fewer. We tighten the null threshold from 0.05 to
+    0.02 — now the four CPI columns at exactly 5% null fire, and the alert
+    count goes from 11 to 12. And we raise the correlation threshold from
+    0.9 to 0.99 so only near-duplicate pairs flag."
   </p>
   <div class="audience-cue expert">
     <strong>For experts:</strong> "The correlation threshold is the most
-    important to tune. In economic data, CPI and employment rate are
-    genuinely correlated at 0.94 — that is a domain fact, not a data
-    quality issue. Set the threshold to 0.97 if you only want near-duplicates."
+    important to tune for this dataset. CPI components genuinely move
+    together — all_items versus housing is r = 0.998. That is a domain
+    fact, not a data-quality issue; 0.99 keeps only near-duplicates."
   </div>
   <div class="transition">→ "Real messy data from Singapore."</div>
 </div>
@@ -220,14 +255,18 @@
   </div>
   <h3>The messy economic dataset</h3>
   <p>
-    Show the diagram and let it sink in. "This is real. Government data
-    releases in Singapore — and everywhere else — come with inconsistencies.
-    Three date formats: ISO (2020-01), US-style (01/2020), and concatenated
-    (202004). Nulls represented as NaN, 'N/A', and an em-dash."
+    Show the diagram and let it sink in. Then label it exactly as the slide
+    does: "A synthetic course dataset modelled on published statistics —
+    illustrative values, realistic mess. Three date formats inside one
+    column: MM/YYYY (01/2000), YYYY-MM (2000-02), and bare YYYYMM (200003).
+    Fifteen nulls in each CPI column — exactly 5%."
   </p>
   <p>
-    "DataExplorer catches all of these in the type_inference and high_nulls
-    alerts. By hand, you would need to inspect every column individually."
+    Set the expectation precisely: "The profiler will <em>not</em> tell you
+    the date column mixes formats — it sees unique text, and flags
+    high_cardinality instead. Reading the format mess is your job; the
+    engine narrows where you look. And the 5% nulls sit exactly at the
+    default boundary — the next slide shows why they stay silent."
   </p>
   <div class="audience-cue beginner">
     <strong>Reassurance:</strong> "You are not expected to know how to fix
@@ -244,19 +283,23 @@
   </div>
   <h3>Reading the profile</h3>
   <p>
-    Walk each alert. For each one, ask: "What should we do about this?"
+    Walk the printed output — 11 alerts at the default config — and for
+    each family ask: "What should we do about this?"
   </p>
   <ul>
-    <li>high_nulls on CPI: impute with interpolation or forward-fill</li>
-    <li>high_nulls on fx_rate: same strategy</li>
-    <li>type_inference on date: standardise to ISO format</li>
-    <li>constant on country: drop — adds no information</li>
-    <li>high_skewness on CPI: consider log transform</li>
-    <li>high_correlation: keep both but note the collinearity risk</li>
+    <li>high_cardinality on date (1.00): the three formats make every value
+        unique text — parse to real dates (next slide)</li>
+    <li>high_cardinality on the CPI columns (0.94+): near-unique
+        measurements — expected for continuous data, informational</li>
+    <li>high_correlation on six CPI pairs (up to 1.00): components move
+        together — a domain fact to note, not a defect to remove</li>
   </ul>
   <p>
-    "The profile gives you the diagnosis. You still make the treatment
-    decision. That is the human-in-the-loop part."
+    Then the two absences, which teach more than the alerts: "No high_nulls
+    — the CPI columns are exactly 5% null and the rule is strictly
+    greater-than-0.05. And no date alert — the engine cannot see format
+    inconsistency. Profiling complements your own inspection; it does not
+    replace it."
   </p>
   <div class="transition">→ "Now let's verify the cleaning worked."</div>
 </div>
@@ -269,13 +312,20 @@
   <h3>compare(): before vs after</h3>
   <p>
     "After you clean data, how do you know the cleaning helped? Re-profile
-    and compare. DataExplorer's compare() does this in one call."
+    and compare. <code>run_compare(df_a, df_b)</code> does this in one call
+    and returns a dict."
   </p>
   <p>
-    Walk the code: clean the date column, drop nulls, drop the constant
-    column. Then compare. The comparison shows what changed — alert count
-    dropped from 6 to 1, null percentages went to zero, format issues
-    resolved.
+    Walk the cleaning code first — it is the payoff of the whole lesson:
+    "Three <code>str.replace</code> passes normalise the three date formats
+    into ISO, <code>str.to_date</code> parses them, a sort puts the series
+    in order, and <code>interpolate()</code> fills the null gaps from
+    neighbouring months. Then compare raw against cleaned."
+  </p>
+  <p>
+    Read the deltas: "For every CPI column, <code>null_pct_delta</code> is
+    −0.05 — the 5% nulls are gone. compare() is the receipt that proves the
+    cleaning did what you claimed."
   </p>
   <div class="transition">→ "The comparison as a picture."</div>
 </div>
@@ -287,15 +337,18 @@
   </div>
   <h3>Comparison result</h3>
   <p>
-    Walk the before/after diagram. "Before: 6 alerts, 14% nulls in CPI,
-    3 date formats, 120 rows. After: 1 alert, 0% nulls, 1 date format,
-    103 rows. We lost 17 rows to null removal — that is the cost of
-    cleaning."
+    Walk the before/after diagram with the real numbers: "Before: 12
+    alerts, 7 of them warnings, CPI nulls at 5%, the date column as text
+    in three formats. After: 8 alerts, 3 warnings, nulls at zero, a real
+    Date column — and the row count unchanged at 300, because we filled
+    gaps instead of dropping rows."
   </p>
   <p>
-    "The remaining alert — high correlation — is a domain fact, not a data
-    quality issue. CPI and employment genuinely move together. The profile
-    correctly flags it; we correctly decide to keep both columns."
+    Then the judgement call, quoted from the slide: "The four high_nulls
+    warnings are gone under the stricter config. The rest — near-unique
+    measurements and correlated CPI components — are expected. Judge each
+    alert; do not chase a count of zero. A profile with zero alerts on
+    real-world data usually means your thresholds are asleep."
   </p>
   <div class="transition">→ "A new mental model: using engines, not building them."</div>
 </div>
@@ -356,13 +409,16 @@
   </div>
   <h3>compare() for train vs test</h3>
   <p>
-    "Here is a preview of Module 3. When you split data into train and test,
-    the distributions should be similar. If they differ significantly, your
-    model may fail on the test set. compare() catches this."
+    "Here is a preview of drift monitoring. Split the cleaned CPI series by
+    time — first 80% of months for training, last 20% for testing — and
+    compare the two halves. If the distributions differ, a model trained on
+    the first half may fail on the second."
   </p>
   <p>
-    Walk the code. Point out the severity check: "We only flag high-severity
-    differences. Small statistical fluctuations are normal."
+    Walk the code and read the output: "<code>cpi_all_items: mean shifted
+    +68.4</code>. Prices rise over time, so a time-ordered split always
+    shifts — that is not a bug in your split, it is what trends do. The
+    <code>mean_delta</code> tells you how much."
   </p>
   <div class="audience-cue expert">
     <strong>For experts:</strong> "This is the same concept as drift
@@ -405,11 +461,12 @@
     Walk the bullet list. Let each point land.
   </p>
   <p>
-    Bridge to 1.8: "Tomorrow is the capstone. You will combine everything
-    from Module 1: load data from an API, profile it with DataExplorer,
-    clean it with PreprocessingPipeline, visualise the key patterns, and
-    generate an HTML report. It is your first end-to-end pipeline — and the
-    exact workflow you will use in every module from here on."
+    Bridge to 1.8: "Next is the capstone. You will combine everything
+    from Module 1: load 50,000 messy taxi trips, profile them with
+    DataExplorer, clean what the alerts find, prepare model-ready features
+    with PreprocessingPipeline, visualise the key patterns, and generate an
+    HTML report. It is your first end-to-end pipeline — and the exact
+    workflow you will use in every module from here on."
   </p>
   <p>
     Common questions: "Do I need to memorise all eight alert types?" (No —

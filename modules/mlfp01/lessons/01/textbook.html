@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -34,8 +34,8 @@
 </h1>
 
 <p class="lead">
-  In the next 45 minutes you will write your first lines of Python, load a real
-  Singapore weather dataset into a Polars DataFrame, and answer three questions
+  In the next 45 minutes you will write your first lines of Python, load a small
+  Singapore monthly climate dataset into a Polars DataFrame, and answer three questions
   about it using nothing but built‑in summary statistics. By the end you will
   understand the four building blocks every data professional uses every day:
   <strong>variables, types, DataFrames, and summary statistics</strong>.
@@ -45,8 +45,8 @@
 <h2>Why This Matters</h2>
 
 <p>
-  Singapore's National Environment Agency publishes monthly weather data — mean
-  temperature, total rainfall, humidity — going back decades. A retail manager
+  Weather services publish monthly climate records — mean temperature, total
+  rainfall, humidity — going back decades. A retail manager
   wants to know whether sales of umbrellas correlate with rainfall. A property
   analyst wants to check if cooler months coincide with HDB price dips. A
   logistics planner wants to forecast peak demand during the December monsoon.
@@ -96,6 +96,18 @@
   to do them today on a tiny weather dataset so you can see every byte that
   flows through them.
 </p>
+
+<div class="callout foundations">
+  <span class="label">🟢 About today's data</span>
+  <p>
+    <code>sg_weather.csv</code> has 12 rows — one per calendar month — and three
+    columns: <code>month</code>, <code>mean_temperature_c</code> and
+    <code>total_rainfall_mm</code>. The values are approximate monthly climate
+    averages prepared for this course. They are illustrative, not official
+    station records, so treat them as a realistic practice set rather than a
+    source to cite.
+  </p>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Core Concepts</h2>
@@ -258,49 +270,42 @@ print(report)
 <svg viewBox="0 0 720 300" class="illustration" xmlns="http://www.w3.org/2000/svg">
   <!-- Header -->
   <rect x="40" y="20" width="640" height="40" fill="#0D9488"/>
-  <text x="100" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">month</text>
-  <text x="240" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">mean_temperature_c</text>
-  <text x="430" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">total_rainfall_mm</text>
-  <text x="600" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">humidity_pct</text>
+  <text x="130" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">month</text>
+  <text x="350" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">mean_temperature_c</text>
+  <text x="570" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">total_rainfall_mm</text>
 
   <!-- Type row -->
   <rect x="40" y="60" width="640" height="28" fill="#F0FDFA" stroke="#94A3B8" stroke-width="0.5"/>
-  <text x="100" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">String</text>
-  <text x="240" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Float64</text>
-  <text x="430" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Float64</text>
-  <text x="600" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Int64</text>
+  <text x="130" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">String</text>
+  <text x="350" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Float64</text>
+  <text x="570" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Int64</text>
 
   <!-- Data rows -->
   <g font-family="JetBrains Mono" font-size="13" fill="#1E293B">
     <rect x="40" y="88" width="640" height="32" fill="white" stroke="#E2E8F0"/>
-    <text x="100" y="108" text-anchor="middle">"Jan"</text>
-    <text x="240" y="108" text-anchor="middle">26.0</text>
-    <text x="430" y="108" text-anchor="middle">194.7</text>
-    <text x="600" y="108" text-anchor="middle">82</text>
+    <text x="130" y="108" text-anchor="middle">"January"</text>
+    <text x="350" y="108" text-anchor="middle">26.5</text>
+    <text x="570" y="108" text-anchor="middle">167</text>
 
     <rect x="40" y="120" width="640" height="32" fill="#F8FAFC" stroke="#E2E8F0"/>
-    <text x="100" y="140" text-anchor="middle">"Feb"</text>
-    <text x="240" y="140" text-anchor="middle">26.5</text>
-    <text x="430" y="140" text-anchor="middle">63.4</text>
-    <text x="600" y="140" text-anchor="middle">79</text>
+    <text x="130" y="140" text-anchor="middle">"February"</text>
+    <text x="350" y="140" text-anchor="middle">27.1</text>
+    <text x="570" y="140" text-anchor="middle">108</text>
 
     <rect x="40" y="152" width="640" height="32" fill="white" stroke="#E2E8F0"/>
-    <text x="100" y="172" text-anchor="middle">"Mar"</text>
-    <text x="240" y="172" text-anchor="middle">27.0</text>
-    <text x="430" y="172" text-anchor="middle">170.6</text>
-    <text x="600" y="172" text-anchor="middle">81</text>
+    <text x="130" y="172" text-anchor="middle">"March"</text>
+    <text x="350" y="172" text-anchor="middle">27.5</text>
+    <text x="570" y="172" text-anchor="middle">170</text>
 
     <rect x="40" y="184" width="640" height="32" fill="#F8FAFC" stroke="#E2E8F0"/>
-    <text x="100" y="204" text-anchor="middle">…</text>
-    <text x="240" y="204" text-anchor="middle">…</text>
-    <text x="430" y="204" text-anchor="middle">…</text>
-    <text x="600" y="204" text-anchor="middle">…</text>
+    <text x="130" y="204" text-anchor="middle">…</text>
+    <text x="350" y="204" text-anchor="middle">…</text>
+    <text x="570" y="204" text-anchor="middle">…</text>
 
     <rect x="40" y="216" width="640" height="32" fill="white" stroke="#E2E8F0"/>
-    <text x="100" y="236" text-anchor="middle">"Dec"</text>
-    <text x="240" y="236" text-anchor="middle">26.5</text>
-    <text x="430" y="236" text-anchor="middle">227.2</text>
-    <text x="600" y="236" text-anchor="middle">85</text>
+    <text x="130" y="236" text-anchor="middle">"December"</text>
+    <text x="350" y="236" text-anchor="middle">26.5</text>
+    <text x="570" y="236" text-anchor="middle">232</text>
   </g>
 
   <!-- Row label -->
@@ -352,7 +357,7 @@ print(report)
   <h3>📝 Goal</h3>
   <p>
     Load the file <code>data/mlfp01/sg_weather.csv</code> (12 rows, one per
-    month of 2023), inspect its shape and types, and answer three questions:
+    calendar month), inspect its shape and types, and answer three questions:
   </p>
   <ol>
     <li>What was the hottest month?</li>
@@ -385,23 +390,24 @@ print(df.head(5))</code></pre>
     <p>You should see something like:</p>
     <pre><code class="language-text">Shape: (12, 3)
 Columns: ['month', 'mean_temperature_c', 'total_rainfall_mm']
-Types: {'month': String, 'mean_temperature_c': Float64, 'total_rainfall_mm': Float64}
+Types: Schema({'month': String, 'mean_temperature_c': Float64, 'total_rainfall_mm': Int64})
 shape: (5, 3)
-┌───────┬────────────────────┬────────────────────┐
-│ month ┆ mean_temperature_c ┆ total_rainfall_mm  │
-│ ---   ┆ ---                ┆ ---                │
-│ str   ┆ f64                ┆ f64                │
-╞═══════╪════════════════════╪════════════════════╡
-│ Jan   ┆ 26.0               ┆ 194.7              │
-│ Feb   ┆ 26.5               ┆  63.4              │
-│ Mar   ┆ 27.0               ┆ 170.6              │
-│ Apr   ┆ 27.5               ┆ 122.3              │
-│ May   ┆ 27.2               ┆ 178.5              │
-└───────┴────────────────────┴────────────────────┘</code></pre>
+┌──────────┬────────────────────┬───────────────────┐
+│ month    ┆ mean_temperature_c ┆ total_rainfall_mm │
+│ ---      ┆ ---                ┆ ---               │
+│ str      ┆ f64                ┆ i64               │
+╞══════════╪════════════════════╪═══════════════════╡
+│ January  ┆ 26.5               ┆ 167               │
+│ February ┆ 27.1               ┆ 108               │
+│ March    ┆ 27.5               ┆ 170               │
+│ April    ┆ 28.0               ┆ 165               │
+│ May      ┆ 28.3               ┆ 171               │
+└──────────┴────────────────────┴───────────────────┘</code></pre>
     <p>
       Read those values aloud: "12 rows, 3 columns; the columns are month,
-      mean temperature, total rainfall; the first month is January with mean
-      26.0°C and 194.7mm of rain". You have just done the data professional's
+      mean temperature, total rainfall; temperature is a decimal (f64),
+      rainfall a whole number of millimetres (i64); the first month is January
+      with mean 26.5°C and 167 mm of rain". You have just done the data professional's
       most important habit: <em>looked at the data before doing anything else</em>.
     </p>
   </div>
@@ -411,27 +417,41 @@ shape: (5, 3)
     <p>Compute summary statistics for the numeric columns.</p>
     <pre><code class="language-python">print(df.describe())</code></pre>
     <p>Output:</p>
-    <pre><code class="language-text">┌────────────┬───────┬────────────────────┬───────────────────┐
-│ statistic  ┆ month ┆ mean_temperature_c ┆ total_rainfall_mm │
-╞════════════╪═══════╪════════════════════╪═══════════════════╡
-│ count      ┆ 12    ┆ 12.0               ┆  12.0             │
-│ null_count ┆ 0     ┆  0.0               ┆   0.0             │
-│ mean       ┆ null  ┆ 26.68              ┆ 152.85            │
-│ std        ┆ null  ┆  0.43              ┆  56.71            │
-│ min        ┆ Apr   ┆ 26.00              ┆  63.40            │
-│ 25%        ┆ null  ┆ 26.42              ┆ 110.30            │
-│ 50%        ┆ null  ┆ 26.65              ┆ 156.10            │
-│ 75%        ┆ null  ┆ 27.05              ┆ 188.20            │
-│ max        ┆ Sep   ┆ 27.20              ┆ 227.20            │
-└────────────┴───────┴────────────────────┴───────────────────┘</code></pre>
+    <pre><code class="language-text">shape: (9, 4)
+┌────────────┬───────────┬────────────────────┬───────────────────┐
+│ statistic  ┆ month     ┆ mean_temperature_c ┆ total_rainfall_mm │
+│ ---        ┆ ---       ┆ ---                ┆ ---               │
+│ str        ┆ str       ┆ f64                ┆ f64               │
+╞════════════╪═══════════╪════════════════════╪═══════════════════╡
+│ count      ┆ 12        ┆ 12.0               ┆ 12.0              │
+│ null_count ┆ 0         ┆ 0.0                ┆ 0.0               │
+│ mean       ┆ null      ┆ 27.466667          ┆ 171.75            │
+│ std        ┆ null      ┆ 0.624257           ┆ 40.104693         │
+│ min        ┆ April     ┆ 26.5               ┆ 108.0             │
+│ 25%        ┆ null      ┆ 27.1               ┆ 155.0             │
+│ 50%        ┆ null      ┆ 27.6               ┆ 167.0             │
+│ 75%        ┆ null      ┆ 27.9               ┆ 171.0             │
+│ max        ┆ September ┆ 28.3               ┆ 254.0             │
+└────────────┴───────────┴────────────────────┴───────────────────┘</code></pre>
     <p>
-      The <em>mean</em> temperature is 26.68°C; the <em>standard deviation</em>
-      is just 0.43°C. Singapore's temperature is famously consistent — only
-      half a degree of variation across the entire year. Rainfall, on the
-      other hand, has a standard deviation of 56.71 mm: it ranges from 63 mm
-      (driest month) to 227 mm (wettest), so the spread relative to the mean
-      is much wider.
+      The <em>mean</em> temperature is 27.47°C; the <em>standard deviation</em>
+      is just 0.62°C. Singapore's temperature is famously consistent — every
+      month sits between 26.5°C and 28.3°C. Rainfall, on the other hand, has a
+      standard deviation of 40.1 mm: it ranges from 108 mm (driest month) to
+      254 mm (wettest), so the spread relative to the mean is much wider.
     </p>
+    <div class="callout warning">
+      <span class="label">⚠ Read the text column carefully</span>
+      <p>
+        The <code>min</code> and <code>max</code> rows for <code>month</code>
+        say <code>April</code> and <code>September</code>. That is
+        <em>alphabetical</em> order — "April" sorts first and "September" last.
+        It has nothing to do with temperature or rainfall. For a string
+        column, <code>describe()</code> min/max never tell you which month was
+        coolest or hottest; you have to ask that question explicitly, which
+        is what Steps 4 and 5 do.
+      </p>
+    </div>
   </div>
 
   <div class="step">
@@ -443,7 +463,7 @@ hottest = df.filter(pl.col("mean_temperature_c") == max_temp)
 print(f"Hottest month: {hottest['month'][0]} at {max_temp}°C")</code></pre>
     <p>
       Read this carefully. <code>df["mean_temperature_c"].max()</code> returns
-      the single value <code>27.2</code>. <code>pl.col("mean_temperature_c") == max_temp</code>
+      the single value <code>28.3</code>. <code>pl.col("mean_temperature_c") == max_temp</code>
       builds an <em>expression</em> that, when evaluated, returns
       <code>True</code> for the row(s) matching the max. <code>df.filter(...)</code>
       returns a new DataFrame containing only those rows. We then read row 0,
@@ -456,20 +476,37 @@ print(f"Hottest month: {hottest['month'][0]} at {max_temp}°C")</code></pre>
     <p>Repeat for the coldest month and the wettest month, then compose a
        formatted summary.</p>
     <pre><code class="language-python">min_temp = df["mean_temperature_c"].min()
-coldest = df.filter(pl.col("mean_temperature_c") == min_temp)["month"][0]
+# .to_list() keeps EVERY matching month — two months can share the minimum
+coldest = df.filter(pl.col("mean_temperature_c") == min_temp)["month"].to_list()
 
 max_rain = df["total_rainfall_mm"].max()
 wettest = df.filter(pl.col("total_rainfall_mm") == max_rain)["month"][0]
 
 print("=" * 50)
-print("  SINGAPORE WEATHER, 2023")
+print("  SINGAPORE MONTHLY CLIMATE SUMMARY")
 print("=" * 50)
 print(f"  Hottest month:  {hottest['month'][0]} ({max_temp:.1f}°C)")
-print(f"  Coldest month:  {coldest} ({min_temp:.1f}°C)")
-print(f"  Wettest month:  {wettest} ({max_rain:.1f} mm)")
+print(f"  Coldest month:  {' and '.join(coldest)} ({min_temp:.1f}°C)")
+print(f"  Wettest month:  {wettest} ({max_rain} mm)")
 print(f"  Annual mean T:  {df['mean_temperature_c'].mean():.2f}°C")
 print(f"  Annual mean R:  {df['total_rainfall_mm'].mean():.0f} mm")
 print("=" * 50)</code></pre>
+    <p>Output:</p>
+    <pre><code class="language-text">==================================================
+  SINGAPORE MONTHLY CLIMATE SUMMARY
+==================================================
+  Hottest month:  May (28.3°C)
+  Coldest month:  January and December (26.5°C)
+  Wettest month:  November (254 mm)
+  Annual mean T:  27.47°C
+  Annual mean R:  172 mm
+==================================================</code></pre>
+    <p>
+      Notice the tie: January and December are both 26.5°C. Had we written
+      <code>["month"][0]</code> for the coldest month, we would have printed
+      only "January" and silently dropped December. Whenever you filter for
+      an extreme value, check how many rows came back.
+    </p>
   </div>
 
   <p>
@@ -504,7 +541,7 @@ print("=" * 50)</code></pre>
 
 <p>
   For our 12 monthly temperatures the mean is
-  $\bar{x} = (26.0 + 26.5 + \cdots + 26.5)/12 = 26.68$°C. The mean is what
+  $\bar{x} = (26.5 + 27.1 + \cdots + 26.5)/12 = 27.47$°C. The mean is what
   we usually call the "average" in everyday speech. It is the unique value
   $c$ that minimises $\sum (x_i - c)^2$ (the sum of squared deviations) — a
   fact you will use when we derive linear regression in Module 2.
@@ -550,10 +587,11 @@ print("=" * 50)</code></pre>
 $$s \;=\; \sqrt{s^2}$$
 
 <p>
-  For Singapore's 2023 temperatures, $s = 0.43$°C — meaning a typical month
-  is within half a degree of the annual mean. For rainfall, $s = 56.71$ mm,
-  which compared to the mean of $\bar{x} = 152.85$ is a coefficient of
-  variation of $56.71 / 152.85 \approx 37\%$ — a much larger relative spread.
+  For our monthly temperatures, $s = 0.62$°C — a typical month is within
+  about 0.6 of a degree of the annual mean, a coefficient of variation of
+  $0.62 / 27.47 \approx 2.3\%$. For rainfall, $s = 40.10$ mm, which compared
+  to the mean of $\bar{x} = 171.75$ mm is a coefficient of variation of
+  $40.10 / 171.75 \approx 23\%$ — a ten-times larger relative spread.
 </p>
 
 <div class="callout foundations">
@@ -662,7 +700,7 @@ $$s \;=\; \sqrt{s^2}$$
   In 45 minutes you have learned the four primitives every data professional
   uses: variables (names bound to typed values), f-strings (formatted output),
   the DataFrame (typed, ordered, named-column tables), and summary statistics
-  (mean, std, min, max). You loaded a real Singapore weather dataset, inspected
+  (mean, std, min, max). You loaded a Singapore monthly climate dataset, inspected
   its shape and schema, computed summaries, and answered three concrete
   questions about it.
 </p>

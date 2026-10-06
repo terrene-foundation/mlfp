@@ -36,7 +36,7 @@
 </h1>
 
 <p class="lead">
-  Total time: ~45 minutes &nbsp;·&nbsp; 16 slides &nbsp;·&nbsp; ~2.5 min per slide average
+  Total time: ~45 minutes &nbsp;·&nbsp; 17 slides &nbsp;·&nbsp; ~2.5 min per slide average
 </p>
 
 <p>
@@ -55,10 +55,10 @@
   </div>
   <h3>Your First Data Exploration</h3>
   <p>
-    Open with energy. "Welcome to MLFP. Over the next 12 weeks we will turn
+    Open with energy. "Welcome to MLFP. Over the coming weeks we will turn
     you into a working ML practitioner. By the end of <em>this</em> lesson —
     45 minutes from now — you will have written your first Python program
-    against real Singapore weather data. If you have never coded before, that
+    against Singapore weather data prepared for this course. If you have never coded before, that
     is exactly the right starting point. If you have been coding for ten
     years, the next 45 minutes are a warm-up — but pay attention to the
     Theory and Advanced callouts because the rest of the course assumes you
@@ -92,7 +92,7 @@
     Walk the diagram left to right. "Load: get the file off disk into memory
     as a structured object. Inspect: figure out what is in there. Summarise:
     compute statistics that tell you the shape of the data. These are the same
-    three steps whether the data is 12 rows of weather or 50 million rows of
+    three steps whether the data is 12 rows of weather or 50,000 rows of
     HDB transactions."
   </p>
   <p>
@@ -225,14 +225,14 @@
   </div>
   <h3>The DataFrame: a typed table</h3>
   <p>
-    Show the diagram. Walk it horizontally first: "Four columns: month,
-    temperature, rainfall, humidity. Each one has a name — that's the header
-    row in teal. And each one has a single type — string, float, float, int —
-    that's the second row."
+    Show the diagram. Walk it horizontally first: "Three columns: month,
+    mean temperature in Celsius, total rainfall in millimetres. Each one has
+    a name — that's the header row in teal. And each one has a single type —
+    string, float, integer — that's the second row."
   </p>
   <p>
     Then walk it vertically: "Each row is one observation — one month. Row 0
-    is January with 26.0 degrees and 194.7 mm of rain. Row 1 is February. And
+    is January with 26.5 degrees and 167 mm of rain. Row 1 is February. And
     so on, twelve rows for twelve months."
   </p>
   <p>
@@ -332,31 +332,69 @@
   <h3>Step 3: Summarise with describe()</h3>
   <p>
     Walk the table row by row. "Count: 12 — confirms we have all twelve months.
-    Mean: 26.68 — Singapore's annual average temperature. Std: 0.43 — that is
-    the standard deviation, a measure of spread, and a value of 0.43 is tiny
-    — every month is within half a degree of average. Min: 26.0 in April.
-    Max: 27.2 in May."
+    Mean temperature: 27.47 — Singapore's annual average. Std: 0.62 — that is
+    the standard deviation, a measure of spread, and a value of 0.62 is tiny
+    — every month is within about a degree of average. Min 26.5, max 28.3."
   </p>
   <p>
-    Make the contrast pop: "Now look at rainfall. Mean is 152, std is 56.
-    That is a coefficient of variation of about 37 percent — meaning rainfall
-    varies <em>much</em> more month to month than temperature. Singapore has
-    'one season' for temperature and 'two seasons' for rain — that single
-    table tells you that, in two seconds."
+    Point at the month column's min and max — "April" and "September" — and
+    defuse the trap before it springs: "Those are the
+    <em>alphabetical</em> first and last month names, not the coolest and
+    hottest months. For a string column, describe()'s min/max are
+    lexicographic — unrelated to the numbers in the other columns."
   </p>
-  <div class="transition">→ "But what does mean actually compute? Let's go a level deeper."</div>
+  <p>
+    Make the contrast pop: "Now look at rainfall. Mean is 171.75, std is 40.1.
+    That is a coefficient of variation of about 23 percent — meaning rainfall
+    varies <em>much</em> more month to month than temperature's 2 percent.
+    Singapore has 'one season' for temperature and 'two seasons' for rain —
+    that single table tells you that, in two seconds."
+  </p>
+  <div class="transition">→ "Seven numbers — and they already sketch a picture of the data."</div>
 </div>
 
 <!-- Slide 12 -->
 <div class="slide-block">
   <div class="meta">
-    <span class="badge">Slide 12</span><span>~3 min</span><span>Mean — math</span>
+    <span class="badge">Slide 12</span><span>~3 min</span><span>Distribution from describe()</span>
+  </div>
+  <h3>Every describe() output is a distribution in disguise</h3>
+  <p>
+    This slide turns the describe() table into a picture before any charting
+    library appears. Walk the five-number summary on the temperature column:
+    "Min 26.5, first quartile 27.1, median 27.6, third quartile 27.9, max 28.3.
+    The middle 50 percent of months sit between 27.1 and 27.9 — that band is
+    the interquartile range. The mean, 27.47, sits just under the median —
+    the distribution leans slightly toward the cooler months."
+  </p>
+  <p>
+    Draw it as a box on the whiteboard if you can: "This is a box plot drawn
+    with numbers instead of ink. When Lesson 1.6 shows you a real box plot,
+    you will already know how to read it — it is these same five numbers."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If percentiles are new:</strong> "The 25th percentile is the value
+    a quarter of the data falls below. The median is the 50th — half below,
+    half above. You already know the median from property-price headlines."
+  </div>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> connect mean-vs-median position to skew
+    direction — mean below median hints at a left lean, which the planted
+    outliers in the HDB data will make dramatic in Lesson 1.7.
+  </div>
+  <div class="transition">→ "But what does mean actually compute? Let's go a level deeper."</div>
+</div>
+
+<!-- Slide 13 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 13</span><span>~3 min</span><span>Mean — math</span>
   </div>
   <h3>What does mean really compute?</h3>
   <p>
     Walk the formula. "Sum of all the values, divided by the count." Plug in
-    the numbers verbally: "26 plus 26.5 plus 27 plus … all twelve values …
-    divided by 12 equals 26.68. <code>describe()</code> just did that for us."
+    the numbers verbally: "26.5 plus 27.1 plus 27.5 plus … all twelve values …
+    divided by 12 equals 27.47. <code>describe()</code> just did that for us."
   </p>
   <div class="audience-cue beginner">
     <strong>If beginners flinch at the formula:</strong> "Read it left to
@@ -376,10 +414,10 @@
   <div class="transition">→ "And the standard deviation?"</div>
 </div>
 
-<!-- Slide 13 -->
+<!-- Slide 14 -->
 <div class="slide-block">
   <div class="meta">
-    <span class="badge">Slide 13</span><span>~3 min</span><span>Variance and std</span>
+    <span class="badge">Slide 14</span><span>~3 min</span><span>Variance and std</span>
   </div>
   <h3>Variance: how spread out is the data?</h3>
   <p>
@@ -391,7 +429,7 @@
   <p>
     "So we take the square root and call it the standard deviation. Standard
     deviation is in the original units, which is why it's the number we
-    actually quote: 0.43 degrees, not 0.18 squared degrees."
+    actually quote: 0.62 degrees, not 0.39 squared degrees."
   </p>
   <p>
     On the n-1 vs n: do not get into the full derivation. Just signal: "Why
@@ -408,17 +446,17 @@
   <div class="transition">→ "Theory done — now back to questions."</div>
 </div>
 
-<!-- Slide 14 -->
+<!-- Slide 15 -->
 <div class="slide-block">
   <div class="meta">
-    <span class="badge">Slide 14</span><span>~3 min</span><span>Filter — find hottest month</span>
+    <span class="badge">Slide 15</span><span>~3 min</span><span>Filter — find hottest month</span>
   </div>
   <h3>Answering questions: the hottest month</h3>
   <p>
     Three lines of code with different jobs. Walk them slowly.
   </p>
   <ol>
-    <li>"Line 1 computes the maximum temperature — a single number, 27.2."</li>
+    <li>"Line 1 computes the maximum temperature — a single number, 28.3."</li>
     <li>"Line 3 says: give me the rows where the temperature column equals
         that maximum. <code>pl.col(...)</code> builds an <em>expression</em>
         that says 'the temperature column'. The double-equals turns it into
@@ -428,9 +466,11 @@
         the filtered DataFrame to pull out the month name."</li>
   </ol>
   <p>
-    Run the code. Output: "Hottest: May at 27.2°C". Validate it against the
-    earlier <code>describe()</code> output where max was Sep 27.2 — different
-    tie-breaking; both are correct.
+    Run the code. Output: "Hottest: May at 28.3°C". Now connect it back to
+    the <code>describe()</code> table: "The max row said 28.3 too — this code
+    tells us <em>which</em> month it belongs to. The 'September' in
+    describe()'s max row was the alphabetical maximum of the month
+    <em>names</em> — it never claimed September was hottest."
   </p>
   <div class="audience-cue beginner">
     <strong>If beginners are puzzled by <code>pl.col(...)</code>:</strong>
@@ -441,10 +481,10 @@
   <div class="transition">→ "Three traps to watch for."</div>
 </div>
 
-<!-- Slide 15 -->
+<!-- Slide 16 -->
 <div class="slide-block">
   <div class="meta">
-    <span class="badge">Slide 15</span><span>~3 min</span><span>Common mistakes</span>
+    <span class="badge">Slide 16</span><span>~3 min</span><span>Common mistakes</span>
   </div>
   <h3>Three rookie mistakes to avoid</h3>
   <p>
@@ -467,10 +507,10 @@
   <div class="transition">→ "Reflect, then we move on."</div>
 </div>
 
-<!-- Slide 16 -->
+<!-- Slide 17 -->
 <div class="slide-block">
   <div class="meta">
-    <span class="badge">Slide 16</span><span>~3 min</span><span>Reflection + bridge to 1.2</span>
+    <span class="badge">Slide 17</span><span>~3 min</span><span>Reflection + bridge to 1.2</span>
   </div>
   <h3>What you can now do</h3>
   <p>
@@ -479,9 +519,9 @@
   </p>
   <p>
     Then tease 1.2: "Today we worked with 12 rows. In Lesson 1.2 we will
-    work with 50,000 rows of HDB resale transactions — every public housing
-    sale in Singapore for the past several years. The same three steps
-    (load → inspect → summarise) but now with a real-world dataset where
+    work with 50,000 rows of HDB resale transactions — a synthetic dataset
+    modelled on public housing resales from 2015 to 2024. The same three steps
+    (load → inspect → summarise) but now with a dataset big enough that
     you'll need to filter to specific towns, specific date ranges, and
     create new columns like price-per-square-metre."
   </p>

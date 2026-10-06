@@ -30,11 +30,14 @@
 #   10. Data quality scorecard and action plan
 #
 # DATASET: Three Singapore economic time-series datasets (deliberately messy):
-#   - sg_cpi.csv:         Monthly Consumer Price Index (data.gov.sg / SingStat)
-#   - sg_employment.csv:  Quarterly labour market statistics (MOM)
-#   - sg_fx_rates.csv:    Daily SGD exchange rates (MAS)
-#   Quality issues by design: mixed granularity, forward-fill gaps,
-#   COVID-era outliers, and near-zero values in some trade-flow columns.
+#   - sg_cpi.csv:         Monthly Consumer Price Index
+#   - sg_employment.csv:  Quarterly labour market statistics
+#   - sg_fx_rates.csv:    Daily SGD exchange rates
+#   These are synthetic course datasets modelled on Singapore's published
+#   statistics — illustrative values, not official figures.
+#   Quality issues by design: mixed granularity, mixed date formats,
+#   forward-fill gaps, COVID-era outliers, and near-zero values in the
+#   JPY exchange-rate column (jpy_sgd is about 0.01).
 #
 # ════════════════════════════════════════════════════════════════════════
 """

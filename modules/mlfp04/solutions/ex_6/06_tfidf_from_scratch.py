@@ -175,8 +175,8 @@ for term in ("market", "olympics"):
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
 assert vocab_matches, "Task 3: from-scratch vocabulary must equal sklearn's exactly"
 assert max_diff < 1e-9, f"Task 3: TF-IDF weights must match sklearn to 1e-9 (got {max_diff:.2e})"
-nonzero = row_norms.flatten()
-assert np.allclose(nonzero[nonzero > 0], 1.0), "Task 3: rows must be unit L2 norm"
+nonzero_norms = np.linalg.norm(X_scratch, axis=1)
+assert np.allclose(nonzero_norms[nonzero_norms > 0], 1.0), "Task 3: rows must be unit L2 norm"
 print("\n[ok] Checkpoint 1 passed — from-scratch TF-IDF == sklearn to 1e-9\n")
 
 

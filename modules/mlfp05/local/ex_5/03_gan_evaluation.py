@@ -7,9 +7,11 @@
 #
 # WHAT YOU'LL LEARN:
 #   - Why "looks good" is not a valid evaluation metric for GANs
-#   - FID (Frechet Inception Distance) — the standard automated metric
+#   - FID (Frechet Inception Distance) — the standard automated metric,
+#     and why its numbers depend on the feature extractor
 #   - Mode coverage analysis — detecting hidden mode collapse
 #   - Shannon entropy as a diversity measure
+#   - A nearest-neighbour novelty check for memorised training images
 #   - Register trained generators in ModelRegistry with quality metrics
 #   - Build a quality assurance pipeline for synthetic data production
 #   - Apply: QA validation for the insurance company's synthetic data
@@ -38,6 +40,7 @@ from shared.mlfp05.ex_5 import (
     LeNetFeatureExtractor,
     init_environment,
     load_mnist,
+    load_mnist_test,
     setup_engines,
     close_engines,
     train_feature_extractor,
@@ -62,8 +65,8 @@ print(
   THE PROBLEM:
   Unlike classifiers (accuracy, F1) or regressors (MSE, R²), GANs have
   no single ground truth to compare against. A generator that produces
-  perfect images of the digit "7" — and ONLY "7" — could score well on
-  per-image quality but is useless for any practical application.
+  perfect images of the digit "7" — and ONLY "7" — has flawless
+  individual images but is useless for any practical application.
 
   "LOOKS GOOD" IS DANGEROUS:
   Human visual inspection doesn't scale, is subjective, and misses
@@ -72,9 +75,10 @@ print(
 
   THREE EVALUATION DIMENSIONS:
 
-  1. QUALITY (per-image fidelity):
-     Are individual generated images sharp and realistic?
-     Metric: FID (lower = better)
+  1. DISTRIBUTION MATCH (fidelity + diversity together):
+     Does the cloud of generated images look like the cloud of real
+     images? FID compares the two DISTRIBUTIONS — it is not a
+     per-image score. Metric: FID (lower = better)
 
   2. DIVERSITY (mode coverage):
      Does the generator cover the full range of real data?
@@ -82,7 +86,8 @@ print(
 
   3. NOVELTY (not memorising):
      Is the generator creating NEW images, not copying training data?
-     Metric: nearest-neighbour distance to training set
+     Metric: nearest-neighbour distance to the training set, compared
+     with the same distance for real images it never saw
 
   FID — FRECHET INCEPTION DISTANCE:
 
@@ -94,11 +99,15 @@ print(
     FID = ||mu_r - mu_g||^2 + Tr(Sig_r + Sig_g - 2*sqrt(Sig_r @ Sig_g))
 
   Intuition for professionals:
-  - FID = 0: generated images are statistically indistinguishable from real
-  - FID < 10: publication-quality generation
-  - FID 10-50: recognisable but imperfect
-  - FID 50-100: blurry or distorted
-  - FID > 100: the generator hasn't learned much
+  - FID = 0: the two feature distributions are identical
+  - FID has NO universal scale: it depends on the feature extractor.
+    Published thresholds ("FID < 10 is excellent") are for 2048-d
+    Inception features on natural images. We use a 64-d LeNet trained
+    on MNIST (Inception expects 299x299 colour images), so our numbers
+    are only comparable with other numbers from THIS extractor.
+  - To make a number meaningful, compare it with a FLOOR: the FID
+    between two sets of REAL digits. No generator can beat sampling
+    noise, so "how many times the floor" is the readable figure.
 
   MODE COLLAPSE DETECTION:
 
@@ -107,9 +116,10 @@ print(
   - max entropy = log2(10) = 3.32 (uniform across all 10 digit classes)
   - entropy = 0: generator produces only one class (total collapse)
 
-  A generator can have low FID (individual images look good) but low
-  entropy (it only produces 3 of the 10 digit types). Both metrics
-  are needed.
+  FID does penalise missing modes, but it squeezes fidelity and
+  diversity into ONE number: a middling FID cannot tell you whether
+  every digit is slightly blurry or three digits are missing entirely.
+  Coverage and entropy answer that second question directly.
 """
 )
 
@@ -167,15 +177,14 @@ for epoch in range(15):
         z = torch.randn(bs, LATENT_DIM, device=device)
         fake = G_gan(z).detach()
         # TODO: D loss = BCE on real (target=1) + BCE on fake (target=0)
-        # Hint: loss_d = bce(D_gan(real_batch), torch.ones(bs, 1, device=device))
-        #              + bce(D_gan(fake), torch.zeros(bs, 1, device=device))
+        # Hint: the ex_5/01 discriminator loss, with D_gan.
         loss_d = ____
         opt_d_gan.zero_grad()
         loss_d.backward()
         opt_d_gan.step()
         z = torch.randn(bs, LATENT_DIM, device=device)
         # TODO: G loss = fool D by labelling fakes as real
-        # Hint: loss_g = bce(D_gan(G_gan(z)), torch.ones(bs, 1, device=device))
+        # Hint: the ex_5/01 non-saturating generator loss, with G_gan/D_gan.
         loss_g = ____
         opt_g_gan.zero_grad()
         loss_g.backward()
@@ -190,8 +199,8 @@ for epoch in range(15):
     )
 
 
-# TODO: Implement gradient penalty function for WGAN-GP
-# Hint: Same as ex_5/02 — interpolate real+fake, compute grad norm, penalise != 1
+# Gradient penalty for WGAN-GP — the same function you wrote in ex_5/02;
+# only its final line is left for you here.
 def gradient_penalty(D, real, fake):
     batch = real.size(0)
     alpha = torch.rand(batch, 1, 1, 1, device=real.device)
@@ -206,14 +215,12 @@ def gradient_penalty(D, real, fake):
         only_inputs=True,
     )[0]
     # TODO: Return gradient penalty = mean of (||grad||_2 - 1)^2
-    # Hint: ((grad.reshape(batch, -1).norm(2, dim=1) - 1) ** 2).mean()
+    # Hint: per-example norm over ALL pixels, as in ex_5/02.
     return ____
 
 
 # TODO: Train WGAN-GP (20 epochs) with critic training
-# Hint: 5 critic steps per G step, Adam(0.5, 0.9), lr=1e-4
-#       Critic loss = D(fake).mean() - D(real).mean() + 10.0 * gp
-#       G loss = -D(G(z)).mean()
+# Hint: 5 critic steps per G step, Adam(0.5, 0.9), lr=1e-4, lambda = 10
 print("\n  Training WGAN-GP (20 epochs)...")
 G_wgan = Generator().to(device)
 D_wgan = Discriminator().to(device)
@@ -230,14 +237,14 @@ for epoch in range(20):
             fake = G_wgan(z).detach()
             gp = gradient_penalty(D_wgan, real_batch, fake)
             # TODO: Wasserstein critic loss + gradient penalty
-            # Hint: loss_d = D_wgan(fake).mean() - D_wgan(real_batch).mean() + 10.0 * gp
+            # Hint: the ex_5/02 critic loss, with D_wgan and lambda = 10.
             loss_d = ____
             opt_d_wgan.zero_grad()
             loss_d.backward()
             opt_d_wgan.step()
         z = torch.randn(bs, LATENT_DIM, device=device)
         # TODO: G loss — maximise critic score on fakes
-        # Hint: loss_g = -D_wgan(G_wgan(z)).mean()
+        # Hint: the ex_5/02 generator loss, with G_wgan/D_wgan.
         loss_g = ____
         opt_g_wgan.zero_grad()
         loss_g.backward()
@@ -268,8 +275,7 @@ G_wgan.eval()
 
 with torch.no_grad():
     # TODO: Generate fake images from both generators (N_FID each), scale to [0, 1]
-    # Hint: gan_fake_01 = (G_gan(torch.randn(N_FID, LATENT_DIM, device=device)) + 1) / 2
-    #       wgan_fake_01 = (G_wgan(torch.randn(N_FID, LATENT_DIM, device=device)) + 1) / 2
+    # Hint: generators output [-1, 1]; the extractor was trained on [0, 1].
     gan_fake_01 = ____
     wgan_fake_01 = ____
 
@@ -277,18 +283,25 @@ rng = np.random.default_rng(42)
 real_sub = (X_real[rng.choice(len(X_real), N_FID, replace=False)] + 1) / 2
 
 # TODO: Compute FID for both generators using the trained feature extractor
-# Hint: fid_gan = compute_fid(fid_ext, real_sub, gan_fake_01)
-#       fid_wgan = compute_fid(fid_ext, real_sub, wgan_fake_01)
+# Hint: shared.mlfp05.ex_5.compute_fid(extractor, real, generated) — the
+#       real side is the [0, 1] subsample `real_sub`.
 fid_gan = ____
 fid_wgan = ____
 
-print(f"\n  FID Scores (lower = better):")
-print(f"    Vanilla GAN: {fid_gan:.2f}")
-print(f"    WGAN-GP:     {fid_wgan:.2f}")
+# Real-vs-real FID floor: two sets of REAL digits (training vs the test
+# split no generator has seen). No generator can beat sampling noise.
+X_test, y_test = load_mnist_test(device)
+X_test_01 = (X_test + 1) / 2
+fid_floor = compute_fid(fid_ext, real_sub, X_test_01)
+
+print(f"\n  FID Scores (lower = better; LeNet-64 feature space):")
+print(f"    Real vs real (floor): {fid_floor:.3g}")
+print(f"    Vanilla GAN: {fid_gan:.2f}  ({fid_gan / fid_floor:.1f}x floor)")
+print(f"    WGAN-GP:     {fid_wgan:.2f}  ({fid_wgan / fid_floor:.1f}x floor)")
 
 # TODO: Compute mode coverage for both generators
-# Hint: cov_gan, dist_gan, ent_gan = mode_coverage(G_gan, fid_ext, device)
-#       cov_wgan, dist_wgan, ent_wgan = mode_coverage(G_wgan, fid_ext, device)
+# Hint: shared.mlfp05.ex_5.mode_coverage — the LeNet extractor doubles as
+#       the digit classifier.
 cov_gan, dist_gan, ent_gan = ____
 cov_wgan, dist_wgan, ent_wgan = ____
 
@@ -297,6 +310,48 @@ print(f"    Vanilla GAN: {cov_gan}/10 classes, entropy={ent_gan:.2f}/3.32")
 print(f"    Distribution: {dist_gan}")
 print(f"    WGAN-GP:     {cov_wgan}/10 classes, entropy={ent_wgan:.2f}/3.32")
 print(f"    Distribution: {dist_wgan}")
+
+
+# ── Novelty check: is either generator copying its training images? ──
+# For each image, find the distance (in the extractor's feature space) to
+# its NEAREST training image. Baseline: the same distance for real test
+# digits, which the generators never saw. A memorising generator sits much
+# CLOSER to the training set than unseen real digits do (ratio << 1).
+N_NOV = 2000
+
+
+def _features(images_01: torch.Tensor) -> torch.Tensor:
+    with torch.no_grad():
+        return torch.cat(
+            [
+                fid_ext.extract_features(images_01[i : i + 5000])
+                for i in range(0, len(images_01), 5000)
+            ]
+        )
+
+
+train_feats = _features((X_real + 1) / 2)
+
+
+def nn_distance(images_01: torch.Tensor) -> torch.Tensor:
+    """Distance from each image to its nearest training image (feature space)."""
+    q = _features(images_01)
+    return torch.cat(
+        [
+            torch.cdist(q[i : i + 250], train_feats).min(dim=1).values
+            for i in range(0, len(q), 250)
+        ]
+    )
+
+
+d_unseen = nn_distance(X_test_01[:N_NOV]).median().item()
+nov_gan = nn_distance(gan_fake_01[:N_NOV]).median().item() / d_unseen
+nov_wgan = nn_distance(wgan_fake_01[:N_NOV]).median().item() / d_unseen
+
+print(f"\n  Novelty (median NN distance to training set / unseen real digits'):")
+print(f"    Vanilla GAN: {nov_gan:.2f}")
+print(f"    WGAN-GP:     {nov_wgan:.2f}")
+print("    ~1.0 = as novel as unseen real digits; well below 1 = near-copies")
 
 
 # Log to ExperimentTracker
@@ -311,6 +366,9 @@ async def _log_evaluation():
                 "coverage_wgan": float(cov_wgan),
                 "entropy_vanilla": ent_gan,
                 "entropy_wgan": ent_wgan,
+                "fid_real_floor": fid_floor,
+                "novelty_vanilla": nov_gan,
+                "novelty_wgan": nov_wgan,
             }
         )
 
@@ -318,15 +376,22 @@ async def _log_evaluation():
 asyncio.run(_log_evaluation())
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
-assert fid_gan >= -1e-3 and fid_wgan >= -1e-3, (
-    f"FID expected ~0+; got fid_gan={fid_gan:.6f}, fid_wgan={fid_wgan:.6f}"
-)
+# FID is mathematically non-negative, but the numerical estimate (sample
+# covariances + eigenvalues of Sigma_r @ Sigma_g) can land tiny-negative
+# from floating-point error. Allow a small tolerance.
+assert (
+    fid_gan >= -1e-3 and fid_wgan >= -1e-3
+), f"FID expected ~0+; got fid_gan={fid_gan:.6f}, fid_wgan={fid_wgan:.6f}"
+assert fid_floor >= -1e-3, f"Real-vs-real FID should be ~0+; got {fid_floor:.6f}"
+assert nov_gan > 0 and nov_wgan > 0, "Novelty ratios must be positive"
 assert 0 <= ent_gan <= np.log2(10) + 0.01, "Entropy out of range"
 assert cov_gan >= 1 and cov_wgan >= 1, "Must produce at least 1 class"
-# INTERPRETATION: FID = 0 means identical distributions. Typical MNIST
-# GAN FID after a few epochs: 10-100. Production papers target FID < 10.
-# WGAN-GP typically achieves better coverage because Wasserstein distance
-# provides gradients even when distributions don't overlap.
+# INTERPRETATION: FID = 0 means identical feature distributions. Read
+# each FID against the real-vs-real floor printed above, not against
+# published Inception-FID numbers — this extractor has its own scale.
+# WGAN-GP often achieves better coverage because the critic still gives
+# an informative gradient when the distributions barely overlap — but
+# check YOUR numbers: one training run is one sample.
 print("\n--- Checkpoint 3 passed --- FID and mode coverage computed\n")
 
 
@@ -340,8 +405,7 @@ print("=" * 70)
 # 4A: FID score comparison bar chart
 print("\n  4A: FID score comparison")
 # TODO: Create bar chart comparing FID scores of both generators
-# Hint: Use plt.subplots, ax.bar with ["Vanilla GAN", "WGAN-GP"], [fid_gan, fid_wgan]
-#       Add reference lines at FID=10 (publication), 50 (recognisable), 100 (poor)
+# Hint: one bar per generator; the real-vs-real floor is the reference line.
 fig_fid, ax = plt.subplots(figsize=(8, 5))
 bars = ax.bar(
     ["Vanilla GAN", "WGAN-GP"],
@@ -353,23 +417,22 @@ bars = ax.bar(
 )
 ax.set_ylabel("FID Score (lower = better)", fontsize=13)
 ax.set_title(
-    "Frechet Inception Distance Comparison\n"
+    "Frechet Distance Comparison (LeNet-64 features)\n"
     f"(computed on {N_FID:,} generated vs {N_FID:,} real images)",
     fontsize=14,
     fontweight="bold",
 )
-# TODO: Add value labels on bars and reference lines
-# Hint: ax.text(bar.get_x() + bar.get_width()/2, bar.get_height()+0.5, f"{val:.1f}", ...)
-#       ax.axhline(y=10, color="green", linestyle="--", alpha=0.5, label="Publication quality")
+# TODO: Add value labels on bars
+# Hint: Axes.text, centred on each bar (x + width/2), just above its height.
 for bar, val in zip(bars, [fid_gan, fid_wgan]):
     ____  # TODO: Add value label text on each bar
 ax.axhline(
-    y=10, color="green", linestyle="--", alpha=0.5, label="Publication quality (<10)"
+    y=fid_floor,
+    color="blue",
+    linestyle="--",
+    alpha=0.6,
+    label=f"Real-vs-real floor ({fid_floor:.3g})",
 )
-ax.axhline(
-    y=50, color="orange", linestyle="--", alpha=0.5, label="Recognisable (10-50)"
-)
-ax.axhline(y=100, color="red", linestyle="--", alpha=0.5, label="Poor quality (>100)")
 ax.legend(fontsize=10, loc="upper right")
 ax.grid(True, alpha=0.2, axis="y")
 plt.tight_layout()
@@ -417,8 +480,7 @@ for idx, (name, dist, ent, cov) in enumerate(
     axes[idx].grid(True, alpha=0.2, axis="y")
 
     # TODO: Add percentage labels on each bar
-    # Hint: for bar, pct in zip(bars, pcts):
-    #           if pct > 0: axes[idx].text(bar.get_x()+bar.get_width()/2, ...)
+    # Hint: same Axes.text pattern as the 4A value labels; skip empty bars.
     ____
 
 plt.tight_layout()
@@ -468,22 +530,22 @@ fig_dash.suptitle(
 )
 
 # TODO: Top-left — FID bar chart
-# Hint: axes[0][0].bar(["Vanilla GAN", "WGAN-GP"], [fid_gan, fid_wgan], ...)
+# Hint: same chart as 4A, drawn on the top-left Axes, with value labels.
 ____
 
 # TODO: Top-right — Entropy bar chart with max entropy line
-# Hint: axes[0][1].bar(["Vanilla GAN", "WGAN-GP"], [ent_gan, ent_wgan], ...)
-#       axes[0][1].axhline(y=np.log2(10), ...)
+# Hint: the reference line is the maximum entropy for 10 equally likely
+#       classes.
 ____
 
 # TODO: Bottom-left — G loss curves for both generators
-# Hint: axes[1][0].plot(range(1, 16), gan_g_losses, "r-", ...)
-#       axes[1][0].plot(range(1, 21), wgan_g_losses, "g-", ...)
+# Hint: the two runs have different epoch counts (15 vs 20) — build each
+#       x-axis from its own loss list.
 ____
 
 # TODO: Bottom-right — D/Critic loss curves for both generators
-# Hint: axes[1][1].plot(range(1, 16), gan_d_losses, "r-", ...)
-#       axes[1][1].plot(range(1, 21), wgan_d_losses, "g-", ...)
+# Hint: same as bottom-left, with the D / critic loss lists. Remember the
+#       two losses are on different scales and the critic's is about -W.
 ____
 
 plt.tight_layout()
@@ -507,7 +569,7 @@ print("\n--- Checkpoint 4 passed --- evaluation visualisations complete\n")
 # ════════════════════════════════════════════════════════════════════════
 print("\n  Registering generators in ModelRegistry...")
 ver_gan = register_generator(
-    registry, "dcgan_generator", G_gan, fid_gan, cov_gan, ent_gan
+    registry, "vanilla_gan_generator", G_gan, fid_gan, cov_gan, ent_gan
 )
 ver_wgan = register_generator(
     registry, "wgan_gp_generator", G_wgan, fid_wgan, cov_wgan, ent_wgan
@@ -528,42 +590,51 @@ print("  PHASE 5 — APPLY: Synthetic Data QA for Insurance Production")
 print("=" * 70)
 print(
     """
-  BUSINESS SCENARIO:
-  You are the ML engineering lead at the Singapore insurance company
-  from Exercise 5.1. Your team has trained a WGAN-GP to generate
-  synthetic policyholder profiles for fraud detection model training.
+  BUSINESS SCENARIO (illustrative):
+  You are the ML engineering lead at the Singapore insurer from
+  Exercise 5.1. Your team has trained a WGAN-GP to generate synthetic
+  policyholder profiles for fraud detection model training.
 
   Before deploying synthetic data to production, the Chief Risk Officer
   (CRO) asks: "How do you KNOW the synthetic data is good enough?
   What if the generator produces biased profiles that make the fraud
   model miss certain claim types?"
 
-  YOUR QA PIPELINE:
-  1. FID threshold: synthetic data must score below FID 50
-     (statistically close to real distribution)
-  2. Mode coverage: all major claim categories must be represented
-     (no category can be below 5% of total)
-  3. Distribution matching: key statistical properties must match
-     (mean, variance, correlation structure)
-  4. Downstream model validation: fraud model trained on synthetic
-     data must achieve within 5% of real-data baseline accuracy
+  THE QA GATE THIS SCRIPT RUNS:
+  1. Distribution match: FID within a set multiple of the real-vs-real
+     floor (the multiple is a POLICY choice — calibrate it per extractor)
+  2. Mode coverage: at least 8 of 10 categories generated
+  3. Diversity: Shannon entropy of the generated categories
+  4. Balance: no category below 3% of generated samples
+  5. Novelty: generated samples must not sit much closer to the
+     training set than unseen real samples do (near-copy check)
 
-  This is the production gate — synthetic data that fails any check
-  is rejected and the generator is retrained or tuned.
+  GATES THIS SCRIPT DOES NOT RUN (still required before production):
+  - Downstream validation: a fraud model trained with the synthetic
+    data, scored on REAL held-out claims, against a real-data baseline
+  - Privacy review: the novelty check catches near-copies only; it is
+    not a privacy guarantee (that needs DP training and membership-
+    inference testing)
+
+  Synthetic data that fails any gate is rejected and the generator is
+  retrained or tuned.
 """
 )
 
-# Step 1: Define QA thresholds
-FID_THRESHOLD = 50.0
+# Step 1: Define QA thresholds (policy choices, not universal constants)
+FID_FLOOR_MULTIPLE = 10.0  # FID at most 10x the real-vs-real floor
+FID_THRESHOLD = FID_FLOOR_MULTIPLE * fid_floor
 MIN_MODE_COVERAGE = 8  # At least 8/10 classes
 MIN_ENTROPY = 2.5  # Minimum diversity (max is 3.32)
 MIN_CLASS_PCT = 3.0  # No class below 3% of total
+MIN_NOVELTY_RATIO = 0.8  # NN distance at least 80% of unseen real digits'
 
 print("  QA Thresholds:")
-print(f"    FID score:        < {FID_THRESHOLD}")
+print(f"    FID score:        < {FID_THRESHOLD:.3g} ({FID_FLOOR_MULTIPLE:.0f}x floor)")
 print(f"    Mode coverage:    >= {MIN_MODE_COVERAGE}/10 classes")
 print(f"    Shannon entropy:  >= {MIN_ENTROPY}/3.32")
 print(f"    Min class share:  >= {MIN_CLASS_PCT}%")
+print(f"    Novelty ratio:    >= {MIN_NOVELTY_RATIO}")
 
 # Step 2: Run QA on both generators
 print("\n  Running QA pipeline on both generators...")
@@ -572,24 +643,25 @@ print("\n  Running QA pipeline on both generators...")
 # Hint: For each generator, check fid < threshold, coverage >= min,
 #       entropy >= min, and min class percentage >= threshold
 qa_results = {}
-for name, G, fid, cov, dist, ent in [
-    ("Vanilla GAN", G_gan, fid_gan, cov_gan, dist_gan, ent_gan),
-    ("WGAN-GP", G_wgan, fid_wgan, cov_wgan, dist_wgan, ent_wgan),
+for name, G, fid, cov, dist, ent, nov in [
+    ("Vanilla GAN", G_gan, fid_gan, cov_gan, dist_gan, ent_gan, nov_gan),
+    ("WGAN-GP", G_wgan, fid_wgan, cov_wgan, dist_wgan, ent_wgan, nov_wgan),
 ]:
+    # Smallest share over ALL 10 classes — a class never generated counts
+    # as 0%, not as "absent from the dict".
     total = sum(dist.values())
-    min_pct = min(dist.values()) / total * 100 if total > 0 and dist else 0.0
+    min_pct = min(dist.get(c, 0) for c in range(10)) / total * 100 if total else 0.0
 
     # TODO: Check each QA criterion
-    # Hint: fid_pass = fid < FID_THRESHOLD
-    #       cov_pass = cov >= MIN_MODE_COVERAGE
-    #       ent_pass = ent >= MIN_ENTROPY
-    #       pct_pass = min_pct >= MIN_CLASS_PCT
+    # Hint: one boolean per threshold defined in Step 1. Mind the
+    #       direction: FID is lower-is-better, the rest higher-is-better.
     fid_pass = ____
     cov_pass = ____
     ent_pass = ____
     pct_pass = ____
+    nov_pass = nov >= MIN_NOVELTY_RATIO
 
-    all_pass = fid_pass and cov_pass and ent_pass and pct_pass
+    all_pass = fid_pass and cov_pass and ent_pass and pct_pass and nov_pass
 
     qa_results[name] = {
         "fid": fid,
@@ -600,6 +672,8 @@ for name, G, fid, cov, dist, ent in [
         "ent_pass": ent_pass,
         "min_class_pct": min_pct,
         "pct_pass": pct_pass,
+        "novelty": nov,
+        "nov_pass": nov_pass,
         "overall": all_pass,
     }
 
@@ -616,31 +690,41 @@ fig_qa.suptitle(
 )
 
 categories = [
-    "FID Score\n(< 50)",
+    f"FID Score\n(< {FID_THRESHOLD:.3g})",
     "Mode Coverage\n(>= 8/10)",
     "Entropy\n(>= 2.5)",
     "Min Class %\n(>= 3%)",
+    "Novelty Ratio\n(>= 0.8)",
 ]
 vanilla_scores = [
     qa_results["Vanilla GAN"]["fid"],
     qa_results["Vanilla GAN"]["coverage"],
     qa_results["Vanilla GAN"]["entropy"],
     qa_results["Vanilla GAN"]["min_class_pct"],
+    qa_results["Vanilla GAN"]["novelty"],
 ]
 wgan_scores = [
     qa_results["WGAN-GP"]["fid"],
     qa_results["WGAN-GP"]["coverage"],
     qa_results["WGAN-GP"]["entropy"],
     qa_results["WGAN-GP"]["min_class_pct"],
+    qa_results["WGAN-GP"]["novelty"],
 ]
-thresholds = [FID_THRESHOLD, MIN_MODE_COVERAGE, MIN_ENTROPY, MIN_CLASS_PCT]
+thresholds = [
+    FID_THRESHOLD,
+    MIN_MODE_COVERAGE,
+    MIN_ENTROPY,
+    MIN_CLASS_PCT,
+    MIN_NOVELTY_RATIO,
+]
 
 x = np.arange(len(categories))
 width = 0.3
 
 # TODO: Normalise scores to percentage of threshold met
-# Hint: For FID (lower=better): min(threshold / (value + 1e-8) * 100, 150)
-#       For others (higher=better): min(value / threshold * 100, 150)
+# Hint: 100% = exactly at the threshold. Invert the ratio for FID
+#       (lower is better), guard against dividing by zero, and cap at
+#       150% so one huge value does not flatten the chart (ylim is 160).
 vanilla_norm = []
 wgan_norm = []
 for v, w, t, cat in zip(vanilla_scores, wgan_scores, thresholds, categories):
@@ -688,7 +772,10 @@ print("  ├──────────────────────�
 print("  │                                                                │")
 print(f"  │  {'Metric':<22} {'Vanilla GAN':>13} {'WGAN-GP':>13} {'Threshold':>12} │")
 print(f"  │  {'─'*60}  │")
-print(f"  │  {'FID Score':<22} {fid_gan:>13.1f} {fid_wgan:>13.1f} {'< 50':>12} │")
+print(
+    f"  │  {'FID Score':<22} {fid_gan:>13.1f} {fid_wgan:>13.1f} "
+    f"{'< ' + format(FID_THRESHOLD, '.3g'):>12} │"
+)
 print(
     f"  │  {'Mode Coverage':<22} {cov_gan:>12}/10 {cov_wgan:>12}/10 {'>= 8/10':>12} │"
 )
@@ -700,18 +787,27 @@ wgan_min = qa_results["WGAN-GP"]["min_class_pct"]
 print(
     f"  │  {'Min Class Share':<22} {van_min:>12.1f}% {wgan_min:>12.1f}% {'>= 3.0%':>12} │"
 )
+print(
+    f"  │  {'Novelty Ratio':<22} {nov_gan:>13.2f} {nov_wgan:>13.2f} {'>= 0.80':>12} │"
+)
 print("  │                                                                │")
 van_status = "APPROVED" if van_overall else "REJECTED"
 wgan_status = "APPROVED" if wgan_overall else "REJECTED"
 print(f"  │  {'OVERALL STATUS':<22} {van_status:>13} {wgan_status:>13}              │")
 print("  │                                                                │")
 better = "WGAN-GP" if fid_wgan < fid_gan else "Vanilla GAN"
-print(f"  │  Recommended generator: {better:<38} │")
+print(f"  │  Lower FID: {better:<50} │")
 print(f"  │  Best FID score: {min(fid_gan, fid_wgan):<44.1f} │")
 print("  │                                                                │")
-print("  │  DECISION: CRO can approve WGAN-GP synthetic data for         │")
-print("  │  production fraud model training. QA pipeline will run         │")
-print("  │  automatically on every new generator version via ModelRegistry│")
+approved = [n for n, r in qa_results.items() if r["overall"]]
+if approved:
+    decision = f"{', '.join(approved)} passed this gate"
+    follow_up = "Next: downstream test on REAL claims + privacy review"
+else:
+    decision = "No generator passed — retrain or tune before reuse"
+    follow_up = "See the FAIL bars above for which gate blocked each one"
+print(f"  │  DECISION: {decision:<51} │")
+print(f"  │  {follow_up:<61} │")
 print("  └────────────────────────────────────────────────────────────────┘")
 
 # ── Checkpoint 6 ─────────────────────────────────────────────────────
@@ -739,6 +835,7 @@ print(
 print(f"  {'FID score':<25} {fid_gan:>14.2f} {fid_wgan:>14.2f}")
 print(f"  {'Mode coverage':<25} {cov_gan:>13}/10 {cov_wgan:>13}/10")
 print(f"  {'Class entropy':<25} {ent_gan:>14.2f} {ent_wgan:>14.2f}")
+print(f"  {'Novelty ratio':<25} {nov_gan:>14.2f} {nov_wgan:>14.2f}")
 print(f"\n  Best generator by FID: {better}")
 
 
@@ -749,29 +846,38 @@ asyncio.run(close_engines(conn))
 
 
 # ════════════════════════════════════════════════════════════════════════
-# DESTINATION-FIRST CLOSE — km.diagnose
+# DIAGNOSTIC CHECKPOINT — WGAN-GP generator, one kailash-ml call
 # ════════════════════════════════════════════════════════════════════════
-# This lesson walked the journey of generative adversarial networks —
-# vanilla GAN, WGAN-GP, FID/coverage/entropy QA pipelines. The kailash-ml
-# SDK ships a single-call diagnostic primitive that closes the production
-# loop: km.diagnose inspects a trained model and emits an auto-dashboard
-# (loss curves, gradient flow, dead neurons, activation stats, weight
-# distributions). One cell. Every diagnostic students would otherwise
-# hand-roll, ready to surface in a Plotly dashboard.
+# FID, coverage and novelty judge the OUTPUT. The Prescription Pad judges
+# the network: run_diagnostic_checkpoint instruments the trained WGAN-GP
+# generator, replays a few batches of its real training objective (score
+# fakes with the trained critic; no weights are updated) and returns the
+# gradient-flow, dead-neuron and loss-trend readings.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
-from kailash_ml import diagnose
 
-# Diagnose the WGAN-GP generator (the more stable of the two architectures).
-# Generators take noise vectors as input — we feed a small iterable of
-# `LATENT_DIM`-shaped noise tensors. `kind='auto'` correctly dispatches a
-# torch.nn.Module to DLDiagnostics regardless of input shape.
-noise_iter = [torch.randn(64, LATENT_DIM, device=device) for _ in range(4)]
-report = diagnose(G_wgan, kind="auto", data=noise_iter, show=False)
-report.plot_training_dashboard()
-print()
-print("km.diagnose: 1 line of code -> the same observability the lesson")
-print("body hand-rolled in 200+ lines. This is what 'destination-first'")
-print("means — when the journey is internalised, the SDK is one call.")
+def _wgan_g_loss(m, batch):
+    z = torch.randn(batch[0].size(0), LATENT_DIM, device=device)
+    return -D_wgan(m(z)).mean()
+
+
+diag, findings = run_diagnostic_checkpoint(
+    G_wgan,
+    real_loader,
+    _wgan_g_loss,
+    title="WGAN-GP generator",
+    n_batches=8,
+    train_losses=wgan_g_losses,
+    show=False,
+)
+print_prescription_pad(findings, "WGAN-GP generator")
+# HOW TO READ IT: put this pad beside the QA report. Healthy gradients
+# with a FAILED coverage gate means the network trains fine but has
+# collapsed onto a few modes — a data/objective problem, not a plumbing
+# one. Vanishing gradients point at the critic (under-trained, or GP not
+# applied). For a GAN, a loss-trend WARNING is not by itself a failure:
+# G's loss moves as the critic gets stronger.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -783,39 +889,43 @@ print("=" * 70)
 print(
     """
   GAN EVALUATION METRICS:
-  [x] FID (Frechet Inception Distance): the gold standard for GAN quality.
-      Measures distributional distance in a learned feature space.
+  [x] FID (Frechet Inception Distance): the standard automated GAN
+      metric. Measures distributional distance in a learned feature
+      space — only comparable within the same extractor, so read it
+      against a real-vs-real floor.
   [x] Mode coverage: counting how many classes the generator produces.
       A sharp but repetitive GAN fails this test.
   [x] Shannon entropy: quantifying generation diversity.
       Max = log2(10) = 3.32 for MNIST (uniform across all digits).
   [x] Minimum class share: no category can be underrepresented
       (prevents hidden bias in synthetic datasets).
+  [x] Novelty ratio: a near-copy check against the training set
+      (necessary for privacy, nowhere near sufficient).
 
   MODEL REGISTRY:
   [x] Registered both generators with FID + coverage + entropy metrics
-  [x] Version tracking enables A/B comparison between generator versions
-  [x] Promotion criteria: lower FID + higher coverage = promote to serving
+  [x] Registered metrics let you compare generator versions side by side
 
   QA PIPELINE FOR PRODUCTION:
-  [x] Defined quantitative thresholds (FID < 50, coverage >= 8/10, etc.)
+  [x] Defined quantitative thresholds (FID vs floor, coverage >= 8/10, ...)
   [x] Automated evaluation — no "looks good to me" subjectivity
-  [x] Stakeholder-ready report for CRO approval
-  [x] Pipeline runs on every new generator version in ModelRegistry
+  [x] Stakeholder-ready report whose decision is computed, not asserted
+  [x] Named the gates this script does NOT run (downstream test, privacy)
 
   REAL-WORLD APPLICATION:
-  [x] Insurance synthetic data QA: proving data quality before production
+  [x] Insurance synthetic data QA: evidence before production
   [x] CRO-ready quality report with pass/fail per metric
-  [x] Quantified business risk: what happens if synthetic data is biased
+  [x] The business risk of biased or memorised synthetic data
 
   KEY INSIGHTS:
-  - FID alone is not enough: a generator can have low FID on the modes
-    it covers while completely missing other modes
+  - FID alone is not enough: it blends fidelity and diversity into one
+    number, so it cannot say WHICH of the two is failing
   - Mode coverage alone is not enough: a generator can cover all modes
     but produce blurry, low-quality images
-  - You need BOTH quality (FID) AND diversity (coverage + entropy)
-  - In production, these checks run automatically on every new model
-    version — the CRO never needs to "eyeball" synthetic data again
+  - You need BOTH distribution match (FID) AND diversity (coverage +
+    entropy) — and a novelty check before anyone calls the data safe
+  - Re-run the same gate on every new generator version; the registry
+    keeps the metrics side by side so regressions are visible
 
   WHEN TO USE WHICH GAN:
   - Vanilla GAN: quick prototyping, simple datasets, no stability needs
@@ -823,79 +933,9 @@ print(
   - Both need the same evaluation pipeline — the QA doesn't change,
     only the generator architecture does.
 
-  GAN vs VAE vs Diffusion (from M5 Exercise 1):
+  GAN vs VAE (M5 Exercise 1) vs Diffusion:
   - GANs:      Sharp images, hard to train, fast sampling
   - VAEs:      Blurry but stable, continuous latent space, fast
   - Diffusion: Sharp + stable, best quality, SLOW sampling
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # GAN evaluation — diagnostic on the generator model
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (GAN Evaluation (FID + Inception Score)) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        generator,
-        noise_loader,
-        _diag_loss,
-        title="GAN Evaluation (FID + Inception Score)",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [!] Gradient flow (WARNING): G gradients RMS 3.2e-03, D gradients RMS 4.5e-02
-#     (G/D imbalance — D dominating is the canonical GAN failure mode).
-# [!] Dead neurons  (WARNING): 28% saturation in G's final tanh layer —
-#     generator is producing outputs clustered at [-1, 1] extremes.
-# [?] Loss trend    (MIXED): D loss → 0.1 (winning), G loss climbing.
-#     Textbook sign of D overpowering G — generator can't keep up.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST] G/D gradient imbalance is the signature of GAN training
-#     collapse. When D's RMS >> G's RMS, the discriminator has "won" —
-#     G is receiving useless gradient signal. Slide 5.5 shows this as
-#     the most common GAN failure.
-#     >> Prescription: reduce D learning rate OR train G for N steps
-#        per 1 D step OR apply WGAN-GP (ex_5/02) which sidesteps this
-#        via gradient penalty instead of BCE.
-#
-#  [X-RAY] 28% tanh saturation means the generator is producing
-#     extreme outputs — diversity is collapsing. Combined with the
-#     loss trend, this is mode collapse territory.
-#     >> Prescription: add minibatch discrimination, feature matching,
-#        or switch to WGAN which has no saturation problem.
-#
-#  [STETHOSCOPE] Diverging G/D losses (D→0, G→∞) is the classic
-#     "Nash equilibrium lost" pattern. WGAN-GP (next exercise) is
-#     the direct fix.

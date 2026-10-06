@@ -10,7 +10,8 @@
 #   - Understand the ELBO loss: reconstruction + KL divergence
 #   - Generate BRAND NEW images by sampling z ~ N(0, I)
 #   - Visualise latent traversal to see what each dimension controls
-#   - Apply to privacy-preserving synthetic patient data at NUH
+#   - Apply to synthetic patient data for a hospital research team, and
+#     measure what a distance check can (and cannot) say about privacy
 #   - Verify synthetic data quality with statistical tests + privacy checks
 #
 # PREREQUISITES: 08_recurrent_ae.py
@@ -20,7 +21,7 @@
 #   1. Build VAE with mu/logvar heads and reparameterisation
 #   2. Train with ELBO loss (reconstruction + KL divergence)
 #   3. Visualise: reconstruction, generation, latent traversal
-#   4. Apply: synthetic patient data for NUH PDPA compliance
+#   4. Apply: synthetic patient data for hospital researchers
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -164,6 +165,7 @@ vae_losses = train_variant(
 # gradients vanishing specifically on `fc_mu`/`fc_logvar` — the
 # model stops routing information through the latent.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -182,68 +184,13 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=vae_losses,
     show=False,
 )
+print_prescription_pad(findings, f"VAE (KL={KL_WEIGHT})")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Gradient flow (WARNING): Low gradients at
-#       'fc_mu.weight' — RMS = 5.2e-05. KL penalty is
-#       dampening mu-head updates (early sign of posterior
-#       collapse risk). fc_logvar.weight RMS = 4.8e-05
-#       (similar dampening).
-#   [!] Dead neurons  (WARNING): 'decoder.2' (relu): 22%
-#       dead during early epochs — sampled z lands far from
-#       trained region.
-#   [✓] Loss trend    (HEALTHY): total loss slope
-#       -1.9e-03/epoch. Reconstruction term: -1.7e-03,
-#       KL term: -2.1e-04. Both converging — no term
-#       dominating.
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.039 (recon 0.031 + KL 0.008), 10 epochs, beta=1.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — POSTERIOR-COLLAPSE DETECTOR] RMS 5.2e-05 on
-#     fc_mu.weight is the key VAE health metric. The KL term
-#     pulls q(z|x) toward N(0,I), which REDUCES gradient on
-#     the mean-encoder. If this drops below 1e-5, the encoder
-#     has given up and emits constant z regardless of input
-#     — POSTERIOR COLLAPSE. Slide 5M covers the Bowman 2016
-#     analysis: "the decoder ignores z and the encoder
-#     surrenders."
-#     >> Prescription: (a) KL annealing: start beta=0, linearly
-#        ramp to 1 over first 5 epochs. (b) Free-bits: cap KL
-#        loss from below at a small positive value (~0.5 per
-#        latent dim). (c) Reduce KL_WEIGHT below 1.0 if above.
-#
-#  [X-RAY] 22% dead in decoder is an EARLY-EPOCH signature
-#     specific to VAEs: the sampled z ~ N(mu, sigma) lands in
-#     regions of latent space the decoder hasn't seen yet,
-#     triggering ReLU gates that never activated before.
-#     Usually recovers by epoch 5-6 as the decoder learns to
-#     cover the [-3, 3] sigma region of N(0,I).
-#     >> Prescription: If dead% STAYS above 15% past epoch 8,
-#        the reparameterisation sampling is too aggressive —
-#        clamp logvar to [-5, 5] to prevent sigma exploding.
-#
-#  [STETHOSCOPE — TWO-TERM READ] VAE loss = reconstruction
-#     (pixelwise MSE / BCE) + KL divergence. Both SHOULD
-#     decrease. If total loss drops but KL rises: you have
-#     a regular AE pretending to be VAE (encoder ignoring KL).
-#     If KL drops to near zero and total stalls: posterior
-#     collapse (encoder ignoring input). The diag.epochs_df()
-#     exposes both terms — always plot them separately.
-#     >> Prescription: Watch both curves. Healthy VAE has
-#        reconstruction decreasing 5-10x faster than KL — the
-#        decoder learns first, then KL tightens the latent.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: VAE needs a two-part Stethoscope
-#  reading (recon + KL separately) because the sum can be
-#  healthy while each term is pathological. This is the first
-#  exercise where "total loss" lies — you will encounter the
-#  same pattern in ex_5 GANs (generator vs discriminator loss
-#  balance) and in ex_8 RL (policy vs value loss).
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# Posterior collapse (the encoder ignoring x) is not one of the three
+# readings — check it directly: if the KL term falls to ~0 and samples
+# from N(0, I) all look alike, the latent is unused. The pad tells you
+# whether fc_mu / fc_logvar still receive gradient.
 # ════════════════════════════════════════════════════════════════════
 
 
@@ -270,16 +217,24 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — Privacy-Preserving Synthetic Patient Data (NUH)
+# APPLY — Synthetic Patient Data for Hospital Researchers
 # ════════════════════════════════════════════════════════════════════════
-# BUSINESS SCENARIO: You are a data scientist at National University
-# Hospital (NUH). Researchers need patient data to study diabetes risk
-# factors, but Singapore's PDPA prohibits sharing identifiable records.
-# Your director asks: "Can we give researchers statistically useful
-# data without exposing any real patient?"
+# BUSINESS SCENARIO: You are a data scientist at a Singapore public
+# hospital. Researchers need patient data to study diabetes risk factors,
+# but Singapore's PDPA restricts sharing identifiable records. Your
+# director asks: "Can we give researchers statistically useful data
+# without exposing any real patient?"
+#
+# Be precise about what this section shows. Sampling from a VAE does NOT
+# by itself make data anonymous or PDPA-compliant: a generator can
+# memorise and reproduce rare records. The nearest-neighbour distance
+# check below is one screening heuristic, not a privacy guarantee —
+# release still needs a formal privacy assessment (e.g. membership-
+# inference testing or differential privacy) and data-governance sign-off.
+# The patient records here are themselves SYNTHETIC, generated below.
 
 print("\n" + "=" * 70)
-print("  APPLICATION: PDPA-Compliant Synthetic Patient Data (NUH)")
+print("  APPLICATION: Synthetic Patient Data for Hospital Researchers")
 print("=" * 70)
 
 # --- Generate realistic patient data ---
@@ -535,23 +490,22 @@ for i in range(N_FEATURES):
 
 # --- Business Impact ---
 print("\n" + "=" * 64)
-print("BUSINESS IMPACT SUMMARY — NUH PDPA-Compliant Synthetic Data")
+print("BUSINESS IMPACT SUMMARY — Synthetic Patient Data (illustrative)")
 print("=" * 64)
 print(f"\nDataset: {N_PATIENTS:,} real -> {N_PATIENTS:,} synthetic records")
 print(
     f"Statistical utility: {tests_passed}/{N_FEATURES} features pass ({tests_passed/N_FEATURES*100:.0f}%)"
 )
 print(f"Correlation MAE: {corr_mae:.4f}")
-print(f"\nPrivacy assessment:")
+print(f"\nNearest-neighbour distance screen (a heuristic, NOT a privacy guarantee):")
 print(f"  Mean synth-to-real NN distance: {nn_distances.mean():.4f}")
 print(f"  Mean real-to-real NN distance:  {self_nn.mean():.4f}")
 print(f"  Ratio (>1.0 = good):            {nn_distances.mean()/self_nn.mean():.3f}")
-print(f"  Privacy safe: {'YES' if privacy_safe else 'NO'}")
-print(f"\nResearch impact:")
-print(f"  Before: 6-12 month ethics approval per data request")
-print(f"  After: Instant access to synthetic data, ethics-exempt")
-print(f"  Estimated: 3-5 research projects/year unblocked")
-print(f"  Value: ~S$500K in grant revenue (S$100K avg per project)")
+print(f"  Screen passed (synthetic records not closer to real ones than real\n  records are to each other): {'YES' if privacy_safe else 'NO'}")
+print(f"\nResearch impact (illustrative):")
+print(f"  Synthetic data that passes utility checks AND a formal privacy")
+print(f"  assessment can shorten data-access requests; it does not remove")
+print(f"  the need for ethics and governance review.")
 print("=" * 64)
 
 
@@ -567,8 +521,9 @@ print(
   [x] Trained with ELBO loss (reconstruction + KL divergence)
   [x] Generated BRAND NEW images from the learned prior N(0,I)
   [x] Explored latent traversal — each dimension controls one aspect
-  [x] Applied to synthetic patient data generation for NUH
-  [x] Verified statistical utility AND privacy preservation
+  [x] Applied to synthetic patient data for hospital researchers
+  [x] Checked statistical utility, and ran a distance screen that is
+      NOT a privacy guarantee
 
   KEY INSIGHT: The VAE trades reconstruction sharpness for a regular
   latent space. The KL term pushes q(z|x) toward N(0,I), which means

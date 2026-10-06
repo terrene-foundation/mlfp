@@ -32,7 +32,7 @@
 #   2. BUILD   — ResBlock, SEBlock, and ResNetSE architecture
 #   3. TRAIN   — Train and compare against SimpleCNN
 #   4. VISUALISE — Grad-CAM heatmaps showing model attention
-#   5. APPLY   — Semiconductor wafer inspection at GlobalFoundries SG
+#   5. APPLY   — Semiconductor wafer inspection at a Singapore fab
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -76,11 +76,14 @@ from shared.mlfp05.ex_2 import (
 #   person whispers the message to the next. By the time it reaches
 #   person #50, the message is garbled beyond recognition.
 #
-#   That is what happens in a deep neural network without skip
-#   connections. Each layer transforms the signal, and tiny errors
-#   compound. By layer 50, the gradient (the "correction signal" sent
-#   backwards during training) has shrunk to near-zero — the first
-#   layers never learn.
+#   A deep "plain" network (no skip connections) has the same
+#   weakness: every layer must re-transmit everything useful, so even
+#   copying the input through unchanged (the identity) has to be
+#   LEARNED by a stack of non-linear layers — and optimisers find that
+#   hard. He et al. (2015, §4.1) note this is UNLIKELY to be vanishing
+#   gradients: their plain nets used BatchNorm and the gradients were
+#   healthy. The deeper plain nets were simply harder to optimise and
+#   reached HIGHER training error than shallower ones.
 #
 # THE RESIDUAL FIX:
 #   Instead of each person paraphrasing the message, you give person
@@ -95,9 +98,9 @@ from shared.mlfp05.ex_2 import (
 #     (what to ADD to the input, not the entire transformation)
 #
 # WHY THIS MATTERS IN PRACTICE:
-#   Before ResNet (2015): networks deeper than ~20 layers performed
-#   WORSE than shallower ones, even on training data. Not overfitting —
-#   literally unable to optimise.
+#   Before ResNet (2015): on ImageNet, a 34-layer plain network had
+#   HIGHER training error than an 18-layer one. Not overfitting — an
+#   optimisation difficulty.
 #
 #   After ResNet: 152-layer networks outperformed 20-layer networks.
 #   ResNet won the 2015 ImageNet competition with 3.57% top-5 error
@@ -129,12 +132,12 @@ print("=" * 70)
 print(
     """
   THE DEGRADATION PROBLEM:
-    Deep networks (50+ layers) perform WORSE than shallow ones without
-    skip connections. Gradients vanish through the chain of layers.
+    Deeper plain networks can reach HIGHER training error than shallower
+    ones — an optimisation difficulty, not overfitting (He et al. 2015).
 
   RESIDUAL FIX: y = F(x) + x
-    The network only learns what to ADD (the residual), not the entire
-    transformation. Gradients flow directly through the skip connection.
+    The network only learns what to ADD (the residual); the identity is
+    free (F(x) = 0), and gradients also get a direct path through the skip.
 
   SE ATTENTION: "Which feature maps matter for THIS image?"
     Squeeze (global avg pool) -> Excite (small MLP) -> Scale (re-weight)
@@ -286,76 +289,41 @@ resnet_losses, resnet_accs = train_model(
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — five instruments (residual connections)
 # ══════════════════════════════════════════════════════════════════
-# ResNetSE = residual blocks + squeeze-excitation. Residuals are
-# the PROVEN fix for vanishing gradients (compare to ex_1/07's
-# 5-layer stacked AE). Expect near-uniform gradient RMS across
-# depth — that is the whole point of skip connections.
-from kailash_ml import diagnose
+# ResNetSE = residual blocks + squeeze-and-excitation. Skip connections
+# give every block a direct gradient path, so compare this pad's
+# gradient-flow reading with the plain stacks you have seen (ex_1/07).
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _ce_loss(m, batch):
+    """Cross-entropy on one (images, labels) batch, on the model's device."""
+    xb, yb = batch
+    dev = next(m.parameters()).device
+    return F.cross_entropy(m(xb.to(dev)), yb.to(dev))
+
 
 print("\n── Diagnostic Report (ResNetSE) ──")
-report = diagnose(resnet_se, kind="dl", data=val_loader, show=False)
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): min RMS = 6.2e-04 at
-#       'layer3.1.conv2.weight' (deepest block). Spread across
-#       16 Conv layers = 8.3x — nearly uniform. Skip
-#       connections are doing their job.
-#   [✓] Dead neurons  (HEALTHY): max 4% dead on layer1.0 —
-#       well below 15% flag. SE blocks' channel re-weighting
-#       keeps every filter engaged.
-#   [✓] Loss trend    (HEALTHY): train slope -4.8e-02/epoch,
-#       val slope -3.9e-02/epoch. Train-val gap 6% at final
-#       epoch — no overfitting thanks to augmentation.
-# ════════════════════════════════════════════════════════════════
-# Final val acc: ~0.62 after 8 epochs on CIFAR-10.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — RESIDUAL CONNECTIONS AT WORK] Gradient spread
-#     8.3x across 16 layers is the RESNET SUCCESS SIGNATURE.
-#     Contrast ex_1/07 stacked AE (5 dense layers → 750x
-#     spread). He et al. 2016 (Slide 5P) showed additive skip
-#     connections (y = F(x) + x) let gradients flow unchanged
-#     from the loss back to any depth — the "gradient
-#     highway". Even a 50-layer ResNet trains stably.
-#     >> Prescription: If RMS spread exceeds 100x across the
-#        network, a skip connection is mis-wired. Check the
-#        addition dimension: F(x) must have shape IDENTICAL
-#        to x (or projection-adapted via 1x1 conv). Mismatch
-#        silently breaks the residual path.
-#
-#  [X-RAY — SE BLOCK CONTRIBUTION] 4% dead max is lower than
-#     a plain ResNet (typically 8-12% at this depth). The
-#     Squeeze-and-Excitation blocks (Hu et al. 2018)
-#     re-weight channels per sample, so even a channel that
-#     would be dead under one input gets promoted under
-#     another. This is the architectural answer to ReLU
-#     saturation without sacrificing the non-linearity.
-#     >> Prescription: If dead% exceeds 10%, your SE
-#        reduction ratio is too aggressive. Change
-#        reduction from 16 to 8 so the squeeze bottleneck
-#        preserves more channel-specific signal.
-#
-#  [STETHOSCOPE — NO OVERFITTING] Train-val gap 6% means
-#     augmentation (flip + crop) is delivering regularisation
-#     WITHOUT underfitting. If gap >15%, reduce augmentation
-#     strength (smaller padding, less colour jitter). If gap
-#     <2%, augmentation is TOO aggressive — model isn't
-#     learning the core distribution.
-#     >> Prescription: Target 5-10% gap on CIFAR-10 at 8
-#        epochs. Stronger augmentation (cutout, mixup) for
-#        longer training runs.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: ResNet-SE is the "everything
-#  healthy" reference for deep nets. Same Blood Test +
-#  X-Ray metrics you've used since ex_1/01, but now all
-#  green because the architecture MATCHES the data. This
-#  sets the bar for 03_production_pipeline (must stay
-#  healthy pre-export) and 04_hyperparameter_study (which
-#  HP configs break which instruments?).
-# ════════════════════════════════════════════════════════════════════
+diag, findings = run_diagnostic_checkpoint(
+    resnet_se,
+    train_loader,
+    _ce_loss,
+    title="ResNetSE (CIFAR-10)",
+    train_losses=resnet_losses,
+    show=False,
+)
+print_prescription_pad(findings, "ResNetSE (CIFAR-10)")
+
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# SE blocks rescale each channel by a sigmoid weight in (0, 1), so they
+# cannot revive a ReLU channel that is already zero — a high dead share
+# has to be fixed upstream (initialisation, learning rate, activation).
+# For over/underfitting, compare the train loss with the validation
+# accuracy curve below. load_cifar10 applies NO augmentation here, so
+# if the train-val gap is large (say >15%), the prescription is MORE
+# regularisation: add augmentation (flip + crop, see 04), weight decay
+# or dropout, or stop training earlier.
+# ══════════════════════════════════════════════════════════════════
 
 # Also train SimpleCNN for direct comparison in the same experiment
 # Define inline to avoid executing 01_simple_cnn.py as a side effect
@@ -661,9 +629,9 @@ print("\n--- Checkpoint 3 passed --- Grad-CAM and SE analysis complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# PHASE 5 — APPLY: Semiconductor Wafer Inspection at GlobalFoundries SG
+# PHASE 5 — APPLY: Semiconductor Wafer Inspection at a Singapore Fab
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: You are an ML engineer at GlobalFoundries' Singapore fab
+# SCENARIO: You are an ML engineer at a Singapore semiconductor fab
 # (Woodlands). The fab produces 300mm wafers for automotive, IoT, and
 # 5G chips. Each wafer goes through 500+ processing steps over 3 months.
 # Defects at ANY step can scrap the entire wafer ($5,000-$50,000 each).
@@ -698,7 +666,7 @@ print("\n--- Checkpoint 3 passed --- Grad-CAM and SE analysis complete\n")
 #   in avoided scrap per year
 
 print("=" * 70)
-print("  PHASE 5 — APPLY: Semiconductor Wafer Inspection (GlobalFoundries SG)")
+print("  PHASE 5 — APPLY: Semiconductor Wafer Inspection (Singapore fab)")
 print("=" * 70)
 
 # Simulate wafer inspection using CIFAR-10 as proxy
@@ -788,7 +756,7 @@ print(
     False alarms:              {false_alarm:>5,} / {actual_passes:,} ({false_alarm_rate:.1%} false alarm rate)
     Correct passes:            {correct_pass:>5,} / {actual_passes:,}
 
-  Financial Impact (scaled to GlobalFoundries production volume):
+  Financial Impact (illustrative fab production volume):
     Monthly wafer throughput:         ~10,000 wafers
     Monthly inspection images:        ~200,000
 
@@ -861,7 +829,7 @@ print(
   [x] Overlay visualisation: heatmap on original for instant verification
 
   APPLY:
-  [x] GlobalFoundries Singapore semiconductor wafer inspection
+  [x] Singapore-fab semiconductor wafer inspection
   [x] Detection rate: {detection_rate:.0%} of defects caught automatically
   [x] Grad-CAM enables 83% faster inspector verification (30s -> 5s)
   [x] Projected annual savings: $930K + $2-5M avoided scrap

@@ -138,6 +138,7 @@ stacked_losses = train_variant(
 # gradients are the primary risk at this depth without residuals.
 # This is where the Blood Test earns its keep.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -156,67 +157,13 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=stacked_losses,
     show=False,
 )
+print_prescription_pad(findings, "Stacked AE (5-layer)")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [X] Gradient flow (CRITICAL): Vanishing gradients at
-#       'encoder.3.weight' — min RMS = 4.2e-06, min
-#       update_ratio = 8.9e-05. (Shallow layer encoder.0 RMS
-#       ~3.1e-03 — ~750x spread across 5 layers.)
-#       Fix: Kaiming init, GELU, or add skip/residual
-#            connections between encoder blocks.
-#   [!] Dead neurons  (WARNING): 'encoder.3' (relu): 44% dead.
-#       Bottleneck ReLU saturation compounds vanishing
-#       gradients — the two failure modes feed each other.
-#   [✓] Loss trend    (HEALTHY): Loss converging
-#       (train slope -1.1e-03/epoch) — slower than shallow
-#       baseline (02) because deep layers are barely updating.
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.018 after 10 epochs, 5-layer encoder.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — VANISHING GRADIENT TEXTBOOK CASE] 750x spread
-#     in RMS across 5 layers (encoder.0: 3.1e-03 → encoder.3:
-#     4.2e-06) is the canonical deep-dense-network failure.
-#     Slide 5K walks through the math: each ReLU + Linear
-#     layer multiplies the gradient by an expectation < 1,
-#     and 5 layers gets you ~0.5^5 = ~3% of the shallow-layer
-#     magnitude. Depth without skip connections is how AlexNet
-#     barely worked and ResNet solved it.
-#     >> Prescription: Three fixes of increasing impact:
-#        (a) Kaiming He init (partial — slows the collapse)
-#        (b) GELU or SiLU (fully non-saturating on negatives)
-#        (c) Residual connections (FIXES it — gradient
-#            bypasses depth via additive skip). Applied in
-#            ex_2/02_resnet_se.py — forward reference.
-#
-#  [X-RAY] 44% dead at encoder.3 is the compounding failure:
-#     if gradient is vanishing, dead ReLUs never recover
-#     (the tiny gradient cannot re-activate them), and the
-#     remaining live ReLUs overload to compensate, pushing
-#     more of them into saturation next batch. Positive
-#     feedback loop into deeper dysfunction.
-#     >> Prescription: LeakyReLU (negative-slope leak lets
-#        small gradients revive dead channels) OR a residual
-#        block (additive skip bypasses the ReLU gate).
-#
-#  [STETHOSCOPE] Loss still DECREASES despite dysfunction —
-#     this is the trap. Final loss 0.018 looks "fine" but
-#     compare to 06_convolutional (~0.0048) at similar latent
-#     size. The loss curve lies when the architecture is
-#     pathological; only the Blood Test + X-Ray reveal that
-#     most of the model isn't learning.
-#     >> Prescription: ALWAYS read 3 instruments. The
-#        Stethoscope alone would have shipped this model.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: stacked AE is the "how NOT to go
-#  deep" cautionary tale. The fix isn't more training or more
-#  regularisation — it's ARCHITECTURAL (skip connections).
-#  This motivates ex_2 ResNet-SE and foreshadows the same
-#  pattern in ex_3 RNNs (where "skip" becomes LSTM/GRU gating).
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# The deepest dense AE here (no residual connections). If the pad flags
+# vanishing gradients, look at WHICH layers: in a plain deep stack the
+# layers furthest from the loss (the first encoder layers) are the
+# usual suspects. Compare with 02, which is shallower.
 # ════════════════════════════════════════════════════════════════════
 
 
@@ -379,9 +326,9 @@ print(
     f"Latent dimension: {LATENT_DIM} (vs 784 raw pixels = {784/LATENT_DIM:.0f}x smaller)"
 )
 print(f"\nFor a catalogue of 1M products:")
-print(f"  Raw pixel search:     784 dims x 1M = 3.0 GB index")
+print(f"  Raw pixel search:     784 dims x 1M = 3.1 GB index (float32)")
 print(
-    f"  Latent space search:  {LATENT_DIM} dims x 1M = {LATENT_DIM * 4 / 1e6:.1f} MB index"
+    f"  Latent space search:  {LATENT_DIM} dims x 1M = {LATENT_DIM * 4 * 1_000_000 / 1e6:.0f} MB index"
 )
 print(f"  Index size reduction: {784 / LATENT_DIM:.0f}x smaller")
 print(

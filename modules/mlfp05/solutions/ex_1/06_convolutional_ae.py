@@ -9,8 +9,9 @@
 #   - Build a Conv AE that preserves spatial locality with Conv2d/ConvTranspose2d
 #   - Understand WHY conv layers beat flat MLPs for image data
 #   - Observe sharper reconstructions than any flat variant
-#   - Apply to e-commerce image compression at Shopee (Conv AE vs JPEG)
-#   - Quantify bandwidth cost savings for 50M images/day
+#   - Apply to e-commerce image compression (Conv AE vs JPEG)
+#   - Read a quality-at-equal-size comparison correctly before
+#     promising bandwidth savings
 #
 # PREREQUISITES: 05_contractive_ae.py
 # ESTIMATED TIME: ~20 min
@@ -138,6 +139,7 @@ conv_losses = train_variant(
 # fractions. Healthy Conv nets typically have far FEWER dead
 # channels than dense nets at equal depth thanks to weight sharing.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -156,62 +158,13 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=conv_losses,
     show=False,
 )
+print_prescription_pad(findings, "Convolutional AE")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): min RMS = 8.7e-04 at
-#       'encoder.4.weight' (Conv2d). Convolutional weight sharing
-#       keeps gradients uniform — spread < 10x across 6 Conv layers.
-#   [!] Dead neurons  (WARNING): 'encoder.1' (relu): 14% dead
-#       channels. Each dead channel is an unused FILTER — worse
-#       than a dead Linear neuron because it wastes spatial capacity.
-#   [✓] Loss trend    (HEALTHY): train slope -3.4e-03/epoch.
-#       Final loss ~0.0048 — lower than dense AEs at matched
-#       latent size because spatial priors make the task easier.
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.0048 after 10 epochs, bottleneck=64 channels.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — CONV-SPECIFIC] Gradient spread <10x across all
-#     Conv layers is the CNN health signature. Slide 5J shows
-#     why: weight sharing means each filter receives gradient
-#     from every spatial position, so vanishing is intrinsically
-#     harder than in dense nets. Contrast 07_stacked where a
-#     5-layer DENSE net routinely spans 1000x in RMS.
-#     >> Prescription: If you see a >100x spread, check the
-#        pooling/stride layout. A stride-2 Conv followed by a
-#        stride-2 Conv halves spatial dims twice, starving deep
-#        filters of gradient contributors. Replace with one
-#        stride-2 + one stride-1.
-#
-#  [X-RAY — CONV-SPECIFIC] 14% dead channels means 14% of
-#     filters are permanently off. Each dead filter is an
-#     unused 3x3 kernel (9 parameters + activations) — wasted
-#     both in FLOPs and in representation. Worse than dead
-#     Linear neurons because a CNN's whole premise is that
-#     each filter specialises in one feature.
-#     >> Prescription: GELU or LeakyReLU for the encoder stack.
-#        Or: reduce bottleneck_channels if capacity is excess
-#        (fewer filters, fewer dead ones). You'll see this
-#        fix applied in ex_2's ResNet-SE (variant 02).
-#
-#  [STETHOSCOPE] Final loss ~0.0048 is LOWER than 02 undercomplete
-#     (~0.025) and LOWER than 07 stacked (~0.018). Why? The 2D
-#     convolutional prior (translation invariance, local
-#     connectivity) matches the spatial structure of Fashion-MNIST.
-#     Lesson: architecture encodes assumptions — Conv says "pixels
-#     near each other are correlated".
-#     >> Prescription: No fix. This is the reward for matching
-#        inductive bias to data geometry.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: Conv-AEs show what "healthy deep
-#  network" looks like when the architecture matches the data —
-#  uniform gradients, low dead%, low loss. You will use this
-#  reference when comparing to the pathological patterns in
-#  ex_3 (RNN gradient collapse) and ex_6 (GNN over-smoothing).
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# First convolutional model: readings are per Conv2d/ConvTranspose2d
+# parameter tensor, and the dead-neuron check covers each ReLU's
+# channels. Compare the dead-unit shares with the dense AEs (01-05) —
+# does weight sharing keep more units active?
 # ════════════════════════════════════════════════════════════════════
 
 # ════════════════════════════════════════════════════════════════════════
@@ -234,15 +187,15 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — E-Commerce Image Compression (Shopee)
+# APPLY — E-Commerce Image Compression
 # ════════════════════════════════════════════════════════════════════════
 # BUSINESS SCENARIO: You are an ML engineer at a Singapore e-commerce
-# platform (Shopee/Lazada). The platform serves 50M product images per
-# day. Bandwidth costs are S$300K/month. Your VP asks: "Can ML-based
+# platform that serves ~50M product images a day with bandwidth costs
+# of ~S$300K/month (illustrative scenario figures). Your VP asks: "Can ML-based
 # compression reduce bandwidth costs while maintaining image quality?"
 
 print("\n" + "=" * 70)
-print("  APPLICATION: Image Compression vs JPEG (Shopee)")
+print("  APPLICATION: Image Compression vs JPEG")
 print("=" * 70)
 
 IMG_SIZE = 28
@@ -469,9 +422,6 @@ DAILY_IMAGES = 50_000_000
 MONTHLY_BANDWIDTH_COST = 300_000
 ae_4ch_ssim = [r[1] for r in ae_results if r[4] == 4][0]
 jpeg_matched_ssim = jpeg_results[jpeg_idx][1]
-savings_pct = 0.15
-monthly_savings = MONTHLY_BANDWIDTH_COST * savings_pct
-annual_savings = monthly_savings * 12
 
 print("\n" + "=" * 64)
 print("BUSINESS IMPACT SUMMARY — E-Commerce Image Compression")
@@ -481,9 +431,12 @@ print(f"Monthly bandwidth cost:          {'S$' + f'{MONTHLY_BANDWIDTH_COST:,}':>
 print(f"\nAt ~{target_ratio:.0f}x compression:")
 print(f"  JPEG SSIM:  {jpeg_matched_ssim:.4f}")
 print(f"  AE SSIM:    {ae_4ch_ssim:.4f}  (+{ae_4ch_ssim - jpeg_matched_ssim:.4f})")
-print(f"\nBandwidth savings/year:          {'S$' + f'{annual_savings:,.0f}':>12}")
-print(f"  AE: smoother blur artifacts (preserves edges)")
-print(f"  JPEG: blocky 8x8 grid artifacts")
+print(f"  AE: smoother blur artifacts; JPEG: blocky 8x8 grid artifacts")
+print("\nReading this correctly: both codecs were compared at the SAME size,")
+print("so this comparison saves no bandwidth by itself. If the AE's SSIM is")
+print("higher, the saving would come from running it at a HIGHER ratio until")
+print("its SSIM drops to JPEG's — measure that before quoting a number, and")
+print("count the decoder's compute cost on every page view.")
 print("=" * 64)
 
 
@@ -499,7 +452,7 @@ print(
   [x] Observed sharper reconstructions than flat MLPs (spatial locality)
   [x] Applied to image compression: Conv AE vs JPEG rate-distortion
   [x] Compared artifact types: AE blur vs JPEG blockiness
-  [x] Quantified bandwidth savings for 50M images/day platform
+  [x] Compared AE and JPEG quality at equal size, without inventing savings
 
   KEY INSIGHT: Conv2d filters share parameters across spatial positions,
   learning translation-invariant features. A button pattern detected

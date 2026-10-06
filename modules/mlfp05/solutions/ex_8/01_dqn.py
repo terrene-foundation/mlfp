@@ -1,11 +1,13 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 #
-# Note: kailash-ml's RLTrainer is planned but not yet released. This exercise
-# implements DQN from scratch as an interim approach. Once RLTrainer ships,
-# this exercise should be updated to wrap the from-scratch implementation
-# with the Kailash engine for the actual training loop, keeping the manual
-# implementation for theory/pedagogy.
+# Note on the Kailash RL engine: this exercise hand-writes DQN on purpose,
+# so you see every moving part (replay buffer, target network, epsilon).
+# The library path for production RL is `km.rl_train(env, algo="dqn", ...)`
+# (also `kailash_ml.rl.RLTrainer` + `RLTrainingConfig`; there is no top-level
+# `kailash_ml.RLTrainer`). Its backend is Stable-Baselines3, an optional
+# extra (`pip install kailash-ml[rl]`) that the course environment does NOT
+# install — without it `km.rl_train` raises ImportError.
 #
 """
 # ════════════════════════════════════════════════════════════════════════
@@ -65,6 +67,7 @@ from shared.mlfp05.ex_8 import (
     make_cartpole,
     moving_average,
     register_rl_model,
+    rl_diagnostic_checkpoint,
     setup_engines,
 )
 from kailash_ml import ModelVisualizer
@@ -189,7 +192,10 @@ async def train_dqn_async(
 
                 next_state, reward, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
-                replay.push(state, action, reward, next_state, done)
+                # Store `terminated`, not `done`: a time-limit truncation is
+                # not a real ending, so its target must still bootstrap
+                # from Q(s'). Only a true termination zeroes the future.
+                replay.push(state, action, reward, next_state, terminated)
                 state = next_state
                 total_reward += reward
                 steps += 1
@@ -284,6 +290,36 @@ assert (
 print("--- Checkpoint 1 passed --- DQN trained on CartPole\n")
 
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — RL instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# The DL Prescription Pad (gradient flow, dead neurons, loss trend) reads
+# supervised batches. An RL agent is judged on its training HISTORY, so
+# kailash-ml has a separate instrument: RLDiagnostics (the object that
+# `km.diagnose("dqn", kind="rl")` returns). It installs no hooks — the
+# helper feeds it the rewards, episode lengths and Bellman losses we
+# recorded above and prints its report().
+dqn_rl_report = rl_diagnostic_checkpoint(
+    "DQN on CartPole-v1",
+    "dqn",
+    dqn_rewards,
+    lengths=dqn_lengths,
+    q_losses=dqn_losses,
+    window=20,
+)
+# HOW TO READ IT (the numbers come from YOUR run; nothing is predicted):
+#   mean reward (last 20) vs peak — a late mean far below the peak means
+#     the policy found a good behaviour and then lost it.
+#   [CRIT] episode_reward_collapse — the LAST episode fell below 10% of
+#     the peak after a >=50% drop. Epsilon is still about
+#     0.995^200 = 0.37 at episode 200, so a single unlucky exploratory
+#     episode can trip it: confirm against the moving average in Task 4
+#     before acting. A real DQN collapse usually means the learning rate
+#     is too high or the target network is synced too often.
+#   findings: none — the agent did not collapse. That does NOT prove it
+#     converged; read the reward curve and the Bellman-loss curve below.
+
+
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Visualise: reward curve, epsilon decay, Q-value heatmap,
 #           episode length progression
@@ -315,10 +351,13 @@ fig2 = viz.training_history(
 )
 fig2.write_html(str(OUTPUT_DIR / "01_dqn_epsilon_decay.html"))
 print(f"  Saved: {OUTPUT_DIR / '01_dqn_epsilon_decay.html'}")
-# INTERPRETATION: Epsilon starts at 1.0 (100% random) and decays toward
-# 0.01. Early episodes are pure exploration — the agent tries everything.
-# Later episodes are mostly exploitation — the agent acts on what it learned.
-# The curve shape (exponential decay) controls the explore/exploit balance.
+print(f"  Final epsilon after {len(dqn_epsilons)} episodes: {dqn_epsilons[-1]:.3f}")
+# INTERPRETATION: Epsilon starts at 1.0 (100% random) and decays by x0.995
+# per episode toward the 0.01 floor. After 200 episodes it is still about
+# 0.995^200 = 0.37 (printed above), so even the last episodes are roughly
+# one-third random: the training rewards understate the greedy policy,
+# which is why the Apply section evaluates the greedy policy separately.
+# The decay rate controls the explore/exploit balance.
 
 # ── Plot 3: Q-value heatmap over state space ─────────────────────────
 # Visualise what the DQN has learned: for a grid of (cart_position, pole_angle)
@@ -367,10 +406,11 @@ fig3.update_layout(
 )
 fig3.write_html(str(OUTPUT_DIR / "01_dqn_qvalue_heatmap.html"))
 print(f"  Saved: {OUTPUT_DIR / '01_dqn_qvalue_heatmap.html'}")
-# INTERPRETATION: The heatmap reveals the DQN's "mental model" of CartPole.
-# High Q-values (bright) near the centre (cart centred, pole upright) — the
-# agent knows this is a good situation. Low Q-values (dark) at the edges —
-# the agent knows recovery is unlikely. This is the learned value landscape.
+# INTERPRETATION: The heatmap is the DQN's learned value landscape. If
+# training worked, expect higher max-Q (bright) near the centre (cart
+# centred, pole upright — a long future of +1 rewards) and lower max-Q
+# (dark) towards large pole angles, where recovery is unlikely. A flat or
+# noisy map means the Q-network has not yet separated good from bad states.
 
 # ── Plot 4: Episode length progression ───────────────────────────────
 fig4 = viz.training_history(
@@ -385,8 +425,9 @@ fig4.write_html(str(OUTPUT_DIR / "01_dqn_episode_lengths.html"))
 print(f"  Saved: {OUTPUT_DIR / '01_dqn_episode_lengths.html'}")
 # INTERPRETATION: Episode length IS the reward in CartPole (reward=+1 per
 # step). Longer episodes = the agent keeps the pole balanced longer. Early
-# episodes are short (random flailing); later episodes approach the 500-step
-# maximum (the agent has learned to balance indefinitely).
+# episodes are short (random flailing). If the agent is learning, the
+# moving average climbs; 500 is the cap, because CartPole-v1 truncates
+# every episode at 500 steps.
 
 # ── Plot 5: DQN loss curve ───────────────────────────────────────────
 fig5 = viz.training_history(
@@ -414,10 +455,10 @@ print("--- Checkpoint 2 passed --- all DQN visualisations generated\n")
 # TASK 5 — Apply: Inventory Management for a Singapore Retailer
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: You're the operations manager at a Singapore supermarket chain
-# (think FairPrice or Cold Storage). Every day you decide how much stock
-# to order for a perishable product category (fresh produce). Order too
-# much -> holding costs and spoilage. Order too little -> empty shelves
-# and lost sales.
+# (hypothetical; every number below is illustrative). Every day you
+# decide how much stock to order for a perishable product category
+# (fresh produce). Order too much -> holding costs and spoilage. Order
+# too little -> empty shelves and lost sales.
 #
 # State: (stock_level, demand_forecast, day_of_week)
 #   - stock_level: normalised current inventory [0, 1]
@@ -597,16 +638,23 @@ policy_df = pl.DataFrame(
     {"Stock Level": stock_levels.tolist(), "Order Action": policy_actions}
 )
 print("\n  Learned Ordering Policy (demand_forecast=0.3, mid-week):")
-for row in policy_df.iter_rows(named=True):
-    if row["Stock Level"] in [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]:
-        print(f"    Stock={row['Stock Level']:.1f} -> {row['Order Action']}")
+# Every 10th of the 50 grid points: stock 0.00, 0.20, 0.41, 0.61, 0.82, 1.00
+for row in policy_df.gather_every(10).iter_rows(named=True):
+    print(f"    Stock={row['Stock Level']:.2f} -> {row['Order Action']}")
+print(f"    Stock=1.00 -> {policy_actions[-1]}")
 
-# INTERPRETATION: The DQN learns a nuanced ordering policy that considers
-# not just current stock level but also the demand forecast. Unlike the
-# fixed threshold which uses only stock level, the DQN implicitly learns
-# seasonal patterns (order more before CNY/Deepavali weekends) and adjusts
-# for the spoilage rate. The annual cost savings translate directly to
-# margin improvement for the retailer.
+# INTERPRETATION (computed from this run, not assumed): the fixed rule
+# looks only at stock; the DQN also sees the demand forecast and the day
+# of week, so it CAN learn weekend and forecast-driven ordering. It cannot
+# anticipate the festive weeks directly — the week number is not in the
+# state; it only sees them through a higher forecast.
+if improvement > 0:
+    print(f"  DQN beat the fixed-threshold rule by {pct_improvement:+.1f}% per year.")
+else:
+    print(
+        f"  DQN did NOT beat the fixed-threshold rule ({pct_improvement:+.1f}%). "
+        "A hand-tuned rule is a strong baseline; more episodes may be needed."
+    )
 
 inv_env.close()
 
@@ -658,12 +706,12 @@ print(
       stable pole-balancing
   [x] Visualised the agent's learning:
       - Reward curve: noisy exploration -> smooth convergence
-      - Epsilon decay: 100% random -> 1% random
-      - Q-value heatmap: the agent's "mental model" of state value
+      - Epsilon decay: 100% random -> ~37% random after 200 episodes
+      - Q-value heatmap: the agent's learned value landscape
       - Episode lengths: survived longer as it learned
   [x] Applied DQN to Singapore retail inventory management:
       - Built a custom environment with seasonal demand (CNY, Deepavali)
-      - DQN learned to outperform a fixed-threshold ordering policy
+      - Compared the DQN's ordering policy with a fixed-threshold rule
       - Visualised learned policy vs baseline with annual cost comparison
 
   KEY INSIGHT:
@@ -675,66 +723,3 @@ print(
   POLICY directly (what to do) rather than indirectly through values.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # TD-error loss on Q-values
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (DQN — Deep Q-Network) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        q_network,
-        replay_loader,
-        _diag_loss,
-        title="DQN — Deep Q-Network",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [!] Gradient flow (WARNING): Q-network RMS spikes during epsilon-greedy
-#     exploration — expected but monitor for >1e-1 explosions.
-# [✓] Dead neurons  (HEALTHY): 12% inactive.
-# [?] Loss trend    (MIXED): reward climbing but TD-error oscillating —
-#     the hallmark of off-policy TD learning.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST — RL-SPECIFIC] RL gradients are inherently noisier
-#     than supervised. The spikes correspond to epsilon-greedy
-#     exploration hitting high-variance rewards.
-#     >> Prescription: use target network (decoupled Q) + replay
-#        buffer (deferred updates) + Huber loss (robust to outlier
-#        TD errors). DQN already has all three.
-#
-#  [STETHOSCOPE] Oscillating TD-error WHILE reward climbs = policy
-#     is improving despite noisy value estimates. This is healthy
-#     DQN behaviour. A monotonic loss would suggest the Q-network
-#     isn't learning from diverse experience.

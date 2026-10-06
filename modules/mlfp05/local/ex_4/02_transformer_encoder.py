@@ -12,7 +12,8 @@
 #   - Build sinusoidal positional encoding (giving transformers order)
 #   - Construct a full Transformer encoder classifier with nn.TransformerEncoder
 #   - Train the Transformer on AG News and log metrics with ExperimentTracker
-#   - Apply the model to regulatory document classification
+#   - Check whether a trained classifier's labels fit a new task
+#     (routing regulatory filings) before using it
 #
 # PREREQUISITES: ex_4/01_self_attention_from_scratch.py
 # ESTIMATED TIME: ~30 min
@@ -42,6 +43,7 @@ from shared.mlfp05.ex_4 import (
     scaled_dot_product_attention,
     setup_engines,
     text_to_indices,
+    evaluate_accuracy,
     train_model,
 )
 
@@ -131,28 +133,30 @@ class EducationalMultiHead(nn.Module):
         b, seq, d = x.shape
 
         # TODO: Compute Q, K, V for all heads in one matrix multiply
-        # Hint: qkv = self.qkv(x).reshape(b, seq, 3, self.n_heads, self.d_k)
-        # Then: q, k, v = qkv.unbind(dim=2)  — each is (b, seq, n_heads, d_k)
+        # Hint: self.qkv gives (b, seq, 3 * d_model); view it as
+        #   (b, seq, 3, n_heads, d_k), then split the "3" axis into q, k, v,
+        #   each (b, seq, n_heads, d_k).
         qkv = ...  # YOUR CODE HERE
         q, k, v = ...  # YOUR CODE HERE
 
         # TODO: Reshape for attention — merge batch and head dims
-        # Hint: q = q.transpose(1, 2).reshape(b * self.n_heads, seq, self.d_k)
-        # Same for k and v
+        # Hint: bring the head axis next to batch, then fold both into one
+        #   axis -> (b * n_heads, seq, d_k). Same for q, k and v.
         q = ...  # YOUR CODE HERE
         k = ...  # YOUR CODE HERE
         v = ...  # YOUR CODE HERE
 
-        # TODO: Apply scaled_dot_product_attention from helpers
-        # Hint: out, weights = scaled_dot_product_attention(q, k, v)
+        # TODO: Apply scaled_dot_product_attention from helpers (every head
+        #   is now just another batch element).
         out, weights = ...  # YOUR CODE HERE
 
         # Reshape weights to (b, n_heads, seq, seq) for visualisation
         attn_weights = weights.reshape(b, self.n_heads, seq, seq)
 
         # TODO: Concatenate heads and project back to d_model
-        # Hint: out = out.reshape(b, self.n_heads, seq, self.d_k).transpose(1, 2).reshape(b, seq, d)
-        # Then: return self.proj(out), attn_weights
+        # Hint: undo the fold: (b * n_heads, seq, d_k) -> (b, seq, d_model),
+        #   with each position's heads side by side. Return the projected
+        #   output together with attn_weights.
         out = ...  # YOUR CODE HERE
         return ...  # YOUR CODE HERE
 
@@ -191,8 +195,8 @@ class PositionalEncoding(nn.Module):
             torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
         )
         # TODO: Fill pe with sinusoidal values
-        # Hint: pe[:, 0::2] = torch.sin(position * div)  — even dimensions
-        # Hint: pe[:, 1::2] = torch.cos(position * div)  — odd dimensions
+        # Hint: even feature columns get sin(position * div), odd columns get
+        #   cos(position * div) (slice the column axis with a step of 2).
         ...  # YOUR CODE HERE
         ...  # YOUR CODE HERE
         self.register_buffer("pe", pe.unsqueeze(0))
@@ -223,14 +227,13 @@ class TransformerClassifier(nn.Module):
     ):
         super().__init__()
         # TODO: Build the Transformer architecture
-        # Hint: self.embed = nn.Embedding(vocab_size, d_model, padding_idx=0)
-        # Hint: self.posenc = PositionalEncoding(d_model)
-        # Hint: self.emb_drop = nn.Dropout(dropout)
-        # Hint: layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads,
-        #              dim_feedforward=4 * d_model, dropout=dropout, batch_first=True)
-        # Hint: self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers, enable_nested_tensor=False)  # MPS-compat
-        # Hint: self.head_drop = nn.Dropout(dropout)
-        # Hint: self.head = nn.Linear(d_model, n_classes)
+        # - embed: token embedding, d_model wide, id 0 is padding
+        # - posenc: the PositionalEncoding above; emb_drop / head_drop: dropout
+        # - layer: one nn.TransformerEncoderLayer — n_heads heads, feed-forward
+        #   width 4 * d_model, batch-first tensors
+        # - encoder: nn.TransformerEncoder stacking n_layers copies; pass
+        #   enable_nested_tensor=False (the nested-tensor fast path fails on MPS)
+        # - head: linear map from d_model to n_classes
         self.embed = ...  # YOUR CODE HERE
         self.posenc = ...  # YOUR CODE HERE
         self.emb_drop = ...  # YOUR CODE HERE
@@ -241,14 +244,13 @@ class TransformerClassifier(nn.Module):
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
         # TODO: Implement the forward pass
-        # Step 1: pad_mask = (tokens == 0)
-        # Step 2: x = self.embed(tokens) -> posenc -> emb_drop
-        # Step 3: x = self.encoder(x, src_key_padding_mask=pad_mask)
-        # Step 4: Mean-pool over non-pad positions
-        #   lengths = (~pad_mask).sum(dim=1, keepdim=True).clamp(min=1).float()
-        #   x = x.masked_fill(pad_mask.unsqueeze(-1), 0.0)
-        #   pooled = x.sum(dim=1) / lengths
-        # Step 5: return self.head(self.head_drop(pooled))
+        # Step 1: boolean pad mask (True where the token id is 0)
+        # Step 2: embed -> positional encoding -> dropout
+        # Step 3: encoder, telling it which keys are padding
+        #         (src_key_padding_mask)
+        # Step 4: mean-pool over the NON-pad positions only (zero the pads,
+        #         divide by the real length, never by 0)
+        # Step 5: dropout -> classification head -> logits (batch, n_classes)
         ...  # YOUR CODE HERE
 
 
@@ -265,26 +267,65 @@ print("--- Checkpoint 2 passed --- TransformerClassifier architecture ready\n")
 # ════════════════════════════════════════════════════════════════════════
 print("\n== Training Transformer on full AG News ==")
 # TODO: Create TransformerClassifier and train it
-# Hint: transformer_model = TransformerClassifier(vocab_size=len(vocab), d_model=128, n_heads=4, n_layers=3, n_classes=4)
-# Hint: transformer_losses, transformer_accs = train_model(
-#           transformer_model, "transformer", train_loader, val_loader,
-#           tracker, exp_name, epochs=EPOCHS_SCRATCH)
+# - transformer_model: full vocab, d_model 128, 4 heads, 3 layers, 4 classes
+# - transformer_losses, transformer_accs: from the train_model helper
+#   (run name "transformer", the train/val loaders, tracker, exp_name,
+#   EPOCHS_SCRATCH epochs)
 transformer_model = ...  # YOUR CODE HERE
 transformer_losses, transformer_accs = ...  # YOUR CODE HERE
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — Transformer (attention + residual stack)
+# ══════════════════════════════════════════════════════════════════
+# Probes come from the training loader (the probe runs in train mode,
+# with dropout active).
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _ce_loss(m, batch):
+    """Cross-entropy on one (token_ids, labels) batch."""
+    xb, yb = batch
+    return F.cross_entropy(m(xb), yb)
+
+
+print("\n── Diagnostic Report (Transformer Encoder) ──")
+diag, findings = run_diagnostic_checkpoint(
+    transformer_model,
+    train_loader,
+    _ce_loss,
+    title="Transformer Encoder",
+    train_losses=transformer_losses,
+    show=False,
+)
+print_prescription_pad(findings, "Transformer Encoder")
+
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# nn.TransformerEncoderLayer uses ReLU in its feed-forward block by
+# default, so the dead-neuron check applies to those units. Residual
+# connections plus LayerNorm give every layer a short gradient path —
+# compare the gradient-flow reading with the LSTM in 03. Only training
+# loss is passed in; the validation-accuracy curve below shows whether
+# more epochs would help.
+# ══════════════════════════════════════════════════════════════════
+
+# train_model kept the epoch with the best VALIDATION accuracy (a holdout
+# carved from the training split); the test split is measured once, here.
+transformer_test_acc = evaluate_accuracy(transformer_model, test_t, test_y)
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 assert (
     len(transformer_losses) == EPOCHS_SCRATCH
 ), "Transformer should train for all epochs"
 assert (
-    max(transformer_accs) > 0.60
-), f"Transformer should reach >60% accuracy, got {max(transformer_accs):.3f}"
+    transformer_test_acc > 0.60
+), f"Transformer should reach >60% test accuracy, got {transformer_test_acc:.3f}"
 # INTERPRETATION: The Transformer processes all tokens in parallel and uses
 # self-attention to capture long-range dependencies. On AG News headlines,
 # it can directly connect "tech" at position 1 with "stocks" at position 8
 # without propagating through every intermediate token. This architectural
 # advantage becomes more pronounced on longer documents.
-print(f"\n  Transformer best acc: {max(transformer_accs):.3f}")
+print(f"\n  Transformer: best validation acc {max(transformer_accs):.3f} -> test acc {transformer_test_acc:.3f}")
 print("\n--- Checkpoint 3 passed --- Transformer trained on AG News\n")
 
 
@@ -300,17 +341,29 @@ sample_idx = torch.tensor(
     device=DEVICE,
 )
 
-# TODO: Extract attention from EducationalMultiHead on trained embeddings
-# Hint: mha_viz = EducationalMultiHead(d_model=128, n_heads=4).to(DEVICE)
-# Hint: with torch.no_grad():
-#           embed = transformer_model.embed(sample_idx[:1])
-#           embed = transformer_model.posenc(embed)
-#           _, attn_weights = mha_viz(embed)
-mha_viz = ...  # YOUR CODE HERE
+def encoder_attention(model: nn.Module, tokens: torch.Tensor) -> torch.Tensor:
+    """Per-head attention weights of the TRAINED first encoder layer.
+
+    nn.TransformerEncoderLayer (post-norm, the default) feeds its input
+    straight into self_attn, so we rebuild that input (embedding +
+    positional encoding) and ask the layer's own attention module for its
+    weights. Returns (batch, n_heads, seq, seq); padded keys get weight 0.
+    """
+    model.eval()
+    pad_mask = tokens == 0
+    x = model.posenc(model.embed(tokens))
+    first_layer = model.encoder.layers[0]
+    # TODO: Call first_layer.self_attn as SELF-attention on x, masking the
+    #   padded keys, and ask for per-head weights (see the need_weights and
+    #   average_attn_weights arguments of nn.MultiheadAttention.forward).
+    _, weights = ____
+    return weights
+
+
+# The heatmaps must come from the layer that was TRAINED: a fresh
+# EducationalMultiHead here would show random projections.
 with torch.no_grad():
-    embed = ...  # YOUR CODE HERE
-    embed = ...  # YOUR CODE HERE
-    _, attn_weights = ...  # YOUR CODE HERE
+    attn_weights = encoder_attention(transformer_model, sample_idx[:1])  # (1, 4, seq, seq)
 
 words = sample_texts[0].lower().split()[:MAX_LEN]
 word_labels = words + ["<pad>"] * (MAX_LEN - len(words))
@@ -327,11 +380,9 @@ for head_idx in range(min(4, attn_weights.shape[1])):
     fig.write_html(f"ex_4_2_head_{head_idx}_attention.html")
 
 print(f"  Saved 4 attention head heatmaps (ex_4_2_head_0..3_attention.html)")
-print(f"  Different heads capture different relationship types:")
-print(f"    Head 0: may focus on adjacent word pairs (local syntax)")
-print(f"    Head 1: may focus on content words across the sentence (semantics)")
-print(f"    Head 2: may focus on sentence boundaries and punctuation (structure)")
-print(f"    Head 3: may focus on entity-to-entity relationships")
+print(f"  Compare the four heads: do they spread attention differently?")
+print(f"  (Specialisation is something to LOOK FOR, not assume: heads in a")
+print(f"  small model trained for a few epochs often look alike.)")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
 assert attn_weights.shape == (
@@ -344,29 +395,29 @@ print("\n--- Checkpoint 4 passed --- multi-head attention visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 6 — Apply: Regulatory Compliance Classification at MAS
+# TASK 6 — Apply: Routing Regulatory Filings (and the Label-Space Trap)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: The Monetary Authority of Singapore (MAS) oversees compliance
-# across banking, insurance, securities, and payments. Financial institutions
-# submit thousands of regulatory filings monthly. MAS compliance officers
-# need to classify each document by the regulation it pertains to:
+# SCENARIO: A financial regulator's compliance team receives thousands of
+# filings a month and wants each one routed by the regulation it concerns:
 #   - Banking Act (Cap. 19)
 #   - Securities and Futures Act (Cap. 289)
 #   - Payment Services Act 2019
 #   - Insurance Act (Cap. 142)
 #
-# BUSINESS VALUE: Manual classification by compliance officers takes
-# 15-20 minutes per document. With ~3,000 submissions/month across
-# 200+ licensed institutions, that is 750-1,000 officer-hours/month.
-# A Transformer classifier automates the first-pass classification,
-# routing documents to the correct regulatory team in seconds.
+# The Transformer you trained answers a different question: its labels
+# are AG News topics (World, Sports, Business, Sci/Tech). Run on finance
+# headlines it can only say "Business" or similar — never "Insurance
+# Act". Routing by regulation needs the same architecture trained on
+# filings labelled by Act. What this section CAN show is how to inspect
+# which words the trained attention focused on — with the caveat that
+# attention weights are a view into the model, not a faithful,
+# audit-grade explanation of its decision.
 #
-# DOLLAR IMPACT: At S$80-120/hour for compliance officers, automating
-# first-pass classification saves S$720K-1.44M annually. More importantly,
-# the attention mechanism shows WHICH paragraphs triggered each
-# classification -- providing audit trail transparency that regulators
-# require under MAS Notice on Technology Risk Management.
-print("\n== Application: Regulatory Compliance at MAS ==")
+# BUSINESS VALUE (illustrative assumptions): at 15-20 minutes of manual
+# triage per filing and ~3,000 filings/month, first-pass routing costs
+# 750-1,000 officer-hours a month — savings that only exist once a
+# classifier is trained on the regulator's own routing labels.
+print("\n== Application: routing filings with a news-topic model ==")
 
 financial_headlines = [
     "Banks report higher profits amid rising interest rates",
@@ -377,12 +428,10 @@ financial_headlines = [
 ]
 
 # TODO: Classify financial headlines with the trained transformer
-# Step 1: Set model to eval mode — transformer_model.eval()
-# Step 2: Tokenise — fin_idx = torch.tensor([text_to_indices(t, vocab, MAX_LEN) for t in financial_headlines], dtype=torch.long, device=DEVICE)
-# Step 3: with torch.no_grad(): get logits, probs, preds
-#   fin_logits = transformer_model(fin_idx)
-#   fin_probs = F.softmax(fin_logits, dim=-1)
-#   fin_preds = fin_logits.argmax(dim=-1).cpu().tolist()
+# - fin_idx: token-id tensor (long, on DEVICE) built with text_to_indices
+#   for every headline -> (n_headlines, MAX_LEN)
+# - fin_logits / fin_probs: model output and its softmax over classes
+# - fin_preds: the predicted class id per headline, as a Python list
 transformer_model.eval()
 with torch.no_grad():
     fin_idx = ...  # YOUR CODE HERE
@@ -390,21 +439,19 @@ with torch.no_grad():
     fin_probs = ...  # YOUR CODE HERE
     fin_preds = ...  # YOUR CODE HERE
 
-print(f"\n  Regulatory document classification (Transformer):")
-print(f"  {'Headline':<55} {'Classification':<12} {'Confidence':>10}")
+print(f"\n  Finance headlines through the AG News Transformer (topics, not Acts):")
+print(f"  {'Headline':<55} {'Topic':<12} {'Confidence':>10}")
 print("  " + "-" * 79)
 for text, pred, probs in zip(financial_headlines, fin_preds, fin_probs.cpu().tolist()):
     cls_name = CLASS_NAMES[pred]
     confidence = max(probs)
     print(f"  {text[:53]:<55} {cls_name:<12} {confidence:>10.1%}")
 
-# TODO: Show attention-based explanation for the first document
-# Hint: Use mha_viz to get attention, average across heads, compute token importance
+# TODO: Attention-based explanation for the first document: trained
+#   first-layer attention (encoder_attention), averaged across heads.
 with torch.no_grad():
-    embed = transformer_model.embed(fin_idx[:1])
-    embed = transformer_model.posenc(embed)
-    _, fin_attn = mha_viz(embed)
-    avg_attn = fin_attn[0].mean(dim=0).cpu().numpy()
+    fin_attn = ____
+    avg_attn = ____
 
 fin_words = financial_headlines[0].lower().split()[:MAX_LEN]
 fin_labels = fin_words + ["<pad>"] * (MAX_LEN - len(fin_words))
@@ -419,18 +466,12 @@ for word, imp in sorted(zip(fin_words, token_importance), key=lambda x: -x[1])[:
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
 assert len(fin_preds) == len(financial_headlines), "Should classify all headlines"
-# INTERPRETATION: The Transformer classifies financial documents and the
-# attention weights provide an audit trail showing which words drove each
-# classification. For MAS compliance, this transparency is critical --
-# regulators need to understand WHY a document was classified as it was,
-# not just the classification itself.
-#
-# BUSINESS IMPACT for MAS:
-#   - 3,000 regulatory submissions/month
-#   - 15-20 min manual classification per document -> seconds with Transformer
-#   - Annual saving: S$720K-1.44M in compliance officer time
-#   - Attention audit trail satisfies MAS Technology Risk Management Notice
-print("\n--- Checkpoint 5 passed --- MAS regulatory application complete\n")
+# INTERPRETATION: Every prediction above is a news topic, so none of them
+# routes a filing to a regulation team. The token-importance list shows
+# where the trained first layer's attention went; treat it as a debugging
+# view, not as an explanation a regulator could audit (attention weights
+# are not guaranteed to reflect what drove the output).
+print("\n--- Checkpoint 5 passed --- routing check complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -445,9 +486,9 @@ print(
   [x] Explained how different heads capture different relationship types
   [x] Implemented sinusoidal positional encoding (word order for transformers)
   [x] Built a full TransformerClassifier with nn.TransformerEncoder
-  [x] Trained on full AG News (120K headlines), best acc: {max(transformer_accs):.1%}
+  [x] Trained on full AG News (120K headlines), test acc: {transformer_test_acc:.1%}
   [x] Visualised per-head attention patterns
-  [x] Applied to MAS regulatory compliance with attention-based explanations
+  [x] Checked a regulatory-routing use case against the model's label space
 
   KEY INSIGHT:
     Multi-head attention is like having multiple specialists read the same
@@ -460,265 +501,3 @@ print(
   to sequential processing.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — Transformer (attention + residual stack)
-# ══════════════════════════════════════════════════════════════════
-from kailash_ml import diagnose
-
-print("\n── Diagnostic Report (Transformer Encoder) ──")
-report = diagnose(
-    transformer_model,
-    kind="dl",
-    data=val_loader,
-    show=False,
-)
-
-# ══════ EXPECTED OUTPUT (reference pattern — Transformer on AG News) ══
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): per-layer RMS uniform across
-#       `encoder.layers.{0..2}.self_attn` and `.linear1/2` —
-#       residuals + LayerNorm doing their job.
-#   [✓] Activations    (HEALTHY): no dead GELU units in the FFN
-#       sub-blocks; attention softmax outputs within expected
-#       entropy range (not collapsed onto one token).
-#   [✓] Loss trend     (HEALTHY): train loss falls monotonically,
-#       val loss tracks within 0.05 of train loss — no overfit
-#       signal at 8 epochs on 120K headlines.
-# ════════════════════════════════════════════════════════════════
-# Best val acc: ~0.88 after 8 epochs on MPS/CUDA.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST] Gradient flow is UNIFORM — this is the architectural
-#     payoff of the Transformer over the vanilla RNN (ex_3/01). The
-#     residual connection around every sub-block (self-attn + FFN)
-#     gives gradients a "highway" to the embedding layer, preventing
-#     the vanishing-gradient problem that plagues the LSTM on long
-#     sequences. Slide 5.4 (Transformers) calls this the "why we
-#     stopped using RNNs" moment — the Blood Test proves it.
-#     >> Prescription Pad: no action needed. If you see RMS spread
-#        >2 orders of magnitude across layers, suspect post-norm
-#        layout (unstable) — switch to pre-norm.
-#
-#  [X-RAY] Attention activations are not saturated. A collapsed
-#     attention head (one token getting ~100% of the softmax mass)
-#     is the Transformer's equivalent of the dead-ReLU problem —
-#     that head becomes a no-op and its projection weights stop
-#     learning. If the Prescription Pad flags WARNING on
-#     `self_attn` activation stats, lower d_model/n_heads (too
-#     many heads for too little signal) or add attention dropout.
-#     >> Prescription Pad: ratio check — healthy multi-head
-#        attention shows mean entropy per head near log(seq_len)/2.
-#
-#  [STETHOSCOPE] Loss curve converges smoothly — no instability,
-#     no NaN, no periodic spikes. With 8 epochs and LayerNorm,
-#     you should NOT need gradient clipping. If you see the
-#     training loss oscillate, check your learning rate — the
-#     Transformer is sensitive to warmup in particular.
-#     >> Prescription Pad: add linear warmup over first 10% of
-#        steps if loss is noisy early.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: the Transformer's diagnostic report
-#  should be almost boringly green. The Prescription Pad's value
-#  here is as a canary — when you later fine-tune on a small
-#  domain corpus (ex_4/04 BERT) you will see the same gradient
-#  flow degrade if the learning rate is wrong. Slide 5.4 uses
-#  this report as evidence that attention + residuals is the
-#  "train-it-and-it-just-works" architecture that made BERT and
-#  GPT possible.
-#
-#  CONNECT TO SLIDE 5.4: The slide claims "residuals + LayerNorm
-#  make deep Transformers trainable where deep RNNs weren't."
-#  The HEALTHY Blood Test reading across `layers.0..2` is the
-#  direct empirical proof of that claim. Compare to ex_4/03's
-#  LSTM report — gradients there concentrate in the final layer.
-# ════════════════════════════════════════════════════════════════
-
-# ── Checkpoint 3 ─────────────────────────────────────────────────────
-assert (
-    len(transformer_losses) == EPOCHS_SCRATCH
-), "Transformer should train for all epochs"
-assert (
-    max(transformer_accs) > 0.60
-), f"Transformer should reach >60% accuracy, got {max(transformer_accs):.3f}"
-# INTERPRETATION: The Transformer processes all tokens in parallel and uses
-# self-attention to capture long-range dependencies. On AG News headlines,
-# it can directly connect "tech" at position 1 with "stocks" at position 8
-# without propagating through every intermediate token. This architectural
-# advantage becomes more pronounced on longer documents.
-print(f"\n  Transformer best acc: {max(transformer_accs):.3f}")
-print("\n--- Checkpoint 3 passed --- Transformer trained on AG News\n")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Visualise: Multi-head attention patterns on sample headline
-# ════════════════════════════════════════════════════════════════════════
-print("\n== Visualising multi-head attention patterns ==")
-transformer_model.eval()
-sample_texts = test_df["text"].to_list()[:3]
-sample_idx = torch.tensor(
-    [text_to_indices(t, vocab, MAX_LEN) for t in sample_texts],
-    dtype=torch.long,
-    device=DEVICE,
-)
-
-# Extract attention from our EducationalMultiHead on the trained embeddings
-mha_viz = EducationalMultiHead(d_model=128, n_heads=4).to(DEVICE)
-with torch.no_grad():
-    embed = transformer_model.embed(sample_idx[:1])
-    embed = transformer_model.posenc(embed)
-    _, attn_weights = mha_viz(embed)  # (1, 4, seq, seq)
-
-words = sample_texts[0].lower().split()[:MAX_LEN]
-word_labels = words + ["<pad>"] * (MAX_LEN - len(words))
-
-# Visualise each head's attention pattern
-for head_idx in range(min(4, attn_weights.shape[1])):
-    attn_np = attn_weights[0, head_idx].cpu().numpy()
-    fig = create_attention_heatmap(
-        attn_np,
-        word_labels,
-        title=f"Attention Head {head_idx} on: '{sample_texts[0][:50]}...'",
-        max_tokens=12,
-    )
-    fig.write_html(f"ex_4_2_head_{head_idx}_attention.html")
-
-print(f"  Saved 4 attention head heatmaps (ex_4_2_head_0..3_attention.html)")
-print(f"  Different heads capture different relationship types:")
-print(f"    Head 0: may focus on adjacent word pairs (local syntax)")
-print(f"    Head 1: may focus on content words across the sentence (semantics)")
-print(f"    Head 2: may focus on sentence boundaries and punctuation (structure)")
-print(f"    Head 3: may focus on entity-to-entity relationships")
-
-# ── Checkpoint 4 ─────────────────────────────────────────────────────
-assert attn_weights.shape == (
-    1,
-    4,
-    MAX_LEN,
-    MAX_LEN,
-), "Should have 4 heads of attention"
-print("\n--- Checkpoint 4 passed --- multi-head attention visualised\n")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 6 — Apply: Regulatory Compliance Classification at MAS
-# ════════════════════════════════════════════════════════════════════════
-# SCENARIO: The Monetary Authority of Singapore (MAS) oversees compliance
-# across banking, insurance, securities, and payments. Financial institutions
-# submit thousands of regulatory filings monthly. MAS compliance officers
-# need to classify each document by the regulation it pertains to:
-#   - Banking Act (Cap. 19)
-#   - Securities and Futures Act (Cap. 289)
-#   - Payment Services Act 2019
-#   - Insurance Act (Cap. 142)
-#
-# BUSINESS VALUE: Manual classification by compliance officers takes
-# 15-20 minutes per document. With ~3,000 submissions/month across
-# 200+ licensed institutions, that is 750-1,000 officer-hours/month.
-# A Transformer classifier automates the first-pass classification,
-# routing documents to the correct regulatory team in seconds.
-#
-# DOLLAR IMPACT: At S$80-120/hour for compliance officers, automating
-# first-pass classification saves S$720K-1.44M annually. More importantly,
-# the attention mechanism shows WHICH paragraphs triggered each
-# classification -- providing audit trail transparency that regulators
-# require under MAS Notice on Technology Risk Management.
-print("\n== Application: Regulatory Compliance at MAS ==")
-
-# Use the trained Transformer to classify financial headlines (proxy for
-# regulatory documents). In production, this would use MAS-specific
-# regulatory text with fine-tuned classification categories.
-financial_headlines = [
-    "Banks report higher profits amid rising interest rates",
-    "New technology startups attract venture capital funding",
-    "Stock market volatility increases as trade tensions rise",
-    "Sports betting companies face new regulatory scrutiny",
-    "Insurance companies adapt to climate change risks",
-]
-
-transformer_model.eval()
-with torch.no_grad():
-    fin_idx = torch.tensor(
-        [text_to_indices(t, vocab, MAX_LEN) for t in financial_headlines],
-        dtype=torch.long,
-        device=DEVICE,
-    )
-    fin_logits = transformer_model(fin_idx)
-    fin_probs = F.softmax(fin_logits, dim=-1)
-    fin_preds = fin_logits.argmax(dim=-1).cpu().tolist()
-
-print(f"\n  Regulatory document classification (Transformer):")
-print(f"  {'Headline':<55} {'Classification':<12} {'Confidence':>10}")
-print("  " + "-" * 79)
-for text, pred, probs in zip(financial_headlines, fin_preds, fin_probs.cpu().tolist()):
-    cls_name = CLASS_NAMES[pred]
-    confidence = max(probs)
-    print(f"  {text[:53]:<55} {cls_name:<12} {confidence:>10.1%}")
-
-# Show attention-based explanation for the first document
-with torch.no_grad():
-    embed = transformer_model.embed(fin_idx[:1])
-    embed = transformer_model.posenc(embed)
-    _, fin_attn = mha_viz(embed)  # (1, 4, seq, seq)
-    # Average across heads for an aggregate attention view
-    avg_attn = fin_attn[0].mean(dim=0).cpu().numpy()  # (seq, seq)
-
-fin_words = financial_headlines[0].lower().split()[:MAX_LEN]
-fin_labels = fin_words + ["<pad>"] * (MAX_LEN - len(fin_words))
-# Token-level attention: how much total attention each token receives
-token_importance = avg_attn[: len(fin_words), : len(fin_words)].sum(axis=0)
-token_importance = token_importance / token_importance.max()
-
-print(f"\n  Attention-based explanation for: '{financial_headlines[0]}'")
-print(f"  Token importance (which words drive the classification):")
-for word, imp in sorted(zip(fin_words, token_importance), key=lambda x: -x[1])[:5]:
-    bar = "#" * int(imp * 20)
-    print(f"    {word:<15} {imp:.3f} {bar}")
-
-# ── Checkpoint 5 ─────────────────────────────────────────────────────
-assert len(fin_preds) == len(financial_headlines), "Should classify all headlines"
-# INTERPRETATION: The Transformer classifies financial documents and the
-# attention weights provide an audit trail showing which words drove each
-# classification. For MAS compliance, this transparency is critical --
-# regulators need to understand WHY a document was classified as it was,
-# not just the classification itself.
-#
-# BUSINESS IMPACT for MAS:
-#   - 3,000 regulatory submissions/month
-#   - 15-20 min manual classification per document -> seconds with Transformer
-#   - Annual saving: S$720K-1.44M in compliance officer time
-#   - Attention audit trail satisfies MAS Technology Risk Management Notice
-print("\n--- Checkpoint 5 passed --- MAS regulatory application complete\n")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# REFLECTION
-# ══════════════════════════════════════════════════════════════════════
-print("\n" + "=" * 70)
-print("  WHAT YOU'VE MASTERED — Transformer Encoder")
-print("=" * 70)
-print(
-    f"""
-  [x] Built multi-head attention wrapping the from-scratch attention kernel
-  [x] Explained how different heads capture different relationship types
-  [x] Implemented sinusoidal positional encoding (word order for transformers)
-  [x] Built a full TransformerClassifier with nn.TransformerEncoder
-  [x] Trained on full AG News (120K headlines), best acc: {max(transformer_accs):.1%}
-  [x] Visualised per-head attention patterns
-  [x] Applied to MAS regulatory compliance with attention-based explanations
-
-  KEY INSIGHT:
-    Multi-head attention is like having multiple specialists read the same
-    document simultaneously. One head notices syntax, another notices
-    entities, another notices sentiment. Together they capture a richer
-    understanding than any single attention computation could.
-
-  Next: In 03_lstm_baseline.py, you'll build an LSTM baseline to see
-  exactly what the Transformer's attention mechanism buys us compared
-  to sequential processing.
-"""
-)
-

@@ -156,22 +156,22 @@ class SimpleCNN(nn.Module):
 
     def __init__(self, n_classes: int = N_CLASSES):
         super().__init__()
-        # TODO: Build the feature extraction backbone — nn.Sequential with:
-        #   Block 1: Conv2d(3, 32, kernel_size=3, padding=1), BatchNorm2d(32),
-        #            ReLU(), MaxPool2d(2)   [spatial: 32 -> 16]
-        #   Block 2: Conv2d(32, 64, kernel_size=3, padding=1), BatchNorm2d(64),
-        #            ReLU(), MaxPool2d(2)   [spatial: 16 -> 8]
+        # TODO: Build the feature extraction backbone — two conv blocks, each:
+        #   3x3 conv with "same" padding -> batch norm -> ReLU -> 2x2 max-pool
+        #   Block 1: 3 (RGB) -> 32 channels   [spatial: 32 -> 16]
+        #   Block 2: 32 -> 64 channels        [spatial: 16 -> 8]
         self.features = nn.Sequential(
             ____,
         )
-        # TODO: Build the classification head — nn.Sequential with:
-        #   Flatten(), Linear(64 * 8 * 8, 128), ReLU(), Linear(128, n_classes)
+        # TODO: Build the classification head — flatten the (64, 8, 8) feature
+        #   maps, then a fully-connected layer to 128 units, ReLU, and a final
+        #   fully-connected layer to n_classes logits
         self.head = nn.Sequential(
             ____,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Pass through features then head
+        # TODO: Run x through the backbone, then the head; return the logits
         return ____
 
 
@@ -222,12 +222,71 @@ print("--- Checkpoint 2 passed --- CIFAR-10 loaded (50K train, 10K val)\n")
 conn, tracker, exp_name, registry, has_registry = init_engines()
 
 # TODO: Train SimpleCNN
-#   1. Instantiate SimpleCNN()
-#   2. Call train_model(model, name, tracker, exp_name, train_loader, val_loader, epochs=EPOCHS)
-#   3. train_model returns (losses_list, accs_list)
+#   1. simple_cnn: a fresh SimpleCNN
+#   2. Train it with the train_model helper (run name "SimpleCNN", the tracker
+#      and experiment from init_engines, both loaders, EPOCHS epochs)
+#   3. train_model returns (per-epoch losses, per-epoch val accuracies)
 print(f"\nTraining SimpleCNN for {EPOCHS} epochs on {X_train.shape[0]:,} images...")
 simple_cnn = ____
 simple_losses, simple_accs = ____
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments + Grad-CAM for CNNs
+# ══════════════════════════════════════════════════════════════════
+# First classifier in M5: run_diagnostic_checkpoint with a cross-entropy
+# loss. The probe batches come from the TRAINING loader: the probe runs
+# in train mode, so BatchNorm running statistics move with whatever data
+# it sees, and validation data should not leak into them.
+# For CNNs, Grad-CAM is a sixth instrument — "which pixels drove this
+# prediction?" — and it exposes shortcuts (Zech et al., 2018: pneumonia
+# models that failed at new hospitals had learned hospital-specific
+# image markers rather than pathology).
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _ce_loss(m, batch):
+    """Cross-entropy on one (images, labels) batch, on the model's device."""
+    xb, yb = batch
+    dev = next(m.parameters()).device
+    return F.cross_entropy(m(xb.to(dev)), yb.to(dev))
+
+
+print("\n── Diagnostic Report (SimpleCNN) ──")
+diag, findings = run_diagnostic_checkpoint(
+    simple_cnn,
+    train_loader,
+    _ce_loss,
+    title="SimpleCNN (CIFAR-10)",
+    train_losses=simple_losses,
+    show=False,
+)
+print_prescription_pad(findings, "SimpleCNN (CIFAR-10)")
+
+# Grad-CAM on the last conv layer. grad_cam() runs on kailash-ml's
+# detected device (diag.device), so the model visits it for this step.
+last_conv = [n for n, mod in simple_cnn.named_modules() if isinstance(mod, nn.Conv2d)][-1]
+cam_x, cam_y = next(iter(val_loader))
+home_device = next(simple_cnn.parameters()).device
+simple_cnn.to(diag.device)
+cam = diag.grad_cam(cam_x[:4], target_class=int(cam_y[0]), layer_name=last_conv)
+simple_cnn.to(home_device)
+print(
+    f"  Grad-CAM on '{last_conv}' for class '{CLASS_NAMES[int(cam_y[0])]}': "
+    f"heatmap shape={tuple(cam.shape)}"
+)
+# Upsample cam[i] to 32x32 and overlay it on cam_x[i]: a hot region off
+# the object means the model is leaning on background or shortcut cues.
+
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# BatchNorm after every conv is there to keep gradient flow stable, so
+# a CRITICAL gradient reading here is worth investigating before you
+# trust the accuracy. Read the dead-neuron share per ReLU (weight
+# sharing usually keeps conv channels active). The loss trend only
+# sees training loss here; the train/val accuracy curves below show
+# whether the model overfits. Never ship on accuracy alone: check the
+# Grad-CAM overlays for shortcut features.
+# ══════════════════════════════════════════════════════════════════
 
 # ── Checkpoint 3: Training converged ─────────────────────────────────
 assert len(simple_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses"
@@ -248,16 +307,18 @@ print("--- Checkpoint 3 passed --- SimpleCNN trained successfully\n")
 if has_registry:
     from shared.mlfp05.ex_2 import register_model
 
-    # TODO: Register the trained model
-    #   register_model(registry, "simple_cnn_cifar10", simple_cnn,
-    #                  simple_losses[-1], simple_accs[-1])
+    # TODO: Register the trained model with the register_model helper under
+    #   the name "simple_cnn_cifar10", passing the FINAL epoch's loss and
+    #   val accuracy as its metrics
     simple_version = ____
 
 # Save training curves
 viz = create_visualizer()
-# TODO: Save loss and accuracy plots using save_training_plots
+# TODO: Save loss and accuracy plots using save_training_plots (two calls)
 #   Args: (viz, metrics_dict, output_filename, y_label=...)
 #   metrics_dict format: {"label": list_of_values}
+#   Files: "ex_2_01_simple_cnn_loss.html" (Training Loss) and
+#          "ex_2_01_simple_cnn_acc.html" (Validation Accuracy)
 ____
 ____
 
@@ -278,7 +339,7 @@ print("  PHASE 4 — VISUALISE: What Did the CNN Learn?")
 print("=" * 70)
 
 # 4a. Visualise Layer 1 learned filters (3x3 RGB filters)
-# TODO: Extract layer 1 weights — simple_cnn.features[0].weight.data.cpu()
+# TODO: Extract the first conv layer's weight tensor (detached, on CPU)
 #   Shape will be (32, 3, 3, 3) — 32 filters, each 3x3 RGB
 layer1_weights = ____
 
@@ -288,9 +349,9 @@ fig_filters.suptitle(
 )
 for i, ax in enumerate(axes.flat):
     if i < layer1_weights.shape[0]:
-        # TODO: Normalise filter to [0, 1] for display
-        #   Get filter i from layer1_weights, normalise: (f - f.min()) / (f.max() - f.min() + 1e-8)
-        #   Then ax.imshow(filt.permute(1, 2, 0).numpy())
+        # TODO: Take filter i from layer1_weights, then min-max scale it to
+        #   [0, 1] for display (add a tiny epsilon to the range to avoid
+        #   dividing by zero on a flat filter)
         filt = ____
         filt = ____
         ax.imshow(filt.permute(1, 2, 0).numpy())
@@ -326,9 +387,9 @@ def hook_fn(name):
 
 
 handles = []
-# TODO: Register hooks on the 4 layers listed above
-#   handles.append(simple_cnn.features[0].register_forward_hook(hook_fn("conv1_raw")))
-#   ... (repeat for indices 2, 4, 6 with names conv1_relu, conv2_raw, conv2_relu)
+# TODO: Register hooks on the 4 layers listed above — one
+#   register_forward_hook per layer, using hook_fn(<name>) as the hook, and
+#   append every returned handle to handles so it can be removed later
 ____
 ____
 ____
@@ -351,14 +412,15 @@ fig_fmaps.suptitle(
     fontsize=14,
 )
 
-# Row 0: original image + first 8 conv1 ReLU feature maps
+# Row 0: original image (centre) + first 8 conv1 ReLU feature maps
 orig_display = denormalise_cifar(sample_img.squeeze(0))
 axes[0, 0].imshow(orig_display.permute(1, 2, 0).numpy())
 axes[0, 0].set_title("Original", fontsize=9)
 axes[0, 0].axis("off")
-conv1_maps = feature_maps["conv1_relu"].squeeze(0)
+conv1_maps = feature_maps["conv1_relu"].squeeze(0)  # (32, 32, 32)
 for i in range(8):
-    # TODO: imshow conv1_maps[i] with cmap="viridis"
+    # TODO: Show feature map i of conv1_maps in the next column of row 0
+    #   (same style as Row 1 below, cmap="viridis")
     ____
     axes[0, i + 1].set_title(f"L1 F{i}", fontsize=8)
     axes[0, i + 1].axis("off")
@@ -372,8 +434,8 @@ for i in range(8):
     axes[1, i].axis("off")
 axes[1, 8].axis("off")
 
-# Row 2: 8 conv2 ReLU feature maps (8x8 after MaxPool)
-conv2_maps = feature_maps["conv2_relu"].squeeze(0)
+# Row 2: 8 conv2 ReLU feature maps (16x16, captured before the second MaxPool)
+conv2_maps = feature_maps["conv2_relu"].squeeze(0)  # (64, 16, 16)
 for i in range(8):
     axes[2, i].imshow(conv2_maps[i].numpy(), cmap="magma")
     axes[2, i].set_title(f"L2 F{i}", fontsize=8)
@@ -431,9 +493,9 @@ print("\n--- Checkpoint 4 passed --- visual proof of model behaviour saved\n")
 # PHASE 5 — APPLY: Singapore E-Commerce Product Categorisation
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: You are an ML engineer at a Singapore e-commerce platform
-# (think Shopee, Lazada, or Carousell). The platform receives 500,000+
+# (illustrative figures). The platform receives 500,000+
 # new product listings per day. Sellers often mis-categorise products
-# (a "Nike Air Max" listed under "Electronics" instead of "Shoes"),
+# (a pair of running shoes listed under "Electronics" instead of "Shoes"),
 # leading to:
 #   - Poor search results (customers can't find what they want)
 #   - Incorrect commission rates (different categories have different fees)
@@ -477,13 +539,13 @@ LOW_CONFIDENCE_THRESHOLD = 0.50
 
 ECOMMERCE_MAPPING = {____}
 
-# TODO: Run inference on all validation images
-#   with torch.no_grad():
-#     val_logits = simple_cnn(X_val)
-#     val_probs = F.softmax(val_logits, dim=-1)
-#     val_preds = val_logits.argmax(dim=-1)
-#     val_confidences = val_probs.gather(1, val_preds.unsqueeze(1)).squeeze()
-#     val_correct = (val_preds == y_val).float()
+# TODO: Run inference on all validation images (no gradients)
+#   val_logits: model outputs for X_val, shape (N, 10)
+#   val_probs: class probabilities (softmax over the class dimension)
+#   val_preds: index of the highest-scoring class per image
+#   val_confidences: the probability of each image's PREDICTED class, shape (N,)
+#     (torch.gather picks one column per row)
+#   val_correct: 1.0 where the prediction matches y_val, else 0.0
 with torch.no_grad():
     val_logits = ____
     val_probs = ____
@@ -493,7 +555,7 @@ with torch.no_grad():
 
 # TODO: Create triage masks based on confidence thresholds
 #   auto_approve_mask: confidences >= HIGH threshold
-#   review_mask: confidences >= LOW threshold AND < HIGH threshold
+#   review_mask: confidences >= LOW threshold AND not auto-approved
 #   reject_mask: confidences < LOW threshold
 auto_approve_mask = ____
 review_mask = ____
@@ -597,452 +659,6 @@ print(
   BUILD + TRAIN:
   [x] SimpleCNN: Conv2d + BatchNorm + ReLU + MaxPool, two-block design
   [x] Trained on FULL CIFAR-10 (50K images) with ExperimentTracker
-  [x] ~{{param_count:,}} parameters, achieves >{{simple_accs[-1]:.0%}} validation accuracy
-
-  VISUALISE (the proof):
-  [x] Layer 1 filters: oriented edge detectors (Gabor-like patterns)
-  [x] Feature maps: which spatial regions activate each filter
-  [x] Prediction grid: where the model succeeds and fails, with confidence
-
-  APPLY:
-  [x] Singapore e-commerce product auto-categorisation
-  [x] Confidence-based triage: auto-approve vs human review
-  [x] Business impact: projected annual savings from automation
-  [x] Stakeholder-ready accuracy and error rate analysis
-
-  KEY INSIGHT: A CNN is not a black box. The filters it learns are
-  interpretable -- they are the visual features the network considers
-  important. Filter and feature map visualisation is how you debug and
-  explain CNN decisions to non-technical stakeholders.
-
-  Next: In 02_resnet_se.py, you'll see why deeper networks fail and how
-  residual connections and attention mechanisms fix the problem...
-"""
-)
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments + Grad-CAM for CNNs
-# ══════════════════════════════════════════════════════════════════
-# First classifier in M5: we use `diagnose_classifier` which wraps
-# `run_diagnostic_checkpoint` with a cross-entropy loss function.
-# For CNNs, Grad-CAM is the sixth instrument — it answers "which
-# pixels drove the prediction?" and surfaces spurious shortcuts
-# (Zech et al. 2018: hospitals' chest-X-ray models latched onto
-# watermarks instead of pathology).
-from kailash_ml import diagnose
-
-print("\n── Diagnostic Report (SimpleCNN) ──")
-report = diagnose(simple_cnn, kind="dl", data=val_loader)
-
-# Grad-CAM on the last conv layer: verify the model looks at objects,
-# not backgrounds. Pick a validation batch and a target class.
-try:
-    _vx, _vy = next(iter(val_loader))
-    # Find the last conv layer in the model
-    _last_conv = None
-    for _name, _mod in simple_cnn.named_modules():
-        if isinstance(_mod, nn.Conv2d):
-            _last_conv = _name
-    if _last_conv is not None:
-        cam = diag.grad_cam(
-            _vx[:4].to(DEVICE),
-            target_class=int(_vy[0].item()),
-            layer_name=_last_conv,
-        )
-        print(
-            f"  Grad-CAM computed on layer '{_last_conv}', "
-            f"heatmap shape={tuple(cam.shape)}"
-        )
-        # Students: overlay `cam[i]` onto `_vx[i]` (resize CAM to 32x32)
-        # and inspect — if the hot region is off the object, the model
-        # learned a shortcut (see Zech 2018 hospital-watermark study).
-except Exception as _exc:  # pragma: no cover — visualisation optional
-    print(f"  Grad-CAM skipped ({_exc})")
-
-# ══════ EXPECTED OUTPUT (reference shape) ══════
-# ══════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ══════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): RMS range ~1e-4 – ~1e-2, uniform
-#       across Conv2d and Linear layers (BatchNorm is keeping flow
-#       healthy — this is WHY BN was invented).
-#   [✓] Dead neurons  (HEALTHY): No ReLU layer above 30% inactive;
-#       weight sharing in Conv2d naturally keeps channels alive.
-#   [✓] Loss trend    (HEALTHY): Training converging, val accuracy
-#       rising monotonically — no overfitting after 8 epochs.
-#   + Grad-CAM: heatmap concentrates on the object, not the corners.
-# ══════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE:
-#   - Healthy CNN signature: uniform gradient RMS + low dead %% +
-#     Grad-CAM on the object. If any of the three fails, investigate
-#     BEFORE trusting val accuracy.
-#   - Zech 2018 lesson: a pneumonia classifier achieved SOTA accuracy
-#     but Grad-CAM revealed it was attending to hospital watermarks
-#     — a dataset-shortcut that would FAIL on any other hospital's
-#     scans. Always visualise attribution; never ship on accuracy
-#     alone.
-#   - If Grad-CAM highlights background/corners, the model is
-#     using spurious features. Fix: data augmentation, balanced
-#     sampling, or a different loss.
-# ══════════════════════════════════════════════════════════════════
-
-# ── Checkpoint 3: Training converged ─────────────────────────────────
-assert len(simple_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses"
-assert simple_losses[-1] < simple_losses[0], "Loss should decrease during training"
-assert simple_accs[-1] > 0.4, (
-    f"SimpleCNN val accuracy {simple_accs[-1]:.3f} too low -- "
-    "expected > 0.4 on full CIFAR-10 after 8 epochs"
-)
-# INTERPRETATION: With 50K images the SimpleCNN learns real convolutional
-# filters: edge detectors in layer 1, texture detectors in layer 2. The
-# accuracy above ~55% shows the model is learning meaningful spatial
-# features, not just memorising. BatchNorm is crucial here -- without it,
-# training would be much slower and less stable.
-print(f"\nSimpleCNN final: loss={simple_losses[-1]:.4f}, val_acc={simple_accs[-1]:.3f}")
-print("--- Checkpoint 3 passed --- SimpleCNN trained successfully\n")
-
-# Register in ModelRegistry
-if has_registry:
-    from shared.mlfp05.ex_2 import register_model
-
-    simple_version = register_model(
-        registry,
-        "simple_cnn_cifar10",
-        simple_cnn,
-        simple_losses[-1],
-        simple_accs[-1],
-    )
-
-# Save training curves
-viz = create_visualizer()
-save_training_plots(
-    viz,
-    {"SimpleCNN loss": simple_losses},
-    "ex_2_01_simple_cnn_loss.html",
-    y_label="Training Loss",
-)
-save_training_plots(
-    viz,
-    {"SimpleCNN val accuracy": simple_accs},
-    "ex_2_01_simple_cnn_acc.html",
-    y_label="Validation Accuracy",
-)
-
-
-# ════════════════════════════════════════════════════════════════════════
-# PHASE 4 — VISUALISE: Learned Filters and Feature Maps
-# ════════════════════════════════════════════════════════════════════════
-# Loss curves tell you WHETHER the model is learning. Filter and feature
-# map visualisations tell you WHAT the model is learning.
-#
-# Layer 1 filters should look like oriented edge detectors (Gabor-like
-# patterns). Feature maps show which parts of the input image activate
-# each filter — bright regions = strong activation = "this filter found
-# something here."
-
-print("=" * 70)
-print("  PHASE 4 — VISUALISE: What Did the CNN Learn?")
-print("=" * 70)
-
-# 4a. Visualise Layer 1 learned filters (3x3 RGB filters)
-layer1_weights = simple_cnn.features[0].weight.data.cpu()  # (32, 3, 3, 3)
-
-fig_filters, axes = plt.subplots(4, 8, figsize=(16, 8))
-fig_filters.suptitle(
-    "SimpleCNN Layer 1 Learned Filters (32 filters, 3x3 RGB)", fontsize=14
-)
-for i, ax in enumerate(axes.flat):
-    if i < layer1_weights.shape[0]:
-        # Normalise each filter to [0, 1] for display
-        filt = layer1_weights[i]  # (3, 3, 3) — RGB
-        filt = (filt - filt.min()) / (filt.max() - filt.min() + 1e-8)
-        ax.imshow(filt.permute(1, 2, 0).numpy())  # (3,3,3) -> (H,W,C)
-    ax.axis("off")
-plt.tight_layout()
-plt.savefig("ex_2_01_learned_filters.png", dpi=150, bbox_inches="tight")
-plt.close(fig_filters)
-print("  Saved: ex_2_01_learned_filters.png")
-print("  Look for: edge detectors (horizontal, vertical, diagonal lines)")
-print("  Some filters will be colour-sensitive (responding to red/green/blue edges)")
-
-# 4b. Visualise feature maps for a sample image
-simple_cnn.eval()
-sample_idx = 7  # A horse in CIFAR-10
-sample_img = X_val[sample_idx : sample_idx + 1]  # (1, 3, 32, 32)
-true_label = CLASS_NAMES[y_val[sample_idx].item()]
-
-# Extract intermediate feature maps using hooks
-feature_maps = {}
-
-
-def hook_fn(name):
-    def hook(module, input, output):
-        feature_maps[name] = output.detach().cpu()
-
-    return hook
-
-
-handles = []
-handles.append(simple_cnn.features[0].register_forward_hook(hook_fn("conv1_raw")))
-handles.append(simple_cnn.features[2].register_forward_hook(hook_fn("conv1_relu")))
-handles.append(simple_cnn.features[4].register_forward_hook(hook_fn("conv2_raw")))
-handles.append(simple_cnn.features[6].register_forward_hook(hook_fn("conv2_relu")))
-
-with torch.no_grad():
-    pred_logits = simple_cnn(sample_img)
-    pred_class = CLASS_NAMES[pred_logits.argmax(dim=-1).item()]
-
-for h in handles:
-    h.remove()
-
-# Plot: original image + layer 1 feature maps + layer 2 feature maps
-fig_fmaps, axes = plt.subplots(3, 9, figsize=(18, 7))
-fig_fmaps.suptitle(
-    f"Feature Maps for '{true_label}' (predicted: '{pred_class}')",
-    fontsize=14,
-)
-
-# Row 0: original image (centre) + first 8 conv1 ReLU feature maps
-orig_display = denormalise_cifar(sample_img.squeeze(0))
-axes[0, 0].imshow(orig_display.permute(1, 2, 0).numpy())
-axes[0, 0].set_title("Original", fontsize=9)
-axes[0, 0].axis("off")
-conv1_maps = feature_maps["conv1_relu"].squeeze(0)  # (32, 32, 32)
-for i in range(8):
-    axes[0, i + 1].imshow(conv1_maps[i].numpy(), cmap="viridis")
-    axes[0, i + 1].set_title(f"L1 F{i}", fontsize=8)
-    axes[0, i + 1].axis("off")
-
-# Row 1: next 8 conv1 feature maps
-for i in range(8):
-    idx = i + 8
-    if idx < conv1_maps.shape[0]:
-        axes[1, i].imshow(conv1_maps[idx].numpy(), cmap="viridis")
-        axes[1, i].set_title(f"L1 F{idx}", fontsize=8)
-    axes[1, i].axis("off")
-axes[1, 8].axis("off")
-
-# Row 2: 8 conv2 ReLU feature maps (16x16 after MaxPool)
-conv2_maps = feature_maps["conv2_relu"].squeeze(0)  # (64, 8, 8)
-for i in range(8):
-    axes[2, i].imshow(conv2_maps[i].numpy(), cmap="magma")
-    axes[2, i].set_title(f"L2 F{i}", fontsize=8)
-    axes[2, i].axis("off")
-axes[2, 8].axis("off")
-
-plt.tight_layout()
-plt.savefig("ex_2_01_feature_maps.png", dpi=150, bbox_inches="tight")
-plt.close(fig_fmaps)
-print(f"\n  Saved: ex_2_01_feature_maps.png")
-print(f"  Sample: true='{true_label}', predicted='{pred_class}'")
-print("  Layer 1 maps: edges and colour boundaries (high-res, 32x32)")
-print("  Layer 2 maps: textures and shapes (lower-res, 8x8 after pooling)")
-
-# 4c. Visualise prediction confidence on a batch of images
-with torch.no_grad():
-    batch_imgs = X_val[:16]
-    batch_logits = simple_cnn(batch_imgs)
-    batch_probs = F.softmax(batch_logits, dim=-1)
-    batch_preds = batch_logits.argmax(dim=-1)
-
-fig_preds, axes = plt.subplots(2, 8, figsize=(20, 6))
-fig_preds.suptitle("SimpleCNN Predictions on Validation Images", fontsize=14)
-for i in range(16):
-    row, col = i // 8, i % 8
-    img_display = denormalise_cifar(batch_imgs[i])
-    axes[row, col].imshow(img_display.permute(1, 2, 0).numpy())
-    pred_name = CLASS_NAMES[batch_preds[i].item()]
-    true_name = CLASS_NAMES[y_val[i].item()]
-    conf = batch_probs[i][batch_preds[i]].item()
-    correct = batch_preds[i].item() == y_val[i].item()
-    colour = "green" if correct else "red"
-    axes[row, col].set_title(
-        f"{pred_name}\n({conf:.0%})",
-        fontsize=8,
-        color=colour,
-    )
-    axes[row, col].axis("off")
-plt.tight_layout()
-plt.savefig("ex_2_01_predictions.png", dpi=150, bbox_inches="tight")
-plt.close(fig_preds)
-print("  Saved: ex_2_01_predictions.png")
-print("  Green = correct, Red = incorrect. Confidence shown in parentheses.")
-
-# ── Checkpoint 4: Visualisations generated ───────────────────────────
-import os
-
-assert os.path.exists("ex_2_01_learned_filters.png"), "Filter visualisation missing"
-assert os.path.exists("ex_2_01_feature_maps.png"), "Feature map visualisation missing"
-assert os.path.exists("ex_2_01_predictions.png"), "Prediction visualisation missing"
-print("\n--- Checkpoint 4 passed --- visual proof of model behaviour saved\n")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# PHASE 5 — APPLY: Singapore E-Commerce Product Categorisation
-# ════════════════════════════════════════════════════════════════════════
-# SCENARIO: You are an ML engineer at a Singapore e-commerce platform
-# (think Shopee, Lazada, or Carousell). The platform receives 500,000+
-# new product listings per day. Sellers often mis-categorise products
-# (a "Nike Air Max" listed under "Electronics" instead of "Shoes"),
-# leading to:
-#   - Poor search results (customers can't find what they want)
-#   - Incorrect commission rates (different categories have different fees)
-#   - Regulatory compliance issues (restricted items in wrong categories)
-#
-# BUSINESS CASE:
-#   - Manual review: 500K listings/day * $0.02/listing = $10,000/day
-#   - CNN auto-categorisation: $500/day compute + $2,000/day for edge cases
-#   - Net savings: ~$7,500/day = ~$2.7M/year
-#   - Additional revenue: improved search -> +3-5% conversion rate
-#
-# HOW THE CNN APPLIES:
-#   Our SimpleCNN learned to classify 32x32 images into 10 categories.
-#   A production system would:
-#   1. Resize product images to standard dimensions
-#   2. Run through a CNN trained on product categories (not CIFAR-10)
-#   3. High-confidence predictions (>0.9) auto-categorise
-#   4. Low-confidence predictions route to human reviewers
-#   5. Track accuracy with ExperimentTracker, retrain monthly
-#
-# CIFAR-10 AS PROXY:
-#   CIFAR-10's categories (airplane, automobile, truck, ship, etc.) map
-#   to real e-commerce categories. The architecture patterns are
-#   identical — only the training data changes.
-
-print("=" * 70)
-print("  PHASE 5 — APPLY: Singapore E-Commerce Product Categorisation")
-print("=" * 70)
-
-# Simulate the production triage system using our trained SimpleCNN
-simple_cnn.eval()
-HIGH_CONFIDENCE_THRESHOLD = 0.85
-LOW_CONFIDENCE_THRESHOLD = 0.50
-
-# Map CIFAR-10 classes to e-commerce product categories
-ECOMMERCE_MAPPING = {
-    "airplane": "Travel & Luggage",
-    "automobile": "Automotive",
-    "bird": "Pet Supplies",
-    "cat": "Pet Supplies",
-    "deer": "Home & Garden (Decor)",
-    "dog": "Pet Supplies",
-    "frog": "Toys & Collectibles",
-    "horse": "Sports & Outdoors",
-    "ship": "Travel & Luggage",
-    "truck": "Automotive",
-}
-
-with torch.no_grad():
-    val_logits = simple_cnn(X_val)
-    val_probs = F.softmax(val_logits, dim=-1)
-    val_preds = val_logits.argmax(dim=-1)
-    val_confidences = val_probs.gather(1, val_preds.unsqueeze(1)).squeeze()
-    val_correct = (val_preds == y_val).float()
-
-# Triage: auto-approve, review, reject
-auto_approve_mask = val_confidences >= HIGH_CONFIDENCE_THRESHOLD
-review_mask = (val_confidences >= LOW_CONFIDENCE_THRESHOLD) & ~auto_approve_mask
-reject_mask = val_confidences < LOW_CONFIDENCE_THRESHOLD
-
-n_total = len(y_val)
-n_auto = auto_approve_mask.sum().item()
-n_review = review_mask.sum().item()
-n_reject = reject_mask.sum().item()
-
-auto_acc = val_correct[auto_approve_mask].mean().item() if n_auto > 0 else 0
-review_acc = val_correct[review_mask].mean().item() if n_review > 0 else 0
-
-print(
-    f"""
-  PRODUCTION TRIAGE SIMULATION (10,000 product listings):
-
-  Category         | Count  | % Total | Accuracy
-  -----------------+--------+---------+---------
-  Auto-approved    | {n_auto:>5,} | {n_auto/n_total:>6.1%}  | {auto_acc:.1%}
-  Needs review     | {n_review:>5,} | {n_review/n_total:>6.1%}  | {review_acc:.1%}
-  Low confidence   | {n_reject:>5,} | {n_reject/n_total:>6.1%}  | (routed to human)
-
-  BUSINESS IMPACT (daily projection for 500K listings):
-    Auto-approved listings:   {int(500000 * n_auto/n_total):>7,} (no human cost)
-    Human review needed:      {int(500000 * n_review/n_total):>7,} (@ $0.02/review)
-    Daily review cost:        ${int(500000 * (n_review + n_reject)/n_total * 0.02):>7,}
-    vs. full manual review:   $  10,000
-    Daily savings:            ${10000 - int(500000 * (n_review + n_reject)/n_total * 0.02):>7,}
-    Projected annual savings: ${(10000 - int(500000 * (n_review + n_reject)/n_total * 0.02)) * 365:>10,}
-
-  STAKEHOLDER INSIGHT:
-    Auto-approved accuracy of {auto_acc:.1%} means {100 - auto_acc*100:.1f}% error rate
-    on automated decisions. For an e-commerce platform, this means
-    roughly {int(500000 * n_auto/n_total * (1 - auto_acc)):,} mis-categorised products
-    per day slip through without human review.
-
-    RECOMMENDATION: Accept this if mis-categorisation cost < $0.50/item.
-    For high-value categories (electronics, luxury), lower the auto-approve
-    threshold to 0.95 and accept higher review volume.
-"""
-)
-
-# Show example auto-approved and review-needed listings
-print("  EXAMPLE AUTO-APPROVED LISTINGS:")
-auto_indices = torch.where(auto_approve_mask)[0][:5]
-for idx in auto_indices:
-    pred_name = CLASS_NAMES[val_preds[idx].item()]
-    true_name = CLASS_NAMES[y_val[idx].item()]
-    conf = val_confidences[idx].item()
-    ecom_cat = ECOMMERCE_MAPPING[pred_name]
-    status = "CORRECT" if pred_name == true_name else "MIS-CATEGORISED"
-    print(
-        f"    Listing #{idx.item()}: {pred_name} -> {ecom_cat} "
-        f"(conf={conf:.2f}) [{status}]"
-    )
-
-print("\n  EXAMPLE REVIEW-NEEDED LISTINGS:")
-review_indices = torch.where(review_mask)[0][:5]
-for idx in review_indices:
-    pred_name = CLASS_NAMES[val_preds[idx].item()]
-    true_name = CLASS_NAMES[y_val[idx].item()]
-    conf = val_confidences[idx].item()
-    print(
-        f"    Listing #{idx.item()}: predicted={pred_name} (conf={conf:.2f}), "
-        f"true={true_name} -> NEEDS HUMAN REVIEW"
-    )
-
-# ── Checkpoint 5: Apply section complete ─────────────────────────────
-assert n_auto + n_review + n_reject == n_total, "Triage should cover all samples"
-assert auto_acc > 0.7, (
-    f"Auto-approved accuracy {auto_acc:.3f} too low -- "
-    "high-confidence predictions should be mostly correct"
-)
-print("\n--- Checkpoint 5 passed --- e-commerce application demonstrated\n")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# Clean up
-# ════════════════════════════════════════════════════════════════════════
-import asyncio
-
-asyncio.run(conn.close())
-
-
-# ════════════════════════════════════════════════════════════════════════
-# REFLECTION
-# ════════════════════════════════════════════════════════════════════════
-print("\n" + "=" * 70)
-print("  WHAT YOU'VE MASTERED")
-print("=" * 70)
-print(
-    """
-  THEORY:
-  [x] Convolutions scan local patches with shared weights -- 3x3 filters
-      detect edges at every position with only 9 parameters
-  [x] Spatial hierarchy: edges -> textures -> parts -> objects, each
-      layer building on the previous
-  [x] BatchNorm stabilises training; MaxPool adds translation invariance
-
-  BUILD + TRAIN:
-  [x] SimpleCNN: Conv2d + BatchNorm + ReLU + MaxPool, two-block design
-  [x] Trained on FULL CIFAR-10 (50K images) with ExperimentTracker
   [x] ~{param_count:,} parameters, achieves >{simple_accs[-1]:.0%} validation accuracy
 
   VISUALISE (the proof):
@@ -1065,4 +681,3 @@ print(
   residual connections and attention mechanisms fix the problem...
 """
 )
-

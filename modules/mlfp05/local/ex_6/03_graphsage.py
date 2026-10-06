@@ -7,7 +7,8 @@
 #
 # WHAT YOU'LL LEARN:
 #   - Why GCN doesn't scale to large graphs (full adjacency in memory)
-#   - Inductive learning: generalise to unseen nodes at inference time
+#   - Inductive learning: why GraphSAGE CAN embed unseen nodes (and why
+#     this Cora exercise does not yet prove it)
 #   - Neighbour sampling strategy: fixed-size random subsets per node
 #   - Separate self/neighbour projections for richer representations
 #   - Train a scalable node classifier on the Cora citation network
@@ -50,9 +51,9 @@ import matplotlib.pyplot as plt
 # For Cora (2,708 nodes), that's a 2708 x 2708 matrix — no problem.
 # But real-world graphs are much bigger:
 #
-#   - Singapore food delivery network: ~500K users x ~50K restaurants
-#   - Facebook social graph: 3 billion nodes
-#   - Google Knowledge Graph: 500 billion edges
+#   - A city-scale food delivery network: ~500K users x ~50K restaurants
+#   - A global social network: billions of user nodes
+#   - A web-scale knowledge graph: hundreds of billions of facts (edges)
 #
 # A 500K x 500K dense adjacency matrix needs ~1 TB of memory. Even
 # sparse representations strain GPU memory when you need multi-hop
@@ -100,9 +101,12 @@ print(
      -> A FUNCTION, not a lookup — works on any neighbour set
 
   3. INDUCTIVE: learns HOW to aggregate, not WHAT to embed
-     -> New nodes at inference time? No problem — just sample their
-        neighbours and run the learned aggregator
-     -> GCN/GAT are TRANSDUCTIVE: they need the full graph at test time
+     -> New nodes at inference time? Sample their neighbours and run
+        the learned aggregator
+     -> GCN as trained in ex_6.1 is used TRANSDUCTIVELY: one fixed,
+        full-graph normalised adjacency, with the test nodes already in
+        the graph during training. (GAT also learns a function of node
+        features and was shown to be inductive in its own paper.)
 
   Formula: h'_i = sigma( W_self @ h_i + W_neigh @ MEAN(sample(N(i))) )
   Separate W_self and W_neigh = "what I know" vs "what neighbours say"
@@ -149,45 +153,43 @@ class GraphSAGELayer(nn.Module):
 
     def __init__(self, in_dim: int, out_dim: int, sample_k: int = 10):
         super().__init__()
-        # TODO: Create two linear projections (no bias):
-        # - self.W_self: in_dim -> out_dim (for the node's own features)
-        # - self.W_neigh: in_dim -> out_dim (for the aggregated neighbour features)
-        # Also store self.sample_k = sample_k
-        # Hint: nn.Linear(in_dim, out_dim, bias=False)
-        pass
+        # TODO: two SEPARATE bias-free projections in_dim -> out_dim — one
+        #       for the node's own features, one for its neighbours' mean
+        self.W_self = ____
+        self.W_neigh = ____
+        self.sample_k = sample_k
 
     def forward(self, h: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
         n = h.size(0)
 
-        # TODO: Implement neighbour sampling
-        # During training (self.training == True) and sample_k < n:
-        #   For each node i, find its neighbours, keep at most sample_k
-        #   Build a sample_mask tensor of shape (n, n) with 1s for kept neighbours
-        # During eval: use the full adjacency matrix
-        # Hint: Loop over nodes, use torch.where(adj[i] > 0)[0] to find neighbours,
-        #        then torch.randperm(len(neigh_idx))[:self.sample_k] to subsample
+        # Neighbour sampling: for each node, keep at most sample_k neighbours
+        # by zeroing out excess connections. At eval time, use all neighbours
+        # for deterministic output (like dropout).
         if self.training and self.sample_k < n:
-            # TODO: Build sample_mask by iterating over nodes
-            # sample_mask = torch.zeros_like(adj)
-            # for i in range(n):
-            #     neigh_idx = torch.where(adj[i] > 0)[0]
-            #     if len(neigh_idx) <= self.sample_k:
-            #         sample_mask[i, neigh_idx] = 1.0
-            #     else:
-            #         perm = torch.randperm(len(neigh_idx), device=h.device)[:self.sample_k]
-            #         sample_mask[i, neigh_idx[perm]] = 1.0
-            # adj_sampled = sample_mask
-            adj_sampled = adj  # Replace with your sampling implementation
+            sample_mask = torch.zeros_like(adj)
+            for i in range(n):
+                neigh_idx = torch.where(adj[i] > 0)[0]
+                # TODO: keep every neighbour if there are at most sample_k;
+                #       otherwise keep a RANDOM subset of sample_k of them
+                #       (set those entries of sample_mask[i] to 1)
+                # Hint: torch.randperm gives a random ordering of indices
+                ____
+            adj_sampled = sample_mask
         else:
             adj_sampled = adj
 
-        # TODO: Mean aggregation + combine self and neighbour representations
-        # 1. Compute degree: deg_sampled = adj_sampled.sum(dim=1, keepdim=True).clamp(min=1.0)
-        # 2. Mean of neighbours: h_neigh = (adj_sampled @ h) / deg_sampled
-        # 3. Self projection: h_self = self.W_self(h)
-        # 4. Neighbour projection: h_agg = self.W_neigh(h_neigh)
-        # 5. Combine: return h_self + h_agg
-        pass
+        # Mean aggregation: average the features of sampled neighbours
+        # TODO: MEAN of the sampled neighbours' features, shape (N, in_dim)
+        # Hint: a matrix multiply sums neighbours; divide by the number kept
+        #       (clamp at 1 so isolated nodes do not divide by zero)
+        deg_sampled = ____
+        h_neigh = ____
+
+        # TODO: combine self and neighbour representations (Phase 1 formula,
+        #       before the activation)
+        h_self = ____
+        h_agg = ____
+        return h_self + h_agg  # additive combination
 
 
 class GraphSAGE(nn.Module):
@@ -197,19 +199,20 @@ class GraphSAGE(nn.Module):
         self, in_dim: int, hidden_dim: int, n_classes: int, sample_k: int = 10
     ):
         super().__init__()
-        # TODO: Create two GraphSAGE layers with sample_k
-        # Layer 1: in_dim -> hidden_dim
-        # Layer 2: hidden_dim -> n_classes
-        pass
+        # TODO: two GraphSAGELayers (pass sample_k through to both)
+        self.l1 = ____
+        self.l2 = ____
 
     def forward(self, h: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
-        # TODO: Two-layer forward: ReLU after layer 1, dropout(0.5), then layer 2
-        pass
+        # TODO: layer 1 + ReLU, dropout(p=0.5) while training, layer 2 raw
+        h = ____
+        h = ____
+        return ____
 
     def embed(self, h: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
         """Return the hidden-layer embedding (before classification head)."""
-        # TODO: Return ReLU(layer1(h, adj))
-        pass
+        # TODO: the activated output of the first layer (no dropout)
+        return ____
 
 
 sage = GraphSAGE(
@@ -260,20 +263,67 @@ sage_losses, sage_val, sage_test = train_node_classifier(
 # ── Train Checkpoint ────────────────────────────────────────────────
 assert len(sage_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses for GraphSAGE"
 assert sage_losses[-1] < sage_losses[0], "GraphSAGE loss should decrease"
-best_val = max(sage_val)
-best_test = max(sage_test)
+# Model selection by VALIDATION accuracy; report test accuracy at that
+# epoch (the harness has already restored that epoch's weights).
+# TODO: epoch by validation accuracy, then that epoch's test accuracy
+best_epoch = ____
+best_val = sage_val[best_epoch]
+best_test = ____
 print(f"\n  GraphSAGE Results:")
-print(f"    Best validation accuracy: {best_val:.4f}")
-print(f"    Best test accuracy:       {best_test:.4f}")
+print(f"    Best validation accuracy: {best_val:.4f} (epoch {best_epoch + 1})")
+print(f"    Test accuracy, that epoch: {best_test:.4f}")
 print(f"    Final loss:               {sage_losses[-1]:.4f}")
-# INTERPRETATION: GraphSAGE is INDUCTIVE — it learns a generalised
-# aggregation function that works on unseen nodes. During training, it
+# INTERPRETATION: GraphSAGE is designed to be INDUCTIVE — it learns an
+# aggregation FUNCTION that can be applied to nodes it never saw. Note
+# that this run is still transductive: every Cora node, including the
+# test nodes, sits in the graph during training. During training, it
 # randomly samples K neighbours per node (like dropout for graphs),
 # which provides regularisation and makes it scalable to large graphs.
 # The separate W_self and W_neigh projections let the model learn
 # different transformations for a node's own features versus its
 # neighbours' features.
 print("\n--- Train checkpoint passed --- GraphSAGE trained successfully\n")
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — Prescription Pad before Visualise
+# ══════════════════════════════════════════════════════════════════
+# run_diagnostic_checkpoint instruments the trained model, replays a few
+# forward/backward passes of the REAL training objective (cross-entropy
+# on the labelled training nodes; no weights are updated) and replays
+# the per-epoch training losses. The whole graph is one "batch", so the
+# loader is the same full-graph tuple repeated.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _node_loss(m, batch):
+    feats, graph, labels, mask = batch
+    return F.cross_entropy(m(feats, graph)[mask], labels[mask])
+
+
+diag, findings = run_diagnostic_checkpoint(
+    sage,
+    [(X, A, y, graph_data["train_mask"])] * 4,
+    _node_loss,
+    title="GraphSAGE — Sample and Aggregate",
+    n_batches=4,
+    train_losses=sage_losses,
+    show=False,
+)
+print_prescription_pad(findings, "GraphSAGE — Sample and Aggregate")
+# HOW TO READ IT (your readings depend on your run):
+#  GRADIENT FLOW — a 2-layer GNN rarely vanishes. Exploding readings
+#     usually mean the propagation matrix is not normalised (a raw
+#     adjacency multiplies feature scale by node degree) or the learning
+#     rate is too high.
+#  DEAD NEURONS — this model applies its activation functionally
+#     (F.relu / F.elu), so there is no activation LAYER for the
+#     instrument to hook; an UNKNOWN reading here is expected, not a
+#     fault. Use nn.ReLU modules if you want this reading.
+#  LOSS TREND — this sees only the training loss. Over-fitting shows up
+#     in the gap between the validation and training curves, not here.
+# ══════════════════════════════════════════════════════════════════
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -323,19 +373,8 @@ plot_training_curves(
     filename="sage_accuracy_curves.html",
 )
 
-# TODO: Analyse the effect of sampling K on embedding variance
+# Plot 4: Analyse the effect of sampling K on embedding variance
 # Run multiple forward passes in training mode to show stochastic embeddings
-# 1. Set sage.train() to enable sampling
-# 2. Run 5 forward passes with torch.no_grad(), collecting embeddings
-# 3. Stack embeddings: shape (5, N, hidden)
-# 4. Compute per-node variance: var across the 5 trials, mean across hidden dim
-# 5. Set sage.eval() to restore deterministic mode
-# 6. Create 2 subplots:
-#    Left: histogram of per-node embedding variance
-#    Right: scatter plot of variance vs node degree
-# 7. Save to OUTPUT_DIR / "sage_sampling_variance.png"
-# Hint: embeddings_stack = np.stack(embeddings_list)
-#        per_node_var = embeddings_stack.var(axis=0).mean(axis=1)
 print("\n  Sampling stochasticity analysis:")
 embedding_variances = []
 sage.train()  # Enable sampling
@@ -345,22 +384,30 @@ with torch.no_grad():
         emb_trial = sage.embed(X, A).cpu().numpy()
         embeddings_list.append(emb_trial)
     embeddings_stack = np.stack(embeddings_list)  # (5, N, hidden)
-    per_node_var = embeddings_stack.var(axis=0).mean(axis=1)  # (N,)
+    # TODO: one number per node — variance across the 5 trials, averaged
+    #       over the hidden dimensions
+    per_node_var = ____  # (N,)
 
 sage.eval()  # Restore eval mode
 
 fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-# TODO: Left subplot — histogram of per_node_var
-# axes[0].hist(per_node_var, bins=50, color="coral", edgecolor="white", alpha=0.8)
-# axes[0].set_xlabel("Embedding Variance Across Samples")
-# axes[0].set_title("Stochastic Embedding Variance\n(5 forward passes with sampling)")
+# Left: histogram of per-node embedding variance
+axes[0].hist(per_node_var, bins=50, color="coral", edgecolor="white", alpha=0.8)
+axes[0].set_xlabel("Embedding Variance Across Samples", fontsize=11)
+axes[0].set_ylabel("Number of Nodes", fontsize=11)
+axes[0].set_title(
+    "Stochastic Embedding Variance\n(5 forward passes with sampling)", fontsize=12
+)
 
-# TODO: Right subplot — scatter of degrees vs per_node_var
-# axes[1].scatter(degrees, per_node_var, s=8, alpha=0.4, color="steelblue")
-# axes[1].set_xlabel("Node Degree")
-# axes[1].set_ylabel("Embedding Variance")
-# axes[1].set_title(f"Variance vs Degree (sample_k={SAMPLE_K})")
+# Right: variance vs degree
+axes[1].scatter(degrees, per_node_var, s=8, alpha=0.4, color="steelblue")
+axes[1].set_xlabel("Node Degree", fontsize=11)
+axes[1].set_ylabel("Embedding Variance", fontsize=11)
+axes[1].set_title(
+    f"Variance vs Degree (sample_k={SAMPLE_K})\nHigher degree -> more sampling -> more variance",
+    fontsize=12,
+)
 
 plt.tight_layout()
 filepath = OUTPUT_DIR / "sage_sampling_variance.png"
@@ -368,11 +415,22 @@ plt.savefig(filepath, dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved: {filepath}")
 
-high_var_nodes = (per_node_var > np.percentile(per_node_var, 90)).sum()
-low_var_nodes = (per_node_var < np.percentile(per_node_var, 10)).sum()
-print(f"    High-variance nodes (top 10%): {high_var_nodes} — mostly high-degree nodes")
-print(f"    Low-variance nodes (bottom 10%): {low_var_nodes} — mostly low-degree nodes")
-print(f"    Nodes with degree <= {SAMPLE_K}: deterministic (no sampling needed)")
+high_var = per_node_var > np.percentile(per_node_var, 90)
+low_var = per_node_var <= np.percentile(per_node_var, 10)
+print(
+    f"    High-variance nodes (top 10%): {int(high_var.sum())}, "
+    f"mean degree {degrees[high_var].mean():.1f}"
+)
+print(
+    f"    Low-variance nodes (bottom 10%): {int(low_var.sum())}, "
+    f"mean degree {degrees[low_var].mean():.1f}"
+)
+small = degrees <= SAMPLE_K
+print(
+    f"    Nodes with degree <= {SAMPLE_K}: their layer-1 neighbourhood is never "
+    f"subsampled (mean variance {per_node_var[small].mean():.2e} vs "
+    f"{per_node_var[~small].mean():.2e} for larger-degree nodes)"
+)
 
 # ── Visualise Checkpoint ────────────────────────────────────────────
 assert sage_emb.shape == (
@@ -386,12 +444,12 @@ print("\n--- Visualise checkpoint passed --- GraphSAGE embeddings + variance plo
 # PHASE 5 — APPLY: Recommendation Engine for Food Delivery
 # ════════════════════════════════════════════════════════════════════════
 print("=" * 70)
-print("  PHASE 5 — APPLY: Food Delivery Recommendations (GrabFood/foodpanda)")
+print("  PHASE 5 — APPLY: Food Delivery Recommendations")
 print("=" * 70)
 print(
     """
-  SCENARIO: You're building a recommendation engine for a Singapore food
-  delivery platform (GrabFood, foodpanda, or Deliveroo).
+  SCENARIO (illustrative): You're building a recommendation engine for a
+  Singapore food delivery platform.
 
   THE GRAPH:
   - User nodes: ~500K users with features (location, order frequency, cuisine prefs)
@@ -402,12 +460,13 @@ print(
   WHY GRAPHSAGE IS THE RIGHT CHOICE:
   1. SCALE: 550K nodes = GCN's adjacency matrix would need 302 billion entries
      GraphSAGE samples 10 neighbours per node = bounded memory
-  2. INDUCTIVE: new restaurants join daily. GCN would need to retrain on the
-     entire graph. GraphSAGE classifies new restaurants immediately by
-     sampling their first customers' embeddings.
+  2. INDUCTIVE: new restaurants join daily. A full-graph GCN like ex_6.1's
+     has to be re-run (and usually retrained) on the whole updated graph.
+     GraphSAGE is trained to embed a new restaurant directly from a
+     sample of its first customers' features.
   3. COLD START: a new restaurant with just 3 orders can be embedded —
-     GraphSAGE averages those 3 users' embeddings. GCN has no mechanism
-     for unseen nodes.
+     GraphSAGE aggregates those 3 users. Whether that embedding is GOOD
+     is something you measure on held-out new restaurants, not assume.
 
   RECOMMENDATION PIPELINE:
   1. Train GraphSAGE on the user-restaurant graph
@@ -418,41 +477,42 @@ print(
 """
 )
 
-# TODO: Demonstrate collaborative filtering baseline vs GraphSAGE
-# Using Cora as proxy: predict class from majority class of neighbours
-# 1. For each node, find neighbours in A
-# 2. Take majority vote of neighbour labels -> prediction
-# 3. Compute accuracy on test_mask
-# 4. Compare to GraphSAGE test accuracy
-# Hint: counts = torch.bincount(neighbour_labels, minlength=n_classes)
-#        majority_preds[i] = counts.argmax()
-print("  Collaborative Filtering Baseline vs GraphSAGE:")
+# Demonstrate a neighbour-majority (CF-style) baseline vs GraphSAGE
+# Using Cora as proxy: predict class membership from neighbourhood
+print("  Neighbour-Majority Baseline vs GraphSAGE:")
 
-majority_preds = torch.zeros(N, dtype=torch.long, device=device)
+# Baseline: predict a node's class by majority vote over the labels of its
+# TRAINING-set neighbours only. Using every neighbour's label would read
+# the true labels of validation/test nodes — label leakage.
+train_mask = graph_data["train_mask"]
 test_mask = graph_data["test_mask"]
+fallback_class = int(torch.bincount(y[train_mask], minlength=n_classes).argmax())
+majority_preds = torch.full((N,), fallback_class, dtype=torch.long, device=device)
 
-# TODO: Implement majority-vote baseline
-# for i in range(N):
-#     neighbours = torch.where(A[i] > 0)[0]
-#     if len(neighbours) == 0:
-#         majority_preds[i] = 0
-#         continue
-#     neighbour_labels = y[neighbours]
-#     counts = torch.bincount(neighbour_labels, minlength=n_classes)
-#     majority_preds[i] = counts.argmax()
+for i in range(N):
+    # TODO: node i's neighbours that are in the TRAINING set (their labels
+    #       are the only ones we may look at)
+    neighbours = ____
+    if len(neighbours) == 0:
+        continue  # no labelled neighbour: keep the majority training class
+    neighbour_labels = y[neighbours]
+    # Majority vote
+    # TODO: the most common label among them
+    # Hint: torch.bincount counts each class (set minlength=n_classes)
+    ____
 
 cf_acc = (majority_preds[test_mask] == y[test_mask]).float().mean().item()
 
-print(f"    Collaborative filtering (neighbour majority): {cf_acc:.4f}")
-print(f"    GraphSAGE (learned aggregation):              {best_test:.4f}")
+print(f"    Neighbour majority (train labels only): {cf_acc:.4f}")
+print(f"    GraphSAGE (learned aggregation):        {best_test:.4f}")
 improvement = best_test - cf_acc
 print(
-    f"    Improvement:                                  +{improvement:.4f} ({improvement*100:.1f} pp)"
+    f"    Difference:                             {improvement:+.4f} ({improvement*100:+.1f} pp)"
 )
 
 print(
     """
-  WHY GRAPHSAGE BEATS SIMPLE COLLABORATIVE FILTERING:
+  HOW GRAPHSAGE DIFFERS FROM THE NEIGHBOUR-MAJORITY BASELINE:
   - CF just counts neighbours — GraphSAGE LEARNS what to aggregate
   - CF has no features — GraphSAGE combines structure with node features
   - CF is one-hop — 2-layer GraphSAGE captures 2-hop patterns
@@ -475,7 +535,7 @@ if has_registry:
         model=sage,
         metrics=[
             MetricSpec(name="best_val_accuracy", value=best_val),
-            MetricSpec(name="best_test_accuracy", value=best_test),
+            MetricSpec(name="test_accuracy_at_best_val", value=best_test),
             MetricSpec(name="final_loss", value=sage_losses[-1]),
             MetricSpec(name="cf_baseline_accuracy", value=cf_acc),
             MetricSpec(name="improvement_over_cf", value=improvement),
@@ -503,10 +563,12 @@ print(
   [x] Neighbour sampling: fixed K neighbours per node bounds memory
   [x] Mean aggregator: MEAN(h_j for j in Sample(N(i)))
   [x] Separate projections: W_self @ h_i + W_neigh @ h_agg
-  [x] INDUCTIVE learning: generalises to unseen nodes (new restaurants!)
+  [x] INDUCTIVE design: a learned aggregation FUNCTION can embed unseen
+      nodes — this run trained on the full Cora graph, so it shows the
+      mechanism; proving generalisation needs held-out nodes
   [x] Trained on {dataset_name}: {best_val:.1%} val accuracy, {best_test:.1%} test accuracy
-  [x] Analysed sampling stochasticity: high-degree nodes -> more variance
-  [x] Beat collaborative filtering baseline by {improvement*100:.1f} percentage points
+  [x] Analysed sampling stochasticity: variance vs node degree
+  [x] Compared with a neighbour-majority baseline: {improvement*100:+.1f} percentage points
 
   THREE-WAY COMPARISON (so far):
   - GCN: fixed weights, full graph, fast, simple
@@ -526,65 +588,3 @@ print(
 
 # Clean up
 asyncio.run(conn.close())
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # GraphSAGE with neighbour sampling
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (GraphSAGE — Inductive Graph Learning) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        sage,
-        sampled_loader,
-        _diag_loss,
-        title="GraphSAGE — Inductive Graph Learning",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS 6.3e-04 to 9.8e-03 across sampling layers.
-# [✓] Dead neurons  (HEALTHY): 11% inactive.
-# [✓] Loss trend    (HEALTHY): val accuracy 83%, train-val gap stable.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST] Neighbour sampling (vs full graph) makes gradients
-#     slightly noisier but doesn't cause vanishing. The sampled
-#     aggregation is a form of gradient estimation — healthy variance.
-#
-#  [X-RAY] 11% inactive is fine for ReLU + mean aggregation.
-#     GraphSAGE's strength is INDUCTIVE — it generalises to
-#     unseen nodes (unlike GCN which is transductive).
-#
-#  [STETHOSCOPE] Comparable to GAT, but scales to graphs GCN/GAT
-#     can't fit in memory. The architecture trade-off: sampling
-#     noise vs scalability.
-
-

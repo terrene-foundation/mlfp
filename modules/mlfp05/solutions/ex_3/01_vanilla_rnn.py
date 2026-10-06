@@ -170,42 +170,44 @@ rnn_results = train_model(
 )
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — the vanishing-gradient TEXTBOOK case
+# DIAGNOSTIC CHECKPOINT — the vanishing-gradient textbook case
 # ══════════════════════════════════════════════════════════════════
-# VanillaRNN is the vanishing-gradient poster child. This diagnostic
-# run is EXPECTED to fire a CRITICAL Blood Test finding — that is
-# the pedagogical point. LSTM (02) and GRU (03) fix it.
-from kailash_ml import diagnose
+# VanillaRNN is the classic vanishing-gradient architecture. Note what
+# the pad can and cannot see: its gradient-flow reading is per
+# PARAMETER TENSOR (weight_ih, weight_hh, head), aggregated over the
+# whole sequence, so a recurrent layer can read HEALTHY even while the
+# signal from early timesteps decays. The per-timestep decay is what
+# the gradient_decay_rnn() measurement below shows directly.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _mse_loss(m, batch):
+    """Forecast MSE on one (window, target) batch; attention models return
+    (prediction, weights), so keep only the prediction."""
+    xb, yb = batch
+    pred = m(xb)
+    pred = pred[0] if isinstance(pred, tuple) else pred
+    return nn.functional.mse_loss(pred, yb)
+
 
 print("\n── Diagnostic Report (VanillaRNN) ──")
-report = diagnose(rnn_model, kind="dl", data=val_loader, show=False)
+diag, findings = run_diagnostic_checkpoint(
+    rnn_model,
+    train_loader,
+    _mse_loss,
+    title="VanillaRNN",
+    train_losses=rnn_results["train_losses"],
+    val_losses=rnn_results["val_losses"],
+    show=False,
+)
+print_prescription_pad(findings, "VanillaRNN")
 
-# ══════ EXPECTED OUTPUT (reference shape — BAD but INSTRUCTIVE) ══════
-# ══════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ══════════════════════════════════════════════════════════════════
-#   [X] Gradient flow (CRITICAL): Vanishing gradients at
-#       'rnn.weight_hh_l0' — min RMS ~1e-6. Fix: switch to LSTM/GRU,
-#       shorten sequence, or use gradient clipping.
-#   [!] Dead neurons  (depends on Tanh saturation): 'rnn' (tanh)
-#       showing saturation (|x|>0.99) — the classic recurrent
-#       vanishing-gradient fingerprint.
-#   [?] Loss trend    (HEALTHY or plateaued early): loss stops
-#       dropping because gradients through time are ~0.
-# ══════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE:
-#   - The `rnn.weight_hh_l0` parameter is the hidden-to-hidden
-#     matrix. Gradients propagating backward through time repeatedly
-#     multiply by it; if its spectral radius < 1, gradients shrink
-#     exponentially with sequence length. Bengio et al. 1994.
-#   - Tanh saturation (|x|>0.99) is a second diagnostic — once
-#     the recurrence saturates, derivatives collapse toward zero
-#     and no learning can propagate backward through that step.
-#   - THIS is the failure LSTM's gating mechanism solves — cells
-#     can selectively preserve gradient flow across time.
-#   - Do NOT "fix" this RNN; its pathology IS the lesson. Move to
-#     02_lstm.py to see a healthier Prescription Pad on the same task.
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# With train AND validation losses passed in, the loss-trend reading
+# can flag over- or underfitting. If the pad is HEALTHY but the
+# gradient-decay ratio below is large, you have learned the pad's
+# blind spot: it measures layers, not time steps.
 # ══════════════════════════════════════════════════════════════════
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
@@ -388,8 +390,8 @@ print("--- Checkpoint 7 passed --- model registered\n")
 # ════════════════════════════════════════════════════════════════════════
 #
 # BUSINESS SCENARIO:
-#   You are a data analyst at Ya Kun Kaya Toast, one of Singapore's
-#   most beloved F&B chains with 100+ outlets across the island.
+#   You are a data analyst at a Singapore kopitiam-style F&B chain
+#   with 100+ outlets across the island.
 #   Management wants to predict daily sales volume per outlet to
 #   optimise ingredient ordering and staff scheduling.
 #
@@ -401,14 +403,14 @@ print("--- Checkpoint 7 passed --- model registered\n")
 #   30+ days ago.
 #
 # BUSINESS INTERPRETATION:
-#   - Predicting 3 days ahead lets Ya Kun order kaya, bread, and eggs
-#     with the right lead time for their supplier (Gardenia, local farms)
+#   - Predicting 3 days ahead lets the chain order kaya, bread, and eggs
+#     with the right lead time for its bakery and egg suppliers
 #   - Overprediction: wasted ingredients (kaya toast bread has 2-day shelf life)
 #   - Underprediction: stockouts during peak hours, lost revenue + customer churn
 #   - At ~$8 average transaction across 100 outlets, even a 5% improvement
 #     in demand forecasting accuracy saves ~$146K/year in waste reduction
 print("=" * 70)
-print("  APPLY: Ya Kun Kaya Toast — Daily Demand Forecasting")
+print("  APPLY: Singapore F&B Chain — Daily Demand Forecasting")
 print("=" * 70)
 
 # Generate realistic F&B sales data with weekly seasonality
@@ -509,17 +511,17 @@ ax.plot(
 )
 ax.set_xlabel("Day")
 ax.set_ylabel("Daily Transactions")
-ax.set_title("Ya Kun Kaya Toast: RNN Demand Forecast vs Actual (60-day window)")
+ax.set_title("F&B chain: RNN Demand Forecast vs Actual (60-day window, synthetic sales)")
 ax.legend()
 ax.grid(True, alpha=0.3)
 fig.tight_layout()
-fig.savefig(str(OUTPUT_DIR / "01_rnn_yakun_demand_forecast.png"), dpi=150)
+fig.savefig(str(OUTPUT_DIR / "01_rnn_fnb_demand_forecast.png"), dpi=150)
 plt.close(fig)
-print("  Saved: 01_rnn_yakun_demand_forecast.png")
+print("  Saved: 01_rnn_fnb_demand_forecast.png")
 
 # ── Checkpoint 8 (Apply) ────────────────────────────────────────────
 assert mae_day1 < 200, "Day-1 MAE should be reasonable for F&B demand"
-assert (OUTPUT_DIR / "01_rnn_yakun_demand_forecast.png").exists()
+assert (OUTPUT_DIR / "01_rnn_fnb_demand_forecast.png").exists()
 print("--- Checkpoint 8 passed --- Singapore F&B application complete\n")
 
 
@@ -536,7 +538,7 @@ print(
   [x] Hidden state evolution: how the RNN's memory changes across timesteps
   [x] Predicted vs actual time-series overlay (visual proof of model behaviour)
   [x] Tracked training with ExperimentTracker (loss + gradient norms)
-  [x] Applied RNN to Singapore F&B demand forecasting (Ya Kun Kaya Toast)
+  [x] Applied RNN to Singapore F&B demand forecasting (synthetic sales)
   [x] Quantified business impact: S${annual_savings:,.0f}/year savings
 
   Key insight: Vanilla RNNs work for SHORT sequences (5-10 steps) where

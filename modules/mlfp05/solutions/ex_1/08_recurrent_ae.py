@@ -9,7 +9,7 @@
 #   - Build an LSTM-based autoencoder for time-series data
 #   - Understand WHY recurrent architecture preserves temporal order
 #   - Visualise original vs reconstructed time-series overlays
-#   - Apply to SGX financial anomaly / regime change detection
+#   - Apply to equity-market regime change detection
 #   - Quantify portfolio drawdown reduction in S$ for a S$100M fund
 #
 # PREREQUISITES: 07_stacked_ae.py
@@ -19,7 +19,7 @@
 #   1. Generate synthetic sensor vibration data
 #   2. Build LSTM encoder-decoder architecture
 #   3. Train and visualise time-series reconstruction
-#   4. Apply: SGX regime change detection with portfolio impact
+#   4. Apply: equity regime change detection with portfolio impact
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -167,6 +167,7 @@ recurrent_losses = train_variant(
 # don't vanish through DEPTH (we only have 1 recurrent layer here)
 # but through TIME. The Blood Test here is especially informative.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -185,68 +186,14 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=recurrent_losses,
     show=False,
 )
+print_prescription_pad(findings, "Recurrent AE (LSTM)")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Gradient flow (WARNING): Hidden-to-hidden gradient
-#       attenuation at 'encoder.weight_hh_l0' — RMS = 3.6e-05.
-#       Gradient flowing BACKWARD through time across 20 steps
-#       shrinks by ~0.8^20 ≈ 1%. LSTM gating helps but does
-#       not eliminate the pattern.
-#   [✓] Saturation   (HEALTHY): max |tanh| = 0.87 on
-#       encoder cell state (below 0.99 saturation flag).
-#       Input/forget/output gates activations in [0.2, 0.8].
-#   [✓] Loss trend    (HEALTHY): train slope -6.2e-04/epoch.
-#       Slower than dense AEs — sequence reconstruction is
-#       intrinsically harder than static image.
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.014 after 10 epochs, sequence_length=20.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — VANISHING THROUGH TIME] RMS 3.6e-05 on
-#     weight_hh_l0 reveals the RNN-specific vanishing pattern:
-#     gradients flow BACKWARD through T=20 timesteps, and each
-#     backprop step multiplies by roughly the hidden-state
-#     Jacobian. LSTM's gating keeps this above the <1e-6 floor
-#     that would kill a vanilla RNN (demonstrated in ex_3/01),
-#     but the attenuation is intrinsic to BPTT. Slide 5L
-#     covers the Hochreiter 1991 analysis.
-#     >> Prescription: (a) Shorten sequence_length to 10 if
-#        gradient drops below 1e-5. (b) Switch to GRU (simpler
-#        gating, often similar performance — see ex_3/03).
-#        (c) Add attention or transformer blocks for very long
-#        sequences (ex_4).
-#
-#  [X-RAY — LSTM-SPECIFIC SATURATION] Dead-neuron % is NOT the
-#     right X-Ray for LSTMs. Tanh and sigmoid saturate
-#     (output → ±1 or 0/1) rather than die. The instrument
-#     reports |tanh| statistics instead. 0.87 max is healthy;
-#     >0.99 would signal gate saturation — gates stuck open
-#     or closed, no information gating, degenerating into a
-#     linear RNN.
-#     >> Prescription: Gradient clipping at max_norm=5.0 +
-#        weight decay 1e-5 on recurrent matrices keeps
-#        activations away from saturation.
-#
-#  [STETHOSCOPE] Slope -6.2e-04/epoch is slower than 02
-#     undercomplete (~-1.5e-3/epoch) on static images. This
-#     is the price of temporal modelling — each step depends
-#     on the prior step's hidden state, so the error signal
-#     is temporally correlated and harder to exploit.
-#     >> Prescription: No fix. If you need faster convergence,
-#        consider teacher forcing (feed ground-truth prior
-#        step during training) — standard RNN trick.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: recurrent AE introduces the
-#  TIME DIMENSION to the diagnostic vocabulary. The Blood
-#  Test now reads "across timesteps", the X-Ray shifts from
-#  "dead" to "saturated". These same readings recur in ex_3
-#  RNN variants (scaled up) and in ex_4 transformers (where
-#  attention replaces recurrence — different mechanism,
-#  same long-range gradient challenge).
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# LSTM gradients can shrink through TIME (100 steps here) even with a
+# single layer. The gradient-flow reading is per parameter tensor
+# (weight_ih / weight_hh), so it shows each layer's overall health, not
+# the per-timestep decay — the time-series reconstructions below show
+# whether long-range structure survived.
 # ════════════════════════════════════════════════════════════════════
 
 
@@ -273,21 +220,21 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — SGX Financial Regime Change Detection
+# APPLY — Equity Market Regime Change Detection
 # ════════════════════════════════════════════════════════════════════════
 # BUSINESS SCENARIO: You are a quantitative analyst at a Singapore
-# hedge fund monitoring SGX equities for regime changes. Markets shift
+# hedge fund monitoring Singapore-listed equities for regime changes. Markets shift
 # between calm and crisis states. Your PM asks: "Can we detect regime
 # changes early enough to reduce portfolio drawdown?"
 
 print("\n" + "=" * 70)
-print("  APPLICATION: SGX Regime Change Detection (S$100M Fund)")
+print("  APPLICATION: Regime Change Detection (S$100M Fund)")
 print("=" * 70)
 
-# --- Generate SGX equity data ---
+# --- Generate SYNTHETIC equity data (simulated, not real prices) ---
 N_DAYS = 1500
 N_STOCKS = 5
-STOCK_NAMES = ["DBS", "OCBC", "Singtel", "CapitaLand", "Keppel"]
+STOCK_NAMES = ["Bank A", "Bank B", "Telco C", "Property D", "Industrial E"]
 fin_rng = np.random.default_rng(42)
 
 base_returns = np.array([0.08, 0.07, 0.04, 0.06, 0.05])
@@ -439,11 +386,11 @@ print(f"Separation: {crisis_errors.mean() / normal_errors.mean():.1f}x")
 # --- Visualisation 1: Price with anomaly overlay ---
 fig, axes = plt.subplots(2, 1, figsize=(16, 10), gridspec_kw={"height_ratios": [2, 1]})
 days = np.arange(N_DAYS)
-axes[0].plot(days, prices[:, 0], color="#1565C0", linewidth=1.2, label="DBS Price")
+axes[0].plot(days, prices[:, 0], color="#1565C0", linewidth=1.2, label="Bank A Price (simulated)")
 for start, end, name in crisis_periods:
     axes[0].axvspan(start, end, alpha=0.15, color="#F44336", label=name)
 axes[0].set_ylabel("Price (S$)")
-axes[0].set_title("DBS Group — Price with Market Regime Detection", fontsize=14)
+axes[0].set_title("Simulated Bank A — Price with Market Regime Detection", fontsize=14)
 axes[0].legend(fontsize=9, loc="upper left", ncol=2)
 axes[0].grid(True, alpha=0.3)
 
@@ -551,7 +498,7 @@ axes[0].plot(
     label=f"Adjusted (S${adjusted_cum[-1]/1e6:.1f}M)",
 )
 axes[0].set_ylabel("Portfolio Value (S$M)")
-axes[0].set_title("S$100M SGX Portfolio: Passive vs Anomaly-Adjusted", fontsize=14)
+axes[0].set_title("S$100M Simulated Portfolio: Passive vs Anomaly-Adjusted", fontsize=14)
 axes[0].legend(fontsize=11)
 axes[0].grid(True, alpha=0.3)
 axes[1].fill_between(
@@ -577,7 +524,7 @@ adjusted_worst_loss = PORTFOLIO_VALUE * abs(adjusted_dd.min())
 dollar_saved = passive_worst_loss - adjusted_worst_loss
 
 print("\n" + "=" * 64)
-print("BUSINESS IMPACT SUMMARY — SGX Regime Detection (S$100M Fund)")
+print("BUSINESS IMPACT SUMMARY — Regime Detection (S$100M Fund, simulated)")
 print("=" * 64)
 print(f"\nEvents detected: {sum(event_detected)}/{len(crisis_periods)}")
 for i, (_, _, name) in enumerate(crisis_periods):
@@ -603,7 +550,7 @@ print(
   [x] Built an LSTM encoder-decoder for time-series data
   [x] Understood temporal order preservation via recurrent architecture
   [x] Visualised original vs reconstructed vibration patterns
-  [x] Applied to SGX regime change detection with early warning
+  [x] Applied to equity regime change detection with early warning
   [x] Built portfolio anomaly-adjusted strategy
   [x] Quantified S$ capital preserved at worst drawdown
 

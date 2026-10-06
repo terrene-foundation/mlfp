@@ -11,8 +11,8 @@ Five questions, each scored pass / fail. Four of them test **build** (you write 
 | 1   | MLP from scratch              | MNIST            | test accuracy ≥ 0.95              | 10 min    |
 | 2   | Convolutional classifier      | MNIST            | test accuracy ≥ 0.97              | 15 min    |
 | 3   | LSTM on sequential signal     | synthetic halves | test accuracy ≥ 0.85              | 10 min    |
-| 4   | Diagnose a broken CNN         | MNIST            | identify **stride + padding** bug | 10 min    |
-| 5   | Train-and-prescribe — iterate | Fashion-MNIST    | 3 HEALTHY verdicts + test ≥ 0.82  | 30–45 min |
+| 4   | Diagnose a broken CNN         | MNIST            | name **Sigmoid saturation** + fix | 10 min    |
+| 5   | Train-and-prescribe — iterate | Fashion-MNIST    | 2 HEALTHY verdicts + test ≥ 0.82  | 30–45 min |
 
 Total: **5 / 5** required for a course pass; 4 / 5 earns a conditional pass with instructor review.
 
@@ -25,25 +25,39 @@ submission summary so both learner and instructor see the same score.
 
 Q1, Q2, Q3 grade on an accuracy threshold after a capped number of epochs (3 for Q2,
 5 for Q1 and Q3). Q4 grades on a keyword match against the learner's free-text
-answer — it accepts multiple phrasings of "stride without padding collapses the
-spatial dimensions" and a concrete fix. Q5 grades on the output of
-`DLDiagnostics.report()` — all three verdicts (`gradient_flow`, `dead_neurons`,
-`loss_trend`) must be **HEALTHY** and test accuracy must be **≥ 0.82** on
-Fashion-MNIST after 3 epochs.
+answer — the learner must name the cause and its mechanism (Sigmoid activations
+saturating so the gradient vanishes before the first conv layer) and a
+non-saturating replacement (ReLU / GELU / LeakyReLU / SiLU). Q5 grades on the output of
+kailash-ml's `DLDiagnostics.report()` — `dead_neurons` and `loss_trend` must be
+**HEALTHY** and test accuracy must be **≥ 0.82** on Fashion-MNIST after 3 epochs.
+`gradient_flow` is printed but advisory: the output layer of a 10-way softmax
+head trips the library's "exploding" cut-offs even on healthy runs.
 
-The Q5 threshold was calibrated by running the TARGET architecture (6-layer
-LayerNorm + GELU + Kaiming MLP, Adam 1e-3, weight decay 1e-4, 200-step warmup) and
-capturing its actual `report()` verdicts. See the module docstring of
-`mlfp05_quiz_solutions.ipynb` for the captured run.
+### Measured calibration (seed 0, 3 epochs, kailash-ml 2.2.2)
+
+| Model                                          | test_acc | gradient_flow        | dead_neurons     | loss_trend | Result |
+| ---------------------------------------------- | -------- | -------------------- | ---------------- | ---------- | ------ |
+| Q4 `Q4BrokenCNN` (Sigmoid ×4), MNIST           | 0.114    | CRITICAL — vanishing | WARNING, 83% sat | WARNING    | —      |
+| Q4 same CNN with GELU, MNIST                   | 0.989    | CRITICAL — advisory  | HEALTHY, 8%      | HEALTHY    | —      |
+| Q5 starter (ReLU, LR 0.1, no warmup)           | 0.100    | CRITICAL — exploding | WARNING, 100%    | HEALTHY    | FAIL   |
+| Q5 TARGET (GELU+LN+Kaiming, LR 5e-4, wu 300)   | 0.867    | CRITICAL — advisory  | HEALTHY, 0%      | HEALTHY    | PASS   |
+| Q5 starter, LR 5e-4 + warmup 300 only          | 0.859    | CRITICAL — advisory  | HEALTHY, 41%     | HEALTHY    | PASS   |
+| Q5 starter, Kaiming + LR 5e-4 + warmup 300     | 0.871    | CRITICAL — advisory  | WARNING, 55%     | HEALTHY    | FAIL   |
+
+Reading the table: the starter fails on accuracy and dead_neurons, not on
+loss_trend (with 3 epochs the library can only detect overfitting). ReLU
+layers zero roughly half their inputs by design, so ReLU-based Q5 answers sit
+near the 50% dead_neurons line and can flip between runs; the robust fix is a
+non-saturating, non-zeroing activation (GELU / LeakyReLU / SiLU).
 
 ## How to Run
 
 Learners open `mlfp05_quiz.ipynb` in Google Colab:
 
 1. **Runtime → Change runtime type → T4 GPU** (free tier is sufficient).
-2. Edit the `FORK_URL` variable in cell 1 to point at the learner's own fork of
-   the Classroom repo. All subsequent cells auto-install `kailash-ml`,
-   `kailash-nexus`, `kailash-kaizen`, PyTorch, and polars.
+2. Run the setup cells. The notebook is self-contained: cell 0 installs
+   `kailash-ml` and friends, cell 1 carries `quiz_harness.py` inline — no git
+   clone and no `FORK_URL` to edit.
 3. Work through Q1 → Q5 top to bottom. Re-run Q5 Cell 2 as many times as needed
    until `check_q5_pass` reports PASS.
 4. The final submission cell prints the aggregate score; learners commit and
@@ -71,8 +85,8 @@ but has all blanks filled in and the target Q5 architecture pre-wired.
 | File                          | Audience   | What it does                                                                 |
 | ----------------------------- | ---------- | ---------------------------------------------------------------------------- |
 | `quiz_harness.py`             | both       | Reusable data loaders, training helpers, and `check_qN` grading functions.   |
-| `mlfp05_quiz.ipynb`           | learner    | Student notebook with blanks. FORK_URL is a template the learner edits.      |
-| `mlfp05_quiz_solutions.ipynb` | instructor | Identical structure, all blanks filled, FORK_URL pre-set to the public fork. |
+| `mlfp05_quiz.ipynb`           | learner    | Student notebook with blanks. Self-contained: harness inlined in cell 1.     |
+| `mlfp05_quiz_solutions.ipynb` | instructor | Identical structure, all blanks filled in.                                   |
 | `README.md`                   | instructor | This file.                                                                   |
 
 ## Thresholds Source of Truth
@@ -82,8 +96,18 @@ but has all blanks filled in and the target Q5 architecture pre-wired.
 | `check_q1`      | 0.95 (MNIST MLP)               | Textbook 2-layer MLP hits 0.97 in 5 epochs; 0.95 leaves room for off-by-one mistakes.      |
 | `check_q2`      | 0.97 (MNIST CNN)               | A 2-conv CNN hits 0.99 after 3 epochs; 0.97 rejects architectures that collapse dims.      |
 | `check_q3`      | 0.85 (halves task)             | A BoW MLP scores 0.50 on this task; a correctly-wired LSTM scores 0.95+.                   |
-| `check_q4`      | keyword match                  | The fix is "add padding or reduce stride"; we accept either phrasing.                      |
+| `check_q4`      | keyword match                  | 2 of {sigmoid, saturat*, vanish*} + one of {ReLU, GELU, SiLU, ELU} family.                 |
 | `check_q5_pass` | `Q5_TEST_ACC_THRESHOLD = 0.82` | TARGET architecture reliably hits 0.87 in 3 epochs on Fashion-MNIST; 0.82 leaves headroom. |
 
 All thresholds live in `quiz_harness.py` as named constants so they can be
 audited and updated in one place.
+
+## Editing the Harness
+
+Both notebooks carry `quiz_harness.py` inline in cell 1 so they run in Colab
+without a clone. After any edit to `quiz_harness.py`, re-inline it:
+
+```bash
+.venv/bin/python scripts/sync_quiz_notebooks.py modules/mlfp05/quiz          # rewrite cell 1
+.venv/bin/python scripts/sync_quiz_notebooks.py modules/mlfp05/quiz --check  # drift check only
+```

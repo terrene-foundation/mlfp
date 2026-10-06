@@ -11,7 +11,8 @@
 #   - Build a bidirectional LSTM text classifier for fair comparison
 #   - Contrast sequential (LSTM) vs parallel (Transformer) processing
 #   - Train the LSTM on the same data and compare training dynamics
-#   - Apply LSTM classification to a Singapore airline customer feedback use case
+#   - Check whether a trained classifier's LABELS fit a new business task
+#     (airline feedback routing) before deploying it
 #
 # PREREQUISITES: ex_4/01_self_attention_from_scratch.py
 # ESTIMATED TIME: ~20 min
@@ -35,6 +36,7 @@ from shared.mlfp05.ex_4 import (
     prepare_dataloaders,
     setup_engines,
     text_to_indices,
+    evaluate_accuracy,
     train_model,
 )
 
@@ -160,90 +162,54 @@ lstm_losses, lstm_accs = train_model(
 )
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — LSTM baseline (contrast with Transformer 02)
+# DIAGNOSTIC CHECKPOINT — LSTM baseline (contrast with the Transformer in 02)
 # ══════════════════════════════════════════════════════════════════
-from kailash_ml import diagnose
+# Same data, same training loop as 02 — so differences between the two
+# pads come from the architecture.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _ce_loss(m, batch):
+    """Cross-entropy on one (token_ids, labels) batch."""
+    xb, yb = batch
+    return F.cross_entropy(m(xb), yb)
+
 
 print("\n── Diagnostic Report (LSTM baseline) ──")
-report = diagnose(lstm_model, kind="dl", data=val_loader, show=False)
-# ══════ EXPECTED OUTPUT (reference pattern — LSTM on AG News) ═══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Gradient flow (WARNING): RMS ratio
-#       `lstm.weight_ih_l0` : `head.weight` ≈ 1:50 —
-#       gradients concentrated at the classifier head, modest
-#       signal reaching the embedding layer. Classic mild form
-#       of the vanishing-gradient-through-time problem.
-#   [✓] Activations    (HEALTHY): tanh/sigmoid gates within
-#       [-1, 1] and [0, 1] — no saturation.
-#   [✓] Loss trend     (HEALTHY): train loss decreases steadily;
-#       val acc plateaus ~0.86 by epoch 6.
-# ════════════════════════════════════════════════════════════════
-# Best val acc: ~0.86 after 8 epochs — within 2% of the Transformer
-# on AG News (headlines are short, so the LSTM's sequential
-# bottleneck is manageable).
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST] Gradients concentrate in the CLASSIFIER HEAD.
-#     The LSTM's recurrent weights receive ~50x less signal than
-#     `head.weight`. On 25-token headlines this is tolerable; on
-#     500-token documents the same architecture would collapse
-#     (the first 400 tokens' embeddings never update). This IS
-#     the "vanishing gradient through time" that slide 5.3 warns
-#     about — the Transformer sidesteps it entirely via direct
-#     attention + residual connections.
-#     >> Prescription Pad: if deploying on long documents, switch
-#        to Transformer (ex_4/02) or add gradient clipping +
-#        truncated BPTT. Bidirectional helps but doesn't eliminate
-#        the issue.
-#
-#  [X-RAY] LSTM gate activations healthy — sigmoid outputs in
-#     [0, 1] without saturating at either end. Saturation would
-#     mean the forget gate is stuck "always remember" or "always
-#     forget" which kills the LSTM's ability to learn what to
-#     keep. If the X-Ray flags this, lower the learning rate and
-#     add LayerNorm inside the LSTM cell.
-#     >> Prescription Pad: healthy — no action.
-#
-#  [STETHOSCOPE] Loss curve shows the classic LSTM training
-#     shape: rapid descent for 3 epochs, then a plateau as the
-#     model hits the sequential-bottleneck ceiling. The
-#     Transformer (02) shows a similar trajectory but reaches
-#     a lower plateau — its plateau is the "architectural
-#     ceiling" of the data, not the model.
-#     >> Prescription Pad: compare final val acc side-by-side
-#        with the Transformer to quantify the headroom.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: on SHORT text the LSTM is 95%
-#  as good as the Transformer. The Prescription Pad shows WHY
-#  you would still prefer the Transformer — the gradient-flow
-#  WARNING will become CRITICAL on real production documents
-#  (news articles, support tickets, legal briefs). Never choose
-#  an architecture on toy-length inputs; profile on your real
-#  sequence length distribution.
-#
-#  CONNECT TO SLIDE 5.3 (RNNs) + 5.4 (Transformers): slide 5.3's
-#  unrolled-RNN diagram shows information squeezing through the
-#  hidden state; the WARNING reading above is the quantitative
-#  version of that diagram. Slide 5.4 claims attention "lets
-#  every token reach every other token in one step" — compare
-#  this WARNING with the HEALTHY Blood Test in ex_4/02 to see
-#  the architectural payoff in numbers.
+diag, findings = run_diagnostic_checkpoint(
+    lstm_model,
+    train_loader,
+    _ce_loss,
+    title="LSTM baseline",
+    train_losses=lstm_losses,
+    show=False,
+)
+print_prescription_pad(findings, "LSTM baseline")
+
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# Compare with 02: the LSTM must carry information across MAX_LEN (40) tokens
+# step by step, the Transformer looks at all positions at once. The
+# pad reads per-layer health (weight_ih / weight_hh / head), not
+# per-timestep decay, so judge the architectures mainly on the
+# accuracy and speed comparisons below.
 # ══════════════════════════════════════════════════════════════════
+
+# train_model kept the epoch with the best VALIDATION accuracy (a holdout
+# carved from the training split); the test split is measured once, here.
+lstm_test_acc = evaluate_accuracy(lstm_model, test_t, test_y)
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert len(lstm_losses) == EPOCHS_SCRATCH, "LSTM should train for all epochs"
 assert (
-    max(lstm_accs) > 0.60
-), f"LSTM should reach >60% accuracy, got {max(lstm_accs):.3f}"
+    lstm_test_acc > 0.60
+), f"LSTM should reach >60% test accuracy, got {lstm_test_acc:.3f}"
 # INTERPRETATION: The LSTM provides a strong baseline. On short headlines
 # (avg ~10 words), the LSTM's sequential bottleneck isn't as severe as it
 # would be on longer documents. The real gap between LSTM and Transformer
 # widens as sequence length increases -- on 512-token documents, the
 # Transformer's direct attention outperforms LSTM by a wider margin.
-print(f"\n  LSTM best accuracy: {max(lstm_accs):.3f}")
+print(f"\n  LSTM: best validation acc {max(lstm_accs):.3f} -> test acc {lstm_test_acc:.3f}")
 print(f"  LSTM final loss: {lstm_losses[-1]:.4f}")
 print("\n--- Checkpoint 2 passed --- LSTM baseline trained\n")
 
@@ -280,63 +246,55 @@ print("\n--- Checkpoint 3 passed --- LSTM training dynamics visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Apply: Customer Feedback Classification for Singapore Airlines
+# TASK 5 — Apply: Can the Baseline Route Airline Feedback?
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Singapore Airlines (SQ) collects thousands of customer reviews
-# monthly across Skytrax, Google Reviews, social media, and their own
-# feedback portal. The customer experience team needs to classify each
-# review by topic -- service, food, seat comfort, delays -- to route it
-# to the right operational team for action.
+# SCENARIO: A Singapore-based airline collects thousands of customer
+# reviews a month and wants each one routed by topic — service, seat,
+# delay, food, in-flight tech — to the right operations team.
 #
-# BUSINESS VALUE: Manual review classification takes 2-3 minutes per review.
-# With ~5,000 reviews/month, that is 167-250 hours of analyst time. An
-# automated LSTM classifier handles the first-pass routing, letting analysts
-# focus on extracting actionable insights rather than sorting.
+# The LSTM you trained is a baseline for AG News: its four labels are
+# World, Sports, Business and Sci/Tech. A classifier can only answer the
+# question its labels asked, so it cannot output "Delay" or "Food" — it
+# maps every review onto a NEWS topic, however confident it looks. The
+# table below puts the routing label you WANTED next to the label the
+# model CAN give. Real routing needs the same training recipe on
+# reviews labelled with the airline's own topics.
 #
-# WHY LSTM HERE: The LSTM baseline establishes the accuracy floor. If the
-# LSTM achieves 85% routing accuracy, the Transformer needs to beat that
-# to justify its higher computational cost. If the LSTM achieves 95%, the
-# Transformer's marginal improvement may not justify the infrastructure
-# investment. This is the fundamental question baselines answer.
-#
-# SPEED COMPARISON: On a single GPU, the LSTM processes ~2,000 reviews/second
-# (sequential processing). The Transformer processes ~5,000 reviews/second
-# (parallel attention). For 5,000 reviews/month, both are fast enough --
-# the speed difference matters at scale (millions of reviews).
-print("\n== Application: Customer Feedback at Singapore Airlines ==")
+# WHY THE BASELINE STILL MATTERS: once routing labels exist, an LSTM
+# baseline sets the accuracy floor a Transformer must beat to justify
+# its extra compute — the comparison ex_4/05 makes on AG News.
+print("\n== Application: airline feedback vs a news-topic baseline ==")
 
-# Classify sample "customer reviews" (using AG News as proxy data)
-sq_reviews = [
+airline_reviews = [
     "World class service from cabin crew on long haul flight",
     "New business class seat design wins innovation award",
-    "Flight delayed three hours due to technical issues at Changi",
+    "Flight delayed three hours due to technical issues at the airport",
     "Award winning food menu designed by celebrity chef",
     "Technology upgrade to in-flight entertainment system completed",
 ]
-review_topics = ["Service", "Seat", "Delay", "Food", "Tech"]
+wanted_topics = ["Service", "Seat", "Delay", "Food", "Tech"]
 
 lstm_model.eval()
 with torch.no_grad():
-    sq_idx = torch.tensor(
-        [text_to_indices(t, vocab, MAX_LEN) for t in sq_reviews],
+    review_idx = torch.tensor(
+        [text_to_indices(t, vocab, MAX_LEN) for t in airline_reviews],
         dtype=torch.long,
         device=DEVICE,
     )
-    sq_logits = lstm_model(sq_idx)
-    sq_probs = F.softmax(sq_logits, dim=-1)
-    sq_preds = sq_logits.argmax(dim=-1).cpu().tolist()
+    review_logits = lstm_model(review_idx)
+    review_probs = F.softmax(review_logits, dim=-1)
+    review_preds = review_logits.argmax(dim=-1).cpu().tolist()
 
-print(f"\n  Singapore Airlines review classification (LSTM baseline):")
-print(f"  {'Review':<55} {'Topic':<8} {'AG News Class':<12} {'Confidence':>10}")
+print(f"\n  Airline reviews through the AG News LSTM:")
+print(f"  {'Review':<55} {'Wanted':<8} {'Model says':<12} {'Confidence':>10}")
 print("  " + "-" * 87)
 for text, topic, pred, probs in zip(
-    sq_reviews, review_topics, sq_preds, sq_probs.cpu().tolist()
+    airline_reviews, wanted_topics, review_preds, review_probs.cpu().tolist()
 ):
-    cls_name = CLASS_NAMES[pred]
-    confidence = max(probs)
-    print(f"  {text[:53]:<55} {topic:<8} {cls_name:<12} {confidence:>10.1%}")
+    print(f"  {text[:53]:<55} {topic:<8} {CLASS_NAMES[pred]:<12} {max(probs):>10.1%}")
+print("  None of the 'Model says' labels is a routing team: the label spaces differ.")
 
-# Measure throughput
+# Measure throughput on a batch of 128 sequences of random token ids
 import time
 
 lstm_model.eval()
@@ -347,23 +305,16 @@ with torch.no_grad():
         _ = lstm_model(batch_input)
     t1 = time.perf_counter()
     throughput = (128 * 10) / (t1 - t0)
-    print(f"\n  LSTM throughput: {throughput:,.0f} reviews/second")
+    print(f"\n  LSTM throughput: {throughput:,.0f} sequences/second")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
-assert len(sq_preds) == len(sq_reviews), "Should classify all reviews"
-# INTERPRETATION: The LSTM provides a solid baseline for customer feedback
-# classification. Even without domain-specific training, it captures
-# topic-relevant patterns in text. The Transformer (next exercise) will
-# typically match or exceed this accuracy while processing reviews faster.
-#
-# BUSINESS IMPACT for Singapore Airlines:
-#   - 5,000 customer reviews/month
-#   - 2-3 min manual classification per review -> seconds with LSTM
-#   - Annual saving: 2,000-3,000 analyst hours
-#   - Faster issue escalation: delay complaints reach operations within minutes
-#   - The Transformer comparison (next) determines if the accuracy uplift
-#     justifies the additional compute cost
-print("\n--- Checkpoint 4 passed --- Singapore Airlines application complete\n")
+assert len(review_preds) == len(airline_reviews), "Should classify all reviews"
+assert all(0 <= p < len(CLASS_NAMES) for p in review_preds), "Outputs are AG News ids"
+# BUSINESS IMPACT (illustrative assumptions): at ~5,000 reviews/month and
+# 2-3 minutes of manual sorting each, routing costs 167-250 analyst hours
+# a month. That saving only materialises after a classifier is trained
+# on the airline's own routing labels; this news-topic model saves none.
+print("\n--- Checkpoint 4 passed --- airline feedback check complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -377,9 +328,9 @@ print(
   [x] Understood why baselines are essential for fair evaluation
   [x] Built a bidirectional LSTM text classifier
   [x] Contrasted sequential (LSTM) vs parallel (Transformer) processing
-  [x] Trained on full AG News (120K headlines), best acc: {max(lstm_accs):.1%}
+  [x] Trained on full AG News (120K headlines), test acc: {lstm_test_acc:.1%}
   [x] Measured inference throughput for production sizing
-  [x] Applied to Singapore Airlines customer feedback classification
+  [x] Checked a routing use case against the model's label space
 
   KEY INSIGHT:
     The LSTM is a strong baseline, not a strawman. On short sequences

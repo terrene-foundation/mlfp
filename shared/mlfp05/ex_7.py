@@ -4,7 +4,8 @@
 Shared infrastructure for Exercise 7 — Transfer Learning.
 
 Contains: CIFAR-10 data loading, feature visualisation helpers,
-ExperimentTracker/ModelRegistry setup, training harness.
+ExperimentTracker/ModelRegistry setup, training harness, and the serving
+helpers (flat-row ONNX adapter, request records, ONNX artifact attach).
 Technique-specific code does NOT belong here.
 """
 from __future__ import annotations
@@ -27,6 +28,7 @@ import torchvision.transforms as T
 from kailash.db import ConnectionManager
 from kailash_ml import ExperimentTracker, ModelVisualizer
 from kailash_ml import ModelRegistry
+from kailash_ml.engines.model_registry import LocalFileArtifactStore
 from kailash_ml.types import MetricSpec
 
 from shared.kailash_helpers import get_device, setup_environment
@@ -42,6 +44,11 @@ device = get_device()
 
 OUTPUT_DIR = Path("outputs") / "ex7_transfer_learning"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# The ModelRegistry stores artifact files (model.pkl, model.onnx) in an
+# ArtifactStore. We construct the store explicitly so Part 5 can attach an
+# ONNX serving artifact to a registered version (see attach_onnx_artifact).
+ARTIFACT_STORE = LocalFileArtifactStore(".kailash_ml/artifacts")
 
 # ════════════════════════════════════════════════════════════════════════
 # DATA LOADING — CIFAR-10 (full 50K, resized for ResNet-18)
@@ -151,7 +158,7 @@ async def _setup_engines():
     tracker = await ExperimentTracker.create(store_url=db)
     conn = ConnectionManager(registry_db)
     await conn.initialize()
-    registry = ModelRegistry(conn)
+    registry = ModelRegistry(conn, artifact_store=ARTIFACT_STORE)
     return conn, tracker, "m5_transfer_learning", registry, True
 
 
@@ -332,6 +339,69 @@ def register_model(
 
 
 # ════════════════════════════════════════════════════════════════════════
+# SERVING HELPERS — ONNX export + InferenceServer
+# ════════════════════════════════════════════════════════════════════════
+IMAGE_SHAPE = (3, INPUT_SIZE, INPUT_SIZE)
+N_PIXELS = 3 * INPUT_SIZE * INPUT_SIZE
+
+
+class FlatImageAdapter(nn.Module):
+    """Wrap an image classifier so it accepts flat pixel rows.
+
+    InferenceServer's ONNX runtime turns each request record into ONE row of
+    a 2-D float array, so the exported graph must take ``(batch, N_PIXELS)``.
+    This adapter reshapes rows back to ``(batch, 3, 96, 96)`` (already
+    resized and ImageNet-normalised) before calling the wrapped network.
+    ``predict(X)`` is the method ``OnnxBridge.validate`` calls to get the
+    native (PyTorch) outputs for comparison.
+    """
+
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model(x.reshape(-1, *IMAGE_SHAPE))
+
+    def predict(self, X) -> np.ndarray:
+        model_device = next(self.model.parameters()).device
+        with torch.no_grad():
+            x = torch.as_tensor(np.asarray(X), dtype=torch.float32, device=model_device)
+            return self.forward(x).cpu().numpy()
+
+
+def images_to_records(images: torch.Tensor) -> list[dict[str, float]]:
+    """Turn a batch of preprocessed images into InferenceServer records.
+
+    One record per image, one key per pixel. Keys are zero-padded so the
+    record order is the pixel order the ONNX graph expects.
+    """
+    rows = images.reshape(len(images), -1).cpu().tolist()
+    return [{f"px{j:05d}": float(v) for j, v in enumerate(row)} for row in rows]
+
+
+def attach_onnx_artifact(name: str, version: int, onnx_path: Path) -> None:
+    """Store an exported ONNX file as ``model.onnx`` for a registered version.
+
+    ``ModelRegistry.register_model`` saves the training artifact as
+    ``model.pkl``; ``InferenceServer.from_registry(..., runtime="onnx")``
+    loads ``model.onnx`` for the same name + version from this ArtifactStore.
+
+    OnnxBridge writes large weights to a sibling ``<file>.onnx.data`` file
+    (ONNX external data). Storing only the ``.onnx`` bytes would leave the
+    served model without its weights ("external data path does not exist"),
+    so the model is loaded with its external data and stored as ONE
+    self-contained protobuf.
+    """
+    import onnx
+
+    model_proto = onnx.load(str(onnx_path))  # pulls in any .onnx.data weights
+    asyncio.run(
+        ARTIFACT_STORE.save(name, version, model_proto.SerializeToString(), "model.onnx")
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════
 # FEATURE EXTRACTION & VISUALISATION HELPERS
 # ════════════════════════════════════════════════════════════════════════
 
@@ -456,6 +526,18 @@ def save_training_plots(
     fig = viz.training_history(metrics=metrics, x_label="Epoch", y_label="Value")
     fig.write_html(str(output_path))
     print(f"  Saved: {output_path}")
+
+
+def classifier_diag_loss(model: nn.Module, batch) -> torch.Tensor:
+    """Cross-entropy loss for ``run_diagnostic_checkpoint`` on an image classifier.
+
+    The checkpoint passes each raw ``(images, labels)`` batch from the
+    DataLoader; it does not move tensors, so we move them to the model's
+    device here.
+    """
+    xb, yb = batch
+    model_device = next(model.parameters()).device
+    return F.cross_entropy(model(xb.to(model_device)), yb.to(model_device))
 
 
 def count_params(model: nn.Module, trainable_only: bool = False) -> int:

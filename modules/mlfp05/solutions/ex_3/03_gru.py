@@ -198,74 +198,41 @@ gru_results = train_model(
 )
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — GRU (3 gates vs LSTM's 4)
+# DIAGNOSTIC CHECKPOINT — GRU (3 gate blocks vs the LSTM's 4)
 # ══════════════════════════════════════════════════════════════════
-from kailash_ml import diagnose
+# The GRU merges the LSTM's forget/input gates into one update gate and
+# drops the separate cell state: fewer parameters, similar gradient
+# path. Compare this pad and the loss curves with 02's LSTM.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _mse_loss(m, batch):
+    """Forecast MSE on one (window, target) batch; attention models return
+    (prediction, weights), so keep only the prediction."""
+    xb, yb = batch
+    pred = m(xb)
+    pred = pred[0] if isinstance(pred, tuple) else pred
+    return nn.functional.mse_loss(pred, yb)
+
 
 print("\n── Diagnostic Report (GRU) ──")
-report = diagnose(gru_model, kind="dl", data=val_loader, show=False)
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): min RMS = 2.7e-04 at
-#       'gru.weight_hh_l0'. Comparable to LSTM (02) despite
-#       25% fewer parameters (3 gates vs 4).
-#   [✓] Saturation   (HEALTHY): reset gate mean activation
-#       0.48, update gate mean 0.52 — both in the active
-#       [0.2, 0.8] range, no stuck gates.
-#   [✓] Loss trend    (HEALTHY): train slope -3.1e-03/epoch,
-#       val slope -2.6e-03/epoch. Train-val gap 7%.
-# ════════════════════════════════════════════════════════════════
-# Final val loss: ~1.3 after 15 epochs, sequence_length=60.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — GRU vs LSTM EQUIVALENCE] RMS 2.7e-04 at
-#     gru.weight_hh_l0 is within 10% of LSTM (02). Cho et al.
-#     2014 (Slide 5O) demonstrated that GRU's simplified
-#     gating (reset + update merged into one cell, no
-#     separate forget/output split) preserves the additive
-#     gradient highway without the 4-gate overhead.
-#     Parameter-for-parameter, GRU often matches LSTM on
-#     tasks <500 timesteps.
-#     >> Prescription: Prefer GRU when compute/memory-
-#        constrained (mobile, edge). Prefer LSTM when task
-#        has VERY long dependencies (music generation,
-#        document summarisation) where the explicit cell
-#        state matters.
-#
-#  [X-RAY — 3-GATE SATURATION] weight_hh_l0 packs THREE
-#     gate matrices (reset, update, new-candidate) into
-#     shape [3*hidden, hidden]. Healthy GRU shows both
-#     reset and update gates actively modulating — neither
-#     stuck at 0 (always forget) nor stuck at 1 (never
-#     forget). The "new-candidate" tanh should stay below
-#     0.95 max absolute.
-#     >> Prescription: If update gate saturates high
-#        (>0.9 mean), the GRU stops learning new info —
-#        indicator that task doesn't need recurrence at
-#        all, or that LR is too low. Increase LR or check
-#        whether a feedforward net suffices.
-#
-#  [STETHOSCOPE] 7% train-val gap is slightly better than
-#     LSTM's 10% on the same PM2.5 task. GRU's fewer
-#     parameters = less capacity to overfit. For small
-#     datasets (<10k sequences), this advantage
-#     compounds.
-#     >> Prescription: For tiny datasets, prefer GRU. For
-#        large datasets where every drop of capacity
-#        matters, prefer LSTM.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: GRU diagnostics mirror LSTM
-#  diagnostics — same healthy gradient pattern through
-#  time, same gate-saturation checks (one fewer gate to
-#  read). This forward-references 04_temporal_attention
-#  where a fundamentally different mechanism (attention)
-#  tackles the same long-range-dependency problem, and
-#  05_architecture_comparison which puts all four
-#  architectures on the same diagnostic scale.
-# ════════════════════════════════════════════════════════════════════
+diag, findings = run_diagnostic_checkpoint(
+    gru_model,
+    train_loader,
+    _mse_loss,
+    title="GRU",
+    train_losses=gru_results["train_losses"],
+    val_losses=gru_results["val_losses"],
+    show=False,
+)
+print_prescription_pad(findings, "GRU")
+
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# Similar readings to the LSTM with fewer parameters is the GRU's
+# selling point; the head-to-head accuracy and latency comparison
+# below decides whether that trade-off pays off on this data.
+# ══════════════════════════════════════════════════════════════════
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 assert len(gru_results["train_losses"]) == EPOCHS
@@ -509,11 +476,11 @@ register_best_model(
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — SMRT Predictive Maintenance: Real-Time Sensor Monitoring
+# APPLY — Rail Predictive Maintenance: Real-Time Sensor Monitoring
 # ════════════════════════════════════════════════════════════════════════
 #
 # BUSINESS SCENARIO:
-#   You are a data engineer at SMRT Corporation, which operates
+#   You are a data engineer at a Singapore rail operator, which runs
 #   Singapore's MRT (Mass Rapid Transit) network carrying ~3.4 million
 #   trips per day. Train wheels, bearings, and axles generate vibration
 #   data captured by accelerometers at 1-second intervals.
@@ -526,7 +493,7 @@ register_best_model(
 #     - LSTM: ~{lstm_latency:.3f}ms per inference
 #     - GRU:  ~{gru_latency:.3f}ms per inference ({speedup:.1f}x faster)
 #   At 200 sensors x 200 trains x 60 readings/min = 2.4M inferences/min.
-#   The {speedup:.1f}x speedup means SMRT can run prediction on 40K sensors
+#   The {speedup:.1f}x speedup means the operator can run prediction on 40K sensors
 #   that LSTM cannot serve within the 1-second window.
 #
 # DELIVERABLES:
@@ -534,7 +501,7 @@ register_best_model(
 #   - Latency comparison: can GRU serve all sensors in real-time?
 #   - Maintenance alert: "bearing X shows increasing vibration trend"
 print("\n" + "=" * 70)
-print("  APPLY: SMRT Predictive Maintenance — Vibration Monitoring")
+print("  APPLY: Rail Predictive Maintenance — Vibration Monitoring")
 print("=" * 70)
 
 # Generate realistic vibration sensor data
@@ -632,7 +599,7 @@ print(
 print(f"    These correspond to the last ~5 days where bearing degradation occurs")
 print(f"\n  Business Decision: GRU achieves similar accuracy to LSTM with")
 print(
-    f"  {sensor_speedup:.1f}x lower latency — critical for SMRT's real-time monitoring"
+    f"  {sensor_speedup:.1f}x lower latency — critical for real-time rail monitoring"
 )
 print(f"  of {sensors_per_train * n_trains:,} sensors across {n_trains} trains.")
 
@@ -675,7 +642,7 @@ ax1.fill_between(
 )
 ax1.set_xlabel("Time (minutes)")
 ax1.set_ylabel("Vibration (mm/s^2)")
-ax1.set_title("SMRT Train Bearing Vibration: GRU Prediction vs Actual")
+ax1.set_title("Train Bearing Vibration (synthetic): GRU Prediction vs Actual")
 ax1.legend(loc="upper left")
 ax1.grid(True, alpha=0.3)
 
@@ -699,15 +666,15 @@ ax2.set_title("Bearing Degradation Trend — Maintenance Alert")
 ax2.grid(True, alpha=0.3, axis="y")
 
 fig.tight_layout()
-fig.savefig(str(OUTPUT_DIR / "03_gru_smrt_vibration.png"), dpi=150)
+fig.savefig(str(OUTPUT_DIR / "03_gru_rail_vibration.png"), dpi=150)
 plt.close(fig)
-print("  Saved: 03_gru_smrt_vibration.png")
+print("  Saved: 03_gru_rail_vibration.png")
 
 # ── Checkpoint 7 (Apply) ────────────────────────────────────────────
 assert gru_mae < 1.0, "GRU vibration MAE should be reasonable"
 assert abs(gru_mae - lstm_mae) < 0.5, "GRU and LSTM should have similar accuracy"
-assert (OUTPUT_DIR / "03_gru_smrt_vibration.png").exists()
-print("--- Checkpoint 7 passed --- SMRT predictive maintenance application complete\n")
+assert (OUTPUT_DIR / "03_gru_rail_vibration.png").exists()
+print("--- Checkpoint 7 passed --- rail predictive maintenance application complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -722,7 +689,7 @@ print(
   [x] Head-to-head: GRU val={gru_results['final_val_loss']:.4f} vs LSTM val={lstm_results['final_val_loss']:.4f}
   [x] Latency: GRU is {speedup:.2f}x faster than LSTM on stock data
   [x] Hidden state dynamics: GRU's update gate creates sharper transitions
-  [x] Applied GRU to SMRT predictive maintenance (vibration monitoring)
+  [x] Applied GRU to rail predictive maintenance (vibration monitoring)
   [x] Real-time capacity: GRU serves {sensor_speedup:.1f}x more sensors per second
   [x] Anomaly detection: {n_alerts_gru} alerts for bearing degradation
 

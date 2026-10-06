@@ -118,29 +118,30 @@ def scaled_dot_product_attention(
     d_k = q.size(-1)
 
     # Step 1: Compute raw scores via batched matrix multiplication.
-    # TODO: Use torch.einsum "bqd,bkd->bqk" to compute Q*K^T scores
-    # Hint: scores = torch.einsum("bqd,bkd->bqk", q, k)
+    # TODO: Q K^T for every (query, key) pair -> shape (B, L_q, L_k).
+    # Hint: torch.einsum contracts the shared feature axis d of q and k.
     scores = ...  # YOUR CODE HERE
 
     # Step 2: Scale by 1/sqrt(d_k). Without this, the dot products grow
     # proportionally to d_k, pushing softmax into regions where the gradient
     # is nearly zero.
-    # TODO: Divide scores by math.sqrt(d_k)
+    # TODO: Apply the 1/sqrt(d_k) temperature described above.
     scores = ...  # YOUR CODE HERE
 
     # Step 3: Apply mask (if provided). Setting masked positions to -inf
     # ensures they get zero probability after softmax.
-    # TODO: Use scores.masked_fill(mask == 0, float("-inf")) when mask is not None
+    # TODO: Where mask is 0, overwrite the score with -inf (Tensor.masked_fill).
     if mask is not None:
         ...  # YOUR CODE HERE
 
     # Step 4: Softmax over the key dimension (dim=-1).
-    # TODO: Apply F.softmax to get attention weights — F.softmax(scores, dim=-1)
+    # TODO: Normalise each query's scores into a probability distribution
+    #   over the keys (F.softmax on the key axis).
     weights = ...  # YOUR CODE HERE
 
     # Step 5: Weighted sum of values using einsum.
-    # TODO: Use torch.einsum "bqk,bkd->bqd" to compute weighted values
-    # Hint: out = torch.einsum("bqk,bkd->bqd", weights, v)
+    # TODO: Weighted sum of the value vectors -> shape (B, L_q, d_v).
+    # Hint: torch.einsum again, this time contracting the key axis k.
     out = ...  # YOUR CODE HERE
 
     return out, weights
@@ -183,19 +184,20 @@ sample_indices = torch.tensor(
     [text_to_indices(sample_text, vocab, MAX_LEN)], dtype=torch.long
 )
 
-# TODO: Create embedding layer and compute self-attention on a real headline
-# Hint: embed_dim = 32; embedding = torch.nn.Embedding(len(vocab), embed_dim, padding_idx=0)
-# Then: embedded = embedding(sample_indices) inside torch.no_grad()
-# Then: call scaled_dot_product_attention(embedded, embedded, embedded)
+# TODO: Create an (untrained) embedding layer and run self-attention on a real headline
+# - embedding: torch.nn.Embedding over the whole vocab, embed_dim wide, with
+#   index 0 as the padding index (pads become zero vectors)
+# - embedded: the sample headline's token ids embedded -> (1, MAX_LEN, embed_dim)
+# - SELF-attention: the same tensor plays query, key and value
 embed_dim = 32
 embedding = (
     ...
-)  # YOUR CODE HERE — torch.nn.Embedding(len(vocab), embed_dim, padding_idx=0)
+)  # YOUR CODE HERE
 with torch.no_grad():
-    embedded = ...  # YOUR CODE HERE — embedding(sample_indices)
+    embedded = ...  # YOUR CODE HERE
     _, sample_attn = (
         ...
-    )  # YOUR CODE HERE — scaled_dot_product_attention(embedded, embedded, embedded)
+    )  # YOUR CODE HERE
     sample_attn_np = sample_attn[0].numpy()  # (MAX_LEN, MAX_LEN)
 
 # Build word labels for the heatmap
@@ -220,19 +222,21 @@ assert sample_attn_np.shape == (
 assert Path(
     "ex_4_1_attention_heatmap.html"
 ).exists(), "Attention heatmap should be saved"
-# INTERPRETATION: The heatmap shows which words attend to which. Even with
-# random embeddings, you can see structural patterns: content words attend
-# to other content words, and padding positions form their own cluster.
-# With trained embeddings, these patterns become meaningful -- "Singapore"
-# would strongly attend to "economy", "growth", and "GDP".
+# INTERPRETATION: Here Q = K = V = untrained embeddings, so each word's
+# largest score is with ITSELF (q.k = ||e||^2 / sqrt(d), several times
+# bigger than the roughly +/-1 cross-word scores): expect a bright diagonal
+# and little else. Padding tokens are zero vectors (padding_idx=0), so
+# every score in their row is 0 and they spread attention uniformly.
+# Meaningful off-diagonal structure needs TRAINED projections — that is
+# what ex_4/02's heatmaps show.
 print("\n--- Checkpoint 3 passed --- attention heatmap visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Apply: Document Similarity for a Singapore Law Firm
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Rajah & Tann, one of Singapore's largest law firms, processes
-# thousands of legal documents monthly. Lawyers need to find prior case
+# SCENARIO: A large Singapore law firm processes thousands of legal
+# documents monthly. Lawyers need to find prior case
 # precedents that are relevant to their current case. Traditional keyword
 # search misses semantic connections (e.g., "breach of fiduciary duty" is
 # related to "director's negligence" even though they share no keywords).
@@ -243,10 +247,11 @@ print("\n--- Checkpoint 3 passed --- attention heatmap visualised\n")
 # negligence, trustee misconduct, and corporate governance failures --
 # reducing precedent research from 4-6 hours to 15-30 minutes per case.
 #
-# DOLLAR IMPACT: At S$500-800/hour for senior associates, saving 3-5
-# hours per case on a firm handling ~200 commercial litigation cases/year
-# translates to S$300K-800K in recovered associate time annually.
-print("\n== Application: Document Similarity for Rajah & Tann (Singapore Law) ==")
+# DOLLAR IMPACT (illustrative assumptions): at S$500-800/hour for senior
+# associates, saving 3-5 hours per case on ~200 commercial litigation
+# cases/year would recover S$300K-800K of associate time annually — IF
+# the similarity search is good enough, which untrained embeddings are not.
+print("\n== Application: Document Similarity for a Singapore Law Firm ==")
 
 query_texts = [
     "Wall Street stocks fall as economy shows signs of weakness",
@@ -271,16 +276,17 @@ def get_attention_representation(text: str) -> torch.Tensor:
     indices = torch.tensor([text_to_indices(text, vocab, MAX_LEN)], dtype=torch.long)
     with torch.no_grad():
         # TODO: Compute embedding, apply self-attention, mean-pool over non-pad positions
-        # Step 1: emb = embedding_legal(indices)
-        # Step 2: attn_out, _ = scaled_dot_product_attention(emb, emb, emb)
-        # Step 3: mask = (indices != 0).float().unsqueeze(-1)
-        # Step 4: pooled = (attn_out * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+        # Step 1: embed the token ids with embedding_legal -> (1, MAX_LEN, embed_dim)
+        # Step 2: self-attention over emb (your function from Task 2)
+        # Step 3: float mask of real (non-pad, id != 0) tokens, shaped (1, MAX_LEN, 1)
+        #         so it broadcasts over the feature axis
+        # Step 4: masked mean over the sequence axis (guard the divisor against 0)
         emb = ...  # YOUR CODE HERE
         attn_out, _ = ...  # YOUR CODE HERE
-        mask = ...  # YOUR CODE HERE — (indices != 0).float().unsqueeze(-1)
+        mask = ...  # YOUR CODE HERE
         pooled = (
             ...
-        )  # YOUR CODE HERE — (attn_out * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+        )  # YOUR CODE HERE
     return pooled.squeeze(0)  # (embed_dim,)
 
 
@@ -291,15 +297,16 @@ print(f"\n  Query documents: {len(query_texts)}")
 print(f"  Candidate pool: {len(candidate_texts)} headlines")
 
 # TODO: For each query, compute its representation, find top-3 similar candidates
-# Hint: q_rep = get_attention_representation(q_text)
-# Hint: similarities = F.cosine_similarity(q_rep.unsqueeze(0), candidate_reps, dim=1)
-# Hint: top_k = similarities.topk(3)
+# - q_rep: the query's representation (same helper as the candidates)
+# - similarities: F.cosine_similarity of q_rep against every row of
+#   candidate_reps -> shape (50,); add a batch axis to q_rep so it broadcasts
+# - top_k: the 3 largest similarities (Tensor.topk gives .values and .indices)
 for qi, (q_text, q_label) in enumerate(zip(query_texts, query_labels)):
-    q_rep = ...  # YOUR CODE HERE — get_attention_representation(q_text)
+    q_rep = ...  # YOUR CODE HERE
     similarities = (
         ...
-    )  # YOUR CODE HERE — F.cosine_similarity(q_rep.unsqueeze(0), candidate_reps, dim=1)
-    top_k = ...  # YOUR CODE HERE — similarities.topk(3)
+    )  # YOUR CODE HERE
+    top_k = ...  # YOUR CODE HERE
 
     print(f"\n  Query ({q_label}): '{q_text[:60]}'")
     for rank, (score, idx) in enumerate(
@@ -315,13 +322,14 @@ assert candidate_reps.shape == (
     50,
     embed_dim,
 ), "Should have 50 candidate representations"
-# INTERPRETATION: Even with untrained embeddings, the attention mechanism
-# captures structural patterns in text that aid similarity search. With
-# trained embeddings (as in the Transformer and BERT exercises that follow),
-# the similarity becomes semantically meaningful -- "breach of fiduciary duty"
-# would cluster with "director's negligence" in the attention-weighted space.
+# INTERPRETATION: With untrained embeddings, a match is driven by SHARED
+# WORDS (identical tokens have identical vectors), not by meaning — count
+# the [correct] vs [cross-topic] markers above to see how far that gets.
+# Linking "breach of fiduciary duty" with "director's negligence" needs
+# embeddings and attention TRAINED on legal text (the Transformer and BERT
+# exercises that follow show what training adds).
 #
-# BUSINESS IMPACT for Rajah & Tann:
+# BUSINESS IMPACT (illustrative, once a trained model exists):
 #   - 200 commercial litigation cases/year
 #   - 3-5 hours saved per case on precedent research
 #   - At S$500-800/hour senior associate rate
@@ -331,32 +339,6 @@ print("\n--- Checkpoint 4 passed --- Singapore law firm application complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# REFLECTION
-# ══════════════════════════════════════════════════════════════════════
-print("\n" + "=" * 70)
-print("  WHAT YOU'VE MASTERED — Self-Attention from Scratch")
-print("=" * 70)
-print(
-    """
-  [x] Understood WHY RNNs struggle (information bottleneck, O(n) sequential)
-  [x] Derived scaled dot-product attention step by step
-  [x] Explained the 1/sqrt(d_k) scaling factor (prevents softmax saturation)
-  [x] Visualised attention weights as an interpretable heatmap
-  [x] Applied attention-weighted representations to document similarity
-  [x] Evaluated business impact for Singapore legal industry
-
-  KEY INSIGHT:
-    Attention lets every token directly access every other token in one
-    step. No information bottleneck. No sequential processing. This is
-    the foundation that makes Transformers and BERT possible.
-
-  Next: In 02_transformer_encoder.py, you'll build multi-head attention
-  and a full Transformer encoder classifier that uses this attention
-  mechanism with multiple parallel "heads" for richer representations.
-"""
-)
-
-# ══════════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — none for this file (inference-only derivation)
 # ══════════════════════════════════════════════════════════════════════
 # This exercise derives scaled dot-product attention in NumPy-style
@@ -370,8 +352,8 @@ print(
 # X-Ray in ex_4/02 — "which positions light up?" The demo heatmap
 # above should show a strong diagonal (each position attends to
 # itself) because Q = K = scaled identity. In ex_4/02 the trained
-# Transformer's heatmap will show OFF-DIAGONAL structure — content
-# words attending to related content words. That is the "attention
+# Transformer's heatmaps (ex_4_2_head_*.html) can show OFF-DIAGONAL
+# structure — words attending to other, related words. That is the "attention
 # has learned something" signal. If the trained model's heatmap
 # stays diagonal, the attention heads have collapsed (Prescription
 # Pad row: "attention collapse — add dropout, increase d_model, or
@@ -409,112 +391,3 @@ print(
   mechanism with multiple parallel "heads" for richer representations.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — none for this file (inference-only derivation)
-# ══════════════════════════════════════════════════════════════════════
-# This exercise derives scaled dot-product attention in NumPy-style
-# torch operations. There is no training loop and no learned weights
-# (only untrained embeddings used to populate demo heatmaps), so the
-# five diagnostic instruments (Stethoscope / Blood Test / X-Ray /
-# Vital Signs / Prescription Pad) do not apply here.
-#
-# STUDENT INTERPRETATION GUIDE: the attention heatmap ITSELF is the
-# diagnostic output for this file. Read it the way you would read an
-# X-Ray in ex_4/02 — "which positions light up?" The demo heatmap
-# above should show a strong diagonal (each position attends to
-# itself) because Q = K = scaled identity. In ex_4/02 the trained
-# Transformer's heatmap will show OFF-DIAGONAL structure — content
-# words attending to related content words. That is the "attention
-# has learned something" signal. If the trained model's heatmap
-# stays diagonal, the attention heads have collapsed (Prescription
-# Pad row: "attention collapse — add dropout, increase d_model, or
-# reduce n_heads").
-#
-# CONNECT TO SLIDE 5.4: The slide calls attention "a soft, learned
-# version of a look-up table". The diagonal demo heatmap is the
-# "hard look-up" (each query finds exactly its matching key); the
-# trained Transformer's heatmap is the "soft, learned" version.
-# ══════════════════════════════════════════════════════════════════════
-
-
-# ══════════════════════════════════════════════════════════════════════
-# REFLECTION
-# ══════════════════════════════════════════════════════════════════════
-print("\n" + "=" * 70)
-print("  WHAT YOU'VE MASTERED — Self-Attention from Scratch")
-print("=" * 70)
-print(
-    """
-  [x] Understood WHY RNNs struggle (information bottleneck, O(n) sequential)
-  [x] Derived scaled dot-product attention step by step
-  [x] Explained the 1/sqrt(d_k) scaling factor (prevents softmax saturation)
-  [x] Visualised attention weights as an interpretable heatmap
-  [x] Applied attention-weighted representations to document similarity
-  [x] Evaluated business impact for Singapore legal industry
-
-  KEY INSIGHT:
-    Attention lets every token directly access every other token in one
-    step. No information bottleneck. No sequential processing. This is
-    the foundation that makes Transformers and BERT possible.
-
-  Next: In 02_transformer_encoder.py, you'll build multi-head attention
-  and a full Transformer encoder classifier that uses this attention
-  mechanism with multiple parallel "heads" for richer representations.
-"""
-)
-
-# ══════════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — none for this file (inference-only derivation)
-# ══════════════════════════════════════════════════════════════════════
-# This exercise derives scaled dot-product attention in NumPy-style
-# torch operations. There is no training loop and no learned weights
-# (only untrained embeddings used to populate demo heatmaps), so the
-# five diagnostic instruments (Stethoscope / Blood Test / X-Ray /
-# Vital Signs / Prescription Pad) do not apply here.
-#
-# STUDENT INTERPRETATION GUIDE: the attention heatmap ITSELF is the
-# diagnostic output for this file. Read it the way you would read an
-# X-Ray in ex_4/02 — "which positions light up?" The demo heatmap
-# above should show a strong diagonal (each position attends to
-# itself) because Q = K = scaled identity. In ex_4/02 the trained
-# Transformer's heatmap will show OFF-DIAGONAL structure — content
-# words attending to related content words. That is the "attention
-# has learned something" signal. If the trained model's heatmap
-# stays diagonal, the attention heads have collapsed (Prescription
-# Pad row: "attention collapse — add dropout, increase d_model, or
-# reduce n_heads").
-#
-# CONNECT TO SLIDE 5.4: The slide calls attention "a soft, learned
-# version of a look-up table". The diagonal demo heatmap is the
-# "hard look-up" (each query finds exactly its matching key); the
-# trained Transformer's heatmap is the "soft, learned" version.
-# ══════════════════════════════════════════════════════════════════════
-
-
-# ══════════════════════════════════════════════════════════════════════
-# REFLECTION
-# ══════════════════════════════════════════════════════════════════════
-print("\n" + "=" * 70)
-print("  WHAT YOU'VE MASTERED — Self-Attention from Scratch")
-print("=" * 70)
-print(
-    """
-  [x] Understood WHY RNNs struggle (information bottleneck, O(n) sequential)
-  [x] Derived scaled dot-product attention step by step
-  [x] Explained the 1/sqrt(d_k) scaling factor (prevents softmax saturation)
-  [x] Visualised attention weights as an interpretable heatmap
-  [x] Applied attention-weighted representations to document similarity
-  [x] Evaluated business impact for Singapore legal industry
-
-  KEY INSIGHT:
-    Attention lets every token directly access every other token in one
-    step. No information bottleneck. No sequential processing. This is
-    the foundation that makes Transformers and BERT possible.
-
-  Next: In 02_transformer_encoder.py, you'll build multi-head attention
-  and a full Transformer encoder classifier that uses this attention
-  mechanism with multiple parallel "heads" for richer representations.
-"""
-)
-

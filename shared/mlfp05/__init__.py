@@ -6,7 +6,7 @@ Exercise-specific infrastructure (data loading, visualisation, training
 loops) that technique files import. Each exercise gets its own submodule:
 
     from shared.mlfp05.ex_1 import load_fashion_mnist, train_variant
-    from shared.mlfp05.ex_2 import load_cifar10, train_cnn
+    from shared.mlfp05.ex_2 import load_cifar10, train_model
     ...
 
 Available after `uv sync` from any directory.

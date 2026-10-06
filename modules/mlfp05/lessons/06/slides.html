@@ -26,7 +26,7 @@
   <p class="lesson-meta">Module 5 · Lesson 5.6</p>
   <h1>Graph Neural Networks</h1>
   <p style="font-size: 0.7em; color: #64748B;">GCN · GraphSAGE · GAT · Message passing · torch_geometric</p>
-  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;"><strong>⏱ 75 minutes</strong> &nbsp;·&nbsp; <strong>Outcome:</strong> build GCN and GAT for node and graph classification</div>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;"><strong>⏱ 75 minutes</strong> &nbsp;·&nbsp; <strong>Outcome:</strong> build GCN, GraphSAGE and GAT node classifiers (Cora); know the graph-classification recipe</div>
 </section>
 
 <section>
@@ -63,7 +63,7 @@
   \[ H^{(l+1)} = \sigma\bigl(\tilde{D}^{-1/2}\,\tilde{A}\,\tilde{D}^{-1/2}\,H^{(l)}\,W^{(l)}\bigr) \]
   <ul style="font-size: 0.85em;">
     <li>$\tilde{A} = A + I$ (add self-loops).</li>
-    <li>Degree normalisation ensures equal weight regardless of node degree.</li>
+    <li>Symmetric normalisation scales each message by $1/\sqrt{d_i d_j}$, so feature scale does not blow up with node degree.</li>
     <li>$W^{(l)}$ = learnable weight matrix shared across all nodes.</li>
   </ul>
 </section>
@@ -96,7 +96,7 @@
     <tbody>
       <tr><td>Node classification</td><td>Label each node</td><td>None — use node embeddings directly</td></tr>
       <tr><td>Graph classification</td><td>Label entire graph</td><td>global_mean_pool or global_max_pool</td></tr>
-      <tr><td>Link prediction</td><td>Predict missing edges</td><td>Dot product of node pairs</td></tr>
+      <tr><td>Link prediction</td><td>Predict missing edges</td><td>Dot product of node pairs; score on <em>held-out</em> edges</td></tr>
     </tbody>
   </table>
 </section>
@@ -126,7 +126,7 @@ class GCN(torch.nn.Module):
   <h2>Visualising node embeddings</h2>
   <figure style="text-align: center;">
     <svg viewBox="0 0 600 300" xmlns="http://www.w3.org/2000/svg">
-      <text x="300" y="18" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#475569">t-SNE projection of GCN layer-2 node embeddings</text>
+      <text x="300" y="18" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#475569">t-SNE projection of GCN layer-2 node embeddings (schematic)</text>
       <rect x="30" y="28" width="480" height="230" fill="#F8FAFC" stroke="#E2E8F0" rx="4"/>
       <!-- Axis labels -->
       <text x="270" y="272" text-anchor="middle" font-family="Inter" font-size="9" fill="#94A3B8">t-SNE dim 1</text>
@@ -185,7 +185,7 @@ class GCN(torch.nn.Module):
       <text x="460" y="248" text-anchor="end" font-family="Inter" font-size="9" fill="#94A3B8">Misplaced points = hard examples</text>
     </svg>
   </figure>
-  <p style="font-size: 0.85em;">Three clusters with clear separation and a few misplaced nodes between them -- the GNN has learned structure but some boundary nodes remain ambiguous.</p>
+  <p style="font-size: 0.85em;">Schematic (Cora has 7 classes): clusters with clear separation and a few misplaced nodes between them -- the GNN has learned structure but some boundary nodes remain ambiguous.</p>
 </section>
 
 <section>
@@ -194,6 +194,7 @@ class GCN(torch.nn.Module):
     <li><strong>Ignoring graph structure</strong> — flattening to table loses edges.</li>
     <li><strong>Too many layers</strong> — over-smoothing. 2–3 layers is typical.</li>
     <li><strong>Wrong pooling</strong> — node tasks need no pooling; graph tasks need global pooling.</li>
+    <li><strong>Choosing the epoch by test accuracy</strong> — select on validation, report test once.</li>
   </ol>
 </section>
 
@@ -213,10 +214,10 @@ class GCN(torch.nn.Module):
 <section>
   <h2>What you can now do</h2>
   <ul>
-    <li>✓ Build GCN and GAT for node and graph classification.</li>
+    <li>✓ Build GCN, GraphSAGE and GAT node classifiers; outline graph classification with global pooling.</li>
     <li>✓ Explain message passing and neighbourhood aggregation.</li>
     <li>✓ Compare GCN, GraphSAGE, GAT flexibility.</li>
-    <li>✓ Use torch_geometric DataLoader for graph batches.</li>
+    <li>✓ Write a graph-level GCN with torch_geometric (<code>GCNConv</code> + <code>global_mean_pool</code>).</li>
   </ul>
   <div class="callout-slide foundations"><strong>Next:</strong> 5.7 — Transfer Learning. Leverage pre-trained models for CV and NLP tasks.</div>
 </section>

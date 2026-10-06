@@ -42,7 +42,7 @@ from kailash_ml.types import MetricSpec
 # PHASE 1 — THEORY: Why Graphs Need Their Own Neural Networks
 # ════════════════════════════════════════════════════════════════════════
 #
-# Imagine you're classifying research papers at NUS or NTU into fields
+# Imagine you're classifying research papers at a university into fields
 # like "Computer Vision", "NLP", or "Reinforcement Learning". You could
 # use each paper's bag-of-words features in a standard MLP — but you'd
 # be ignoring the most valuable signal: CITATION LINKS.
@@ -193,17 +193,63 @@ gcn_losses, gcn_val, gcn_test = train_node_classifier(
 # ── Train Checkpoint ────────────────────────────────────────────────
 assert len(gcn_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses for GCN"
 assert gcn_losses[-1] < gcn_losses[0], "GCN loss should decrease"
-best_val = max(gcn_val)
-best_test = max(gcn_test)
+# Model selection uses VALIDATION accuracy only: pick the epoch with the
+# best val accuracy and report the TEST accuracy of that same epoch.
+# Taking max(gcn_test) would choose the epoch by peeking at the test set.
+best_epoch = int(np.argmax(gcn_val))
+best_val = gcn_val[best_epoch]
+best_test = gcn_test[best_epoch]
 print(f"\n  GCN Results:")
-print(f"    Best validation accuracy: {best_val:.4f}")
-print(f"    Best test accuracy:       {best_test:.4f}")
+print(f"    Best validation accuracy: {best_val:.4f} (epoch {best_epoch + 1})")
+print(f"    Test accuracy, that epoch: {best_test:.4f}")
 print(f"    Final loss:               {gcn_losses[-1]:.4f}")
-# INTERPRETATION: GCN uses a fixed aggregation scheme based on the graph
-# Laplacian. Every node's new representation is a weighted average of its
-# neighbours' features, where the weights come from the degree-normalised
-# adjacency. This is equivalent to a 1-hop spectral filter on the graph.
+# INTERPRETATION: GCN uses a fixed aggregation scheme. Every node's new
+# representation is a weighted average of its own and its neighbours'
+# features, with weights from the symmetric-normalised adjacency
+# D^-1/2 (A + I) D^-1/2 — a first-order approximation of a spectral graph
+# filter (Kipf & Welling, 2017).
 print("\n--- Train checkpoint passed --- GCN trained successfully\n")
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — Prescription Pad before Visualise
+# ══════════════════════════════════════════════════════════════════
+# run_diagnostic_checkpoint instruments the trained model, replays a few
+# forward/backward passes of the REAL training objective (cross-entropy
+# on the labelled training nodes; no weights are updated) and replays
+# the per-epoch training losses. The whole graph is one "batch", so the
+# loader is the same full-graph tuple repeated.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _node_loss(m, batch):
+    feats, graph, labels, mask = batch
+    return F.cross_entropy(m(feats, graph)[mask], labels[mask])
+
+
+diag, findings = run_diagnostic_checkpoint(
+    gcn,
+    [(X, A_norm, y, graph_data["train_mask"])] * 4,
+    _node_loss,
+    title="GCN — Graph Convolutional Network",
+    n_batches=4,
+    train_losses=gcn_losses,
+    show=False,
+)
+print_prescription_pad(findings, "GCN — Graph Convolutional Network")
+# HOW TO READ IT (your readings depend on your run):
+#  GRADIENT FLOW — a 2-layer GNN rarely vanishes. Exploding readings
+#     usually mean the propagation matrix is not normalised (a raw
+#     adjacency multiplies feature scale by node degree) or the learning
+#     rate is too high.
+#  DEAD NEURONS — this model applies its activation functionally
+#     (F.relu / F.elu), so there is no activation LAYER for the
+#     instrument to hook; an UNKNOWN reading here is expected, not a
+#     fault. Use nn.ReLU modules if you want this reading.
+#  LOSS TREND — this sees only the training loss. Over-fitting shows up
+#     in the gap between the validation and training curves, not here.
+# ══════════════════════════════════════════════════════════════════
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -281,15 +327,15 @@ print("\n--- Visualise checkpoint passed --- GCN embeddings plotted\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# PHASE 5 — APPLY: Academic Research Network at NUS/NTU
+# PHASE 5 — APPLY: Academic Research Network at a Singapore University
 # ════════════════════════════════════════════════════════════════════════
 print("=" * 70)
-print("  PHASE 5 — APPLY: Research Paper Classification at NUS/NTU")
+print("  PHASE 5 — APPLY: Research Paper Classification at a University")
 print("=" * 70)
 print(
     """
-  SCENARIO: You're building a research analytics tool for NUS or NTU.
-  The university publishes thousands of papers per year across faculties.
+  SCENARIO (illustrative): You're building a research analytics tool for
+  a Singapore university that publishes thousands of papers per year.
   Your task: automatically classify papers into research fields using
   both their text features AND citation links.
 
@@ -307,14 +353,19 @@ print(
 # Demonstrate: compare a naive bag-of-words baseline to the GCN
 print("  Bag-of-Words Baseline vs GCN Comparison:")
 
-# Simple baseline: logistic regression on raw features (no graph structure)
+# Simple baseline: logistic regression on raw features (no graph structure).
+# Same protocol as the GCN — same optimiser settings, and the epoch is
+# chosen by VALIDATION accuracy — so the comparison is like for like.
 from torch.optim import Adam
 
 train_mask = graph_data["train_mask"]
+val_mask = graph_data["val_mask"]
 test_mask = graph_data["test_mask"]
 
 baseline_model = nn.Linear(F_dim, n_classes).to(device)
-baseline_opt = Adam(baseline_model.parameters(), lr=1e-2)
+baseline_opt = Adam(baseline_model.parameters(), lr=1e-2, weight_decay=5e-4)
+baseline_val: list[float] = []
+baseline_test: list[float] = []
 
 for epoch in range(EPOCHS):
     baseline_model.train()
@@ -324,21 +375,28 @@ for epoch in range(EPOCHS):
     loss.backward()
     baseline_opt.step()
 
-baseline_model.eval()
-with torch.no_grad():
-    baseline_preds = baseline_model(X).argmax(dim=-1)
-    baseline_acc = (baseline_preds[test_mask] == y[test_mask]).float().mean().item()
+    baseline_model.eval()
+    with torch.no_grad():
+        baseline_preds = baseline_model(X).argmax(dim=-1)
+    baseline_val.append((baseline_preds[val_mask] == y[val_mask]).float().mean().item())
+    baseline_test.append(
+        (baseline_preds[test_mask] == y[test_mask]).float().mean().item()
+    )
+
+baseline_epoch = int(np.argmax(baseline_val))
+baseline_acc = baseline_test[baseline_epoch]
 
 print(f"    Bag-of-Words (no graph):  test accuracy = {baseline_acc:.4f}")
 print(f"    GCN (with graph):         test accuracy = {best_test:.4f}")
 improvement = best_test - baseline_acc
-print(f"    Improvement from graph:   +{improvement:.4f} ({improvement*100:.1f} pp)")
+print(f"    Improvement from graph:   {improvement:+.4f} ({improvement*100:+.1f} pp)")
 print()
 
 if improvement > 0:
-    print("  INSIGHT: The citation graph provides significant additional signal.")
-    print("  Papers in the same field cite each other more often, creating")
-    print("  class-homogeneous neighbourhoods that the GCN exploits.")
+    print("  INSIGHT: On this split the citation graph adds signal the words")
+    print("  alone miss: papers in the same field cite each other more often,")
+    print("  creating class-homogeneous neighbourhoods that the GCN exploits.")
+    print("  (One split, one seed — a single gap is not a significance test.)")
 else:
     print("  NOTE: On this split, bag-of-words is competitive — Cora's features")
     print("  are already informative. The GCN advantage grows on sparser features.")
@@ -346,7 +404,7 @@ else:
 print(
     """
   REAL-WORLD DEPLOYMENT:
-  1. Build a citation graph from Scopus/Web of Science API
+  1. Build a citation graph from a bibliographic database's citation export
   2. Extract bag-of-words or TF-IDF features from abstracts
   3. Train GCN on papers with known faculty/department labels
   4. Classify new papers automatically for research analytics dashboards
@@ -362,7 +420,7 @@ if has_registry:
         model=gcn,
         metrics=[
             MetricSpec(name="best_val_accuracy", value=best_val),
-            MetricSpec(name="best_test_accuracy", value=best_test),
+            MetricSpec(name="test_accuracy_at_best_val", value=best_test),
             MetricSpec(name="final_loss", value=gcn_losses[-1]),
             MetricSpec(name="baseline_accuracy", value=baseline_acc),
             MetricSpec(name="graph_improvement", value=improvement),
@@ -387,10 +445,11 @@ print(
     f"""
   GRAPH CONVOLUTIONAL NETWORK (Kipf & Welling, 2017):
   [x] Message passing as matrix multiplication: H' = A_norm @ H @ W
-  [x] Fixed aggregation via degree-normalised adjacency (Laplacian)
+  [x] Fixed aggregation via the symmetric-normalised adjacency
   [x] Simplest GNN — fast, parallelisable, effective on homogeneous graphs
   [x] Trained on {dataset_name}: {best_val:.1%} val accuracy, {best_test:.1%} test accuracy
-  [x] Compared to bag-of-words baseline: +{improvement*100:.1f} percentage points
+  [x] Compared to bag-of-words baseline: {improvement*100:+.1f} percentage points
+  [x] Selected epochs by VALIDATION accuracy, then reported test accuracy
   [x] Visualised embeddings showing class separation in 2-D PCA
 
   KEY LIMITATION: GCN uses FIXED aggregation weights (degree-based).
@@ -406,69 +465,3 @@ print(
 import asyncio
 
 asyncio.run(conn.close())
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # GCN node classification loss
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (GCN — Graph Convolutional Network) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        gcn,
-        [(features, labels)],
-        _diag_loss,
-        title="GCN — Graph Convolutional Network",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS range 5.2e-04 to 8.7e-03 across 2 GCN layers.
-#     Shallow GCN = no over-smoothing risk yet.
-# [✓] Dead neurons  (HEALTHY): 8% inactive — GCN uses ReLU, healthy.
-# [✓] Loss trend    (HEALTHY): train loss → 0.23, val accuracy plateauing at ~82%.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST] Shallow GCN (2 layers) shows no pathologies. BUT
-#     slide 5.6 warns: stack 4+ GCN layers and node embeddings
-#     become nearly identical (over-smoothing). Watch for this in
-#     ex_6/05 architecture comparison — the signature is all nodes'
-#     cosine similarity → 1.0 at deep layers.
-#     >> Prescription: use skip connections (ResGCN) OR PairNorm OR
-#        stick to 2-3 layers. GAT (ex_6/02) also helps because
-#        learned attention weights can avoid smoothing.
-#
-#  [X-RAY] 8% dead ReLU is normal. GCN's linear aggregation
-#     followed by ReLU doesn't typically kill channels.
-#
-#  [STETHOSCOPE] 82% accuracy on Cora is baseline competitive.
-#     GAT and GraphSAGE (next exercises) typically push to 83-85%
-#     via learned vs fixed aggregation.
-

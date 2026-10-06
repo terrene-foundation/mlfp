@@ -7,13 +7,13 @@
 #
 # WHAT YOU'LL LEARN:
 #   After completing this file, you will be able to:
-#   - Explain WHY you cannot deploy PyTorch directly to production
-#     (dependency weight, GPU lock-in, no multi-language support) in
-#     terms a non-technical manager can understand
+#   - Explain WHY production teams ship ONNX instead of PyTorch
+#     (dependency weight, hardware portability, multi-language runtimes)
+#     in terms a non-technical manager can understand
 #   - Export a trained CNN to ONNX format using kailash-ml's OnnxBridge
 #   - Validate ONNX output matches PyTorch output (numerical fidelity)
-#   - Serve predictions through kailash-ml's InferenceServer with
-#     warm cache for low-latency inference
+#   - Register the ONNX artifact in ModelRegistry and serve predictions
+#     through kailash-ml's InferenceServer
 #   - Benchmark latency and throughput for production sizing
 #   - Apply this to deploying the best model at a Singapore e-commerce
 #     platform — latency targets, throughput planning, cost per inference
@@ -52,9 +52,12 @@ from shared.mlfp05.ex_2 import (
     DEVICE,
     EPOCHS,
     N_CLASSES,
+    FlatImageAdapter,
+    attach_onnx_artifact,
     count_parameters,
     create_visualizer,
     denormalise_cifar,
+    images_to_records,
     init_engines,
     load_cifar10,
     register_model,
@@ -83,10 +86,11 @@ from kailash_ml import InferenceServer
 #    this is the difference between 30-second cold starts and 2-second
 #    cold starts.
 #
-# 2. GPU LOCK-IN:
-#    PyTorch models trained on NVIDIA GPUs need NVIDIA GPUs to serve.
-#    ONNX Runtime runs on CPU, NVIDIA GPU, AMD GPU, Apple Silicon,
-#    Intel NPU, ARM — any hardware with an ONNX execution provider.
+# 2. HARDWARE PORTABILITY:
+#    PyTorch weights CAN be loaded on a CPU (map_location="cpu"), but the
+#    serving host still needs the full PyTorch stack built for that
+#    hardware. ONNX Runtime runs the same .onnx file on CPU, NVIDIA GPU,
+#    AMD GPU, Apple Silicon, ARM — any hardware with an execution provider.
 #
 # 3. LANGUAGE BARRIER:
 #    Your model was trained in Python. Production services might be in
@@ -102,10 +106,14 @@ from kailash_ml import InferenceServer
 #   Train (PyTorch) -> Export (ONNX) -> Validate -> Register (ModelRegistry)
 #   -> Serve (InferenceServer / ONNX Runtime) -> Monitor (DriftMonitor)
 #
-# InferenceServer wraps this pipeline: it loads models from the
-# ModelRegistry, caches them in memory (LRU), and serves predictions
-# via predict() and predict_batch(). For CNN models, the production
-# path uses ONNX Runtime directly for maximum performance.
+# InferenceServer serves ONE registered model version per server:
+#   server = await InferenceServer.from_registry(name, registry=registry,
+#                                                version=v, runtime="onnx")
+#   await server.start()          # loads that version's model.onnx
+#   out = await server.predict({"records": [...]})   # {"predictions": [...]}
+# Each record becomes one row of a 2-D float array fed to ONNX Runtime,
+# so an image model is exported behind a small adapter that accepts flat
+# pixel rows (FlatImageAdapter in shared/mlfp05/ex_2.py).
 
 print("=" * 70)
 print("  PHASE 1 — THEORY: Why ONNX for Production Deployment")
@@ -218,86 +226,54 @@ resnet_losses, resnet_accs = train_model(
 )
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — pre-export clinical sign-off
+# DIAGNOSTIC CHECKPOINT — pre-export sign-off
 # ══════════════════════════════════════════════════════════════════
-# Running diagnostics BEFORE ONNX export is deployment hygiene: you
-# never want to ship a model that is secretly pathological. A clean
-# Prescription Pad is table stakes for production release.
-from kailash_ml import diagnose
+# Running the instruments BEFORE export is deployment hygiene: you do
+# not want to ship a model whose training was secretly pathological.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _ce_loss(m, batch):
+    """Cross-entropy on one (images, labels) batch, on the model's device."""
+    xb, yb = batch
+    dev = next(m.parameters()).device
+    return F.cross_entropy(m(xb.to(dev)), yb.to(dev))
+
 
 print("\n── Pre-Export Diagnostic Report (ResNetSE) ──")
-report = diagnose(resnet_se, kind="dl", data=val_loader, show=False)
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): min RMS = 5.9e-04 at
-#       'layer3.1.conv2.weight'. Same pattern as 02_resnet_se
-#       — skip connections keep the full depth trainable.
-#   [✓] Dead neurons  (HEALTHY): max 3.7% dead. SE blocks +
-#       batch norm maintain channel health.
-#   [✓] Loss trend    (HEALTHY): train slope -4.2e-02/epoch,
-#       val slope -3.6e-02/epoch. Train-val gap 5%.
-#   [✓] Export gate:   ALL CLEAR — no WARN/CRITICAL findings.
-#       Safe to proceed to ONNX export.
-# ════════════════════════════════════════════════════════════════
-# Final val acc: ~0.60 on CIFAR-10 (production-calibrated run).
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [EXPORT-GATE DISCIPLINE] This checkpoint is DEPLOYMENT
-#     HYGIENE, not training diagnosis. Every finding here
-#     becomes a PRE-EXPORT GATE. Slide 5Q covers the full
-#     gate: CRITICAL gradients or >50% dead neurons BLOCK
-#     export (the model is structurally broken); WARNING
-#     findings require written justification in the model
-#     card. Shipping a pathological model is how
-#     organisations discover weeks later that half their
-#     production requests are answered by dead neurons.
-#     >> Prescription: Wire this gate into CI. If diag.
-#        findings has any CRITICAL, fail the build.
-#
-#  [BLOOD TEST — PRE-EXPORT INVARIANT] min RMS 5.9e-04
-#     matches the 02 training-time reading (6.2e-04).
-#     CONSISTENCY between training-time and export-time
-#     readings proves the model hasn't drifted in the brief
-#     window between end-of-training and export call. If
-#     export-time RMS differs by >10x from training, you
-#     have a serialization bug (BN stats not updated,
-#     dropout left on, etc).
-#     >> Prescription: Always diag EVAL-MODE outputs before
-#        export (model.eval() + no_grad context). Compare
-#        to training-time diag. >10x mismatch blocks
-#        export.
-#
-#  [X-RAY — SERVING-MODE CHECK] 3.7% dead in eval mode
-#     ≈ 4% in train mode (from 02_resnet_se.py). If eval
-#     dead% SPIKES to 20%+ while train dead% is 4%, batch
-#     norm is failing in single-sample or tiny-batch
-#     inference. The fix is either BN→LayerNorm or
-#     explicit running-stats update.
-#     >> Prescription: Sanity-check with batch_size=1
-#        inference on 10 random test images. If outputs
-#        vary wildly vs batch_size=32, BN is the culprit.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: production checkpoints shift
-#  the instrument purpose from DIAGNOSIS to GATE
-#  VERIFICATION. Same 5 instruments, but pass/fail logic
-#  replaces learning-curve reading. This pattern repeats in
-#  ex_5 GAN deployment (block export if mode collapse) and
-#  ex_7 transfer learning (block export if base-model
-#  gradients didn't freeze as intended).
-# ════════════════════════════════════════════════════════════════════
+diag, findings = run_diagnostic_checkpoint(
+    resnet_se,
+    train_loader,
+    _ce_loss,
+    title="ResNetSE (pre-export)",
+    train_losses=resnet_losses,
+    show=False,
+)
+print_prescription_pad(findings, "ResNetSE (pre-export)")
+export_blockers = [
+    name
+    for name, reading in findings.items()
+    if isinstance(reading, dict) and reading.get("severity") == "CRITICAL"
+]
+print(f"  CRITICAL readings that would block export: {export_blockers or 'none'}")
 
-# Register in ModelRegistry
-if has_registry:
-    model_version = register_model(
-        registry,
-        "resnet_se_cifar10",
-        resnet_se,
-        resnet_losses[-1],
-        resnet_accs[-1],
-    )
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# Treat this as a release GATE, not a learning-curve reading: a
+# CRITICAL reading (e.g. exploding/vanishing gradients, a mostly-dead
+# layer) should block export until explained; WARNINGs belong in the
+# model card. The export itself is checked separately below — the ONNX
+# graph must reproduce the PyTorch outputs (OnnxBridge.validate).
+# ══════════════════════════════════════════════════════════════════
+
+# Register in ModelRegistry (model.pkl = the trained weights)
+model_version = register_model(
+    registry,
+    "resnet_se_cifar10",
+    resnet_se,
+    resnet_losses[-1],
+    resnet_accs[-1],
+)
 
 # ── Checkpoint 1: Model trained ──────────────────────────────────────
 assert (
@@ -318,36 +294,32 @@ bridge = OnnxBridge()
 resnet_se.eval()
 onnx_path = Path("ex_2_resnet_se.onnx")
 
-# Try kailash-ml's OnnxBridge first (optimised for tabular models).
-# For CNN models with Conv2d layers, we fall back to torch.onnx which
-# handles the full operator set. Either path produces a valid .onnx file.
-exported = False
-try:
-    result = bridge.export(
-        model=resnet_se,
-        framework="pytorch",
-        output_path=onnx_path,
-        n_features=3 * 32 * 32,
-    )
-    success = getattr(result, "success", bool(result))
-    print(f"  OnnxBridge.export success: {success}")
-    exported = bool(success) and onnx_path.exists()
-except Exception as exc:
-    print(f"  OnnxBridge.export raised {type(exc).__name__}: {exc}")
+# InferenceServer feeds ONNX Runtime one flat row per request record, so
+# we export the CNN behind FlatImageAdapter: it takes (batch, 3072) pixel
+# rows and reshapes them to (batch, 3, 32, 32). The adapter must be in
+# eval mode — OnnxBridge restores the training flag it finds. The sample
+# is a batch of TWO rows, not one: the exporter traces with torch.export,
+# which treats size-1 dimensions as constants and can freeze the batch size.
+# (The exporter may print an opset-conversion traceback and fall back to
+# opset 18; that is log noise — export_result.success is the real signal.)
+serving_model = FlatImageAdapter(resnet_se).eval()
+export_result = bridge.export(
+    serving_model,
+    "torch",
+    output_path=onnx_path,
+    sample_input=torch.randn(2, 3 * 32 * 32),
+)
+print(
+    f"  OnnxBridge.export: success={export_result.success} "
+    f"status={export_result.onnx_status} "
+    f"time={export_result.export_time_seconds:.1f}s"
+)
+assert export_result.success, f"OnnxBridge export failed: {export_result.error_message}"
 
-if not exported:
-    print("  Falling back to torch.onnx.export for Conv2D graph...")
-    sample = torch.randn(1, 3, 32, 32)
-    torch.onnx.export(
-        resnet_se,
-        sample,
-        onnx_path,
-        input_names=["input"],
-        output_names=["logits"],
-        dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
-        opset_version=17,
-        dynamo=False,
-    )
+# Attach the .onnx file to the version registered above, so the
+# InferenceServer can load it from the registry by name + version.
+attach_onnx_artifact("resnet_se_cifar10", model_version.version, onnx_path)
+print(f"  Attached model.onnx to resnet_se_cifar10 v{model_version.version}")
 
 # ── Checkpoint 2: ONNX file exists ──────────────────────────────────
 assert onnx_path.exists(), "ONNX file should exist after export"
@@ -367,51 +339,44 @@ print("=" * 70)
 print("  NUMERICAL VALIDATION: PyTorch vs ONNX Runtime")
 print("=" * 70)
 
-ort_available = False
-try:
-    import onnxruntime as ort
+# onnxruntime is required here: OnnxBridge.validate and InferenceServer
+# both execute the .onnx graph with it.
+import onnxruntime as ort
 
-    ort_available = True
-except ImportError:
-    print("  onnxruntime not installed -- skipping ONNX validation.")
-    print("  Install with: pip install onnxruntime")
+ort_available = True  # the benchmark sections below also report ONNX Runtime
+
+# OnnxBridge.validate runs the native model (via its predict() method) and
+# ONNX Runtime on the same rows and reports the largest output difference.
+test_images = X_val[:100]
+test_flat = test_images.reshape(len(test_images), -1).numpy().astype(np.float32)
+validation = bridge.validate(serving_model, onnx_path, test_flat, tolerance=1e-3)
+print(
+    f"  OnnxBridge.validate: valid={validation.valid} "
+    f"max_diff={validation.max_diff:.2e} mean_diff={validation.mean_diff:.2e} "
+    f"(over {validation.n_samples} logits)"
+)
+assert validation.valid, f"ONNX output drifted from PyTorch: {validation.notes}"
 
 if ort_available:
     ort_session = ort.InferenceSession(str(onnx_path))
     input_name = ort_session.get_inputs()[0].name
 
-    # Test on 100 validation images
-    test_images = X_val[:100]
-    test_np = test_images.numpy().astype(np.float32)
-
-    # PyTorch predictions
+    # Do the two runtimes pick the same class?
     resnet_se.eval()
     with torch.no_grad():
         pt_logits = resnet_se(test_images).numpy()
     pt_preds = np.argmax(pt_logits, axis=-1)
 
-    # ONNX Runtime predictions
-    ort_logits = ort_session.run(None, {input_name: test_np})[0]
+    ort_logits = ort_session.run(None, {input_name: test_flat})[0]
     ort_preds = np.argmax(ort_logits, axis=-1)
 
-    # Compare
     prediction_match = np.mean(pt_preds == ort_preds)
-    max_logit_diff = np.max(np.abs(pt_logits - ort_logits))
-    mean_logit_diff = np.mean(np.abs(pt_logits - ort_logits))
-
     print(
         f"  Prediction agreement: {prediction_match:.0%} ({int(prediction_match * 100)}/100)"
     )
-    print(f"  Max logit difference:  {max_logit_diff:.6f}")
-    print(f"  Mean logit difference: {mean_logit_diff:.6f}")
-
     assert prediction_match >= 0.99, (
         f"PyTorch vs ONNX prediction mismatch: {prediction_match:.0%} agreement. "
         "Export may have lost fidelity."
-    )
-    assert max_logit_diff < 0.01, (
-        f"Max logit difference {max_logit_diff:.6f} too large. "
-        "ONNX export should be numerically close to PyTorch."
     )
     print("  Numerical validation PASSED -- ONNX matches PyTorch")
 
@@ -424,68 +389,55 @@ print("  INFERENCE SERVER")
 print("=" * 70)
 
 
-async def setup_inference_server():
-    """Demonstrate InferenceServer with ModelRegistry.
-
-    kailash-ml 1.5.x changed InferenceServer to bind one model per server
-    instance (via ``InferenceServer.from_registry(name, registry=...)``).
-    The earlier "cache_size + warm_cache(many)" pattern is gone — each
-    server now has a single (model_name, version) binding resolved at
-    construction. This is closer to how production model-serving is
-    deployed (one workload per pod).
-    """
-    if not has_registry:
-        print("  ModelRegistry not available -- skipping InferenceServer demo")
-        return None
-
-    try:
-        server = InferenceServer.from_registry("resnet_se_cifar10", registry=registry)
-        print("  InferenceServer (1.5.x): bound to resnet_se_cifar10")
-        return server
-    except Exception as e:
-        # Model may not be registered (e.g. registry empty in fresh runs)
-        print(f"  InferenceServer demo skipped: {type(e).__name__}: {e}")
-        return None
-
-
-server = asyncio.run(setup_inference_server())
-
-# Direct inference pipeline (the pattern InferenceServer wraps in production)
-print("\n  Sample predictions via direct inference pipeline:")
-resnet_se.eval()
 indices = [0, 100, 500, 2000, 5000]
+sample_images = X_val[indices]
+
+
+async def serve_samples(name: str, version: int, images: torch.Tensor):
+    """Load one registered ONNX model version and serve a batch request."""
+    server = await InferenceServer.from_registry(
+        name, registry=registry, version=version, runtime="onnx"
+    )
+    await server.start()  # loads model.onnx from the registry's artifact store
+    print(f"  InferenceServer status: {server.status}  ({name} v{version}, onnx)")
+    response = await server.predict({"records": images_to_records(images)})
+    await server.stop()
+    return response
+
+
+response = asyncio.run(
+    serve_samples("resnet_se_cifar10", model_version.version, sample_images)
+)
+server_logits = np.asarray(response["predictions"])
+server_preds = server_logits.argmax(axis=1)
+
+# The same images through PyTorch directly, for comparison
+resnet_se.eval()
 with torch.no_grad():
-    sample_images = X_val[indices]
     logits = resnet_se(sample_images)
     probs = F.softmax(logits, dim=-1)
     preds = logits.argmax(dim=-1)
 
-    for i, idx in enumerate(indices):
-        pred_class = CLASS_NAMES[preds[i].item()]
-        true_class = CLASS_NAMES[y_val[idx].item()]
-        confidence = probs[i][preds[i]].item()
-        status = "CORRECT" if preds[i].item() == y_val[idx].item() else "WRONG"
-        print(
-            f"    Sample {idx}: pred={pred_class:>10s} "
-            f"(conf={confidence:.2f}) | true={true_class:>10s} [{status}]"
-        )
+print("\n  InferenceServer predictions (vs direct PyTorch):")
+for i, idx in enumerate(indices):
+    server_class = CLASS_NAMES[server_preds[i]]
+    torch_class = CLASS_NAMES[preds[i].item()]
+    true_class = CLASS_NAMES[y_val[idx].item()]
+    confidence = probs[i][preds[i]].item()
+    status = "CORRECT" if server_preds[i] == y_val[idx].item() else "WRONG"
+    print(
+        f"    Sample {idx}: server={server_class:>10s} torch={torch_class:>10s} "
+        f"(conf={confidence:.2f}) | true={true_class:>10s} [{status}]"
+    )
 
-# ONNX Runtime inference
-if ort_available:
-    print("\n  Same predictions via ONNX Runtime (production path):")
-    sample_np = sample_images.numpy().astype(np.float32)
-    ort_outputs = ort_session.run(None, {input_name: sample_np})
-    ort_preds_sample = np.argmax(ort_outputs[0], axis=-1)
-
-    for i, idx in enumerate(indices):
-        pred_class = CLASS_NAMES[ort_preds_sample[i]]
-        true_class = CLASS_NAMES[y_val[idx].item()]
-        print(f"    ONNX Sample {idx}: pred={pred_class:>10s} | true={true_class:>10s}")
-
-# ── Checkpoint 3: Inference pipeline works ───────────────────────────
-batch_acc_check = (preds == y_val[indices]).float().mean().item()
-print(f"\n  Batch accuracy on samples: {batch_acc_check:.0%}")
-print("--- Checkpoint 3 passed --- inference pipeline demonstrated\n")
+# ── Checkpoint 3: InferenceServer served real predictions ────────────
+assert server_logits.shape == (len(indices), N_CLASSES), server_logits.shape
+assert np.array_equal(server_preds, preds.numpy()), (
+    "InferenceServer (ONNX) and PyTorch disagree on the sample classes"
+)
+batch_acc_check = float(np.mean(server_preds == y_val[indices].numpy()))
+print(f"\n  Served-sample accuracy: {batch_acc_check:.0%} ({len(indices)} images)")
+print("--- Checkpoint 3 passed --- InferenceServer served the ONNX model\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -528,8 +480,8 @@ ort_latencies_single = []
 ort_latencies_batch = []
 
 if ort_available:
-    single_np = single_image.numpy().astype(np.float32)
-    batch_np = batch_16.numpy().astype(np.float32)
+    single_np = single_image.reshape(1, -1).numpy().astype(np.float32)
+    batch_np = batch_16.reshape(16, -1).numpy().astype(np.float32)
 
     # Warmup
     for _ in range(10):
@@ -696,8 +648,8 @@ replicas_for_peak = int(np.ceil(peak_per_second / batched_per_sec))
 replicas_for_peak = max(replicas_for_peak, 2)  # minimum 2 for redundancy
 
 # Cost estimation (Singapore cloud pricing)
-CPU_COST_PER_HOUR = 0.05  # c5.large equivalent
-GPU_COST_PER_HOUR = 0.90  # g4dn.xlarge equivalent (T4 GPU)
+CPU_COST_PER_HOUR = 0.05  # illustrative on-demand rate, 2 vCPU instance
+GPU_COST_PER_HOUR = 0.90  # illustrative on-demand rate, T4-class GPU instance
 
 # CPU deployment (ONNX Runtime)
 cpu_replicas = max(replicas_for_peak * 2, 4)  # CPU is slower, need more
@@ -727,7 +679,7 @@ print(
 
   OPTION A — CPU Deployment (ONNX Runtime, recommended for this model):
     Replicas needed:         {cpu_replicas:>10}
-    Instance type:           {"c5.large":>10s} (2 vCPU, 4 GB)
+    Instance type:           {"CPU-2":>10s} (generic 2 vCPU, 4 GB instance)
     Monthly cost:            ${cpu_monthly:>9,.0f}
     Cost per inference:      ${cost_per_inference_cpu:>9.6f}
     Pros: Simple, no GPU driver headaches, easy horizontal scaling
@@ -735,7 +687,7 @@ print(
 
   OPTION B — GPU Deployment (ONNX Runtime + CUDA):
     Replicas needed:         {replicas_for_peak:>10}
-    Instance type:           {"g4dn.xlarge":>10s} (T4 GPU, 4 vCPU, 16 GB)
+    Instance type:           {"GPU-T4":>10s} (generic T4-class GPU, 4 vCPU, 16 GB)
     Monthly cost:            ${gpu_monthly:>9,.0f}
     Cost per inference:      ${cost_per_inference_gpu:>9.6f}
     Pros: Lower latency, fewer replicas, room for larger models
@@ -752,7 +704,8 @@ print(
       - Monitor with kailash-ml DriftMonitor for accuracy degradation
       - Budget: ${cpu_monthly:,.0f}/month (~${cpu_monthly * 12:,.0f}/year)
 
-    Compared to manual categorisation ($10,000/day = $300,000/month):
+    Compared to an ASSUMED manual-categorisation cost
+    ($10,000/day = $300,000/month, illustrative):
       Savings: ${300000 - cpu_monthly:,.0f}/month = ${(300000 - cpu_monthly) * 12:,.0f}/year
 """
 )
@@ -778,17 +731,17 @@ print("=" * 70)
 print(
     f"""
   THEORY:
-  [x] Why PyTorch cannot go directly to production (2-5 GB footprint,
-      GPU lock-in, Python GIL, no cross-language support)
+  [x] Why teams ship ONNX rather than PyTorch to production (2-5 GB
+      footprint, hardware portability, Python-only runtime)
   [x] ONNX as the universal exchange format (50 MB, any hardware,
       any language, free graph optimisations)
   [x] The deployment pipeline: Train -> Export -> Validate -> Register
       -> Serve -> Monitor
 
   BUILD + TRAIN:
-  [x] Exported ResNetSE to ONNX via OnnxBridge / torch.onnx
-  [x] Validated numerical fidelity: PyTorch vs ONNX predictions match
-  [x] Set up InferenceServer with ModelRegistry and warm cache
+  [x] Exported ResNetSE to ONNX with OnnxBridge (behind a flat-input adapter)
+  [x] Validated numerical fidelity with OnnxBridge.validate
+  [x] Registered the ONNX artifact and served it with InferenceServer
   [x] ONNX file: {onnx_path} ({onnx_size_kb} KB)
 
   VISUALISE (the proof):

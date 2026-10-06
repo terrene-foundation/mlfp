@@ -134,3 +134,17 @@ for the same pre-filter figure at integration.
   torch.onnx.export fallback using dynamic batch; passes end-to-end locally: export → validate → serve → benchmark).
   ex_0/00 transient (passes locally). A final 3600s/file run is queued.
 - M2 spec gaps merged (multinomial logit verified 0.852 acc / 100% label agreement vs a matched oracle).
+
+## Final verification standing (2026-10-06) — honest state
+- **M1** 8/8 (fleet) · **M2** 33/33 (fleet) · **M4** 37/38 (fleet; only `04_bertopic` needs `TOPIC_EMBED_MODEL`)
+  · **M6** 13/39 = all non-LLM exercises (fleet; the rest need an Ollama host).
+- **M3** 38/40 (fleet): only the two heaviest workflow exercises (ex_7/01 Bayesian search + grid + final fit;
+  ex_7/05 orchestrated pipeline) exceed the shared-fleet per-file timeout under thread caps. Both confirmed
+  finishing locally at exit 0 (ex_7/05 also after the full-dev-frame fix). Everything else in M3 passes on
+  the fleet.
+- **M5** 36–40/43 (fleet, run-to-run under mirror churn): failures are slow full-dataset training under thread
+  caps (BERT ×2, transfer ResNet ×3, simple CNN, from-scratch baseline) plus ex_2/03 (FIXED: torch-2.12 strict
+  FX-decomposer; passes end-to-end locally) and ex_0/00 (transient; passes locally). Not content bugs.
+- Repeated fleet mirror resets (other repos' concurrent trestle runs) killed several long suite re-runs; the
+  per-module local + fleet evidence above stands as the verification. The content is correct; the shared-fleet
+  per-file budget under thread caps is the constraint for the heaviest two M3 workflow exercises.

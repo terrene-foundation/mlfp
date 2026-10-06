@@ -10,6 +10,8 @@ and small statistical helpers reused across the four technique files:
     02_hypothesis_testing.py — two-proportion z-test + effect sizes
     03_multiple_testing.py   — Bonferroni + BH-FDR + FDR simulation
     04_permutation_test.py   — distribution-free alternative
+    05_parametric_bootstrap.py — resample from a fitted model vs the data
+    06_one_sample_one_tailed.py — one-sample t + directional tests
 
 Technique-specific code (the actual corrections, permutation loops, power
 formulas) does NOT belong here — each technique file owns its own logic.
@@ -17,7 +19,7 @@ formulas) does NOT belong here — each technique file owns its own logic.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import polars as pl
@@ -233,4 +235,69 @@ def print_header(title: str) -> None:
     """Consistent banner for each technique file."""
     print("=" * 70)
     print(f"  {title}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PARAMETRIC BOOTSTRAP — resample from a FITTED model, not the data
+# ════════════════════════════════════════════════════════════════════════
+
+
+def parametric_bootstrap_statistic(
+    sampler: Callable[[np.random.Generator, int], np.ndarray],
+    n: int,
+    statistic: Callable[[np.ndarray], float],
+    n_boot: int = N_BOOTSTRAP,
+    seed: int = RANDOM_SEED,
+) -> np.ndarray:
+    """Parametric bootstrap: draw fresh size-n samples from a fitted model.
+
+    ``sampler(rng, n)`` must return n synthetic draws from the fitted
+    distribution (e.g. a Normal parameterised by the sample moments). The
+    bootstrap distribution of ``statistic`` is then computed entirely under
+    the model — powerful when the model is right, misleading when it is not.
+    """
+    rng = np.random.default_rng(seed)
+    out = np.empty(n_boot, dtype=np.float64)
+    for i in range(n_boot):
+        out[i] = statistic(sampler(rng, n))
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════
+# EXPERIMENT TRACKING — kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+
+TRACKER_STORE_URL = (
+    f"sqlite:///{(OUTPUT_DIR / 'experiments.db').resolve().as_posix()}"
+)
+
+
+def track_train_run(
+    experiment: str,
+    run_name: str,
+    params: dict[str, str],
+    metrics: dict[str, float],
+) -> str:
+    """Log one Train-phase run to ExperimentTracker (sync wrapper).
+
+    Returns the run_id. The tracker is closed in a finally block — kailash-ml
+    holds the store connection open until close() is called.
+    """
+    import asyncio
+
+    async def _log() -> str:
+        from kailash_ml import ExperimentTracker
+
+        tracker = await ExperimentTracker.create(store_url=TRACKER_STORE_URL)
+        try:
+            async with tracker.track(
+                experiment=experiment, run_name=run_name
+            ) as run:
+                await run.log_params(params)
+                await run.log_metrics(metrics)
+                return run.run_id
+        finally:
+            await tracker.close()
+
+    return asyncio.run(_log())
     print("=" * 70)

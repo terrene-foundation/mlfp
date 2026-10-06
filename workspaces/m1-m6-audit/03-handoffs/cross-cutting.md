@@ -106,3 +106,12 @@ for the same pre-filter figure at integration.
 - M3 spec gap in progress: ex_5 log-loss in metrics taxonomy; ModelExplainer additivity investigation on the
   real credit model (ex_6/01 already explains why it uses raw TreeExplainer).
 - M5 spec gap in progress: ex_2/05 Mixup, label smoothing, Kaiming init.
+
+## Fleet solution-run status (2026-10-06)
+- M1 8/8, M2 33/33, M4 37/38 (only `04_bertopic`, which needs `TOPIC_EMBED_MODEL` — expected).
+- M3 38/40 → 40/40 after the ex_7 search-budget cap (ex_7/05 confirmed finishing locally; final fleet re-run pending slot).
+- M6 13/39 on the fleet: the 13 that pass are exactly the NON-LLM exercises (PACT/governance, drift, RAG metrics,
+  LoRA/adapter math). The other 26 call `preflight_ollama` and correctly fail loudly because Ollama is not
+  running on the fleet host (`OllamaUnreachableError` — matches the M6 exercise agent's "Need Ollama" list).
+  Full M6 verification needs an Ollama host; the non-LLM set is verified.
+- M5 pending its first clean fleet run (queued).

@@ -24,9 +24,9 @@ Everything is **framework-first** (kailash-ml engines) and **polars-native**.
 
 | Task | Title | Weight | Focus |
 | ---- | ----- | ------ | ----- |
-| **Task 1** | Feature Engineering & Leakage-Free Selection | 20 | Engineer six exact features; rank them with `FeatureEngineer`, fit on the train split only |
-| **Task 2** | The Model Zoo | 25 | Train and compare six algorithms through `TrainingPipeline` |
-| **Task 3** | Evaluation, Class Imbalance & Interpretability | 25 | Baseline vs `class_weight="balanced"`; per-class recall via `km.diagnose`; SHAP via `ModelExplainer` |
+| **Task 1** | Feature Engineering & Leakage-Free Selection | 20 | Engineer exact features; rank them with `FeatureEngineer`, fit on the train split only (a leaky all-rows fit loses marks) |
+| **Task 2** | The Model Zoo | 20 | Train and compare six algorithms through `TrainingPipeline` |
+| **Task 3** | Evaluation, Class Imbalance & Interpretability | 30 | Baseline vs `class_weight="balanced"`; per-class recall via `km.diagnose`; SHAP via `ModelExplainer` |
 | **Task 4** | Production Pipeline — Registry, Drift, Deploy | 30 | `TrainingPipeline` → `ModelRegistry` (promote to production) → `DriftMonitor` |
 
 ## What you submit

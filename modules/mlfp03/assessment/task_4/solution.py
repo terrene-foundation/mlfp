@@ -1,210 +1,141 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP03 — Assessment Task 4: Production Pipeline — Registry, Drift, Deploy
-(Reference Solution)
+MLFP03 — Assessment Task 4: Release Review (Reference Solution)
 
-Reference implementation. Withheld from students. Verified to pass grader.py.
+Instructors only. Graded by grader.py on models, decisions and batches the
+student never sees.
 
-Trains a LightGBM model through the kailash-ml ``TrainingPipeline``, registers
-it and promotes staging -> production in the ``ModelRegistry``, then arms a
-``DriftMonitor`` against the training distribution and checks two incoming
-batches: a clean same-distribution slice (no alarm) and an economic-downturn
-shifted slice (drift fires). ``solve()`` wraps the async work in ``asyncio.run``.
+Decisions this reference makes (one defensible route, not the only one):
 
-NOTE ON TWO DATABASES: we give the ModelRegistry and the DriftMonitor separate
-SQLite files — the realistic production posture (a model registry and a
-monitoring store are distinct systems with independent lifecycles). Using fresh,
-separate files per store also sidesteps the "stale .db" gotcha where a database
-created by an older kailash-ml version carries a pre-migration schema. (On
-kailash-ml 2.2.2 a single shared connection works — _kml_drift_reports is
-created and written by the DriftMonitor engine with a consistent ``id`` schema.)
+1. Explanations: the committee's three properties (attributions add up to
+   "this applicant minus the average applicant", an unused field gets
+   nothing, credit is split by Shapley's rule) define interventional Shapley
+   values against the background book. ``shap`` computes them exactly for a
+   black-box scoring function: an ``Independent`` masker over the background
+   and the ``exact`` algorithm (the feature count is small). Probabilities are
+   explained directly, so the attributions are in probability units.
+2. Fairness: per group, the approval share, its ratio to the best-treated
+   group (the four-fifths rule), and the approval shares among applicants who
+   repaid and among those who defaulted (the two halves of equalised odds).
+   Unrecorded group membership is a group of its own, never dropped.
+3. Drift: kailash-ml ``DriftMonitor`` on its own SQLite file. The batch is
+   tested on every listed field at once, so a 0.05 per-field significance
+   level would raise false alarms on stable data. Both significance tests the
+   monitor runs — KS for continuous fields and chi-squared for count fields
+   (``DriftThresholds`` sets each) — are Bonferroni-tightened to
+   0.01 / number of fields; PSI keeps the usual 0.2 "material shift" bar.
 """
 from __future__ import annotations
 
 import asyncio
-import os
 import tempfile
-import uuid
 import warnings
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import polars as pl
+import shap
 
+from kailash.db import ConnectionManager
+from kailash_ml import DriftMonitor
+from kailash_ml.engines.drift_monitor import DriftThresholds
 from shared import MLFPDataLoader
 
 warnings.filterwarnings("ignore")
 
-N_ROWS = 10_000
-SEED = 42
-TARGET = "premium_response"
-REFERENCE_ROWS = 7_500
-PSI_THRESHOLD = 0.2
-KS_THRESHOLD = 0.05
-BASE_FEATURES = [
-    "satisfaction_score",
-    "avg_order_value",
-    "num_returns",
-    "order_count",
-    "loyalty_int",
-    "total_revenue",
-    "days_since_last_order",
-    "customer_tenure_days",
-]
+ID = "customer_id"
+UNRECORDED = "unrecorded"
 
 
-def _model_frame() -> pl.DataFrame:
-    df = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
-    df = df.sort("customer_id").head(N_ROWS)
-    rng = np.random.default_rng(SEED)
-
-    def z(col: str) -> np.ndarray:
-        a = df[col].to_numpy().astype(float)
-        return (a - a.mean()) / (a.std() + 1e-9)
-
-    loyal = df["loyalty_member"].cast(pl.Int64).to_numpy().astype(float)
-    sat_high = (df["satisfaction_score"] >= 4).cast(pl.Int64).to_numpy().astype(float)
-    logit = (
-        1.0 * z("satisfaction_score")
-        + 0.9 * loyal
-        + 0.8 * z("avg_order_value")
-        - 0.7 * z("num_returns")
-        + 0.5 * z("order_count")
-        + 1.4 * (loyal * sat_high)
-        + rng.normal(0.0, 1.3, size=df.height)
-    )
-    df = df.with_columns(
-        [
-            pl.col("loyalty_member").cast(pl.Int64).alias("loyalty_int"),
-            pl.Series(TARGET, (logit > 2.0).astype(np.int64)),
-            pl.int_range(0, df.height, dtype=pl.Int64).alias("row_id"),
-        ]
-    )
-    return df.select(BASE_FEATURES + ["row_id", TARGET])
+def load_history() -> pl.DataFrame:
+    """The labelled development file (for local runs only)."""
+    return MLFPDataLoader().load("mlfp02", "sg_credit_scoring.parquet")
 
 
-def _shift_slice(clean: pl.DataFrame) -> pl.DataFrame:
-    """Economic-downturn shift: spend collapses, recency stretches, mood drops."""
-    return clean.with_columns(
-        [
-            (pl.col("avg_order_value") * 0.6).alias("avg_order_value"),
-            (pl.col("total_revenue") * 0.6).alias("total_revenue"),
-            (pl.col("days_since_last_order") * 1.5 + 60).alias("days_since_last_order"),
-            (pl.col("satisfaction_score") - 1).alias("satisfaction_score"),
-        ]
+# --------------------------------------------------------------------------
+# 1. Explanations
+# --------------------------------------------------------------------------
+def explain(predict_proba: Callable, background: pl.DataFrame, applications: pl.DataFrame) -> pl.DataFrame:
+    features = [c for c in background.columns if c != ID]
+    schema = {c: pl.Float64 for c in features}
+
+    def f(X: np.ndarray) -> np.ndarray:
+        return np.asarray(predict_proba(pl.DataFrame(X, schema=schema, orient="row")), dtype=float)
+
+    bg = background.select(features).cast(pl.Float64).to_numpy()
+    X = applications.select(features).cast(pl.Float64).to_numpy()
+    explainer = shap.Explainer(f, shap.maskers.Independent(bg, max_samples=bg.shape[0]), algorithm="exact")
+    values = explainer(X).values
+    return pl.concat(
+        [applications.select(ID), pl.DataFrame(values, schema=schema, orient="row")],
+        how="horizontal",
     )
 
 
-async def _run() -> dict:
-    from kailash.db import ConnectionManager
-    from kailash_ml import DriftMonitor, ModelRegistry, TrainingPipeline
-    from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
-    from kailash_ml.types import FeatureField, FeatureSchema
-
-    frame = _model_frame()
-    schema = FeatureSchema(
-        name="premium_prod",
-        features=[FeatureField(name=f, dtype="float64") for f in BASE_FEATURES],
-        entity_id_column="row_id",
+# --------------------------------------------------------------------------
+# 2. Fairness
+# --------------------------------------------------------------------------
+def fairness_report(audit: pl.DataFrame, group_column: str) -> pl.DataFrame:
+    df = audit.with_columns(
+        pl.col(group_column).cast(pl.Utf8).fill_null(UNRECORDED).alias("group"),
+        pl.col("approved").cast(pl.Float64).alias("_a"),
+        pl.col("default").cast(pl.Int64).alias("_y"),
     )
-    reference = frame.select(BASE_FEATURES).head(REFERENCE_ROWS)
-    clean = frame.select(BASE_FEATURES).tail(frame.height - REFERENCE_ROWS)
-    shifted = _shift_slice(clean)
-
-    tmp = Path(tempfile.gettempdir())
-    uid = f"{os.getpid()}_{uuid.uuid4().hex[:8]}"
-    registry_db = tmp / f"mlfp03_t4_registry_{uid}.db"
-    drift_db = tmp / f"mlfp03_t4_drift_{uid}.db"
-    reg_conn = ConnectionManager(f"sqlite:///{registry_db.resolve().as_posix()}")
-    drift_conn = ConnectionManager(f"sqlite:///{drift_db.resolve().as_posix()}")
-    await reg_conn.initialize()
-    await drift_conn.initialize()
-    try:
-        registry = ModelRegistry(reg_conn)
-        pipeline = TrainingPipeline(feature_store=None, registry=registry)
-        result = await pipeline.train(
-            data=frame,
-            schema=schema,
-            model_spec=ModelSpec(
-                model_class="lightgbm.LGBMClassifier",
-                framework="lightgbm",
-                hyperparameters={
-                    "n_estimators": 200,
-                    "random_state": SEED,
-                    "verbose": -1,
-                },
-            ),
-            eval_spec=EvalSpec(
-                metrics=["accuracy", "f1", "auc"],
-                split_strategy="holdout",
-                test_size=0.25,
-            ),
-            experiment_name="premium_prod",
-        )
-        version = result.model_version.version
-
-        # Promote staging -> production with an audit reason.
-        model_name = result.model_version.name
-        await registry.promote_model(
-            model_name,
-            version,
-            "production",
-            reason=f"AUC gate passed: auc={result.metrics['auc']:.4f}",
-        )
-        promoted = await registry.get_model(model_name, stage="production")
-
-        # Arm drift monitoring against the training distribution.
-        monitor = DriftMonitor(
-            drift_conn,
-            tenant_id="_single",
-            psi_threshold=PSI_THRESHOLD,
-            ks_threshold=KS_THRESHOLD,
-        )
-        await monitor.set_reference_data(model_name, reference, BASE_FEATURES)
-        clean_report = await monitor.check_drift(model_name, clean)
-        shift_report = await monitor.check_drift(model_name, shifted)
-
-        return {
-            "registered_version": int(version),
-            "production_stage": str(promoted.stage),
-            "reference_auc": float(result.metrics["auc"]),
-            "clean_drift_detected": bool(clean_report.overall_drift_detected),
-            "shift_drift_detected": bool(shift_report.overall_drift_detected),
-            "n_drifted_features_clean": int(
-                sum(1 for f in clean_report.feature_results if f.drift_detected)
-            ),
-            "n_drifted_features_shift": int(
-                sum(1 for f in shift_report.feature_results if f.drift_detected)
-            ),
-            "shift_severity": str(shift_report.overall_severity),
-        }
-    finally:
-        await reg_conn.close()
-        await drift_conn.close()
-        registry_db.unlink(missing_ok=True)
-        drift_db.unlink(missing_ok=True)
+    report = df.group_by("group").agg(
+        pl.len().alias("applicants"),
+        pl.col("_a").mean().alias("approval_rate"),
+        pl.col("_a").filter(pl.col("_y") == 0).mean().alias("good_approval_rate"),
+        pl.col("_a").filter(pl.col("_y") == 1).mean().alias("default_approval_rate"),
+    )
+    best = report["approval_rate"].max()
+    return (
+        report.with_columns((pl.col("approval_rate") / best).alias("approval_ratio"))
+        .with_columns((pl.col("approval_ratio") >= 0.8).alias("passes_four_fifths"))
+        .select(
+            "group", "applicants", "approval_rate", "approval_ratio",
+            "good_approval_rate", "default_approval_rate", "passes_four_fifths",
+        )  # fmt: skip
+        .sort("group")
+    )
 
 
-def solve() -> dict:
-    """Train, register, promote to production, and run drift detection.
+# --------------------------------------------------------------------------
+# 3. Drift
+# --------------------------------------------------------------------------
+async def _drift(reference: pl.DataFrame, batch: pl.DataFrame, features: list[str]) -> list[str]:
+    with tempfile.TemporaryDirectory() as d:
+        conn = ConnectionManager(f"sqlite:///{(Path(d) / 'drift.db').as_posix()}")
+        await conn.initialize()
+        try:
+            alpha = 0.01 / len(features)  # Bonferroni: one test per field per batch
+            monitor = DriftMonitor(
+                conn,
+                tenant_id="credit_desk",
+                thresholds=DriftThresholds(psi=0.2, ks_pvalue=alpha, chi2_pvalue=alpha),
+            )
+            await monitor.set_reference_data("credit_default", reference, features)
+            report = await monitor.check_drift("credit_default", batch)
+        finally:
+            await conn.close()
+    return sorted(r.feature_name for r in report.feature_results if r.drift_detected)
 
-    Returns a dict with keys: registered_version, production_stage,
-    reference_auc, clean_drift_detected, shift_drift_detected,
-    n_drifted_features_clean, n_drifted_features_shift, shift_severity.
-    """
-    return asyncio.run(_run())
+
+def drift_alerts(reference: pl.DataFrame, batch: pl.DataFrame, features: list[str]) -> list[str]:
+    return asyncio.run(_drift(reference, batch, list(features)))
 
 
 if __name__ == "__main__":
-    out = solve()
-    print(
-        f"registered version : {out['registered_version']} ({out['production_stage']})"
-    )
-    print(f"reference AUC      : {out['reference_auc']:.4f}")
-    print(
-        f"drift  clean={out['clean_drift_detected']} "
-        f"({out['n_drifted_features_clean']} feats)  "
-        f"shift={out['shift_drift_detected']} "
-        f"({out['n_drifted_features_shift']} feats, {out['shift_severity']})"
-    )
+    data = load_history()
+    feats = ["credit_utilization", "payment_history_score", "num_late_payments"]
+    sample = data.sample(4_000, seed=1)
+
+    def toy(apps: pl.DataFrame) -> np.ndarray:
+        z = -2 + 2.5 * apps["credit_utilization"].to_numpy() + 0.2 * apps["num_late_payments"].to_numpy()
+        return 1 / (1 + np.exp(-z))
+
+    print(explain(toy, sample.select([ID] + feats).head(50), sample.select([ID] + feats).tail(3)))
+    audit = sample.with_columns((pl.col("credit_utilization") < 0.4).alias("approved"))
+    print(fairness_report(audit, "race"))
+    print(drift_alerts(sample.head(2_000), sample.tail(2_000), feats))

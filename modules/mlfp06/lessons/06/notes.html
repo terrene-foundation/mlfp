@@ -1,18 +1,277 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>Lesson 6.6 — Speaker Notes | MLFP</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="../../../assets/css/textbook.css"><style>.slide-block{margin:1.5em 0;padding:18px 22px;background:var(--mlfp-bg-alt);border-left:4px solid var(--mlfp-primary);border-radius:6px}.slide-block .meta{font-size:.85em;color:var(--mlfp-text-muted);display:flex;gap:16px;margin-bottom:8px}.slide-block .meta .badge{background:var(--mlfp-primary);color:white;padding:2px 10px;border-radius:12px;font-weight:600}.slide-block h3{margin:.2em 0 .6em;font-size:1.15em}.transition{margin-top:12px;padding-top:10px;border-top:1px dashed var(--mlfp-border);font-style:italic;color:var(--mlfp-text-muted);font-size:.92em}</style></head>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.6 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
 <body>
-<nav class="top-nav"><span class="brand">MLFP — Module 6 — Speaker Notes</span><span><a href="../../index.html">Module Index</a> <a href="textbook.html">Textbook</a> <a href="slides.html">Slides</a></span></nav>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
 <main class="textbook">
-<h1 class="lesson-title"><span class="lesson-number">Speaker Notes — Lesson 6.6</span>Multi-Agent Orchestration and MCP</h1>
-<p class="lead">Total time: ~90 minutes &nbsp;·&nbsp; 9 slides &nbsp;·&nbsp; ~10 min per slide</p>
-<p>This lesson scales agents from individuals to teams. The four patterns (Slide 2) are the conceptual anchor. The MCP server (Slide 5) is the most practically useful — it exposes tools that any agent can use. Live demo the multi-agent ML pipeline if possible. The security discussion (Slide 7) is critical for enterprise contexts.</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 1–2</span><span>~10 min</span><span>Title + patterns</span></div><h3>Four patterns</h3><p>Walk the pattern table. "Supervisor-worker: a manager delegates sub-tasks. Sequential: assembly line — each agent's output feeds the next. Parallel: independent tasks run simultaneously and results are merged. Handoff: one agent transfers to another when the topic changes — like being transferred to a different department." Singapore context: "A GovTech chatbot uses handoff — if a user asks about CPF, it hands off to the CPF specialist agent."</p><div class="transition">→ "Let's build a multi-agent pipeline."</div></div>
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 6.6</span>
+  Multi-Agent Orchestration and MCP
+</h1>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 3–5</span><span>~25 min</span><span>Pipeline, memory, MCP</span></div><h3>Pipeline code, memory, and MCP server</h3><p>Walk the supervisor code. Then the memory table: "Short-term is the current conversation. Long-term persists across sessions — the agent remembers your preferences. Entity memory structures knowledge about specific things — people, companies, regulations." Then the MCP server: "MCP is a protocol for exposing tools. Build an MCP server once, and any MCP client — Claude, ChatGPT, your own agents — can use those tools."</p><div class="transition">→ "Security."</div></div>
+<p class="lead">
+  Total time: ~90 minutes &nbsp;·&nbsp; 12 slides &nbsp;·&nbsp; ~7 min per slide average
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 6–9</span><span>~15 min</span><span>A2A, security, mistakes, recap</span></div><h3>A2A, security, and recap</h3><p>Walk A2A briefly. Security in depth: "In a financial system, the customer-facing agent must not have access to internal compliance data. The compliance agent must not see customer PII. Agent boundaries enforce this — like departments in an organisation." Preview 6.7: "Next we engineer governance — PACT D/T/R addressing, operating envelopes, budget cascading. The code IS the governance."</p><div class="transition">→ End of lesson.</div></div>
+<p>
+  Single agents compose into teams. The design payload: four
+  composition patterns, memory as a four-type taxonomy, and the two
+  protocols that make agents interoperable — MCP (tools) and A2A
+  (tasks). The discipline point that ties it together: inter-agent
+  communication is <em>structured</em> — typed Signatures in, typed
+  fields out — never free-form text. The security slide is not
+  optional garnish; multi-agent systems leak across agents by default
+  unless you design the boundaries.
+</p>
 
-<nav class="lesson-nav"><a href="../05/notes.html" class="prev"><span class="label">← Previous</span>6.5 Speaker Notes</a><a href="../07/notes.html" class="next"><span class="label">Next →</span>6.7 Speaker Notes</a></nav>
-</main></body></html>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Multi-Agent Orchestration and MCP</h3>
+  <p>
+    Open with the outcome: "Build a multi-agent ML pipeline and an
+    MCP server. 6.5 built one agent; today we compose several — and
+    give them a protocol to talk to the world."
+  </p>
+  <div class="transition">→ "The four ways agents compose."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~7 min</span><span>Four patterns</span></div>
+  <h3>Four multi-agent patterns</h3>
+  <p>
+    Walk the table. Supervisor-worker: one agent delegates to
+    specialists — complex tasks with sub-problems. Sequential: output
+    of one feeds the next — pipeline stages. Parallel: run
+    simultaneously, aggregate — independent sub-tasks. Handoff:
+    transfer to a specialist on topic change — multi-domain queries.
+  </p>
+  <p>
+    "The exercise series builds three of these: 6.1 is parallel
+    fan-out, 6.2 is sequential, 6.3 adds an LLM router — the handoff
+    pattern. Name the pattern before you build it; each has its own
+    failure modes."
+  </p>
+  <div class="transition">→ "The patterns, drawn."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~6 min</span><span>Three patterns picture</span></div>
+  <h3>Three orchestration patterns</h3>
+  <p>
+    Walk the figure: supervisor-worker with its delegation arrows,
+    sequential as a straight chain, parallel as a fan. "Sequential
+    accumulates context — each stage sees the previous stage's work.
+    Parallel accumulates <em>perspective</em> — each worker sees the
+    same input, and the supervisor reconciles. Choose by whether the
+    sub-tasks depend on each other."
+  </p>
+  <div class="transition">→ "Who watches the workers? Budgets."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~6 min</span><span>Delegation budgets</span></div>
+  <h3>Supervisors delegate with budgets</h3>
+  <p>
+    Walk the figure: the supervisor hands each specialist a task
+    <em>and</em> a budget. "Delegation without a budget is a blank
+    cheque — 6.5's turn ceilings apply to every agent you spawn.
+    Each specialist runs inside its own envelope; the supervisor
+    accounts for the total. This is 6.7's budget cascading, previewed
+    in agent form."
+  </p>
+  <div class="transition">→ "The pipeline, in code."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~8 min</span><span>Fan-out, fan-in</span></div>
+  <h3>Multi-agent pipeline: fan-out, fan-in</h3>
+  <p>
+    Walk the code. Three specialists from
+    <code>build_specialists()</code> — factual, semantic, structural —
+    each a BaseAgent with its own typed Signature. The fan-out:
+    <code>asyncio.gather</code> runs all three concurrently on the
+    same document and question.
+  </p>
+  <p>
+    Then the fan-in — read the comment: "The supervisor sees
+    <strong>structured outputs</strong>, not free text:
+    <code>factual_claims</code>, <code>main_themes</code>,
+    <code>key_entities</code>, extracted by each specialist's
+    Signature. This is the discipline point of the whole lesson:
+    agents exchange typed fields, not paragraphs. Free-form text
+    between agents is how errors propagate invisibly."
+  </p>
+  <p>
+    Read the footer: "Exercise 6.1 on SQuAD passages. Sequential
+    (6.2) chains stages instead; 6.3 adds an LLM router that hands
+    each query to the right specialist."
+  </p>
+  <div class="transition">→ "What do agents remember?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~7 min</span><span>Agent memory</span></div>
+  <h3>Agent memory</h3>
+  <p>
+    Walk the four types with their course homes. Short-term: the
+    current conversation — a sliding window (Ex 6.5) or Kaizen's
+    <code>BufferMemory(max_turns=...)</code>. Long-term: persistent
+    across sessions — a fact store with recall in the exercise, a
+    vector DB in production. Entity: structured — people, places,
+    concepts; a mini knowledge graph. Shared: across agents —
+    insights one agent leaves for others, via Kaizen's
+    <code>SharedMemoryPool</code> (<code>write_insight</code> /
+    <code>read_relevant</code>).
+  </p>
+  <p>
+    "Four scopes, four mechanisms. The common bug is using short-term
+    memory for a long-term job — context windows are not archives."
+  </p>
+  <div class="transition">→ "MCP — the tool protocol."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~8 min</span><span>MCP server</span></div>
+  <h3>MCP — Model Context Protocol</h3>
+  <p>
+    Walk the code. <code>MCPServer(name="mlfp06-analysis-server",
+    transport="stdio")</code>. The decorator:
+    <code>@server.tool()</code> — "note the parentheses: it's a
+    decorator <em>factory</em>; without them nothing registers."
+    The function's type hints and docstring become the tool's
+    published JSON schema.
+  </p>
+  <p>
+    Read the teal box: "Clients discover tools with the JSON-RPC
+    <code>tools/list</code> method and invoke them with
+    <code>tools/call</code>; Exercise 6.4 does both through a real
+    MCP client. The tool you write once is callable by any
+    MCP-speaking agent — that's the point of a protocol."
+  </p>
+  <div class="transition">→ "The bigger picture."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>MCP picture</span></div>
+  <h3>MCP: a universal protocol for LLM-tool integration</h3>
+  <p>
+    Walk the figure: hosts, clients, and servers — the LLM host talks
+    to any number of tool servers through one protocol. "Before MCP,
+    every agent framework had its own tool format. MCP is the
+    socket standard: write the tool once, any compliant host can use
+    it. Your corpus search from the last slide works in this course's
+    harness and in any MCP client, unchanged."
+  </p>
+  <div class="transition">→ "And agents talking to agents: A2A."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~6 min</span><span>A2A</span></div>
+  <h3>A2A protocol</h3>
+  <p>
+    Walk the two records from <code>kaizen.nodes.ai.a2a</code>.
+    <code>A2AAgentCard</code> — who an agent is: agent_id,
+    agent_name, agent_type, version, primary and secondary
+    capabilities. <code>A2ATask</code> — what's being asked: name,
+    description, assigned_to, delegated_by, requirements,
+    constraints, success criteria, and a state lifecycle.
+  </p>
+  <p>
+    "Capability cards let a router match tasks to agents — Exercise
+    6.3's router works on exactly this idea. The pattern repeats:
+    structured identity, structured task, structured result."
+  </p>
+  <div class="transition">→ "Architecture and security."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~8 min</span><span>Architecture and security</span></div>
+  <h3>Architecture and security considerations</h3>
+  <p>
+    Walk the six bullets in two groups. Architecture: modularity —
+    one narrow Signature per specialist, so you can swap or test an
+    agent without touching the rest; load balancing — several
+    instances of a busy specialist, with independent workers
+    parallelised by <code>asyncio.gather</code>; dynamic agent
+    creation — a supervisor spawns a specialist only when a task
+    needs it, inside its own budget and envelope.
+  </p>
+  <p>
+    Security: data isolation — agents with different access levels
+    must not leak data; mask identifiers before text crosses agents.
+    Injection defence — keep data separate from instructions and
+    limit each agent's tools; "keyword filters are beaten by
+    paraphrase — Exercise 6.5 shows a keyword guard failing live."
+    Audit trail — log every inter-agent message for compliance. "6.7
+    turns these from guidelines into code."
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~5 min</span><span>Mistakes</span></div>
+  <h3>Common mistakes</h3>
+  <p>
+    Walk the three. One: too many agents — start with 2–3; every
+    agent is a boundary to secure and a trace to read. Two: free-form
+    inter-agent communication — use structured schemas; paragraphs
+    between agents are unparseable, untestable, and leak-prone.
+    Three: no security boundaries — prevent cross-agent data leakage
+    by design, not by hope.
+  </p>
+  <div class="transition">→ "Recap and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the checklist: implement supervisor-worker, sequential, and
+    parallel patterns; build an MCP server; configure agent memory
+    across the four types; and apply security to multi-agent systems.
+    Tease 6.7: "Who's allowed to do what — AI Governance Engineering.
+    PACT D/T/R, operating envelopes, budget cascading."
+  </p>
+  <div class="transition">→ End of Lesson 6.6. Ten-minute break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../05/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    6.5 Speaker Notes
+  </a>
+  <a href="../07/notes.html" class="next">
+    <span class="label">Next →</span>
+    6.7 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -2,31 +2,255 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lesson 6.4 — Speaker Notes | MLFP</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../../../assets/css/textbook.css">
-  <style>.slide-block{margin:1.5em 0;padding:18px 22px;background:var(--mlfp-bg-alt);border-left:4px solid var(--mlfp-primary);border-radius:6px}.slide-block .meta{font-size:.85em;color:var(--mlfp-text-muted);display:flex;gap:16px;margin-bottom:8px}.slide-block .meta .badge{background:var(--mlfp-primary);color:white;padding:2px 10px;border-radius:12px;font-weight:600}.slide-block h3{margin:.2em 0 .6em;font-size:1.15em}.audience-cue{margin-top:12px;padding:8px 14px;font-size:.92em;border-radius:4px}.audience-cue.beginner{background:rgba(34,197,94,.08);border-left:3px solid var(--mlfp-foundations)}.audience-cue.expert{background:rgba(139,92,246,.08);border-left:3px solid var(--mlfp-advanced)}.transition{margin-top:12px;padding-top:10px;border-top:1px dashed var(--mlfp-border);font-style:italic;color:var(--mlfp-text-muted);font-size:.92em}</style>
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
 </head>
 <body>
-<nav class="top-nav"><span class="brand">MLFP — Module 6 — Speaker Notes</span><span><a href="../../index.html">Module Index</a> <a href="textbook.html">Textbook</a> <a href="slides.html">Slides</a></span></nav>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
 <main class="textbook">
-<h1 class="lesson-title"><span class="lesson-number">Speaker Notes — Lesson 6.4</span>RAG Systems</h1>
-<p class="lead">Total time: ~90 minutes &nbsp;·&nbsp; 12 slides &nbsp;·&nbsp; ~7–8 min per slide</p>
-<p>RAG is the most immediately deployable technique in M6. Most students will build their first RAG system within a week of this lesson. Spend 30% of time on live demo (building the pipeline), 30% on retrieval comparison (BM25 vs dense vs hybrid), and 20% on RAGAS evaluation. HyDE is the bonus — show it as an easy win.</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div><h3>RAG Systems</h3><p>Frame: "Your LLM is smart but it has two fatal flaws: it does not know what happened after its training cutoff, and it does not know your company's internal documents. RAG fixes both: fetch relevant facts from a search index and inject them into the prompt. By the end of this lesson you will have a working RAG pipeline on Singapore regulatory documents."</p><div class="transition">→ "Why RAG beats fine-tuning for knowledge."</div></div>
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 6.4</span>
+  RAG Systems
+</h1>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 2</span><span>~5 min</span><span>Why RAG</span></div><h3>Why RAG beats fine-tuning</h3><p>Walk the three reasons. Freshness resonates most: "MAS issued new crypto regulations last month. Do you want to retrain your LLM? Or just update the index? Indexing takes minutes. Retraining takes days and thousands of dollars." Attribution is the compliance argument: "In financial services, you need to cite your sources. RAG gives you the exact chunk that produced the answer. Fine-tuning gives you weights."</p><div class="transition">→ "The pipeline."</div></div>
+<p class="lead">
+  Total time: ~90 minutes &nbsp;·&nbsp; 11 slides &nbsp;·&nbsp; ~8 min per slide average
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 3–5</span><span>~15 min</span><span>Pipeline, chunking, retrieval</span></div><h3>Pipeline, chunking, and retrieval</h3><p>Walk the pipeline diagram end to end. For chunking: "200–500 tokens is the sweet spot. Always overlap by 10–20% so you do not split a key passage at a chunk boundary." For retrieval: "BM25 is great for exact keyword matches — if the user types 'PDPA Section 24', BM25 finds it. Dense retrieval is great for semantic matches — 'data privacy rules' matches 'PDPA' even though the words differ. Hybrid combines both. Production systems always use hybrid + re-ranking."</p><div class="transition">→ "How do we know it works?"</div></div>
+<p>
+  Grounding instead of rewiring. The lesson's frame: fine-tune for
+  skills and style, RAG for facts and freshness. The pipeline is built
+  by hand — chunk, embed, retrieve, answer with a grounding
+  instruction — and evaluated honestly: RAGAS with a local LLM judge
+  whose parse failures must raise, never default to a score. Retrieval
+  is where the quality lives: hybrid (BM25 + dense, RRF-fused) is the
+  production pattern.
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 6–7</span><span>~10 min</span><span>RAGAS and HyDE</span></div><h3>RAGAS and HyDE</h3><p>Walk the four RAGAS metrics. "Faithfulness: is the answer grounded in context? Answer relevance: does it address the question? Context relevance: are the chunks relevant? Context recall: did we find all relevant chunks?" Then HyDE: "Generate a hypothetical answer with the LLM, embed that, use it for retrieval. Why does this work? Because the hypothetical answer looks like a real document, so it retrieves documents that look like answers rather than documents that share keywords with the question."</p><div class="audience-cue beginner"><strong>For beginners:</strong> "HyDE is like asking a friend who roughly knows the topic to describe what the answer might look like, then searching for documents that match that description."</div><div class="transition">→ "Code demo."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>RAG Systems</h3>
+  <p>
+    Open with the outcome: "Build, evaluate, and improve a production
+    RAG pipeline. 6.2 and 6.3 changed the model's weights; today we
+    don't touch them — we change what the model can see."
+  </p>
+  <div class="transition">→ "Why not just fine-tune the facts in?"</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 8–9</span><span>~10 min</span><span>Code and Singapore</span></div><h3>Code demo and Singapore context</h3><p>Walk the code line by line. Live demo if possible: load MAS documents, chunk them, embed with sentence-transformers, retrieve top-5, generate answer. The Singapore context is natural — MAS, PDPA, AI Verify are documents every professional in Singapore encounters.</p><div class="transition">→ "Mistakes."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~8 min</span><span>Why RAG</span></div>
+  <h3>Why RAG beats fine-tuning for knowledge</h3>
+  <p>
+    Walk the three arguments. Freshness: re-index daily (trivial) vs
+    retrain daily (absurd). Attribution: RAG cites source chunks;
+    fine-tuning blurs facts into weights — "when the answer is wrong,
+    RAG shows you the chunk that misled; a fine-tune shows you
+    nothing." Cost: indexing is one embedding pass per chunk;
+    fine-tuning on the same corpus means GPU runs — repeated every
+    time the facts change.
+  </p>
+  <p>
+    Read the green box — it's the division of labour for the whole
+    module: "Fine-tune for skills and style. RAG for facts and
+    freshness."
+  </p>
+  <div class="transition">→ "The pipeline."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 10–12</span><span>~8 min</span><span>Mistakes and recap</span></div><h3>Mistakes and recap</h3><p>Walk mistakes. #1 (chunks too large) is the most common: "If you pass 2000-token chunks to the LLM, most of each chunk is irrelevant noise. The LLM gets distracted and produces worse answers. Smaller chunks = more precise retrieval = better answers." Preview 6.5: "Next we give the LLM the ability to act. ReAct agents reason about a task, decide which tool to use, observe the result, and iterate."</p><div class="transition">→ End of lesson.</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~8 min</span><span>Pipeline</span></div>
+  <h3>The RAG pipeline — two paths meet at the vector store</h3>
+  <p>
+    Walk the figure: the offline path — documents, chunking, embed,
+    into the vector store; and the online path — question, embed,
+    retrieve top-k, augment the prompt with context, answer. "Two
+    paths, one meeting point: the vector store. The offline path runs
+    once per corpus change; the online path runs per question."
+  </p>
+  <div class="transition">→ "Chunking — the quiet quality lever."</div>
+</div>
 
-<nav class="lesson-nav"><a href="../03/notes.html" class="prev"><span class="label">← Previous</span>6.3 Speaker Notes</a><a href="../05/notes.html" class="next"><span class="label">Next →</span>6.5 Speaker Notes</a></nav>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~7 min</span><span>Chunking</span></div>
+  <h3>Chunking strategies</h3>
+  <p>
+    Walk the table. Fixed size: split every N tokens — the simple,
+    fast baseline. Sentence: split on sentence boundaries — preserves
+    meaning. Paragraph: split on blank lines — for documents with
+    clear structure. Semantic: embed, cluster, split at topic shifts —
+    best quality, slower.
+  </p>
+  <p>
+    Read the closing line: "Always overlap chunks 10–20% — a key
+    passage sliced at a boundary is lost to both neighbours. And size
+    matters: 200–500 tokens. Chunks too large and the LLM gets
+    distracted by irrelevant context."
+  </p>
+  <div class="transition">→ "Retrieval — where quality lives."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~9 min</span><span>Retrieval</span></div>
+  <h3>Three retrieval approaches</h3>
+  <p>
+    Walk the table. Sparse: BM25 — 4.6's formula, exact keyword
+    match. Dense: sentence embeddings + cosine — semantic similarity,
+    catches paraphrase. Hybrid: reciprocal rank fusion,
+    $\sum_r 1/(k + \text{rank}_r)$ with $k = 60$ — best of both.
+  </p>
+  <p>
+    Read the blue box: "Hybrid retrieval plus a re-ranking pass is
+    the common production pattern. RRF fuses <em>ranks</em>, so BM25
+    and cosine scores never need a common scale. Exercise 4 scores
+    them all with hit@k against each question's source document — on
+    the 8,219-chunk corpus, BM25 alone lands hit@1 ≈ 0.92 and hit@5
+    ≈ 0.97 on the generated questions — honest caveat: the questions
+    are generated from the corpus, so say so when you quote the
+    numbers."
+  </p>
+  <div class="transition">→ "Evaluate the whole pipeline: RAGAS."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~8 min</span><span>RAGAS</span></div>
+  <h3>RAGAS evaluation</h3>
+  <p>
+    Walk the four metrics, two per side of the pipeline. Generation
+    side: faithfulness — is the answer grounded in the retrieved
+    context? answer relevance — does it address the question?
+    Retrieval side: context relevance — are the retrieved chunks
+    relevant? context recall — did we retrieve <em>all</em> the
+    relevant chunks?
+  </p>
+  <p>
+    Read the footer: "Exercise 4.5 computes these with the local LLM
+    as the judge — so judge parse failures must <em>raise</em>, never
+    default to a score. A metric that silently defaults when the
+    judge hiccups is 3.5's fake metric in a new outfit."
+  </p>
+  <div class="transition">→ "A clever retrieval trick: HyDE."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~7 min</span><span>HyDE</span></div>
+  <h3>HyDE — Hypothetical Document Embeddings</h3>
+  <p>
+    Walk the figure: the question goes to the LLM first — "write a
+    hypothetical answer" — that hypothetical gets embedded, and the
+    embedding drives retrieval. "Questions and documents live in
+    different styles: a question is short and interrogative; an
+    answer-shaped embedding retrieves documents that <em>look like
+    answers</em>, not just keyword matches."
+  </p>
+  <div class="transition">→ "The full pipeline in code."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~9 min</span><span>RAG code</span></div>
+  <h3>RAG code</h3>
+  <p>
+    Walk the code. <code>load_rag_corpus()</code> gives section,
+    text, question, answer. The embedder comes from
+    <code>make_embedder()</code> — the model is
+    <code>OLLAMA_EMBED_MODEL</code> from the environment, 768-dim.
+    Embed all chunks once, embed the query, cosine-similarity,
+    argsort the top 5.
+  </p>
+  <p>
+    Then the prompt — read the instruction as the grounding contract:
+    "'Answer using ONLY the context. If it is not there, say so.'
+    That sentence is what makes it RAG instead of confabulation with
+    extra steps." The answer comes from
+    <code>run_delegate_text(make_delegate(), prompt)</code> — the
+    delegate's model comes from <code>OLLAMA_CHAT_MODEL</code>, never
+    a hardcoded <code>model=</code> argument.
+  </p>
+  <div class="transition">→ "Production patterns."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~8 min</span><span>Advanced patterns</span></div>
+  <h3>Advanced RAG patterns</h3>
+  <p>
+    Walk the three. Metadata filtering: store source, date, and
+    section with each chunk; filter <em>before</em> similarity search —
+    "only notices issued after 2024"; the cheapest precision win.
+    Multi-hop retrieval: retrieve, let the LLM name the missing fact,
+    retrieve again — for answers spanning two documents. Document
+    summarisation: index a summary per document alongside its chunks;
+    route broad questions to summaries, narrow ones to chunks.
+  </p>
+  <p>
+    Read the Singapore note and the teal box: "Typical local use:
+    question answering over public regulatory texts — MAS notices,
+    PDPA guidance — swap them in for the Exercise 4 corpus. And
+    Kaizen ships ready-made <code>RAGResearchAgent</code> and
+    <code>MemoryAgent</code> in <code>kaizen_agents.agents</code> —
+    the packaged alternative; Exercise 4 builds the pipeline by hand
+    so every stage is visible."
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~5 min</span><span>Mistakes</span></div>
+  <h3>Common mistakes</h3>
+  <p>
+    Walk the four. One: chunks too large — the LLM gets distracted by
+    irrelevant context; 200–500 tokens. Two: no overlap — key
+    passages split at boundaries. Three: dense-only retrieval —
+    misses exact keyword matches; use hybrid. Four: no RAGAS
+    evaluation — "'it looks right' is not a metric."
+  </p>
+  <div class="transition">→ "Recap and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the checklist: build a complete RAG pipeline, compare BM25 /
+    dense / hybrid retrieval, evaluate with RAGAS, and apply HyDE.
+    Tease 6.5: "The LLM starts acting in the world — AI Agents:
+    ReAct, tool use, and function calling."
+  </p>
+  <div class="transition">→ End of Lesson 6.4. Ten-minute break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../03/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    6.3 Speaker Notes
+  </a>
+  <a href="../05/notes.html" class="next">
+    <span class="label">Next →</span>
+    6.5 Speaker Notes
+  </a>
+</nav>
+
 </main>
 </body>
 </html>

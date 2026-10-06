@@ -1,20 +1,281 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>Lesson 6.7 — Speaker Notes | MLFP</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="../../../assets/css/textbook.css"><style>.slide-block{margin:1.5em 0;padding:18px 22px;background:var(--mlfp-bg-alt);border-left:4px solid var(--mlfp-primary);border-radius:6px}.slide-block .meta{font-size:.85em;color:var(--mlfp-text-muted);display:flex;gap:16px;margin-bottom:8px}.slide-block .meta .badge{background:var(--mlfp-primary);color:white;padding:2px 10px;border-radius:12px;font-weight:600}.slide-block h3{margin:.2em 0 .6em;font-size:1.15em}.transition{margin-top:12px;padding-top:10px;border-top:1px dashed var(--mlfp-border);font-style:italic;color:var(--mlfp-text-muted);font-size:.92em}</style></head>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.7 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
 <body>
-<nav class="top-nav"><span class="brand">MLFP — Module 6 — Speaker Notes</span><span><a href="../../index.html">Module Index</a> <a href="textbook.html">Textbook</a> <a href="slides.html">Slides</a></span></nav>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
 <main class="textbook">
-<h1 class="lesson-title"><span class="lesson-number">Speaker Notes — Lesson 6.7</span>AI Governance Engineering</h1>
-<p class="lead">Total time: ~75 minutes &nbsp;·&nbsp; 9 slides &nbsp;·&nbsp; ~8 min per slide</p>
-<p>This lesson is engineering, not philosophy. No AI ethics frameworks. No position papers. The code IS the governance. Hammer this point from Slide 2 onward. The testing slide (Slide 7) is the most important — governance that is not tested does not exist. Singapore context: MAS, PDPA, and AI Verify all require demonstrable access controls and audit trails.</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 1–2</span><span>~8 min</span><span>Title + principle</span></div><h3>Governance is code</h3><p>"This lesson is not a discussion about AI ethics. It is an engineering lesson. You will write access controls, operating envelopes, budget cascades, and governance tests. If the code does not deny unauthorised access, your system is ungoverned — no matter how many policy documents you publish." Singapore angle: "MAS requires financial institutions to demonstrate AI governance. 'We have a policy document' is not enough. 'Here is the code that denies unauthorised access, and here are the tests that prove it works' — that is governance."</p><div class="transition">→ "D/T/R addressing."</div></div>
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 6.7</span>
+  AI Governance Engineering
+</h1>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 3–5</span><span>~20 min</span><span>D/T/R, envelopes, budgets</span></div><h3>PACT implementation</h3><p>Walk D/T/R code: "Department, Team, Role — a dash-delimited path like D1-R1-T1-R1. Every D or T is immediately followed by exactly one R. The GovernanceEngine takes a loaded org YAML and verify_action decides whether the role address is authorised for the requested action, given the context." Walk envelope diagram: "Nested boxes — outer boundary is never crossed, inner envelopes can only tighten across all five dimensions (Financial, Operational, Temporal, Data Access, Communication)." Walk budget cascade: "Budgets live on the financial dimension of each role's envelope; the framework enforces that children cannot widen the parent's max_spend_usd."</p><div class="transition">→ "GovernedSupervisor wraps it all."</div></div>
+<p class="lead">
+  Total time: ~75 minutes &nbsp;·&nbsp; 11 slides &nbsp;·&nbsp; ~7 min per slide average
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 6–7</span><span>~15 min</span><span>Agent + testing</span></div><h3>Governed agent and testing</h3><p>Walk the GovernedSupervisor code — the two-layer run contract: the supervisor plans the task, the caller-supplied execute_node callback runs the real LLM (or a stub). Then the governance tests — this is the climax. "Test #1: verify_action on an analyst role with a deploy action returns allowed=False. Test #2: RoleEnvelope.validate_tightening on a child envelope that loosens its parent raises MonotonicTighteningError. These are negative tests — they verify what does NOT happen. Governance tests are about proving that the system refuses to do what it should not."</p><div class="transition">→ "Mistakes."</div></div>
+<p>
+  Governance as engineering, taught against the <em>installed</em>
+  engine — including its sharpest edge: kailash-pact 0.14.1
+  <strong>auto-approves</strong> envelope-less roles and unknown
+  addresses. That fail-open default is stated plainly in this lesson,
+  not papered over: every deny-path demonstration attaches an envelope
+  first. The D/T/R address grammar, the five envelope dimensions, the
+  clearance ladder, and budget cascading all land in code students run.
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 8–9</span><span>~8 min</span><span>Mistakes + recap</span></div><h3>Mistakes and recap</h3><p>Fail-open is the most dangerous: "If your governance check throws an exception and you catch it with a default-allow, every attacker knows to trigger that exception." Preview 6.8: "The capstone deploys everything via Nexus. Train a model, wrap it in an agent, govern it with PACT, deploy via API + CLI + MCP, and monitor with DriftMonitor. The complete stack."</p><div class="transition">→ End of lesson.</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>AI Governance Engineering</h3>
+  <p>
+    Open with the outcome: "Implement access controls, operating
+    envelopes, budget cascading, and governance tests. 6.5 and 6.6
+    built agents that act; today we bound what they're allowed to do."
+  </p>
+  <div class="transition">→ "The thesis: governance is code."</div>
+</div>
 
-<nav class="lesson-nav"><a href="../06/notes.html" class="prev"><span class="label">← Previous</span>6.6 Speaker Notes</a><a href="../08/notes.html" class="next"><span class="label">Next →</span>6.8 Speaker Notes</a></nav>
-</main></body></html>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~6 min</span><span>Governance is code</span></div>
+  <h3>Governance is code, not committee</h3>
+  <p>
+    Walk the four pillars as verbs: access controls that DENY
+    unauthorised access; operating envelopes that RESTRICT agent
+    behaviour; budget cascading that PREVENTS runaway costs; audit
+    trails that PROVE compliance.
+  </p>
+  <p>
+    Read the green box: "The code IS the governance. If it is not in
+    code, it does not exist. A policy document that no function
+    enforces is a wish, not a control."
+  </p>
+  <div class="transition">→ "The address grammar: D/T/R."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~7 min</span><span>D/T/R addressing</span></div>
+  <h3>PACT D/T/R addressing</h3>
+  <p>
+    Walk the code. <code>compile_governance()</code> from the ex_7
+    helpers does two things: loads the org YAML into the engine, then
+    calls <code>apply_governance_specs()</code> so the YAML clearances
+    and envelopes are <em>actually enforced</em> — structure alone
+    compiles but doesn't bind.
+  </p>
+  <p>
+    Then the address: <code>Address.parse("D1-R1-T1-R1")</code> —
+    Department 1, its head Role, Team 1, its head Role (the Data
+    Analyst). And the single decision call:
+    <code>verify_action(role_address, action)</code> returning a
+    <code>GovernanceVerdict</code> with <code>.allowed</code>,
+    <code>.level</code>, and <code>.reason</code>. Read the printed
+    verdict: "True, auto_approved — read_data is within all
+    constraint dimensions."
+  </p>
+  <div class="transition">→ "What D/T/R means."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~6 min</span><span>D/T/R meaning</span></div>
+  <h3>PACT D/T/R: Department / Team / Role</h3>
+  <p>
+    Walk the org figure and say the expansion precisely, every time:
+    "<strong>D/T/R is Department / Team / Role</strong> — a positional
+    address grammar, not three job titles. The address reads like a
+    path: department, role, team, role."
+  </p>
+  <p>
+    Then the verdict column on the figure: "All four verdicts were
+    measured by calling <code>verify_action</code> on the compiled
+    course org with its YAML envelopes applied. Note the two flavours
+    of allow: <code>auto_approved</code> for routine actions, and the
+    gated verdicts — <code>flagged</code>, <code>held</code>,
+    <code>blocked</code> — as constraints bite."
+  </p>
+  <div class="transition">→ "The envelope itself."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~8 min</span><span>Operating envelopes</span></div>
+  <h3>Operating envelopes</h3>
+  <p>
+    Walk the envelope figure, then read the bullets. A
+    <code>RoleEnvelope</code> wraps a
+    <code>ConstraintEnvelopeConfig</code> with five dimensions —
+    Financial, Operational, Temporal, Data Access, Communication —
+    attached with <code>engine.set_role_envelope(...)</code>.
+    "Attached. Not declared in a YAML and hoped for — the envelope
+    must be set on the role before it means anything."
+  </p>
+  <p>
+    Then the clearance ladder, said carefully — students always
+    mis-order it: "<strong>public &lt; restricted &lt; confidential
+    &lt; secret &lt; top_secret</strong>. 'restricted' is the
+    second-<em>lowest</em> rung, not the top; 'internal' is an alias
+    for it. Department heads in the course orgs sit at secret."
+  </p>
+  <div class="audience-cue expert">
+    <strong>The honest default, stated plainly:</strong> "The
+    installed engine — kailash-pact 0.14.1 — <strong>auto-approves
+    any role with no envelope, and any address not in the org</strong>.
+    It is fail-open by default. That's why every deny-path demo in
+    this course attaches an envelope <em>first</em> — and why the
+    common-mistakes slide tells you to reject unknown addresses
+    before calling verify_action."
+  </div>
+  <div class="transition">→ "Money, cascading down the org."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~7 min</span><span>Budget cascading</span></div>
+  <h3>Budget cascading</h3>
+  <p>
+    Walk the cascade figure: the organisation caps the department,
+    the department caps the team, the team caps the agent.
+  </p>
+  <p>
+    Then the two layers from the bullets. Organisation layer:
+    <code>FinancialConstraintConfig(max_spend_usd=...)</code> in each
+    envelope — and the monotonic rule: "A child asking for more than
+    its parent fails <code>validate_tightening</code> — 'child
+    max_spend_usd (12.0) exceeds parent (10.0)'. Envelopes only ever
+    tighten down the tree." Agent layer:
+    <code>budget_limit_usd</code> or
+    <code>GovernedSupervisor(budget_usd=...)</code>, set at
+    construction — 6.5's rule again. Read the footer: "Dollar
+    figures are illustrative: on local Ollama every call is priced
+    $0."
+  </p>
+  <div class="transition">→ "The governed agent in code."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~8 min</span><span>GovernedSupervisor</span></div>
+  <h3>GovernedSupervisor</h3>
+  <p>
+    Walk the code. <code>GovernedSupervisor(model=DEFAULT_CHAT_MODEL,
+    budget_usd=50.0, tools=["answer_question", "read_data"],
+    data_clearance="confidential")</code> — the model from
+    OLLAMA_CHAT_MODEL, the budget at construction, the tool
+    whitelist, the clearance ceiling.
+  </p>
+  <p>
+    Read the teal box: "It's a <strong>planner</strong>, not a
+    wrapper around your agent: it plans steps and calls <em>your</em>
+    <code>execute_node</code> callback for each, enforcing budget,
+    tools, and clearance at every step. Your callback returns the
+    result plus cost and token counts." Then the audit line:
+    <code>governed.audit.verify_chain()</code> — "Every record is
+    hash-linked to the previous one; verification returns True unless
+    a record was altered. Tamper-evidence by construction."
+  </p>
+  <div class="transition">→ "The verdict taxonomy."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~6 min</span><span>Verdicts</span></div>
+  <h3>Every action gets a verdict</h3>
+  <p>
+    Walk the verdict figure: every action flows through the engine
+    and emerges with one of four outcomes — auto_approved, flagged,
+    held, blocked. "No silent decisions. Even an approval is a
+    <em>recorded</em> verdict with a reason string — which is what
+    makes the audit trail a compliance artifact and not just a log."
+  </p>
+  <div class="transition">→ "Prove it: governance tests."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~8 min</span><span>Governance testing</span></div>
+  <h3>Governance testing</h3>
+  <p>
+    Walk the two tests. First: <code>test_denied_access_stays_denied</code>
+    — the data analyst's envelope allows read / summarise / report
+    only, so <code>verify_action("D1-R1-T1-R1", "deploy_model")</code>
+    must come back <code>blocked</code> and not allowed. Second: the
+    tightening test — a child envelope requesting
+    <code>deploy_model</code> beyond its parent's
+    <code>read_data</code> must raise
+    <code>MonotonicTighteningError</code> from
+    <code>RoleEnvelope.validate_tightening(parent_envelope=...,
+    child_envelope=...)</code> — keyword-only arguments.
+  </p>
+  <p>
+    Read the amber box — it's the testing principle and the lesson's
+    sharpest edge: "<strong>Test what does NOT happen — and only
+    after attaching an envelope.</strong> The same deny test against
+    a role with <em>no</em> envelope would fail: the default is
+    auto-approve. A passing deny test proves an envelope is attached,
+    not just that the engine exists."
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~6 min</span><span>Mistakes</span></div>
+  <h3>Common mistakes</h3>
+  <p>
+    Walk the three. One: assuming the engine is fail-closed —
+    "kailash-pact 0.14.1 auto-approves roles with no envelope and
+    addresses outside the org. Attach an envelope to every agent
+    role, and reject unknown addresses before calling
+    <code>verify_action</code>." Two: testing only happy paths —
+    test denied access, not just allowed access. Three: no audit
+    trail — compliance needs proof; log every access decision.
+  </p>
+  <div class="transition">→ "Recap and bridge to the capstone."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the checklist: implement D/T/R (Department / Team / Role)
+    addressing and access checks; define and enforce operating
+    envelopes; implement budget cascading; and write governance tests
+    that verify access controls. Tease 6.8: "The capstone — deploy a
+    complete governed AI system via Nexus. The culmination of the
+    entire programme."
+  </p>
+  <div class="transition">→ End of Lesson 6.7. Ten-minute break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../06/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    6.6 Speaker Notes
+  </a>
+  <a href="../08/notes.html" class="next">
+    <span class="label">Next →</span>
+    6.8 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

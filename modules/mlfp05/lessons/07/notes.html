@@ -2,33 +2,256 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lesson 5.7 — Speaker Notes | MLFP</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../../../assets/css/textbook.css">
-  <style>.slide-block{margin:1.5em 0;padding:18px 22px;background:var(--mlfp-bg-alt);border-left:4px solid var(--mlfp-primary);border-radius:6px}.slide-block .meta{font-size:.85em;color:var(--mlfp-text-muted);display:flex;gap:16px;margin-bottom:8px}.slide-block .meta .badge{background:var(--mlfp-primary);color:white;padding:2px 10px;border-radius:12px;font-weight:600}.slide-block h3{margin:.2em 0 .6em;font-size:1.15em}.audience-cue{margin-top:12px;padding:8px 14px;font-size:.92em;border-radius:4px}.audience-cue.beginner{background:rgba(34,197,94,.08);border-left:3px solid var(--mlfp-foundations)}.audience-cue.expert{background:rgba(139,92,246,.08);border-left:3px solid var(--mlfp-advanced)}.transition{margin-top:12px;padding-top:10px;border-top:1px dashed var(--mlfp-border);font-style:italic;color:var(--mlfp-text-muted);font-size:.92em}</style>
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
 </head>
 <body>
-<nav class="top-nav"><span class="brand">MLFP — Module 5 — Speaker Notes</span><span><a href="../../index.html">Module Index</a> <a href="textbook.html">Textbook</a> <a href="slides.html">Slides</a></span></nav>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
 <main class="textbook">
-<h1 class="lesson-title"><span class="lesson-number">Speaker Notes — Lesson 5.7</span>Transfer Learning</h1>
-<p class="lead">Total time: ~90 minutes &nbsp;·&nbsp; 9 slides &nbsp;·&nbsp; ~10 min per slide (more code demos)</p>
-<p>This is the most practical lesson in M5 — students leave with a deployed model. Allocate 40% of time to live demos (ResNet fine-tuning, BERT fine-tuning, ONNX export). The architecture selection guide (Slide 7) is the reference table for the rest of the course. Emphasise that this IS how production ML works — almost nobody trains from scratch.</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 1</span><span>~3 min</span><span>Title</span></div><h3>Transfer Learning</h3><p>Frame: "This is the most immediately useful lesson in M5. By the end you will have a fine-tuned model exported to ONNX and served by InferenceServer. This pipeline — pre-train, fine-tune, export, serve — is how 90% of production DL systems work."</p><div class="transition">→ "Why it works."</div></div>
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 5.7</span>
+  Transfer Learning
+</h1>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 2</span><span>~5 min</span><span>Why</span></div><h3>Why transfer learning</h3><p>"ResNet was trained on 14 million ImageNet images. BERT was trained on 3.3 billion tokens of English text. You do not have that data or that compute. But the features those models learned — edges, textures, syntax, semantics — are universal. Transfer learning lets you stand on the shoulders of those billion-dollar training runs."</p><div class="audience-cue beginner"><strong>For beginners:</strong> "Imagine learning to play guitar. If you already play piano, your fingers know music theory, timing, and dexterity. You transfer those skills. Transfer learning is the same idea for neural networks."</div><div class="transition">→ "The strategy."</div></div>
+<p class="lead">
+  Total time: ~90 minutes &nbsp;·&nbsp; 11 slides &nbsp;·&nbsp; ~8 min per slide average
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 3</span><span>~5 min</span><span>Strategy</span></div><h3>Freeze-tune-head</h3><p>Walk the three-box diagram. "Blue: early layers that detect edges and textures — frozen, never touched. Yellow: later layers that detect shapes and patterns — fine-tuned with a low learning rate. Green: your new classification head — trained from scratch. This layered unfreezing preserves universal knowledge while adapting to your task."</p><div class="transition">→ "CV example: ResNet."</div></div>
+<p>
+  The capstone of M5's architecture arc: stand on pre-trained models
+  instead of training from scratch. The technical heart is the
+  freeze → new head → gradual unfreeze strategy, plus zero-initialised
+  adapters (≈1% of parameters — the same idea as M6's LoRA). The
+  operational payload is the export → register → serve pipeline:
+  OnnxBridge with a 2-row trace, then InferenceServer from the
+  registry. Note the serving API is minimal by design — plain mapping
+  in, plain mapping out.
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 4–5</span><span>~20 min</span><span>Code demos</span></div><h3>ResNet and BERT fine-tuning</h3><p>Live demo if possible. Walk each code block line by line. For ResNet: "Load pretrained, freeze, replace final FC layer, train only the new layer." For BERT: "Load from HuggingFace, the Trainer handles everything — you just provide data and training arguments." Emphasise the simplicity — 5 lines for ResNet, 4 lines for BERT.</p><div class="transition">→ "Export and serve."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Transfer Learning</h3>
+  <p>
+    Open with the outcome: "Fine-tune, export, and serve CV and NLP
+    models. Everything so far trained from scratch; today you learn
+    why almost nobody in production does that."
+  </p>
+  <div class="transition">→ "Why transfer."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 6</span><span>~10 min</span><span>ONNX + InferenceServer</span></div><h3>ONNX export + serving</h3><p>Walk the three-line pipeline. "OnnxBridge.export takes your model, a sample input, and an output path. InferenceServer loads the ONNX model, warm_cache prepares it for fast inference, predict serves predictions. From Jupyter notebook to production API in three lines. This is the Kailash deployment story."</p><div class="transition">→ "Selection guide."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~7 min</span><span>Why transfer</span></div>
+  <h3>Why transfer learning?</h3>
+  <p>
+    Walk the three bullets. Training from scratch: millions of
+    images, weeks of compute — the entry fee for a competitive
+    backbone. Transfer: start from pre-trained weights, fine-tune on
+    your data — days become hours, and thousands of examples become
+    hundreds.
+  </p>
+  <p>
+    Why it works: "Early layers learn universal features — edges and
+    textures in vision, syntax in language. Those layers don't care
+    whether the task is ImageNet or your three classes." Read the
+    green box: "Most production DL does NOT train from scratch.
+    Transfer is the norm."
+  </p>
+  <div class="transition">→ "Which layers move, which stay."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>Selection guide</span></div><h3>Architecture selection guide</h3><p>Walk the table. "Images: always transfer (ImageNet). Text: always transfer (BERT/GPT). Sequences: sometimes transfer if the domain matches. Graphs: rarely — too task-specific. Tabular: never — gradient boosting still wins, no useful pre-training." Make them photograph this table.</p><div class="transition">→ "Mistakes."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~7 min</span><span>Layer spectrum</span></div>
+  <h3>Lower layers transfer; higher layers specialize</h3>
+  <p>
+    Walk the figure: the layer-by-layer spectrum from generic to
+    task-specific. "Lower layers are general — edges, corners, simple
+    textures; they transfer almost for free. Higher layers are
+    specialised — the 1,000-way ImageNet head is useless to your
+    problem and gets replaced. The art is choosing where along the
+    spectrum to cut."
+  </p>
+  <div class="transition">→ "The strategy."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 8–9</span><span>~8 min</span><span>Mistakes + recap</span></div><h3>Mistakes and recap</h3><p>Walk mistakes. #2 (LR too high) is the most common — "Pre-trained weights encode billions of training examples. A high LR destroys that in one epoch. Use 1e-5 for BERT, 1e-4 for ResNet fine-tuning." Preview 5.8: "Reinforcement Learning — the final DL paradigm. Learning from interaction rather than static data. Then we move to M6: LLMs and production systems."</p><div class="transition">→ End of lesson.</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~7 min</span><span>Strategy</span></div>
+  <h3>The strategy</h3>
+  <p>
+    Walk the strategy figure: freeze the backbone, train the new
+    head, then unfreeze gradually at a low learning rate. "Freeze
+    first — the pre-trained features are valuable and fragile. Train
+    the head on top. Then, if you have the data, unfreeze the top
+    layers <em>gradually</em>, at a learning rate 10–100× lower than
+    from-scratch training. The sequence protects the inherited
+    features while adapting them."
+  </p>
+  <div class="transition">→ "In code, on ResNet."</div>
+</div>
 
-<nav class="lesson-nav"><a href="../06/notes.html" class="prev"><span class="label">← Previous</span>5.6 Speaker Notes</a><a href="../08/notes.html" class="next"><span class="label">Next →</span>5.8 Speaker Notes</a></nav>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~8 min</span><span>ResNet fine-tuning</span></div>
+  <h3>ResNet fine-tuning</h3>
+  <p>
+    Walk the code: load ResNet-18 with the default ImageNet weights;
+    set <code>requires_grad = False</code> on every parameter — the
+    backbone is frozen; replace <code>model.fc</code> with a fresh
+    linear layer sized to your classes; and the optimiser receives
+    <code>model.fc.parameters()</code> only.
+  </p>
+  <p>
+    "Read the optimiser line — it sees <em>only</em> the head's
+    parameters. The frozen backbone is a fixed feature extractor;
+    gradients would be wasted on it and would damage it. Three lines
+    of surgery: freeze, replace, optimise the head."
+  </p>
+  <div class="transition">→ "The middle path: adapters."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~8 min</span><span>Adapters</span></div>
+  <h3>Adapters: train ~1% inside a frozen backbone</h3>
+  <p>
+    Walk the bottleneck formula: $x + W_{\text{up}}\,
+    \text{ReLU}(W_{\text{down}}\, x)$, with $W_{\text{up}}$
+    <em>zero-initialised</em>. "At initialisation the adapter adds
+    exactly zero — the block starts as the identity, so training
+    begins from the exact ImageNet features and learns only the
+    <em>change</em> it needs."
+  </p>
+  <p>
+    Walk the exercise numbers: "Exercise 5.7 file 04 inserts one
+    adapter after ResNet-18's layer3 (256 channels) and layer4 (512
+    channels). Trainable: 99,200 adapter parameters plus the 5,130
+    in the head — about 104K of the ~11.3M total, ≈ 1%." Read the
+    blue box: "Same idea as LoRA in Module 6 — a small trainable
+    delta on a frozen model."
+  </p>
+  <div class="transition">→ "The NLP twin: BERT."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~8 min</span><span>BERT fine-tuning</span></div>
+  <h3>BERT fine-tuning</h3>
+  <p>
+    Walk the code: <code>BertForSequenceClassification.from_pretrained(
+    "bert-base-uncased", num_labels=4)</code> — the pre-trained body
+    with a fresh 4-way head for AG News topics. TrainingArguments: 2
+    epochs, lr 2e-5 — "note how small: fine-tuning rates are 10–100×
+    below from-scratch" — and <code>eval_strategy="epoch"</code>.
+    "Heads-up on the keyword: current transformers uses
+    <code>eval_strategy</code>; the old
+    <code>evaluation_strategy</code> is removed."
+  </p>
+  <p>
+    "Same recipe as the ResNet: pre-trained body, new head, low LR.
+    Exercise 5.4 file 04 writes the loop by hand so the Trainer's
+    magic is visible."
+  </p>
+  <div class="transition">→ "Ship it: export and serve."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~9 min</span><span>Export and serve</span></div>
+  <h3>ONNX export + InferenceServer</h3>
+  <p>
+    Walk the three stages — this is Exercise 5.7 file 05 end to end.
+    Stage 1: export behind the <code>FlatImageAdapter</code> with a
+    <strong>2-row</strong> traced sample input, and
+    <code>assert res.success</code> — export failure returns, it
+    doesn't raise. Stage 2: <code>register_model</code> in the
+    registry, then <code>attach_onnx_artifact</code> to bind the
+    .onnx file to that version. Stage 3: serve —
+    <code>InferenceServer.from_registry(..., runtime="onnx")</code>,
+    <code>start</code>, <code>await server.predict({"records":
+    ...})</code>, <code>stop</code>.
+  </p>
+  <p>
+    Read the teal box: "Export → register → serve.
+    <code>predict</code> returns a plain mapping — one logit row per
+    image; there is no <code>predict_batch</code>, no
+    <code>warm_cache</code>, no result object. The serving API is
+    deliberately minimal: records in, predictions out."
+  </p>
+  <div class="transition">→ "When does transfer even apply?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~6 min</span><span>Selection guide</span></div>
+  <h3>Architecture selection guide</h3>
+  <p>
+    Walk the table — note the transfer column as much as the
+    architecture column. Images: CNN / ViT, always transfer from
+    ImageNet. Text: Transformer, always transfer from BERT/GPT.
+    Sequences: LSTM / Transformer, sometimes. Graphs: GNN, rarely —
+    no large shared pre-trained corpus. Tabular: gradient boosting,
+    <em>never</em> — pre-training doesn't transfer to tables;
+    M3.4's boosters remain the answer there.
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~5 min</span><span>Mistakes</span></div>
+  <h3>Common mistakes</h3>
+  <p>
+    Walk the four. One: training all layers from the start — freeze
+    first, unfreeze gradually; the inherited features are the asset.
+    Two: LR too high — 10–100× lower than from-scratch; you're
+    nudging, not rebuilding. Three: no augmentation — small datasets
+    need flips, rotations, jitter. Four: no ONNX export — a
+    notebook-only model is not deployed; export → register → serve
+    is the definition of done here.
+  </p>
+  <div class="transition">→ "Recap and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the checklist: fine-tune ResNet and BERT, add
+    zero-initialised adapters to train ~1% of a frozen model, export
+    with OnnxBridge, register and serve with InferenceServer, and
+    select architecture + transfer strategy per data type. Tease
+    5.8: "Learning from interaction, not static data — Reinforcement
+    Learning."
+  </p>
+  <div class="transition">→ End of Lesson 5.7. Ten-minute break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../06/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    5.6 Speaker Notes
+  </a>
+  <a href="../08/notes.html" class="next">
+    <span class="label">Next →</span>
+    5.8 Speaker Notes
+  </a>
+</nav>
+
 </main>
 </body>
 </html>

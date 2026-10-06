@@ -35,266 +35,338 @@
   Linear Regression
 </h1>
 
-<p class="lead">~60 minutes · 15 slides · ~4 min per slide</p>
+<p class="lead">
+  Total time: ~60 minutes &nbsp;·&nbsp; 17 slides &nbsp;·&nbsp; ~3.5 min per slide average
+</p>
 
 <p>
-  This is the lesson that converts M2 from pure statistics into applied
-  modelling. Spend the time on slide 4-5 (the OLS derivation) — that is
-  the only matrix-algebra derivation in MLFP, and learners either get it
-  here or pretend to understand it forever. Do the derivation live. Let
-  them see the gradient calculation.
+  The first modelling lesson — and the one where statistics becomes
+  machine learning. The derivation is worth doing properly: squared
+  loss, gradient, normal equations, and the closed form. Everything in
+  M3's supervised learning is this lesson with a bigger hammer. Budget
+  extra time; this is a 60-minute slot.
 </p>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
   <h3>Linear Regression</h3>
   <p>
-    Open: "Regression is the most-used statistical model in the world.
-    It predicts continuous outcomes, and every coefficient comes with a
-    $t$-test you already know. Today we derive it from scratch — the
-    matrix form $(X^\top X)^{-1} X^\top y$ — and apply it to HDB prices."
+    Open with the bridge from 2.4: "A/B tests compare two groups. But
+    HDB prices don't come in two groups — floor area varies
+    continuously, and so does price. Today: the model that predicts a
+    number from other numbers. OLS, the closed form, $t$-stats, $R^2$,
+    the $F$-stat, and dummy encoding."
   </p>
-  <div class="transition">→ "The model."</div>
+  <div class="transition">→ "The model itself."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>The model</span></div>
   <h3>The model</h3>
   <p>
-    Write the equation. Walk the pieces. Point out the ceteris paribus
-    interpretation: "Beta_j is what happens to $y$ when $x_j$ goes up by
-    one, <em>holding all the other predictors constant</em>. That 'holding
-    constant' phrase is everything — it's why multivariate regression is
-    more powerful than plotting $y$ against one variable at a time."
+    Read the equation aloud, then the three bullets. $\beta_0$: expected
+    $y$ when all predictors are zero — often not interpretable on its
+    own. $\beta_j$: change in $y$ per unit change in $x_j$,
+    <em>holding the other predictors constant</em> — underline that
+    clause; it's the ceteris paribus that comes back at the end of the
+    lesson. $\varepsilon_i$: everything the linear combination can't
+    capture.
   </p>
-  <div class="audience-cue beginner">
-    <strong>Concrete:</strong> "If I look at HDB prices vs floor area, I
-    see a strong upward trend. But is it <em>just</em> floor area, or is
-    it that bigger flats happen to be in more expensive towns? Regression
-    lets me ask: what's the effect of area, after I've already accounted
-    for town?"
-  </div>
-  <div class="transition">→ "The picture."</div>
+  <p>
+    "This is a strong claim: the world is a weighted sum plus noise.
+    Sometimes it's approximately right, and approximate is incredibly
+    useful."
+  </p>
+  <div class="transition">→ "The picture that explains the name."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 3</span><span>~2 min</span><span>Scatter picture</span></div>
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>The picture</span></div>
   <h3>The picture</h3>
   <p>
-    Walk the scatter. Point at one residual — "this flat is above the
-    line, so the model under-predicted its price. The residual is the
-    vertical distance. OLS finds the line that makes the sum of squared
-    vertical distances as small as possible."
-  </p>
-  <div class="transition">→ "Let's do the algebra."</div>
-</div>
-
-<div class="slide-block">
-  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>OLS loss</span></div>
-  <h3>Deriving OLS — the loss</h3>
-  <p>
-    Stack the equations into matrix form. "One equation per row of data.
-    Stacking gives us $y = X\beta + \varepsilon$ where $X$ is $n$ by
-    $(k+1)$, the first column of ones giving us the intercept."
+    Walk the figure: teal points are the data, the amber line is the
+    best-fit line, and the dashed red segment is one residual — the
+    vertical gap between a point and the line.
   </p>
   <p>
-    Write the squared-error loss as a dot product. "$(y - X\beta)^\top (y - X\beta)$
-    is the sum of squared residuals in matrix form. This is what we
-    minimise."
-  </p>
-  <p>
-    Expand the product. "Three terms: $y^\top y$ doesn't depend on $\beta$,
-    so it drops out of the gradient. The middle term is linear in $\beta$.
-    The last term is quadratic."
-  </p>
-  <div class="transition">→ "Take the gradient, set to zero."</div>
-</div>
-
-<div class="slide-block">
-  <div class="meta"><span class="badge">Slide 5</span><span>~5 min</span><span>Normal equations</span></div>
-  <h3>Deriving OLS — setting the gradient to zero</h3>
-  <p>
-    Take the gradient. "Using matrix calculus, the derivative of
-    $-2\beta^\top X^\top y$ with respect to $\beta$ is $-2 X^\top y$. The
-    derivative of $\beta^\top X^\top X \beta$ is $2 X^\top X \beta$."
-  </p>
-  <p>
-    Set to zero. "$X^\top X \beta = X^\top y$. These are the normal equations.
-    They have this name because the residual vector is normal — meaning
-    perpendicular — to the column space of $X$."
-  </p>
-  <p>
-    Solve. "If $X^\top X$ is invertible, multiply both sides by its inverse.
-    That gives us the formula that is boxed on every regression textbook
-    on the planet: $\hat\beta = (X^\top X)^{-1} X^\top y$."
+    "OLS — ordinary least squares — chooses the line that minimises the
+    sum of <em>squared</em> vertical distances. Why squared? It punishes
+    big misses quadratically, it makes the maths solvable in closed
+    form, and under Normal errors it's exactly MLE — which connects
+    today to 2.2."
   </p>
   <div class="audience-cue beginner">
-    <strong>If beginners freeze on matrix calculus:</strong> "You don't
-    need to redo this derivation yourself. What you need to know is:
-    one formula, four symbols. $(X^\top X)^{-1} X^\top y$. That's OLS.
-    Everything else is bookkeeping."
+    <strong>If beginners ask why not absolute distance:</strong> "That's
+    a real method — least absolute deviations, robust to outliers — but
+    it has no closed form. Squared error gives us the formula on the
+    next slides."
   </div>
+  <div class="transition">→ "Let's derive it."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>The loss</span></div>
+  <h3>Deriving OLS — the loss</h3>
+  <p>
+    Stack the equations: $y = X\beta + \varepsilon$, where each row of
+    $X$ is one observation. The loss is the sum of squared residuals,
+    $S(\beta) = (y - X\beta)^\top(y - X\beta)$.
+  </p>
+  <p>
+    Expand the product slowly: $y^\top y - 2\beta^\top X^\top y +
+    \beta^\top X^\top X \beta$. "Three terms: a constant, a linear term
+    in $\beta$, and a quadratic term. A quadratic bowl — which is why
+    there's exactly one minimum."
+  </p>
+  <div class="transition">→ "Set the gradient to zero."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Normal equations</span></div>
+  <h3>Deriving OLS — setting the gradient to zero</h3>
+  <p>
+    Differentiate term by term: the constant vanishes, the linear term
+    gives $-2X^\top y$, the quadratic gives $2X^\top X\beta$. Set to
+    zero and you have the normal equations: $X^\top X \beta = X^\top y$.
+  </p>
+  <p>
+    Then the box: if $X^\top X$ is invertible,
+    $\hat\beta = (X^\top X)^{-1} X^\top y$. "This is arguably the most
+    important formula in applied statistics. Say the caveat out loud:
+    <em>if</em> $X^\top X$ is invertible — that's the multicollinearity
+    failure we'll meet in the mistakes slide."
+  </p>
   <div class="audience-cue expert">
-    <strong>For experts:</strong> mention that this is also the MLE under
-    i.i.d. Normal errors — the Normal log-likelihood leads to the same
-    normal equations. OLS and Normal MLE are the same thing.
+    <strong>For experts:</strong> nobody inverts the matrix in practice
+    — $QR$ or SVD factorisations are numerically stable. numpy's
+    <code>solve</code> uses LU. Same answer, better arithmetic.
   </div>
-  <div class="transition">→ "Standard errors come from the covariance of $\hat\beta$."</div>
+  <div class="transition">→ "Point estimates aren't enough — how certain are we?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>SE and t-stat</span></div>
-  <h3>Standard errors and $t$-stats</h3>
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Standard errors</span></div>
+  <h3>Standard errors of $\hat\beta$</h3>
   <p>
-    State $\text{Var}(\hat\beta) = \sigma^2 (X^\top X)^{-1}$. "The diagonal
-    gives the variance of each coefficient. Take square roots to get
-    standard errors."
+    Under Normal errors, $\hat\beta$ is itself a random vector with
+    covariance $\sigma^2 (X^\top X)^{-1}$. We don't know $\sigma^2$, so
+    estimate it from the residuals: $\hat\sigma^2 = e^\top e / (n - k - 1)$.
   </p>
   <p>
-    Then the estimator of $\sigma^2$: residual sum of squares divided by
-    $n - k - 1$. "Same Bessel's correction from 2.2. We used $k+1$ degrees
-    of freedom estimating the coefficients, so $n - k - 1$ are free."
+    Pause on the denominator: "$n - k - 1$ — the general Bessel
+    correction from 2.2. We spent $k+1$ degrees of freedom estimating
+    the coefficients, so the residual sum of squares gets divided by
+    what's left. The diagonal of $\hat\sigma^2(X^\top X)^{-1}$ gives
+    the squared standard errors."
   </p>
-  <p>
-    Finally the $t$-statistic. "$\hat\beta_j / \text{SE}(\hat\beta_j)$.
-    Exactly the same statistic you built in 2.3 for one-sample tests.
-    Every regression coefficient is a hypothesis test in disguise."
-  </p>
-  <div class="transition">→ "Evaluating the fit."</div>
+  <div class="transition">→ "One $t$-stat per coefficient."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>R²</span></div>
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>t-statistics</span></div>
+  <h3>The $t$-statistic for each coefficient</h3>
+  <p>
+    Walk the formula: $t_j = \hat\beta_j / \text{SE}(\hat\beta_j)$,
+    distributed $t_{n-k-1}$ under the null that the true coefficient is
+    zero. "Large $|t_j|$ means the estimate is many standard errors
+    from zero — strong evidence this predictor matters."
+  </p>
+  <p>
+    Give the rule of thumb with its warning: "$|t| > 2$ corresponds
+    roughly to $p < 0.05$. Fine for a quick scan of a regression table;
+    but always report the exact p-value."
+  </p>
+  <div class="transition">→ "How much of the variance does the model explain?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>R²</span></div>
   <h3>$R^2$: proportion of variance explained</h3>
   <p>
-    Walk the formula. "1 minus the fraction of variance the model
-    did not explain. $R^2 = 1$ is perfect, $R^2 = 0$ is no better than
-    guessing the mean."
+    Define the two sums of squares: $\text{SS}_{\text{tot}}$ is the
+    variance of $y$ around its own mean; $\text{SS}_{\text{res}}$ is
+    what's left after the model. $R^2$ is the fraction explained.
+    "An $R^2$ of 0.83 means the model explains 83% of the price
+    variation — the rest is noise, omitted variables, and non-linearity."
   </p>
   <p>
-    State the trap: "$R^2$ only increases as you add predictors. Even
-    pure noise predictors push $R^2$ up. This is why we look at adjusted
-    $R^2$, which penalises the extra degrees of freedom you spent."
+    Then the trap, stated on the slide: "$R^2$ <em>only goes up</em> as
+    you add predictors — even useless ones, because the model can always
+    fit a little more noise. Adjusted $R^2$ penalises complexity with
+    the $(n-1)/(n-k-1)$ factor. Always report adjusted."
   </p>
-  <div class="transition">→ "And the F-stat."</div>
+  <div class="transition">→ "One number for the whole model."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>F-stat</span></div>
+  <div class="meta"><span class="badge">Slide 9</span><span>~2 min</span><span>F-statistic</span></div>
   <h3>$F$-statistic: model vs intercept-only</h3>
   <p>
-    Walk the formula. "Ratio of explained variance per parameter to
-    unexplained variance per residual degree of freedom. Large $F$ means
-    the model is doing real work beyond the intercept."
+    "The $t$-stats test coefficients one at a time. The $F$-stat tests
+    the whole model at once: is this better than just predicting
+    $\bar{y}$ for everyone?" Walk the formula — regression variance per
+    predictor over residual variance per remaining degree of freedom.
+    Under the null that all slopes are zero, $F \sim F_{k,\,n-k-1}$.
   </p>
   <p>
-    Give typical numbers: "For a well-fit HDB model you'll see $F$ in the
-    thousands and a p-value that's numerically zero. That's fine — just
-    means the predictors definitely have explanatory power. The more
-    interesting story is in the individual $t$-statistics."
+    Read the green box: "Large $F$ → small p-value → the model is doing
+    something beyond guessing the mean."
   </p>
-  <div class="transition">→ "Categoricals need encoding."</div>
+  <div class="transition">→ "How do towns — categories — enter a linear model?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Dummy encoding</span></div>
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Dummy encoding</span></div>
   <h3>Categorical variables — dummy encoding</h3>
   <p>
-    Walk the diagram. "Four flat types become three binary columns. The
-    dropped category — 3-room here — is the base. An observation in the
-    base category has all zeros on the dummies. The coefficient on
-    is_4room is the price difference between 4-room and 3-room, holding
-    other predictors constant."
+    Walk the figure. The flat_type column — 3-room, 4-room, 5-room,
+    executive — becomes three indicator columns. Each row lights up
+    exactly one. Notice 3-room has <em>no</em> column: it's the base
+    level, absorbed into the intercept.
   </p>
   <p>
-    Warn about the dummy variable trap: "If you include all four dummies
-    and an intercept, $X^\top X$ is singular — you have perfect
-    collinearity. Always drop one category."
+    Read the caption carefully — this is the interpretation students get
+    wrong: "The coefficient on <code>is_4room</code> is the price
+    difference between 4-room and <em>3-room</em> — the base — not some
+    absolute 4-room effect. And we drop one level deliberately: with all
+    four columns plus an intercept, the columns would sum to the
+    intercept and $X^\top X$ would be singular."
   </p>
-  <div class="transition">→ "Let's do HDB."</div>
+  <div class="transition">→ "Worked example on real HDB data."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>HDB load</span></div>
+  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>Worked load</span></div>
   <h3>Worked: HDB load and design matrix</h3>
   <p>
-    Walk the code. Load, filter, engineer age and log_price. Dummy-encode
-    town. Build $X$ with the intercept column. Print the shape so they
-    see $(n, p)$ where $p = k + 1$.
+    Walk the code. Load the HDB resale parquet. First the filter: drop
+    the sentinel prices — the planted 10-dollar and 9-million-dollar
+    rows you met in M1 — keeping sales between 100K and 2M. Then
+    feature engineering: flat age from the sale year minus lease
+    commencement, and <code>log_price</code> as the target.
   </p>
-  <div class="transition">→ "Solve the normal equations."</div>
+  <p>
+    "Why log price? Raw price is right-skewed with multiplicative
+    errors — a 5% error on a million-dollar flat dwarfs a 5% error on a
+    small flat. Logging makes errors additive and coefficients become
+    proportional effects." Then <code>to_dummies</code> on town with
+    <code>drop_first=True</code>, assemble $X$ and $y$, and add the
+    intercept column of ones.
+  </p>
+  <div class="transition">→ "Solve it — four lines."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Solve</span></div>
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Worked solve</span></div>
   <h3>Worked: solve the normal equations</h3>
   <p>
-    Show the four lines. "This is OLS. Four lines of numpy.
-    <code>np.linalg.solve</code> is more stable than
-    <code>np.linalg.inv</code> followed by a multiply — use solve."
+    Walk the code. $X^\top X$, $X^\top y$, one
+    <code>np.linalg.solve</code> — that's $\hat\beta$. Then standard
+    errors: residuals, $\hat\sigma^2$ with the $n - p$ denominator,
+    square root of the diagonal of $\hat\sigma^2(X^\top X)^{-1}$, and
+    the $t$-stats as coefficient over SE.
   </p>
   <p>
-    Then the standard errors. Five more lines. "You now have everything
-    you need — coefficients, standard errors, $t$-statistics. No scipy
-    or statsmodels involved. This is OLS from scratch."
+    Read the footer with pride: "That's the core of OLS — four lines.
+    Everything else in every regression textbook is interpretation and
+    assumption-checking."
   </p>
-  <div class="transition">→ "Evaluate."</div>
+  <div class="transition">→ "How good is the fit?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~2 min</span><span>R² and F</span></div>
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Worked R² and F</span></div>
   <h3>Worked: R² and F</h3>
   <p>
-    Compute the sums of squares and read off $R^2$, adjusted $R^2$, and
-    $F$. Give typical values: 0.82 $R^2$, $F$ in the thousands.
+    Walk the code: total and residual sums of squares, $R^2$, adjusted
+    $R^2$, and $F$ built directly from $R^2$.
   </p>
-  <div class="transition">→ "Interpretation."</div>
+  <p>
+    Report the numbers on the slide: this fit — 49,899 sales after
+    cleaning — gives $R^2 \approx 0.83$ and $F \approx 48{,}000$ with a
+    p-value effectively zero. Then the caveat that matters at this
+    sample size: "With $n$ this large, <em>everything</em> is
+    statistically significant. Read $R^2$ and effect sizes, not just
+    p-values. Significance is cheap; importance is what you're after."
+  </p>
+  <div class="transition">→ "Now read the coefficients."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Interpretation</span></div>
+  <div class="meta"><span class="badge">Slide 14</span><span>~4 min</span><span>Interpretation</span></div>
   <h3>Interpreting coefficients (log-price)</h3>
   <p>
-    Walk the table. Each coefficient gets a plain-English interpretation.
-    Emphasise the log trick: "Because we regressed on $\log(\text{price})$
-    rather than price itself, coefficients are approximately percentages.
-    The 0.012 on floor area means 1.2% per square metre."
+    Walk the table. Area: $\hat\beta = 0.0112$ with $t \approx 490$ —
+    each additional square metre adds about 1.1% to price. Age:
+    $\hat\beta \approx 0.00002$, $t \approx 0.6$ — no detectable age
+    effect <em>once area is held fixed</em>. Bishan: $\hat\beta = 0.119$,
+    $t \approx 33$ — and since 0.119 isn't tiny, use the exact
+    transform: $e^{0.119} - 1 \approx 13\%$ premium over the base, which
+    is every town not in the model.
   </p>
   <p>
-    Then the ceteris paribus disclaimer. "Every one of these
-    interpretations is conditional on the other predictors being in the
-    model. Drop town, and the area coefficient will shift."
+    Then the two footnotes. "With a log outcome, small $\beta$ is
+    approximately the proportional change; use $e^\beta - 1$ when it's
+    not small. And <em>ceteris paribus</em>: every coefficient means
+    'holding the other predictors constant'. Drop any predictor and
+    every remaining coefficient can change."
   </p>
-  <div class="transition">→ "Non-linearity within OLS."</div>
+  <div class="audience-cue beginner">
+    <strong>If beginners are surprised age doesn't matter:</strong>
+    "Age is correlated with area and town — older estates have smaller
+    flats in certain towns. Once those are in the model, age's
+    independent contribution is tiny. That's ceteris paribus in action,
+    not a claim that old flats sell like new ones."
+  </div>
+  <div class="transition">→ "Straight lines aren't the whole story."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Non-linearity</span></div>
+  <div class="meta"><span class="badge">Slide 15</span><span>~2 min</span><span>Non-linearity</span></div>
   <h3>Non-linearity without leaving OLS</h3>
   <p>
-    Show the three tricks. Polynomial for curvature. Interaction for
-    context-dependent effects. Log transform for skewed positive
-    outcomes.
+    Walk the three tricks. Polynomial: add $x^2$ for curvature —
+    diminishing returns of floor area. Interaction: $x_1 \cdot x_2$ —
+    the effect of area depends on town. Log transform: $\log y$ when
+    $y$ is skewed — you just did this.
   </p>
   <p>
-    Close with: "Linear regression is much more powerful than 'fit a
-    straight line'. As long as the model is linear in the coefficients,
-    you can put anything into $x$ — powers, products, logs — and still
-    use OLS."
+    Land the punchline from the slide: "'Linear' means linear in the
+    <em>coefficients</em>, not in the predictors. A quadratic in $x$ is
+    still a linear model — and OLS still solves it in closed form."
   </p>
-  <div class="transition">→ "Rookie mistakes."</div>
+  <div class="transition">→ "Three ways regression goes wrong."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 15</span><span>~2 min</span><span>Mistakes + recap</span></div>
-  <h3>Three rookie mistakes + recap</h3>
+  <div class="meta"><span class="badge">Slide 16</span><span>~2 min</span><span>Rookie mistakes</span></div>
+  <h3>Three rookie mistakes</h3>
   <p>
-    Walk the three. Then the skills list. Tease 2.6: "Linear regression
-    predicts continuous outcomes. What if $y$ is binary — attrition yes/no,
-    click yes/no, ICU mortality yes/no? Linear regression predicts outside
-    0-1 and is clumsy. Tomorrow: logistic regression."
+    Walk the three red boxes. One: interpreting coefficients in
+    isolation — they depend on the whole model; add or drop a predictor
+    and they move. Two: chasing $R^2$ — it only goes up; use adjusted
+    $R^2$ and cross-validation. Three: multicollinearity — correlated
+    predictors make $X^\top X$ nearly singular, and standard errors
+    explode. "Check VIF when predictors are correlated — if two columns
+    carry the same information, OLS can't decide how to split the
+    credit."
   </p>
-  <div class="transition">→ End. 15-min break.</div>
+  <div class="transition">→ "Recap and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the bullets: derive OLS from squared loss, solve the normal
+    equations in numpy, compute SEs and $t$-stats from
+    $(X^\top X)^{-1}$, evaluate with $R^2$/adjusted/$F$, dummy-encode
+    with ceteris paribus interpretation, and add polynomial and
+    interaction terms. Tease 2.6: "Today the outcome was a number.
+    Tomorrow it's a yes/no — will this flat sell above median? Logistic
+    regression is OLS's other half."
+  </p>
+  <div class="transition">→ End of Lesson 2.5. Ten-minute break.</div>
 </div>
 
 <nav class="lesson-nav">

@@ -213,11 +213,7 @@ class TrainFinalNode(AsyncNode):
         }
 
     async def async_run(self, **kwargs: Any) -> dict[str, Any]:
-        dev = pl.read_parquet(kwargs["dev_path"])
-        # Bayesian search is a teaching demo: cap its rows so the run finishes
-        # in minutes on a free Colab / fleet slot, not hours. Same lesson, same mechanics.
-        if dev.height > 8000:
-            dev = dev.sample(8000, seed=RANDOM_SEED)
+        dev = pl.read_parquet(kwargs["dev_path"])  # full dev frame for the final model
         registry, conn = await build_training_registry()
         try:
             result = await TrainingPipeline(feature_store=None, registry=registry).train(

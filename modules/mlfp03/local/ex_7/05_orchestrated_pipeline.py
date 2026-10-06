@@ -96,7 +96,7 @@ from shared.mlfp03.ex_7 import (
 MODEL_NAME = "credit_default_orchestrated"
 DEV_PATH = OUTPUT_DIR / "ex7_05_dev.parquet"
 TEST_PATH = OUTPUT_DIR / "ex7_05_test.parquet"
-FIXED_PARAMS: dict[str, Any] = {"random_state": RANDOM_SEED, "verbose": -1}
+FIXED_PARAMS: dict[str, Any] = {"random_state": RANDOM_SEED, "verbose": -1, "n_jobs": 8}
 EVAL_SPEC = EvalSpec(metrics=ENGINE_METRICS, split_strategy="holdout", test_size=0.2)
 
 db = DataFlow(DB_URL)

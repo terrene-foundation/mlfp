@@ -2,33 +2,274 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lesson 5.8 — Speaker Notes | MLFP</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../../../assets/css/textbook.css">
-  <style>.slide-block{margin:1.5em 0;padding:18px 22px;background:var(--mlfp-bg-alt);border-left:4px solid var(--mlfp-primary);border-radius:6px}.slide-block .meta{font-size:.85em;color:var(--mlfp-text-muted);display:flex;gap:16px;margin-bottom:8px}.slide-block .meta .badge{background:var(--mlfp-primary);color:white;padding:2px 10px;border-radius:12px;font-weight:600}.slide-block h3{margin:.2em 0 .6em;font-size:1.15em}.audience-cue{margin-top:12px;padding:8px 14px;font-size:.92em;border-radius:4px}.audience-cue.beginner{background:rgba(34,197,94,.08);border-left:3px solid var(--mlfp-foundations)}.audience-cue.expert{background:rgba(139,92,246,.08);border-left:3px solid var(--mlfp-advanced)}.transition{margin-top:12px;padding-top:10px;border-top:1px dashed var(--mlfp-border);font-style:italic;color:var(--mlfp-text-muted);font-size:.92em}</style>
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
 </head>
 <body>
-<nav class="top-nav"><span class="brand">MLFP — Module 5 — Speaker Notes</span><span><a href="../../index.html">Module Index</a> <a href="textbook.html">Textbook</a> <a href="slides.html">Slides</a></span></nav>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
 <main class="textbook">
-<h1 class="lesson-title"><span class="lesson-number">Speaker Notes — Lesson 5.8</span>Reinforcement Learning</h1>
-<p class="lead">Total time: ~90 minutes &nbsp;·&nbsp; 10 slides &nbsp;·&nbsp; ~9 min per slide</p>
-<p>RL is conceptually different from all prior lessons — learning from interaction rather than static data. Spend extra time on the RL loop (Slide 2) and the Bellman equations (Slide 3). The PPO-to-RLHF bridge (Slide 8) is the most important forward connection — it sets up M6.3. The five-algorithm table (Slide 6) is reference material; walk it quickly and tell them to use the textbook for details.</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 1</span><span>~3 min</span><span>Title</span></div><h3>Reinforcement Learning</h3><p>Frame: "This is the final lesson of Module 5 and the final DL paradigm. We have learned from images (CNN), sequences (RNN), text (Transformers), and generated data (GANs). RL learns from interaction — the agent acts in an environment and learns from the consequences. This is how AlphaGo beat the world champion and how ChatGPT was aligned with human preferences."</p><div class="transition">→ "The RL loop."</div></div>
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 5.8</span>
+  Reinforcement Learning
+</h1>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 2</span><span>~6 min</span><span>RL loop</span></div><h3>The RL loop</h3><p>Walk the diagram slowly. "The agent observes a state, chooses an action, the environment transitions to a new state and produces a reward. The agent uses this experience to improve its policy — the mapping from states to actions. This cycle repeats thousands or millions of times."</p><div class="audience-cue beginner"><strong>Navigation analogy:</strong> "Imagine driving in an unfamiliar city without GPS. You make turns (actions), observe streets (states), and learn from wrong turns (negative reward) and progress (positive reward). After enough exploration, you know the optimal route."</div><div class="transition">→ "The mathematical foundation: Bellman."</div></div>
+<p class="lead">
+  Total time: ~90 minutes &nbsp;·&nbsp; 11 slides &nbsp;·&nbsp; ~8 min per slide average
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 3</span><span>~7 min</span><span>Bellman</span></div><h3>Bellman equations</h3><p>Walk both equations. "The value V(s) is the expected cumulative reward starting from state s. The Q-value Q(s,a) is the expected cumulative reward taking action a in state s and acting optimally afterward. The discount factor gamma says future rewards are worth less than immediate ones — a dollar today vs a dollar tomorrow."</p><div class="audience-cue expert"><strong>For experts:</strong> mention the contraction mapping proof of convergence — iterating the Bellman operator converges to the fixed point Q*.</div><div class="transition">→ "DQN approximates Q* with a neural network."</div></div>
+<p>
+  The last lesson of M5, and deliberately pointed at M6: PPO today
+  becomes RLHF tomorrow. The arc is the RL loop → Bellman equations →
+  DQN (value-based) → PPO (policy-based) → production via
+  km.rl_train → the RLHF bridge. One honest status to state plainly:
+  the stable_baselines3 backend for km.rl_train is an optional extra
+  not installed in the course environment — which is exactly why the
+  exercises hand-write DQN and PPO. That's a feature for learning,
+  not a limitation to apologise for.
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 4–5</span><span>~12 min</span><span>DQN and PPO</span></div><h3>DQN and PPO</h3><p>Walk the code and formulas. DQN: "We train a network to predict Q-values for each action. Experience replay breaks correlation. Target network stabilises training." PPO: "Instead of learning Q-values, we directly learn a policy. The clipped objective prevents the policy from changing too much in one update — that is the 'proximal' in PPO."</p><div class="transition">→ "Five algorithms for five business problems."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Reinforcement Learning</h3>
+  <p>
+    Open with the outcome: "Implement DQN and PPO, then connect PPO
+    to RLHF for M6. Everything so far learned from static data.
+    Today: learning from interaction."
+  </p>
+  <div class="transition">→ "The loop."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 6–7</span><span>~10 min</span><span>Applications and Gym</span></div><h3>Five algorithms and custom environments</h3><p>Walk the table briefly. Then focus on the Gymnasium code: "A custom environment is a Python class with step() and reset(). step() takes an action, computes the next state and reward, and returns them. That is the entire interface. Once you have this, any RL algorithm can train on your business problem."</p><div class="transition">→ "The bridge to M6."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~8 min</span><span>RL loop</span></div>
+  <h3>The RL loop</h3>
+  <p>
+    Walk the loop: the agent observes a state, picks an action, the
+    environment returns a reward and the next state. Repeat.
+    "Supervised learning learns from a fixed dataset of correct
+    answers. RL learns from <em>consequences</em> — the agent acts,
+    observes, and adjusts. There is no answer key; there's a reward
+    signal and a long horizon."
+  </p>
+  <p>
+    Read the green box: "All DL so far: static data. RL: learning
+    from interaction. Agent acts, observes, learns."
+  </p>
+  <div class="transition">→ "The math of consequences."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 8</span><span>~8 min</span><span>RLHF bridge</span></div><h3>PPO → RLHF → DPO</h3><p>This is the key forward connection. Walk the diagram. "PPO is a policy gradient algorithm. RLHF uses PPO to align LLMs: a reward model trained on human preferences scores the LLM's outputs, and PPO fine-tunes the LLM to maximise that reward while staying close to the original policy. DPO, which we will study in M6.3, skips the reward model entirely — it learns directly from preference pairs. Simpler, cheaper, often equally effective."</p><div class="transition">→ "Mistakes."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~8 min</span><span>Bellman</span></div>
+  <h3>Bellman equations</h3>
+  <p>
+    Walk both equations, naming them as the slide does. Top — the
+    Bellman <em>expectation</em> equation: the value of a state under
+    policy π is the expected immediate reward plus the discounted
+    value of wherever you land. Bottom — the Bellman
+    <em>optimality</em> equation: the optimal action-value takes the
+    <em>max</em> over next actions — act greedily thereafter.
+  </p>
+  <p>
+    "γ is the discount factor — future rewards are worth less than
+    present ones; γ near 1 is far-sighted, near 0 is greedy.
+    Expectation describes a policy; optimality defines the best one.
+    DQN approximates that optimal $Q^*$ with a neural network."
+  </p>
+  <div class="transition">→ "DQN."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 9–10</span><span>~6 min</span><span>Mistakes + recap</span></div><h3>Mistakes and recap</h3><p>Walk mistakes. Then celebrate: "Module 5 is complete. You have implemented autoencoders, CNNs, RNNs, Transformers, GANs, diffusion, GNNs, transfer learning, and RL. Module 6 puts all of this to work: LLMs, fine-tuning, RAG, agents, governance, and production deployment. The full stack."</p><div class="transition">→ End of Module 5.</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~8 min</span><span>DQN</span></div>
+  <h3>DQN — Deep Q-Network</h3>
+  <p>
+    Walk the network: a plain MLP from state to one Q-value per
+    action, and the TD loss in the comment — the squared gap between
+    $r + \gamma \max_{a'} Q_{\text{target}}(s', a')$ and $Q(s, a)$.
+  </p>
+  <p>
+    Walk the three bullets. Experience replay: store transitions,
+    sample randomly — breaks the correlation between consecutive
+    experiences. Target network: a delayed copy of the Q-network
+    computes the bootstrap target, so the goalposts don't move every
+    step. And the boundary: discrete actions only — the max over
+    actions must be enumerable.
+  </p>
+  <div class="transition">→ "The policy-gradient answer: PPO."</div>
+</div>
 
-<nav class="lesson-nav"><a href="../07/notes.html" class="prev"><span class="label">← Previous</span>5.7 Speaker Notes</a><a href="../../../mlfp06/lessons/01/notes.html" class="next"><span class="label">Next →</span>6.1 Speaker Notes</a></nav>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~8 min</span><span>PPO</span></div>
+  <h3>PPO — Proximal Policy Optimization</h3>
+  <p>
+    Walk the clipped objective: $r_t = \pi_\theta /
+    \pi_{\theta_\text{old}}$ measures how much the policy changed;
+    the loss takes the <em>minimum</em> of the unclipped and clipped
+    advantage-weighted ratios. "The clip bounds each update relative
+    to the old policy — no destructively large steps. PPO is
+    conservatism engineered into the objective: improve, but stay
+    proximal."
+  </p>
+  <p>
+    "And unlike DQN, it works for continuous and discrete actions —
+    which is why it's the algorithm that shows up in the RLHF bridge
+    at the end."
+  </p>
+  <div class="transition">→ "The algorithm zoo, mapped to business."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~7 min</span><span>Five algorithms</span></div>
+  <h3>Five algorithms, five applications</h3>
+  <p>
+    Walk the table. DQN — discrete — customer churn prevention.
+    DDPG — continuous — manufacturing control. SAC — continuous —
+    dynamic pricing. A2C — both — resource allocation. PPO — both —
+    supply chain optimisation.
+  </p>
+  <p>
+    Read the footer: "Exercise 5.8 hand-writes DQN and PPO and trains
+    them on discrete-action environments — CartPole-v1, inventory,
+    ride-hailing pricing. DDPG, SAC, A2C, and continuous-action PPO
+    run through <code>km.rl_train</code>, coming up."
+  </p>
+  <div class="transition">→ "Your own environment."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~8 min</span><span>Custom environment</span></div>
+  <h3>Custom Gymnasium environment</h3>
+  <p>
+    Walk the skeleton: <code>action_space</code> and
+    <code>observation_space</code> declare the interface;
+    <code>step(action)</code> applies the action, computes the reward
+    — here, retained revenue minus action cost — and returns the
+    <strong>5-tuple</strong>: <code>obs, reward, terminated,
+    truncated, info</code>. "Note the two ending flags:
+    <em>terminated</em> means the episode genuinely ended (customer
+    churned); <em>truncated</em> means we cut it off (time limit).
+    They mean different things for bootstrapping — don't merge
+    them."
+  </p>
+  <p>
+    "On this churn environment, the hand-written DQN (≈ 11.0 mean
+    reward) edges out the best fixed policy (always-call ≈ 10.4) —
+    a small but real margin over every heuristic you'll compute in
+    the exercise."
+  </p>
+  <div class="transition">→ "Production RL: km.rl_train."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~7 min</span><span>km.rl_train</span></div>
+  <h3>Kailash: km.rl_train for production RL</h3>
+  <p>
+    Walk the call: <code>km.rl_train(ChurnEnv, algo="ppo",
+    total_timesteps=100_000, hyperparameters={...})</code> — env
+    factory or Gymnasium id, algorithm name (dqn, a2c, sac, ddpg,
+    td3 as well), and it returns mean and std of reward.
+  </p>
+  <p>
+    Now the two honest API notes from the bullets. "Class form:
+    <code>kailash_ml.rl.RLTrainer</code> with
+    <code>RLTrainingConfig</code> — there is <em>no</em> top-level
+    <code>kailash_ml.RLTrainer</code>; import it from
+    <code>kailash_ml.rl</code>. And the backend: Stable-Baselines3 is
+    an optional extra (<code>kailash-ml[rl]</code>) <strong>not
+    installed in the course environment</strong> — which is exactly
+    why the exercise hand-writes DQN and PPO. When you need
+    production RL, install the extra and km.rl_train is the same call
+    shape you see here."
+  </p>
+  <div class="transition">→ "The bridge to M6."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~7 min</span><span>RLHF bridge</span></div>
+  <h3>Bridge to M6: PPO → RLHF</h3>
+  <p>
+    Walk the figure: a reward model trained on human preference
+    comparisons scores the LLM's outputs; PPO updates the LLM to
+    maximise that reward; the action space is the next token —
+    discrete, over the vocabulary.
+  </p>
+  <p>
+    Read the blue box carefully — it's the precision point that
+    separates the informed from the confused: "<strong>Two separate
+    mechanisms</strong> keep RLHF stable. PPO's clipping bounds each
+    update versus $\pi_{\text{old}}$ — today's lesson. And a KL
+    penalty to the reference (SFT) model keeps the LLM from
+    drifting off-distribution chasing reward. Different leashes,
+    different jobs. And DPO — coming in M6 — skips the reward model
+    entirely."
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~5 min</span><span>Mistakes</span></div>
+  <h3>Common mistakes</h3>
+  <p>
+    Walk the three. One: complex reward shaping — start simple; every
+    shaped term is a behaviour you're buying whether you meant to or
+    not, and agents are master exploiters of misspecified rewards.
+    Two: no advantage normalisation — PPO needs normalised
+    advantages or the gradient scale whips around between batches.
+    Three: tiny replay buffer — DQN needs diverse experience; a
+    small buffer is recent-correlated experience in disguise, which
+    is what replay exists to destroy.
+  </p>
+  <div class="transition">→ "Recap — and the road to M6."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the checklist: explain the Bellman equations, implement DQN
+    for discrete actions, implement PPO and explain its
+    continuous-action form, build custom Gymnasium environments, and
+    connect PPO → RLHF → DPO.
+  </p>
+  <p>
+    Read the closing box: "Module 6 — LLMs, fine-tuning, RAG,
+    agents, governance, and production deployment. The frontier. M5
+    gave you the architectures; M6 puts them to work."
+  </p>
+  <div class="transition">→ End of Lesson 5.8 — and end of Module 5. Well done.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../07/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    5.7 Speaker Notes
+  </a>
+  <a href="../../index.html" class="next">
+    <span class="label">Module →</span>
+    Module 5 Index
+  </a>
+</nav>
+
 </main>
 </body>
 </html>

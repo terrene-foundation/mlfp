@@ -2,33 +2,272 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lesson 5.6 — Speaker Notes | MLFP</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../../../assets/css/textbook.css">
-  <style>.slide-block{margin:1.5em 0;padding:18px 22px;background:var(--mlfp-bg-alt);border-left:4px solid var(--mlfp-primary);border-radius:6px}.slide-block .meta{font-size:.85em;color:var(--mlfp-text-muted);display:flex;gap:16px;margin-bottom:8px}.slide-block .meta .badge{background:var(--mlfp-primary);color:white;padding:2px 10px;border-radius:12px;font-weight:600}.slide-block h3{margin:.2em 0 .6em;font-size:1.15em}.audience-cue{margin-top:12px;padding:8px 14px;font-size:.92em;border-radius:4px}.audience-cue.beginner{background:rgba(34,197,94,.08);border-left:3px solid var(--mlfp-foundations)}.audience-cue.expert{background:rgba(139,92,246,.08);border-left:3px solid var(--mlfp-advanced)}.transition{margin-top:12px;padding-top:10px;border-top:1px dashed var(--mlfp-border);font-style:italic;color:var(--mlfp-text-muted);font-size:.92em}</style>
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
 </head>
 <body>
-<nav class="top-nav"><span class="brand">MLFP — Module 5 — Speaker Notes</span><span><a href="../../index.html">Module Index</a> <a href="textbook.html">Textbook</a> <a href="slides.html">Slides</a></span></nav>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
 <main class="textbook">
-<h1 class="lesson-title"><span class="lesson-number">Speaker Notes — Lesson 5.6</span>Graph Neural Networks</h1>
-<p class="lead">Total time: ~75 minutes &nbsp;·&nbsp; 13 slides &nbsp;·&nbsp; ~5–6 min per slide</p>
-<p>GNNs are the least familiar architecture for most students. Spend extra time on the message passing concept (Slide 3) — once they get that, GCN/GraphSAGE/GAT are just different aggregation strategies. The torch_geometric code (Slide 8) is the practical anchor. The consolidation table (Slide 11) is critical — it is the architecture selection guide they will use for the rest of the course.</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div><h3>Graph Neural Networks</h3><p>Frame: "We have done grids (CNNs), sequences (RNNs/Transformers), and generation (VAE/GAN/Diffusion). Today: graphs. Not every dataset is a table or a sequence. Social networks, molecules, supply chains — these are graphs. GNNs are the architecture for graph-structured data."</p><div class="transition">→ "Why graphs matter."</div></div>
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 5.6</span>
+  Graph Neural Networks
+</h1>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Why graphs</span></div><h3>Why graphs?</h3><p>Singapore context: "The MRT network is a graph — stations are nodes, tracks are edges. DBS's fraud detection models transactions as a graph — accounts are nodes, transfers are edges. NUS researchers model proteins as graphs — atoms are nodes, bonds are edges. In every case, the relationships between entities carry information that a flat table loses."</p><div class="audience-cue beginner"><strong>For beginners:</strong> "Think of a social network. Knowing who is friends with whom tells you more about a person than their profile alone. That friendship information is what the graph captures."</div><div class="transition">→ "The key idea: message passing."</div></div>
+<p class="lead">
+  Total time: ~75 minutes &nbsp;·&nbsp; 12 slides &nbsp;·&nbsp; ~6 min per slide average
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 3</span><span>~6 min</span><span>Message passing</span></div><h3>Message passing</h3><p>This is the core concept. Spend time here. "Each node looks at its neighbours, collects their features, aggregates them (sum, mean, or attention-weighted), and updates its own representation. One round of this is one GNN layer. Two layers means each node has information from nodes two hops away."</p><div class="audience-cue beginner"><strong>Gossip analogy:</strong> "Imagine a party. Each person talks to their friends and updates their understanding. After one round, you know what your friends know. After two rounds, you know what your friends' friends know. After three rounds — the whole room."</div><div class="transition">→ "GCN formalises this."</div></div>
+<p>
+  Connected data. The unifying idea is message passing — each node
+  updates by aggregating its neighbours' features — and the three
+  architectures are just three answers to "how should neighbours be
+  weighted?": GCN's fixed normalisation, GraphSAGE's fixed aggregation
+  with sampling, GAT's learned per-pair attention. The evaluation
+  discipline mirrors the rest of M5: node classification on Cora with
+  epoch selection on <em>validation</em>, and link prediction scored
+  on held-out edges.
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 4–6</span><span>~12 min</span><span>GCN, GraphSAGE, GAT</span></div><h3>Three architectures</h3><p>Walk each in 4 minutes. GCN: fixed degree-normalised aggregation — simple, effective, requires all nodes at training. GraphSAGE: samples neighbours, aggregates with mean/LSTM/max — scales to large graphs, handles unseen nodes. GAT: learned attention weights per neighbour pair — most flexible, connects to Transformer attention.</p><div class="transition">→ "Three task types."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
+  <h3>Graph Neural Networks</h3>
+  <p>
+    Open with the outcome: "Build GCN, GraphSAGE, and GAT node
+    classifiers on Cora, and know the graph-classification recipe.
+    Every architecture so far ate grids, sequences, or vectors. Today:
+    relationships."
+  </p>
+  <div class="transition">→ "Why graphs."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 7–9</span><span>~12 min</span><span>Tasks, code, vis</span></div><h3>Tasks, code, and visualisation</h3><p>Walk the task table (node/graph/link), then the PyG code (GCNConv is one line per layer), then the embedding visualisation. "If the GCN learned good representations, you will see nodes of the same class clustering together in t-SNE — without any labels used for the projection."</p><div class="transition">→ "Mistakes."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~5 min</span><span>Why graphs</span></div>
+  <h3>Why graphs?</h3>
+  <p>
+    Walk the examples: social networks, molecular structures, supply
+    chains, the MRT map. "Relationships between entities carry
+    information that tables lose. A table has rows; a graph has
+    nodes <em>and edges</em> — and features can live on both."
+  </p>
+  <p>
+    Read the green box: "If your data has explicit relationships
+    between entities, a graph captures structure that a table cannot.
+    Flattening it away is 5.2's 'flatten the image' mistake in a new
+    form."
+  </p>
+  <div class="transition">→ "The one idea: message passing."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 10–11</span><span>~6 min</span><span>Mistakes + consolidation</span></div><h3>Mistakes and architecture selection</h3><p>Walk mistakes. Then the consolidation table — this is the architecture selection guide for M5. "Images: CNN or ViT. Sequences: RNN or Transformer. Generation: VAE/GAN/Diffusion. Graphs: GCN/GraphSAGE/GAT. Tabular: gradient boosting (not DL). This table guides every architecture decision."</p><div class="transition">→ "Recap."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~6 min</span><span>Message passing</span></div>
+  <h3>Message passing</h3>
+  <p>
+    Walk the figure: a target node collects its neighbours' feature
+    vectors, aggregates them, and updates its own representation.
+    "Each node updates by aggregating neighbour features. One GNN
+    layer = one round of message passing — so $k$ layers give every
+    node a $k$-hop receptive field, the graph analogue of the CNN's
+    growing receptive field."
+  </p>
+  <p>
+    "Everything today — GCN, GraphSAGE, GAT — is this one idea with
+    different answers to 'how are the neighbour messages weighted?'"
+  </p>
+  <div class="transition">→ "GCN's answer."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 12</span><span>~2 min</span><span>Recap</span></div><h3>What you can now do</h3><p>Checklist. Preview 5.7: "Transfer learning — instead of training from scratch, start with a pre-trained model and fine-tune. This works spectacularly for images (ResNet) and text (BERT)."</p><div class="transition">→ End of lesson.</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~6 min</span><span>GCN rule</span></div>
+  <h3>GCN update rule</h3>
+  <p>
+    Walk the formula: $H^{(l+1)} = \sigma(\tilde{D}^{-1/2}\tilde{A}
+    \tilde{D}^{-1/2} H^{(l)} W^{(l)})$. Unpack the three pieces.
+    $\tilde{A} = A + I$ — add self-loops so a node hears its own
+    features too. Symmetric normalisation — each message scales by
+    $1/\sqrt{d_i d_j}$, so a high-degree hub's feature scale doesn't
+    blow up. $W^{(l)}$ — one learnable matrix <em>shared across all
+    nodes</em>.
+  </p>
+  <p>
+    "Fixed, degree-based weights — no learning in the aggregation,
+    only in the shared $W$. That's GCN's answer to the weighting
+    question."
+  </p>
+  <div class="transition">→ "GraphSAGE's answer."</div>
+</div>
 
-<nav class="lesson-nav"><a href="../05/notes.html" class="prev"><span class="label">← Previous</span>5.5 Speaker Notes</a><a href="../07/notes.html" class="next"><span class="label">Next →</span>5.7 Speaker Notes</a></nav>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~5 min</span><span>GraphSAGE</span></div>
+  <h3>GraphSAGE — inductive</h3>
+  <p>
+    Walk the three bullets. Sample a fixed-size neighbourhood instead
+    of using all neighbours — scalable to hubs with thousands of
+    edges. Aggregate with mean, LSTM, or max pooling. And the payoff:
+    it generalises to <em>unseen</em> nodes.
+  </p>
+  <p>
+    Read the green box — it's the operational distinction: "GCN
+    requires all nodes at training time. GraphSAGE can embed new
+    nodes without retraining — essential for dynamic graphs, where
+    tomorrow's graph has nodes that don't exist today."
+  </p>
+  <div class="transition">→ "GAT's answer."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~5 min</span><span>GAT</span></div>
+  <h3>GAT — attention on neighbours</h3>
+  <p>
+    Walk the formula: a learned scorer computes $e_{ij}$ for each
+    neighbour pair from their concatenated transformed features, then
+    a softmax over each node's neighbourhood turns scores into
+    attention coefficients $\alpha_{ij}$. "Learns different weights
+    per neighbour pair — and multi-head, the same trick as 5.4's
+    Transformers."
+  </p>
+  <p>
+    Read the blue box — it's the lesson in one line: "GCN = fixed
+    weights. GraphSAGE = fixed aggregation. GAT = learned per-pair
+    weights. Increasing flexibility, increasing data appetite."
+  </p>
+  <div class="transition">→ "Three task shapes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>Task types</span></div>
+  <h3>Three task types</h3>
+  <p>
+    Walk the table. Node classification: label each node — use the
+    node embeddings directly, no pooling. Graph classification: label
+    the <em>entire</em> graph — pool all nodes with
+    global_mean_pool or global_max_pool. Link prediction: predict
+    missing edges — dot-product the node pairs, and score on
+    <em>held-out</em> edges.
+  </p>
+  <p>
+    Emphasise the evaluation hygiene in the third row: "Link
+    prediction is scored on held-out edges — edges the model never
+    saw in training. Score on training edges and you're measuring
+    memorisation, not prediction."
+  </p>
+  <div class="transition">→ "In code."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>GCN in PyG</span></div>
+  <h3>GCN in PyG</h3>
+  <p>
+    Walk the code: two <code>GCNConv</code> layers with ReLU, then
+    <code>global_mean_pool(x, batch)</code> pooling node embeddings
+    into one vector per graph, and a linear head. "The
+    <code>edge_index</code> is the graph — a list of who connects to
+    whom. The <code>batch</code> vector tells the pooling which nodes
+    belong to which graph. Two new tensors; everything else is the
+    M4.8 toolkit."
+  </p>
+  <p>
+    "This is the graph-classification recipe. For node tasks — like
+    Cora in the exercise — skip the pooling and put the head on the
+    node embeddings directly, exactly as the task table said."
+  </p>
+  <div class="transition">→ "See what was learned."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>Embedding visual</span></div>
+  <h3>Visualising node embeddings</h3>
+  <p>
+    Walk the schematic: clusters with clear separation and a few
+    misplaced nodes between them. "Cora has 7 classes; the GNN has
+    learned structure, but boundary nodes remain ambiguous — papers
+    that genuinely sit between fields. Same honesty as 4.7's item
+    embeddings: structure emerged from the graph alone, and the
+    ambiguous points are the interesting ones."
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~5 min</span><span>Mistakes</span></div>
+  <h3>Common mistakes</h3>
+  <p>
+    Walk the four. One: ignoring graph structure — flattening to a
+    table loses the edges, which is the entire point. Two: too many
+    layers — <em>over-smoothing</em>: with enough rounds of message
+    passing, every node's embedding converges to the same vector;
+    2–3 layers is typical. Three: wrong pooling — node tasks need no
+    pooling; graph tasks need global pooling. Four: choosing the
+    epoch by <em>test</em> accuracy — select on validation, report
+    test once. M3.4's early-stopping discipline applies to GNNs
+    unchanged.
+  </p>
+  <div class="transition">→ "The architecture map, completed."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>Selection table</span></div>
+  <h3>Architecture selection (consolidation)</h3>
+  <p>
+    Walk the completed table. Images: CNN / ViT (5.2). Sequences:
+    RNN / Transformer (5.3, 5.4). Generation: VAE / GAN / Diffusion
+    (5.1, 5.5). Graphs: GCN / GraphSAGE / GAT (today).
+  </p>
+  <p>
+    "Five lessons, one organising question: what is the structure of
+    your data? The architecture is the answer to that question — not
+    a fashion choice. Keep this table; M5's capstone assumes you can
+    reach for it."
+  </p>
+  <div class="transition">→ "Recap and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the checklist: build GCN, GraphSAGE, and GAT node
+    classifiers, and outline graph classification with global
+    pooling; explain message passing; compare the three
+    architectures' flexibility; and write a graph-level GCN with
+    torch_geometric. Tease 5.7: "Why train from scratch what someone
+    else already trained? Transfer learning."
+  </p>
+  <div class="transition">→ End of Lesson 5.6. Ten-minute break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../05/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    5.5 Speaker Notes
+  </a>
+  <a href="../07/notes.html" class="next">
+    <span class="label">Next →</span>
+    5.7 Speaker Notes
+  </a>
+</nav>
+
 </main>
 </body>
 </html>

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lesson 5.5 — Speaker Notes | MLFP</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../../../assets/css/textbook.css">
@@ -9,7 +10,7 @@
     .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
     .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
     .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
-    .slide-block h3 { margin: 0.2em 0 0.6em; font-size: 1.15em; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
     .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
     .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
     .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
@@ -17,112 +18,293 @@
   </style>
 </head>
 <body>
+
 <nav class="top-nav">
   <span class="brand">MLFP — Module 5 — Speaker Notes</span>
-  <span><a href="../../index.html">Module Index</a> <a href="textbook.html">Textbook</a> <a href="slides.html">Slides</a></span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
 </nav>
+
 <main class="textbook">
-<h1 class="lesson-title"><span class="lesson-number">Speaker Notes — Lesson 5.5</span>Generative Models: GANs and Diffusion</h1>
-<p class="lead">Total time: ~90 minutes &nbsp;·&nbsp; 16 slides &nbsp;·&nbsp; ~5–6 min per slide</p>
-<p>This lesson covers three generative paradigms: GANs (with DCGAN and WGAN-GP variants), and diffusion models. The VAE from 5.1 is the third. Students should leave with a clear decision framework for when to use each. The training instability of GANs is the main teaching challenge — show the mode collapse diagram and WGAN fix side by side. The DDPM section is conceptual (no from-scratch implementation) — enough to understand the idea and compare with GANs.</p>
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 5.5</span>
+  Generative Models — GANs and Diffusion
+</h1>
+
+<p class="lead">
+  Total time: ~90 minutes &nbsp;·&nbsp; 14 slides &nbsp;·&nbsp; ~6 min per slide average
+</p>
+
+<p>
+  Generation: from understanding data to making it. The lesson's
+  through-line is training stability — the GAN's minimax game is
+  fragile, WGAN-GP is the engineered fix, and diffusion trades sampling
+  speed for robustness. Two things students consistently get wrong that
+  these slides get right: the WGAN critic loss <em>rises toward 0</em>
+  as quality improves (a rising loss is healthy here), and FID is a
+  distribution-level metric — not a per-image score and not a privacy
+  test.
+</p>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
-  <h3>Generative Models: GANs and Diffusion</h3>
-  <p>Frame: "In 5.1 we generated images with a VAE — reconstruction loss plus KL regulariser. Today we meet two alternatives: GANs (adversarial game) and diffusion models (progressive denoising). By the end you will know when to use each and how to evaluate them."</p>
-  <div class="transition">→ "The GAN setup."</div>
+  <h3>Generative Models — GANs and Diffusion</h3>
+  <p>
+    Open with the outcome: "Train a GAN and a WGAN-GP, understand
+    diffusion, evaluate with FID. 5.1's autoencoders compressed data;
+    today we <em>create</em> it."
+  </p>
+  <div class="transition">→ "The game."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 2</span><span>~5 min</span><span>GAN setup</span></div>
-  <h3>The GAN setup</h3>
-  <p>Walk the diagram. "Two networks: the generator creates fake samples from noise, the discriminator classifies real vs fake. They train against each other — the generator tries to fool the discriminator, the discriminator tries not to be fooled. When training succeeds, the generator produces samples indistinguishable from real data."</p>
-  <div class="audience-cue beginner"><strong>Counterfeiter analogy:</strong> "The generator is a counterfeiter making fake banknotes. The discriminator is a bank teller detecting fakes. Both get better over time until the fakes are perfect."</div>
-  <div class="transition">→ "The formal objective."</div>
+  <h3>The GAN setup — a minimax game</h3>
+  <p>
+    Walk the figure: the generator $G$ turns noise $z$ into fake
+    samples; the discriminator $D$ sees a mix of real and fake and
+    calls out the fakes; $G$ improves by fooling $D$. "Two networks
+    with opposed objectives training each other. The forger and the
+    detective, both getting better — that's the whole architecture."
+  </p>
+  <div class="transition">→ "The objective."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 3</span><span>~5 min</span><span>Objective</span></div>
+  <div class="meta"><span class="badge">Slide 3</span><span>~5 min</span><span>Minimax objective</span></div>
   <h3>GAN minimax objective</h3>
-  <p>Walk the formula. "D maximises: it wants to correctly identify real (log D(x) high) and fake (log(1-D(G(z))) high). G minimises: it wants D to classify fakes as real (log(1-D(G(z))) low). The alternating training steps are critical — D must stay slightly ahead of G."</p>
-  <div class="transition">→ "DCGAN architecture."</div>
+  <p>
+    Walk the formula: $\min_G \max_D$ of the log-probability that $D$
+    calls real samples real, plus the log-probability it calls fakes
+    fake. "D wants to maximise — correctly classify real and fake. G
+    wants to minimise — fool D into calling fakes real."
+  </p>
+  <p>
+    Then the training rhythm: "Alternate: update $D$ for $k$ steps,
+    then $G$ for one step. The two players must stay roughly evenly
+    matched — a dominant $D$ starves $G$ of gradient; a dominant $G$
+    means $D$ has failed."
+  </p>
+  <div class="transition">→ "The generator's architecture."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>DCGAN</span></div>
-  <h3>DCGAN architecture</h3>
-  <p>Walk the pipeline. "The generator uses transposed convolutions to upsample noise into an image. Key rules: no max pooling (use strided convolutions), no fully connected layers, batch norm everywhere except the output layer, Tanh activation at the output." These rules were empirically discovered and remain the standard for convolutional generators.</p>
-  <div class="transition">→ "What goes wrong."</div>
+  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>DCGAN generator</span></div>
+  <h3>DCGAN generator: progressive upsampling</h3>
+  <p>
+    Walk the figure: the noise vector reshaped to a small spatial
+    map, then transposed convolutions doubling the resolution stage
+    by stage until the full image. "Progressive upsampling — each
+    stage adds detail on top of the coarser layout below. Batch norm
+    throughout, ReLU inside, tanh at the output so pixels land in
+    [−1, 1]."
+  </p>
+  <div class="transition">→ "The failure mode that defines GANs."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 5</span><span>~5 min</span><span>Mode collapse</span></div>
-  <h3>Mode collapse</h3>
-  <p>Walk the side-by-side diagram. "Left: healthy training — diverse samples covering the data distribution. Right: mode collapse — the generator found one output that fools D and repeats it with minor variations. This is the most common GAN failure mode."</p>
-  <div class="transition">→ "WGAN fixes this."</div>
+  <h3>Mode collapse — the GAN failure mode</h3>
+  <p>
+    Walk the figure: the real distribution has many modes; the
+    generator's output clusters on one. "The generator finds one
+    output that fools D and repeats it — every noise vector maps to
+    nearly the same image. Losses can look fine while diversity
+    silently dies."
+  </p>
+  <p>
+    Read the caption: "WGAN-GP <em>reduces</em> this — it does not
+    eliminate it. The defence is monitoring: watch sample diversity,
+    not just the losses."
+  </p>
+  <div class="transition">→ "The better distance."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 6</span><span>~6 min</span><span>WGAN</span></div>
   <h3>WGAN — Wasserstein distance</h3>
-  <p>Walk the formula. "WGAN replaces the JS divergence with the Wasserstein distance. This provides gradients everywhere — even when the distributions do not overlap. The gradient penalty (WGAN-GP) enforces the Lipschitz constraint without weight clipping. The result: more stable training, a loss curve that actually correlates with sample quality, and reduced mode collapse."</p>
-  <div class="audience-cue expert"><strong>For experts:</strong> the Kantorovich-Rubinstein duality gives us the dual form that is tractable. The 1-Lipschitz constraint is enforced via gradient penalty rather than the original weight clipping (which had its own issues).</div>
-  <div class="transition">→ "Diffusion models."</div>
+  <p>
+    Walk the new objective: $D$ (now called the <em>critic</em> — no
+    sigmoid) simply scores real higher than fake; the gap estimates
+    the Wasserstein (Earth Mover's) distance. "The original GAN's JS
+    divergence gets stuck at log 2 when the real and fake supports
+    don't overlap — a flat gradient, no signal. The Wasserstein
+    distance keeps shrinking as the distributions approach, so the
+    critic always has something useful to say."
+  </p>
+  <p>
+    The Lipschitz constraint the distance requires is enforced by the
+    <em>gradient penalty</em> (WGAN-GP) — next slide's code. Then
+    read the blue box carefully — it's the most-misread fact of the
+    lesson: "Minus the critic loss (without GP) estimates $W$, so
+    <strong>the critic loss <em>rises toward 0</em> as quality
+    improves</strong>. A rising critic loss is <em>healthy</em> —
+    it's the distributions converging. You can use it to monitor
+    training, which the original GAN's oscillating losses never
+    allowed."
+  </p>
+  <div class="transition">→ "The other family: diffusion."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 7</span><span>~6 min</span><span>DDPM</span></div>
+  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>DDPM</span></div>
   <h3>DDPM — Denoising Diffusion</h3>
-  <p>Walk the diagram left to right (forward process: add noise progressively until pure Gaussian), then right to left (reverse process: a UNet learns to predict and remove the noise at each step). "Diffusion models are more stable than GANs — no minimax game, no mode collapse. The cost: sampling is slow because you need many denoising steps. Active research (DDIM, consistency models) is making them faster."</p>
-  <div class="transition">→ "How do we evaluate?"</div>
+  <p>
+    Walk the two processes in the figure. Forward: gradually add
+    Gaussian noise to data until it's pure noise — a fixed,
+    parameter-free process. Reverse: train a network to remove one
+    step of noise at a time; sampling is iterating that network from
+    pure noise back to an image.
+  </p>
+  <p>
+    Walk the trade-offs: "More stable than GANs — no adversarial
+    game, just regression against noise. Better diversity — far less
+    prone to mode collapse. The cost: slow sampling, many denoising
+    steps; speed is the active research front."
+  </p>
+  <div class="transition">→ "How do you score generated samples?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>FID</span></div>
-  <h3>FID evaluation</h3>
-  <p>Walk the formula. "FID compares the statistics (mean and covariance) of real vs generated features extracted by a pre-trained Inception network. Lower is better. FID = 0 means the distributions are identical. Always report FID — visual inspection is subjective."</p>
-  <div class="transition">→ "The decision framework."</div>
+  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>FID</span></div>
+  <h3>FID — evaluating generated samples</h3>
+  <p>
+    Walk the formula: Fréchet distance between the feature
+    statistics of real and generated sets — means and covariances in
+    a feature space. "Lower FID = closer distributions — it captures
+    fidelity <em>and</em> diversity together. FID = 0 means identical
+    feature statistics."
+  </p>
+  <p>
+    Two precision points from the bullets. "Usually computed on
+    Inception features; Exercise 5.5 uses a small LeNet, so its FID
+    values compare <em>only with each other</em> — never against
+    published Inception FID. And it's distribution-level, not
+    per-image — and <em>not a privacy test</em>: a model that copies
+    its training images scores beautifully."
+  </p>
+  <div class="transition">→ "The decision table."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>Comparison</span></div>
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>When to use what</span></div>
   <h3>When to use what</h3>
-  <p>Walk the table. "VAE: smooth latent space for interpolation, but outputs are blurry. GAN: sharp images and fast sampling, but training is unstable. Diffusion: best quality and diversity, but slow. For synthetic data generation where quality matters, diffusion. For real-time generation where speed matters, GAN. For controlled generation with latent space manipulation, VAE."</p>
-  <div class="transition">→ "Let's see the code."</div>
+  <p>
+    Walk the table. VAE (5.1): smooth latent space and interpolation
+    — but blurry outputs. GAN: sharp images and fast sampling — at
+    the price of training instability and mode collapse. Diffusion:
+    best quality and diversity — at the price of slow sampling.
+  </p>
+  <p>
+    "Quality-versus-speed-versus-stability: pick two. If quality
+    matters more than speed, the modern default is diffusion; if you
+    need fast sampling and can babysit the training, GAN."
+  </p>
+  <div class="transition">→ "The GAN training loop, written out."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 10–11</span><span>~8 min</span><span>Code</span></div>
-  <h3>DCGAN and WGAN-GP code</h3>
-  <p>Walk the training loops. Point out the key differences: "DCGAN uses binary cross-entropy and a sigmoid in D. WGAN-GP removes the sigmoid (critic, not discriminator), uses the Wasserstein loss, and adds the gradient penalty. The GP computation requires autograd — let PyTorch compute it for you."</p>
+  <div class="meta"><span class="badge">Slide 10</span><span>~6 min</span><span>GAN loop</span></div>
+  <h3>GAN training loop (any G / D architecture)</h3>
+  <p>
+    Walk the two halves. Train $D$: maximise
+    $\log D(x) + \log(1 - D(G(z)))$ — code negates it for the
+    minimiser, and note <code>fake.detach()</code>: "when training
+    $D$, the generator is frozen data — no gradient flows into it."
+  </p>
+  <p>
+    Train $G$: the <em>non-saturating</em> loss — minimise
+    $-\log D(G(z))$. "Why not minimise $\log(1 - D(G(z)))$, the
+    literal minimax? Early in training $D$ wins everywhere, that
+    loss saturates, and $G$ gets no gradient — the same saturation
+    problem as the missing $\sqrt{d_k}$. Maximising $\log D(G(z))$
+    instead keeps gradients strong when $G$ is weak. The code you
+    see is what every real GAN runs."
+  </p>
+  <div class="transition">→ "The WGAN-GP deltas."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~6 min</span><span>WGAN-GP differences</span></div>
+  <h3>WGAN-GP training differences</h3>
+  <p>
+    Walk the code. The critic has no sigmoid. The gradient penalty:
+    interpolate real and fake with a random $\alpha$ per sample,
+    score the interpolation, take the gradient of the critic's
+    output with respect to that input, and penalise its deviation
+    from norm 1. Note the comment in the code: "the norm is over
+    the <em>whole input per sample</em>, not per pixel."
+  </p>
+  <p>
+    Then the critic loss assembly: $E[D(\text{fake})] -
+    E[D(\text{real})] + 10 \cdot \text{gp}$ — the Wasserstein gap
+    plus the penalty. "The penalty replaces weight clipping, the
+    crude first attempt at enforcing Lipschitz. And the training
+    ratio: 5 critic steps per generator step — the critic must stay
+    informative for the generator's gradient to mean anything."
+  </p>
   <div class="transition">→ "Singapore applications."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Applications</span></div>
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>SG applications</span></div>
   <h3>Singapore applications</h3>
-  <p>Walk all three. The synthetic financial data use case resonates most — "Singapore's banking regulations (MAS) restrict data sharing. GANs can generate realistic transaction data that preserves statistical properties without exposing real customer records."</p>
-  <div class="transition">→ "Mistakes."</div>
+  <p>
+    Walk the three, with the honesty clauses intact. Synthetic data:
+    generate realistic transactions to enlarge a bank's rare-fraud
+    training set — "synthetic is <em>not</em> private by default; it
+    needs formal guarantees like DP-SGD and memorisation tests
+    before sharing." Data augmentation: extra examples of rare
+    conditions for a hospital imaging classifier — "always evaluate
+    on <em>real</em> images." Simulation: realistic traffic patterns
+    for a transport planner's scenario models.
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Mistakes</span></div>
+  <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Mistakes</span></div>
   <h3>Common mistakes</h3>
-  <p>Walk all four. #1 is the most common: training G too aggressively causes D to lose its discriminative ability, and then G has no gradient signal to improve from.</p>
-  <div class="transition">→ "Recap."</div>
+  <p>
+    Walk the four. One: training $G$ too aggressively — $D$ must
+    stay informative; WGAN-GP's 5:1 critic ratio exists for this.
+    Two: ignoring mode collapse — monitor sample diversity, not just
+    $D$'s loss. Three: no FID evaluation — visual inspection is
+    subjective; report FID. Four: using GANs when diffusion is
+    better — if quality matters more than speed, use diffusion.
+  </p>
+  <div class="transition">→ "Recap and bridge."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 14</span><span>~2 min</span><span>Recap</span></div>
   <h3>What you can now do</h3>
-  <p>Run through the checklist. Preview 5.6: "Next lesson: Graph Neural Networks. We have done grids (CNNs), sequences (RNNs), and generation (GANs/diffusion). Graphs are the next data structure — nodes, edges, and message passing."</p>
-  <div class="transition">→ End of lesson.</div>
+  <p>
+    Walk the checklist: implement GAN and WGAN-GP loops and describe
+    the DCGAN architecture; explain mode collapse and how WGAN
+    addresses it; describe DDPM's forward and reverse processes;
+    evaluate with FID; and select VAE vs GAN vs diffusion for a
+    task. Tease 5.6: "Patterns in connected data — Graph Neural
+    Networks."
+  </p>
+  <div class="transition">→ End of Lesson 5.5. Ten-minute break.</div>
 </div>
 
 <nav class="lesson-nav">
-  <a href="../04/notes.html" class="prev"><span class="label">← Previous</span>5.4 Speaker Notes</a>
-  <a href="../06/notes.html" class="next"><span class="label">Next →</span>5.6 Speaker Notes</a>
+  <a href="../04/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    5.4 Speaker Notes
+  </a>
+  <a href="../06/notes.html" class="next">
+    <span class="label">Next →</span>
+    5.6 Speaker Notes
+  </a>
 </nav>
+
 </main>
 </body>
 </html>

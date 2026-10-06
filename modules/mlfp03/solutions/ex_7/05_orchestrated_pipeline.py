@@ -157,8 +157,8 @@ class BayesianSearchNode(AsyncNode):
         dev = pl.read_parquet(kwargs["dev_path"])
         # Bayesian search is a teaching demo: cap its rows so the run finishes
         # in minutes on a free Colab / fleet slot, not hours. Same lesson, same mechanics.
-        if dev.height > 15000:
-            dev = dev.sample(15000, seed=RANDOM_SEED)
+        if dev.height > 8000:
+            dev = dev.sample(8000, seed=RANDOM_SEED)
         registry, conn = await build_training_registry()
         try:
             searcher = HyperparameterSearch(
@@ -216,8 +216,8 @@ class TrainFinalNode(AsyncNode):
         dev = pl.read_parquet(kwargs["dev_path"])
         # Bayesian search is a teaching demo: cap its rows so the run finishes
         # in minutes on a free Colab / fleet slot, not hours. Same lesson, same mechanics.
-        if dev.height > 15000:
-            dev = dev.sample(15000, seed=RANDOM_SEED)
+        if dev.height > 8000:
+            dev = dev.sample(8000, seed=RANDOM_SEED)
         registry, conn = await build_training_registry()
         try:
             result = await TrainingPipeline(feature_store=None, registry=registry).train(

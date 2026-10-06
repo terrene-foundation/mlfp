@@ -143,7 +143,7 @@ EVAL_SPEC = EvalSpec(metrics=ENGINE_METRICS, split_strategy="holdout", test_size
 dev, test, feature_cols = prepare_credit_frames()
 # Bayesian search is a teaching demo: cap its rows so the run finishes in
 # minutes on a free Colab / fleet slot, not hours (same lesson, same mechanics).
-dev_for_search = dev.sample(min(dev.height, 15000), seed=RANDOM_SEED)
+dev_for_search = dev.sample(min(dev.height, 8000), seed=RANDOM_SEED)
 schema = credit_feature_schema(feature_cols)
 print(f"\nDev frame: {dev.height:,} rows (search + grid)   Test frame: {test.height:,} rows")
 

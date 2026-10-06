@@ -90,7 +90,10 @@ def check_module(module: str) -> None:
     for sol in sol_files:
         content = sol.read_text()
         for blocked in BLOCKED_IMPORTS:
-            if blocked in content:
+            # Match real import STATEMENTS at line start only — prose like
+            # "we never import pandas ourselves" must not trip the rule.
+            pkg = blocked.split()[-1]
+            if re.search(rf"^\s*(?:import|from)\s+{re.escape(pkg)}\b", content, re.M):
                 finding(module, "7", "BLOCKING", f"{sol.name}: uses '{blocked}'")
 
     # ── Redline 8: GPU/MPS ──

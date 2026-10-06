@@ -165,3 +165,7 @@ the M6 LLM-dependent subset (which needs an Ollama host).
   to device, DARE CPU generator on MPS delta, RNG state CPU<->MPS). Passes end-to-end locally: LoRA + adapter
   train for real, task-arithmetic + DARE merge with honest interference measurement (sentiment 0.656 vs single
   0.635).
+
+## Notes lane landed (audit/lane-notes, merged ae33a46d)
+- All 40 lessons (M2–M6 lessons 01–08) speaker notes aligned with current slides; title-order gate 0 mismatches; 0 snippet findings.
+- Open: 3.8 model card slide shows 7 sections but S3a handoff says 9 (Mitchell) — reconcile slide vs textbook. M6 6.2 slide title uses "&amp;" entity (re-sync if slides re-render to "&").

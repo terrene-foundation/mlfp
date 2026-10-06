@@ -53,3 +53,17 @@ exposed, so the engine is unusable for this model class in 2.2.2. Repro and
 unit-level analysis live in modules/mlfp03/solutions/ex_6/06 (Checkpoint 0).
 Upstream fix: explain in predict's output space (model_output="probability")
 or compare against raw margins consistently.
+
+### P6 — further corroboration (2026-10-07): backend override + spawn warning hygiene
+
+1. `km.use_device("cpu")` does NOT reach family fits: families still resolve
+   backend='mps' on Apple Silicon and xgboost/lightgbm raise UnsupportedFamily
+   inside `MLEngine.compare` (measured: families failed with 'mps' errors inside
+   a use_device('cpu') block). The engine tolerates partial family failure —
+   on Macs the "model comparison" silently compares fewer families.
+2. `km.train` family workers are spawned processes: they inherit `-W` flags
+   but NOT in-process `warnings.filterwarnings` — under a warnings-as-errors
+   gate, Lightning's PossibleUserWarning ("GPU available but not used") kills
+   the sklearn family too (error text becomes the family failure). Course
+   handling: ex_0/00 exempted from the strict suite gate with the reason in
+   the file header; suite runner has STRICT_SKIP.

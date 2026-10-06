@@ -12,12 +12,23 @@ files = sorted(
     if "__pycache__" not in p.parts and not p.name.startswith("_")
 )
 env = dict(os.environ, MPLBACKEND="Agg", PYTHONUNBUFFERED="1")
+
+# Files exempt from the warnings-as-errors gate (documented upstream cause):
+# - ex_0/00_destination_first.py: km.train fans families out to spawned worker
+#   processes; spawn inherits -W flags but not in-process warning filters, so
+#   Lightning's "GPU available but not used" nag (PossibleUserWarning) is fatal
+#   there. See decisions.md P6.
+STRICT_SKIP = ("mlfp05/solutions/ex_0/00_destination_first.py",)
 bad = 0
 for p in files:
     rel = str(p.relative_to(ROOT))
     t = time.time()
     try:
-        r = subprocess.run([str(ROOT / ".venv/bin/python"), str(p)], cwd=ROOT, env=env,
+        cmd = [str(ROOT / ".venv/bin/python")]
+        if not any(rel.endswith(skip) for skip in STRICT_SKIP):
+            cmd += ["-W", "error::UserWarning"]
+        cmd.append(str(p))
+        r = subprocess.run(cmd, cwd=ROOT, env=env,
                            capture_output=True, text=True, timeout=timeout)
         code, out, err = r.returncode, r.stdout, r.stderr
     except subprocess.TimeoutExpired as e:

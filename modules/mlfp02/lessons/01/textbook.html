@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -45,9 +45,9 @@
 <h2>Why This Matters</h2>
 
 <p>
-  A property analyst at HDB says the average 4-room flat in Tampines sells for
-  about S$550,000. Then two transactions land in the database: one at
-  S$620,000 and one at S$590,000. Should the analyst's estimate change? By how
+  A property analyst believes the average 4-room flat in Tampines sells for
+  about <span class="nomath">S$550,000</span>. Then two transactions land in the database: one at
+  <span class="nomath">S$620,000</span> and one at <span class="nomath">S$590,000</span>. Should the analyst's estimate change? By how
   much? If a hundred more transactions arrive, should they trust the new
   average and discard the old belief, or blend them? Probability is the
   machinery that answers these questions, and Bayes' theorem is its central
@@ -226,9 +226,10 @@ $$P(A, B) \;=\; P(A \mid B)\,P(B) \;=\; P(B \mid A)\,P(A)$$
 <div class="worked-example">
   <h3>📝 The question</h3>
   <p>
-    Singapore's Ministry of Health reports a current COVID prevalence of about
-    1% in the community. A rapid antigen test (ART) has sensitivity 90%
-    (true-positive rate) and specificity 98% (so 2% false-positive rate). You
+    Suppose COVID prevalence in the community is about 1%, and a rapid antigen
+    test (ART) has sensitivity 90% (true-positive rate) and specificity 98% (so
+    2% false-positive rate). These are illustrative round numbers, not official
+    figures — the point is the arithmetic. You
     test positive. <strong>What is the probability you actually have
     COVID?</strong> Most people — including doctors — guess around 90%. The
     answer is dramatically smaller.
@@ -439,13 +440,15 @@ $$P(\mu \mid \text{data}) \;=\; \frac{P(\text{data} \mid \mu)\,P(\mu)}{\int P(\t
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    Kailash's <code>ExperimentTracker</code> is where you log priors, posteriors,
-    and probabilistic estimates so that you can replay any computation later.
-    Today you will hand-roll Bayes on HDB prices; the <code>ExperimentTracker</code>
-    enters fully in Lesson 2.4 once we run real A/B experiments. For now, the
-    engine exists in the background — every number you compute in the exercise
-    is logged, time-stamped, and attributed so that a reviewer can reproduce
-    your reasoning.
+    Kailash's <code>ExperimentTracker</code> is a run logger: it records the
+    parameters and results of an analysis (with a timestamp and a run id) so a
+    reviewer can later see exactly what was computed. It does not compute
+    posteriors or intervals for you — you compute them with NumPy/Polars, and the
+    tracker <em>records</em> them. Today you hand-roll Bayes on HDB prices with
+    no engine at all; the tracker enters in Lesson 2.4, where Exercise 4.4 logs
+    an A/B experiment report with
+    <code>await ExperimentTracker.create(store_url=...)</code> and
+    <code>async with tracker.track(experiment=..., run_name=...) as run</code>.
   </p>
 </div>
 
@@ -455,36 +458,50 @@ $$P(\mu \mid \text{data}) \;=\; \frac{P(\text{data} \mid \mu)\,P(\mu)}{\int P(\t
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    The URA's 2019 annual report said the average 4-room Tampines resale price
-    was $\mu_0 = \$480{,}000$ with standard deviation $\sigma_0 = \$40{,}000$
-    across neighbourhoods (your prior belief). You now pull $n = 30$ recent
-    transactions from <code>hdb_resale.parquet</code> and compute a sample mean
-    of $\bar{x} = \$542{,}000$ with assumed sampling standard deviation
-    $\sigma = \$60{,}000$. <strong>What is your updated belief about the true
-    mean?</strong>
+    Suppose an older valuation put the average 4-room Tampines resale price at
+    $\mu_0 = \$480{,}000$, and you are unsure of it to within about
+    $\sigma_0 = \$40{,}000$ — that is your prior (an illustrative belief, not
+    an official figure). <strong>How should real transactions update it?</strong>
   </p>
 
   <div class="step">
+    <span class="step-label">Step 0.</span>
+    <p>The arithmetic first, with round illustrative numbers (the same ones the
+       slides use): $n = 30$ recent sales with mean $\bar{x} = \$542{,}000$ and
+       spread $\sigma = \$60{,}000$. The data precision is
+       $n/\sigma^2 = 30/60{,}000^2$, about 13 times the prior precision
+       $1/40{,}000^2$ — so the posterior lands close to the data:
+       $\mu_{\text{post}} \approx \$537{,}700$ and
+       $\sigma_{\text{post}} \approx \$10{,}600$. Now do it on the real file.</p>
+  </div>
+
+  <div class="step">
     <span class="step-label">Step 1.</span>
-    <p>Load the data with the standard M1 ritual.</p>
+    <p>Load the data with the standard M1 ritual. The HDB file lives with the
+       Module 1 datasets and records the sale month as a <code>"YYYY-MM"</code>
+       string, so derive the year from it. The raw file also contains a few
+       sentinel prices (e.g. <span class="nomath">$10</span> and <span class="nomath">$9,000,000</span>); drop them with the same
+       plausibility bounds Exercise 8 uses before computing a mean.</p>
     <pre><code class="language-python">import polars as pl
 from shared import MLFPDataLoader
 
 loader = MLFPDataLoader()
-df = loader.load("mlfp02", "hdb_resale.parquet")
+df = loader.load("mlfp01", "hdb_resale.parquet")
 recent = df.filter(
-    (pl.col("town") == "TAMPINES") &
-    (pl.col("flat_type") == "4 ROOM") &
-    (pl.col("year") >= 2024)
+    (pl.col("town") == "TAMPINES")
+    &amp; (pl.col("flat_type") == "4 ROOM")
+    &amp; (pl.col("month").str.slice(0, 4).cast(pl.Int32) &gt;= 2024)
+    &amp; pl.col("resale_price").is_between(100_000, 2_000_000)
 )
 print(recent.shape)
 print(recent.select("resale_price").describe())</code></pre>
+    <p>This keeps 119 sales from 2024 (one <span class="nomath">$9,000,000</span> sentinel row is removed).</p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 2.</span>
     <p>Encode the prior and likelihood parameters.</p>
-    <pre><code class="language-python">mu_0, sigma_0 = 480_000, 40_000     # prior from 2019 report
+    <pre><code class="language-python">mu_0, sigma_0 = 480_000, 40_000     # illustrative prior
 x_bar = recent["resale_price"].mean()
 sigma = recent["resale_price"].std()
 n = recent.height</code></pre>
@@ -503,18 +520,31 @@ sigma_post = var_post**0.5
 print(f"Prior:     mu_0 = {mu_0:,.0f}, sigma_0 = {sigma_0:,.0f}")
 print(f"Data:      x̄   = {x_bar:,.0f}, sigma = {sigma:,.0f}, n = {n}")
 print(f"Posterior: mu   = {mu_post:,.0f}, sigma = {sigma_post:,.0f}")</code></pre>
+    <pre><code class="language-text">Prior:     mu_0 = 480,000, sigma_0 = 40,000
+Data:      x̄   = 833,785, sigma = 94,859, n = 119
+Posterior: mu   = 817,820, sigma = 8,497</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 4.</span>
     <p>Read the result. The posterior mean sits between the prior and the
-       sample mean, pulled more towards the sample because $n = 30$ gives the
-       data higher precision. The posterior std $\sigma_{\text{post}}$ is smaller
-       than either input — we are more certain than we were before.</p>
+       sample mean, but almost on top of the data: with $n = 119$ the data
+       precision ($n/\sigma^2$) is about 21 times the prior precision. The
+       prior was badly out of date — the real 2024 prices are some <span class="nomath">$350K</span>
+       higher — and the data simply overrules it. The posterior standard
+       deviation ($\approx \$8{,}500$) is smaller than either input: we are
+       more certain than we were before.</p>
     <p>A 95% Bayesian credible interval is:</p>
     <pre><code class="language-python">lo = mu_post - 1.96 * sigma_post
 hi = mu_post + 1.96 * sigma_post
 print(f"95% credible: [{lo:,.0f}, {hi:,.0f}]")</code></pre>
+    <pre><code class="language-text">95% credible: [801,166, 834,475]</code></pre>
+    <p>
+      Notice the interval barely reaches the sample mean (833,785): a prior
+      that confident (σ₀ = 40K) still pulls about 16K. If you trust the data
+      more than the old valuation, widen σ₀ — that is a modelling choice you
+      must state, not hide.
+    </p>
     <p>
       A <em>credible</em> interval is what most people incorrectly think a
       frequentist CI means: "there is a 95% probability the true mean lies in
@@ -616,8 +646,9 @@ print(f"95% credible: [{lo:,.0f}, {hi:,.0f}]")</code></pre>
 <div class="try-it">
   <h3>🎯 Exercise C — Building a Bayesian HDB estimator</h3>
   <p>
-    Using the HDB resale file, pick a town and flat type, set a reasonable
-    prior from the 2019 baseline, compute the posterior, and report the 95%
+    Using the HDB resale file, pick a town and flat type, set a prior from the
+    same segment's 2019 sales in the file (mean as $\mu_0$, a generous
+    $\sigma_0$), update it with the 2024 sales, and report the 95%
     credible interval. Then repeat with only 5 transactions vs 200 — watch
     how the posterior variance shrinks with $n$.
   </p>
@@ -630,7 +661,8 @@ print(f"95% credible: [{lo:,.0f}, {hi:,.0f}]")</code></pre>
   The summary statistics from Lesson 1.1 (mean, variance, std) are now revealed
   to be estimators of distribution parameters. Lesson 2.2 will show why
   <code>describe()</code> divides by $n-1$ for the sample variance — Bessel's
-  correction, derived from the Normal MLE. Lesson 2.3 replaces analytical
+  correction, which removes the downward bias of the Normal MLE (the MLE
+  divides by $n$). Lesson 2.3 replaces analytical
   Bayes with bootstrapping when conjugate priors do not exist. The entire
   Bayesian update story reappears in Lesson 2.7 as the posterior probability
   of improvement in a Bayesian A/B test.

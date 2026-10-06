@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -40,8 +40,9 @@
   technique in industry (CUPED), shows how to detect when your experiment is
   broken (SRM), and extends causal reasoning to settings where randomisation
   is impossible (Difference-in-Differences). By the end you will be able to
-  cut experiment variance by up to 50% and measure policy effects from
-  observational data.
+  quantify how much variance CUPED removes (a fraction $\rho^2$ — 49% when
+  the pre-period correlation is 0.7, but only about 4% on this course's
+  experiment data) and measure policy effects from observational data.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -85,15 +86,32 @@ $$Y_{\text{adj}} = Y - \theta \cdot (X - \mathbb{E}[X])$$
   $$\boxed{\;\text{Var}(Y_{\text{adj}}) = \text{Var}(Y)(1 - \rho^2)\;}$$
   <div class="annotations">
     <span>$\rho$ = correlation between $Y$ and $X$</span>
-    <span>$\rho = 0.7 \Rightarrow 51\%$ variance reduction</span>
+    <span>$\rho = 0.7 \Rightarrow$ 51% of the variance remains: a 49% reduction</span>
   </div>
 </div>
 
 <p>
   The key insight: the higher the correlation $\rho$ between the pre and
-  post metrics, the more variance CUPED removes. For e-commerce spending,
-  $\rho$ between last month and this month is typically 0.6-0.8, giving
-  36-64% variance reduction.
+  post metrics, the more variance CUPED removes — the reduction is exactly
+  $\rho^2$. When a user's spending last month predicts this month well
+  ($\rho$ of 0.6–0.8), that is a 36–64% reduction, worth the same as 1.6–2.8
+  times as many users. When the pre-period metric is a weak predictor, the
+  gain is small, as the worked example below shows.
+</p>
+
+<table>
+  <thead><tr><th>$\rho$</th><th>Variance reduction $\rho^2$</th><th>Effective sample multiplier $1/(1-\rho^2)$</th></tr></thead>
+  <tbody>
+    <tr><td>0.3</td><td>9%</td><td>1.10x</td></tr>
+    <tr><td>0.5</td><td>25%</td><td>1.33x</td></tr>
+    <tr><td>0.7</td><td>49%</td><td>1.96x</td></tr>
+    <tr><td>0.9</td><td>81%</td><td>5.26x</td></tr>
+  </tbody>
+</table>
+
+<p>
+  (Read the table carefully: at $\rho = 0.7$ the <em>remaining</em> variance
+  is $1 - 0.49 = 51\%$, so the <em>reduction</em> is 49%.)
 </p>
 
 <figure class="diagram">
@@ -119,34 +137,51 @@ $$Y_{\text{adj}} = Y - \theta \cdot (X - \mathbb{E}[X])$$
 
 <h3>Implementation</h3>
 
-<pre><code class="language-python">import polars as pl
-import numpy as np
+<p>
+  The course experiment (<code>experiment_data.parquet</code>) records each
+  user's revenue during the test and <code>pre_metric_value</code>, measured
+  <em>before</em> randomisation. Use only the control and treatment_a arms —
+  the pair whose allocation passes the SRM check (Lesson 2.4). Estimate one
+  $\theta$ on both arms pooled, so the same adjustment is applied to every
+  user.
+</p>
 
-# Pre-experiment: last month's spending per user
-# Post-experiment: this month's spending per user
-df = loader.load("mlfp02", "ab_test_cuped.parquet")
+<pre><code class="language-python">import numpy as np
+import polars as pl
+from scipy import stats
+from shared import MLFPDataLoader
 
-X_pre = df["spend_pre"].to_numpy()
-Y_post = df["spend_post"].to_numpy()
+df = (
+    MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
+    .filter(pl.col("experiment_group").is_in(["control", "treatment_a"]))
+)
+y = df["revenue"].to_numpy()
+x = df["pre_metric_value"].to_numpy()          # measured BEFORE randomisation
 
-# Compute optimal theta
-theta = np.cov(Y_post, X_pre)[0, 1] / np.var(X_pre)
+theta = np.cov(y, x)[0, 1] / np.var(x, ddof=1)  # pooled over both arms
+y_adj = y - theta * (x - x.mean())
+rho = np.corrcoef(y, x)[0, 1]
 
-# Adjusted metric
-Y_adj = Y_post - theta * (X_pre - X_pre.mean())
+print(f"theta = {theta:.3f}, rho = {rho:.3f}, 1 - rho^2 = {1 - rho**2:.3f}")
+print(f"Variance reduction: {1 - np.var(y_adj) / np.var(y):.1%}")</code></pre>
+<pre><code class="language-text">theta = 0.681, rho = 0.210, 1 - rho^2 = 0.956
+Variance reduction: 4.4%</code></pre>
 
-print(f"Var(Y):     {np.var(Y_post):.2f}")
-print(f"Var(Y_adj): {np.var(Y_adj):.2f}")
-print(f"Reduction:  {1 - np.var(Y_adj)/np.var(Y_post):.1%}")</code></pre>
+<p>
+  The measured reduction equals $\rho^2 = 0.044$, exactly as the derivation
+  predicts — and it is small, because last period's metric explains little
+  of this period's revenue in this data.
+</p>
 
 <div class="callout theory">
   <span class="label">🔵 Theory</span>
   <p>
     CUPED is mathematically identical to the residuals of a linear regression
-    of $Y$ on $X$. The optimal $\theta$ is the regression coefficient
-    $\hat\beta = \text{Cov}(Y, X) / \text{Var}(X)$. The adjusted metric is
-    the residual $Y - \hat\beta X$. CUPED is regression adjustment applied
-    to A/B test analysis.
+    of $Y$ on $X$. The optimal $\theta$ is the regression slope
+    $\hat\beta = \text{Cov}(Y, X) / \text{Var}(X)$, and the adjusted metric
+    $Y - \hat\beta(X - \bar X)$ is the regression residual shifted back to
+    the original mean. CUPED is regression adjustment applied to A/B test
+    analysis.
   </p>
 </div>
 
@@ -165,27 +200,34 @@ print(f"Reduction:  {1 - np.var(Y_adj)/np.var(Y_post):.1%}")</code></pre>
 <h2>SRM: Sample Ratio Mismatch</h2>
 
 <p>
-  Before analysing any A/B test, check the split. If you randomised 50/50
-  but observe 52/48, something may be wrong — bot filtering, redirect bugs,
-  or population filters could be biasing one arm.
+  Before analysing any A/B test, check the split against the split you
+  <em>designed</em>. If you designed 50/50 but observe 52/48 on a large
+  sample, something is wrong — bot filtering, redirect bugs, or population
+  filters could be biasing one arm. If the design was unequal (the course
+  experiment is 40/35/15/10), test against those shares; testing an unequal
+  design against 50/50 "detects" SRM every time.
 </p>
 
 <h3>Detection</h3>
 
-<pre><code class="language-python">from scipy import stats as scipy_stats
+<pre><code class="language-python">import numpy as np
+from scipy import stats
 
-n_control = 4800
-n_treatment = 5200
-n_total = n_control + n_treatment
+observed = np.array([4800, 5200])     # control, treatment
+design = np.array([0.5, 0.5])         # the DESIGNED split, not always 50/50
+chi2, p_srm = stats.chisquare(observed, observed.sum() * design)
 
-# Expected 50/50
-chi2 = (n_control - n_total/2)**2 / (n_total/2) + \
-       (n_treatment - n_total/2)**2 / (n_total/2)
-p_srm = 1 - scipy_stats.chi2.cdf(chi2, df=1)
-
-print(f"Chi-squared: {chi2:.2f}, p = {p_srm:.4f}")
-if p_srm < 0.01:
+print(f"Chi-squared: {chi2:.2f}, p = {p_srm:.5f}")
+if p_srm &lt; 0.01:
     print("SRM detected — investigate before analysing results")</code></pre>
+<pre><code class="language-text">Chi-squared: 16.00, p = 0.00006
+SRM detected — investigate before analysing results</code></pre>
+
+<p>
+  A 48/52 split looks harmless, but with 10,000 users it is a clear SRM:
+  a fair 50/50 randomiser would produce an imbalance this large about 6
+  times in 100,000 experiments.
+</p>
 
 <div class="callout warning">
   <span class="label">⚠ Warning</span>
@@ -272,16 +314,39 @@ if p_srm < 0.01:
   (it is about the counterfactual), but you can check it in the pre-period:
 </p>
 
-<pre><code class="language-python"># Check parallel trends in pre-period
-pre_treated = df.filter(
-    (pl.col("group") == "treated") & (pl.col("period") == "pre")
-)
-pre_control = df.filter(
-    (pl.col("group") == "control") & (pl.col("period") == "pre")
-)
+<p>
+  Exercise 7.4 uses a <em>simulated</em> quarterly panel of HDB-style
+  transactions around a <em>hypothetical</em> cooling measure that applies
+  only to Central-region flats (treated) and not to Non-Central flats
+  (control); the true effect built into the simulation is −20,000. Its
+  helper <code>parallel_trends_test</code> fits, on the pre-period only,
+</p>
 
-# Compute monthly growth rates for both groups
-# If trends are parallel, growth rates should be similar</code></pre>
+$$\text{price} = b_0 + b_1\,\text{period} + b_2\,\text{central} + b_3\,(\text{central} \times \text{period}) + \varepsilon$$
+
+<p>
+  and tests $H_0: b_3 = 0$ — the two groups' pre-period slopes are equal.
+</p>
+
+<pre><code class="language-python">from shared.mlfp02.ex_7 import parallel_trends_test, simulate_hdb_cooling_panel
+
+panel = simulate_hdb_cooling_panel()                        # parallel by construction
+pt = parallel_trends_test(panel)
+print(f"slope difference = {pt['slope_diff']:,.0f}  p = {pt['p_value']:.3f}")
+
+diverging = simulate_hdb_cooling_panel(central_extra_growth=5_000)
+pt_bad = parallel_trends_test(diverging)
+print(f"slope difference = {pt_bad['slope_diff']:,.0f}  p = {pt_bad['p_value']:.4f}")</code></pre>
+<pre><code class="language-text">slope difference = 1,045  p = 0.559
+slope difference = 6,045  p = 0.0007</code></pre>
+
+<p>
+  The first panel passes; the second, where Central prices were already
+  rising 5,000 a quarter faster before the measure, fails — and on that
+  panel DiD returns about +6,800 instead of the true −20,000. Passing the
+  pre-period check is necessary, not sufficient: it cannot prove the trends
+  would have stayed parallel after the policy.
+</p>
 
 <div class="callout warning">
   <span class="label">⚠ Warning</span>
@@ -294,51 +359,73 @@ pre_control = df.filter(
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: CUPED on E-Commerce A/B Test</h2>
+<h2>Worked Example: CUPED, then DiD</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Apply CUPED to an e-commerce A/B test. Compare the variance and
-    p-values with and without CUPED adjustment.
+    (1) Compare the treatment effect on revenue with and without CUPED on the
+    course experiment (control vs treatment_a). (2) Estimate the effect of
+    the hypothetical Central-only cooling measure on Exercise 7.4's
+    simulated panel, with a confidence interval and a placebo test.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — Load and split by group.</span>
-    <pre><code class="language-python">df = loader.load("mlfp02", "ab_test_cuped.parquet")
-control = df.filter(pl.col("group") == "control")
-treatment = df.filter(pl.col("group") == "treatment")</code></pre>
+    <span class="step-label">Step 1 — Raw and CUPED effects.</span>
+    <p>Continue from the Implementation code above (<code>y</code>, <code>y_adj</code> already computed).</p>
+    <pre><code class="language-python">treat = (df["experiment_group"] == "treatment_a").to_numpy()
+
+for name, v in [("raw", y), ("CUPED", y_adj)]:
+    diff = v[treat].mean() - v[~treat].mean()
+    se = np.sqrt(v[treat].var(ddof=1) / treat.sum()
+                 + v[~treat].var(ddof=1) / (~treat).sum())
+    t, p = stats.ttest_ind(v[treat], v[~treat], equal_var=False)
+    print(f"{name:&gt;5s}: effect {diff:.2f}  SE {se:.3f}  t = {t:.1f}  p = {p:.2g}")</code></pre>
+    <pre><code class="language-text">  raw: effect 3.16  SE 0.164  t = 19.3  p = 6.5e-83
+CUPED: effect 3.18  SE 0.160  t = 19.8  p = 1.7e-87</code></pre>
+    <p>
+      The effect estimate barely moves (CUPED does not change what you
+      estimate, only how precisely), and the standard error shrinks by about
+      2% — the square root of the 4.4% variance reduction. Here CUPED is
+      honest but not worth much; with a pre-period metric correlated at
+      $\rho = 0.7$ the same code would cut the SE by 30% and the required
+      sample by 49%.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2 — Naive t-test (no CUPED).</span>
-    <pre><code class="language-python">from scipy import stats as scipy_stats
+    <span class="step-label">Step 2 — DiD estimate with a confidence interval.</span>
+    <pre><code class="language-python">from shared.mlfp02.ex_7 import did_cells, diff_in_diff
 
-t_naive, p_naive = scipy_stats.ttest_ind(
-    treatment["spend_post"].to_numpy(),
-    control["spend_post"].to_numpy(),
+res = diff_in_diff(did_cells(panel))     # panel from the parallel-trends check
+print(f"ATT = {res['did_estimate']:,.0f}  "
+      f"95% CI [{res['ci_lo']:,.0f}, {res['ci_hi']:,.0f}]  z = {res['z']:.2f}")</code></pre>
+    <pre><code class="language-text">ATT = -23,208  95% CI [-31,702, -14,713]  z = -5.36</code></pre>
+    <p>
+      The estimate is −23,208 against a true effect of −20,000: the gap is
+      sampling noise, and the interval covers the truth.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Placebo test.</span>
+    <p>
+      Pretend the measure started at period 3, inside the pre-period, and
+      rerun DiD on pre-period data only. A real effect cannot exist there, so
+      a credible design should find none.
+    </p>
+    <pre><code class="language-python">placebo = (
+    panel.filter(pl.col("post") == 0)
+    .with_columns(post=(pl.col("period") &gt;= 3).cast(pl.Int64))
 )
-print(f"Naive: t = {t_naive:.3f}, p = {p_naive:.4f}")</code></pre>
-  </div>
-
-  <div class="step">
-    <span class="step-label">Step 3 — CUPED adjustment.</span>
-    <pre><code class="language-python">for group_df in [control, treatment]:
-    X = group_df["spend_pre"].to_numpy()
-    Y = group_df["spend_post"].to_numpy()
-    theta = np.cov(Y, X)[0, 1] / np.var(X)
-    Y_adj = Y - theta * (X - X.mean())
-    # Store adjusted values back</code></pre>
-  </div>
-
-  <div class="step">
-    <span class="step-label">Step 4 — CUPED t-test.</span>
-    <pre><code class="language-python">t_cuped, p_cuped = scipy_stats.ttest_ind(
-    treatment_adj, control_adj,
-)
-print(f"CUPED: t = {t_cuped:.3f}, p = {p_cuped:.4f}")
-print(f"Variance reduction: "
-      f"{1 - np.var(Y_adj_all)/np.var(Y_all):.1%}")</code></pre>
+pl_res = diff_in_diff(did_cells(placebo))
+print(f"Placebo ATT = {pl_res['did_estimate']:,.0f}  "
+      f"95% CI [{pl_res['ci_lo']:,.0f}, {pl_res['ci_hi']:,.0f}]")</code></pre>
+    <pre><code class="language-text">Placebo ATT = 2,149  95% CI [-9,827, 14,125]</code></pre>
+    <p>
+      The placebo interval comfortably includes zero, which supports (but
+      cannot prove) the parallel-trends assumption behind the real estimate.
+    </p>
   </div>
 </div>
 
@@ -357,8 +444,8 @@ print(f"Variance reduction: "
 <div class="callout warning">
   <span class="label">⚠ Mistake 2: Ignoring SRM</span>
   <p>
-    Always check the split before analysing results. A 52/48 split on a
-    50/50 experiment is a red flag — the p-value on your treatment effect
+    Always check the split against the designed allocation before analysing
+    results. A 52/48 split on a large 50/50 experiment is a red flag — the p-value on your treatment effect
     is meaningless if the groups are systematically different.
   </p>
 </div>
@@ -388,17 +475,23 @@ print(f"Variance reduction: "
   <p>
     Write a function that takes control and treatment counts, runs a
     chi-squared test, and returns whether SRM is detected at the 1% level.
-    Test it on three scenarios: 5000/5000 (no SRM), 4800/5200 (borderline),
-    4500/5500 (clear SRM).
+    Test it on three scenarios with a 50/50 design: 5000/5000 (no SRM),
+    4900/5100 (borderline: $p \approx 0.046$ — flagged at 5% but not at the
+    1% alarm level), and 4800/5200 (clear SRM: $p \approx 0.00006$). Then
+    test 4000/3500 against a 40/35 design.
   </p>
 </div>
 
 <div class="try-it">
-  <h3>🎯 Exercise C — DiD on cooling measures</h3>
+  <h3>🎯 Exercise C — DiD when parallel trends fail</h3>
   <p>
-    Using Singapore HDB resale data, estimate the effect of cooling measures
-    on prices in affected districts vs unaffected districts. Check parallel
-    trends in the 12 months before the policy. Run a placebo test.
+    Using <code>simulate_hdb_cooling_panel</code>, vary
+    <code>central_extra_growth</code> from 0 to 5,000 in steps of 1,000. For
+    each panel record the parallel-trends p-value and the DiD estimate. At
+    what pre-trend gap does the test start to fail, and how far has the DiD
+    estimate drifted from the true −20,000 by then? (The HDB resale file
+    itself has no record of which buyers or flats a measure applied to, so
+    the treated/control contrast has to be simulated.)
   </p>
 </div>
 
@@ -408,9 +501,11 @@ print(f"Variance reduction: "
 <p class="xref">
   CUPED extends the A/B testing framework from Lesson 2.4 with the regression
   machinery from 2.5. SRM uses the chi-squared test from 2.3. DiD connects
-  to the ceteris paribus interpretation of regression coefficients from 2.5.
-  In Module 3, you will use ExperimentTracker to automate CUPED and SRM
-  checks as part of a model evaluation pipeline.
+  to the ceteris paribus interpretation of regression coefficients from 2.5
+  (the parallel-trends check is itself a regression with an interaction
+  term). CUPED, SRM and DiD are computations you write; an
+  <code>ExperimentTracker</code> run (Lesson 2.4) only records their
+  results.
 </p>
 
 <div class="reflection">

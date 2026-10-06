@@ -177,7 +177,7 @@
   \[ E[X] \;=\; \sum_i p_i\,x_i \]
   <p>The two forms of variance are equivalent:</p>
   \[ \text{Var}(X) = E[(X-\mu)^2] = E[X^2] - \mu^2 \]
-  <pre><code class="language-python" data-trim>
+  <pre><code class="language-text" data-trim>
 # Expand the square
 # E[(X - μ)²] = E[X² - 2μX + μ²]
 #             = E[X²] - 2μE[X] + μ²
@@ -206,7 +206,7 @@
   <h2>HDB 4-room Tampines — the update</h2>
   <pre><code class="language-python" data-trim>
 mu_0, sigma_0 = 480_000, 40_000     # prior (2019 baseline)
-x_bar, sigma, n = 542_000, 60_000, 30  # recent data
+x_bar, sigma, n = 542_000, 60_000, 30  # recent sales (illustrative)
 
 pp = 1 / sigma_0**2
 pd = n / sigma**2
@@ -214,8 +214,8 @@ pd = n / sigma**2
 mu_post  = (pp*mu_0 + pd*x_bar) / (pp + pd)
 sigma_p  = (1 / (pp + pd))**0.5
 
-# mu_post  ≈ 533,000
-# sigma_p  ≈   9,600
+# mu_post  ≈ 537,700
+# sigma_p  ≈  10,600
   </code></pre>
   <p style="font-size: 0.85em;">The posterior sits between prior and sample, pulled toward the data because $n$ gives it more precision.</p>
 </section>
@@ -226,19 +226,22 @@ sigma_p  = (1 / (pp + pd))**0.5
     <svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg">
       <line x1="60" y1="270" x2="680" y2="270" stroke="#94A3B8"/>
       <line x1="60" y1="40"  x2="60"  y2="270" stroke="#94A3B8"/>
-      <text x="60" y="295" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">480K</text>
-      <text x="680" y="295" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">560K</text>
-      <!-- Prior -->
-      <path d="M 60,270 Q 200,80 340,270" fill="none" stroke="#4F46E5" stroke-width="2.5" stroke-dasharray="6 4"/>
-      <text x="200" y="70" text-anchor="middle" font-family="Inter" font-size="12" fill="#4F46E5">Prior</text>
-      <!-- Likelihood -->
-      <path d="M 340,270 Q 520,60 680,270" fill="none" stroke="#F59E0B" stroke-width="2.5" stroke-dasharray="6 4"/>
-      <text x="540" y="50" text-anchor="middle" font-family="Inter" font-size="12" fill="#F59E0B">Likelihood (data)</text>
-      <!-- Posterior -->
-      <path d="M 280,270 Q 460,30 640,270" fill="none" stroke="#0D9488" stroke-width="3"/>
-      <text x="460" y="25" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Posterior</text>
+      <text x="60" y="295" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">400K</text>
+      <text x="308" y="295" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">480K</text>
+      <text x="500" y="295" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">542K</text>
+      <text x="680" y="295" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">600K</text>
+      <!-- Prior: N(480K, 40K) - wide and low -->
+      <path d="M 60,270 Q 308,160 556,270" fill="none" stroke="#4F46E5" stroke-width="2.5" stroke-dasharray="6 4"/>
+      <text x="200" y="230" text-anchor="middle" font-family="Inter" font-size="12" fill="#4F46E5">Prior</text>
+      <!-- Likelihood: centred on x-bar = 542K, SE = 11K -->
+      <path d="M 432,270 Q 500,-130 568,270" fill="none" stroke="#F59E0B" stroke-width="2.5" stroke-dasharray="6 4"/>
+      <text x="600" y="90" text-anchor="start" font-family="Inter" font-size="12" fill="#F59E0B">Likelihood (data)</text>
+      <!-- Posterior: N(537.7K, 10.6K) - narrowest, next to the data -->
+      <path d="M 421,270 Q 487,-160 553,270" fill="none" stroke="#0D9488" stroke-width="3"/>
+      <text x="400" y="45" text-anchor="end" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Posterior</text>
     </svg>
   </figure>
+  <p style="font-size: 0.85em;">With $n = 30$ the posterior (537.7K) sits almost on the data (542K) and is narrower than the prior.</p>
 </section>
 
 <section>
@@ -295,7 +298,7 @@ sigma_p  = (1 / (pp + pd))**0.5
   <ul style="font-size: 0.9em;">
     <li>✓ Derive Bayes' theorem from the definition of conditional probability</li>
     <li>✓ Apply Bayes to medical testing and flag base-rate fallacies</li>
-    <li>✓ Name five distributions and when each is appropriate</li>
+    <li>✓ Match Normal, Beta and Poisson to the data each describes</li>
     <li>✓ Compute $E[X]$ and $\text{Var}(X)$ in both forms</li>
     <li>✓ Run a Normal–Normal conjugate update on HDB data</li>
     <li>✓ Distinguish credible from confidence intervals</li>

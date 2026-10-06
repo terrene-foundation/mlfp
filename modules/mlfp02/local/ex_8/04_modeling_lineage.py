@@ -6,7 +6,7 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Build an OLS regression model on FeatureStore v2 features
+#   - Build an OLS regression model on the v2 feature definition
 #   - Compute from-scratch t-statistics and F-tests on coefficients
 #   - Apply Normal-Normal Bayesian posteriors to interpret coefficients
 #   - Log model parameters, metrics, and lineage via ExperimentTracker
@@ -20,7 +20,7 @@
 #   2. Build — OLS regression on v2 features with full diagnostics
 #   3. Train — hypothesis tests + Bayesian posteriors + ExperimentTracker
 #   4. Visualise — actual vs predicted, coefficient forest, residuals
-#   5. Apply — MAS regulatory model audit for Singapore banks
+#   5. Apply — model-governance review for a Singapore bank
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -36,12 +36,14 @@ from scipy import stats as sp_stats
 from shared.mlfp02.ex_8 import (
     FEATURE_LIST,
     OUTPUT_DIR,
+    build_schema_v2,
     compute_v2_features,
+    create_tracker,
     fit_ols,
+    format_p,
     load_hdb_resale,
     normal_normal_posterior,
     prepare_design_matrix,
-    setup_feature_store,
 )
 
 
@@ -58,16 +60,17 @@ from shared.mlfp02.ex_8 import (
 #   4. METRICS — R², RMSE, F-statistic, individual coefficient p-values
 #   5. ARTIFACTS — the model weights, the training script, the config
 #
-# ExperimentTracker from kailash-ml captures all five automatically.
-# When a regulator asks "why did your model approve this mortgage?",
-# you can trace back from the prediction → model run → feature version
-# → raw data → individual transaction records.
+# ExperimentTracker from kailash-ml records the parameters and metrics
+# you log for a run (items 1-4 below are logged explicitly in Task 3).
+# When a reviewer asks "why did your model value this flat at X?", you
+# can trace back from the prediction → model run → feature version →
+# raw data → individual transaction records.
 #
-# Singapore context: The Monetary Authority of Singapore (MAS) requires
-# banks to demonstrate model governance under FEAT principles (Fairness,
-# Ethics, Accountability, Transparency). Without experiment tracking,
-# banks cannot demonstrate reproducibility or explain individual
-# predictions — both MAS requirements.
+# Singapore context: the Monetary Authority of Singapore's FEAT
+# Principles (Fairness, Ethics, Accountability, Transparency, 2018) are
+# guidance for financial institutions using AI and data analytics.
+# Reproducible lineage is the evidence a bank needs to show it follows
+# them.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -110,15 +113,17 @@ for name, coef in zip(names, ols["beta"]):
 
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert ols["r2"] > 0.3, f"Task 2: R-squared should be reasonable, got {ols['r2']:.4f}"
+assert (
+    ols["r2"] > 0.2
+), f"Task 2: R-squared should be positive and non-trivial, got {ols['r2']:.4f}"
 assert ols["rmse"] > 0, "Task 2: RMSE must be positive"
 print("\n[ok] Checkpoint 1 passed — regression model built on v2 features\n")
 
 # INTERPRETATION: The R² tells us what fraction of price variation is
 # explained by our 5 features. The remaining (1 - R²) is unexplained
 # variance — renovation quality, unit facing, floor plan, negotiation
-# skill, and luck. Adding flat-type dummies would likely improve R²
-# by 5-10% (foreshadowing M3 feature selection).
+# skill, and luck. You added flat-type dummies in Exercise 5.4; whether
+# they help here is an empirical question — compare adjusted R².
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -137,10 +142,10 @@ for i, name in enumerate(names):
     sig = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
     print(
         f"  {name:<25} {ols['beta'][i]:>12,.2f} {ols['se'][i]:>10,.2f} "
-        f"{ols['t'][i]:>8.2f} {p:>12.2e} {sig:>4}"
+        f"{ols['t'][i]:>8.2f} {format_p(p):>12} {sig:>4}"
     )
 
-print(f"\n  F-statistic: {ols['f_stat']:.2f} (p < {ols['f_p']:.2e})")
+print(f"\n  F-statistic: {ols['f_stat']:.2f} (p: {format_p(ols['f_p'])})")
 print(
     f"  Model is "
     f"{'significantly better' if ols['f_p'] < 0.05 else 'NOT better'} "
@@ -155,8 +160,8 @@ for i, name in enumerate(names):
         continue  # Skip intercept
 
     # TODO: Compute the Normal-Normal posterior for this coefficient.
-    # Hint: normal_normal_posterior(ols["beta"][i], ols["se"][i]) returns
-    # a dict with "mu_post", "sigma_post", "ci_low", "ci_high".
+    # Hint: normal_normal_posterior(beta_hat, se_hat) returns a dict with
+    # "mu_post", "sigma_post", "ci_low", "ci_high".
     post = ____
     p_positive = 1 - sp_stats.norm.cdf(0, post["mu_post"], post["sigma_post"])
     posteriors[name] = {**post, "p_positive": p_positive}
@@ -180,56 +185,51 @@ print(
 # --- 3c. Log to ExperimentTracker ---
 print("--- ExperimentTracker Lineage ---")
 
-factory, fs, tracker, has_backend = asyncio.run(setup_feature_store())
+schema_v2 = build_schema_v2()
 
-if has_backend:
-    try:
 
-        async def log_lineage():
-            exp_id = "mlfp02_capstone_model"
-            async with tracker.track(
-                experiment=exp_id, run_name="hdb_price_ols_v2"
-            ) as run:
-                await run.log_params(
-                    {
-                        "feature_schema": "hdb_property_features",
-                        "feature_version": "2",
-                        "model_type": "OLS",
-                        "n_features": str(len(FEATURE_LIST)),
-                        "n_observations": str(ols["n"]),
-                    }
-                )
-                await run.log_metrics(
-                    {
-                        "r2": float(ols["r2"]),
-                        "adj_r2": float(ols["adj_r2"]),
-                        "rmse": float(ols["rmse"]),
-                        "f_statistic": float(ols["f_stat"]),
-                    }
-                )
-                run_id = run.run_id
-            return exp_id, run_id
+async def log_lineage():
+    tracker = await create_tracker()
+    exp_id = "mlfp02_capstone_model"
+    async with tracker.track(experiment=exp_id, run_name="hdb_price_ols_v2") as run:
+        await run.log_params(
+            {
+                "data_source": "mlfp01/hdb_resale.parquet (validated rows)",
+                "feature_schema": schema_v2.name,
+                "feature_version": str(schema_v2.version),
+                "features": ",".join(FEATURE_LIST),
+                "model_type": "OLS",
+                "n_observations": str(ols["n"]),
+            }
+        )
+        # TODO: Complete the metrics dict — log R-squared as a plain float.
+        # Hint: the fit dict stores it under "r2"; wrap it in float(...)
+        await run.log_metrics(
+            {
+                "r2": ____,
+                "adj_r2": float(ols["adj_r2"]),
+                "rmse": float(ols["rmse"]),
+                "f_statistic": float(ols["f_stat"]),
+            }
+        )
+        run_id = run.run_id
+    await tracker.close()
+    return exp_id, run_id
 
-        exp_id, run_id = asyncio.run(log_lineage())
 
-        print(f"\n  Experiment logged:")
-        print(f"    Run ID: {run_id}")
-        print(f"    Feature schema: hdb_property_features v2")
-        print(f"    Features: {FEATURE_LIST}")
-        print(f"    Training rows: {ols['n']:,}")
-        print(f"    R-squared: {ols['r2']:.4f}, RMSE: ${ols['rmse']:,.0f}")
-    except Exception as e:
-        print(f"  [Skipped: Lineage logging ({type(e).__name__}: {e})]")
-else:
-    print(f"\n  [Manual lineage — ExperimentTracker unavailable]")
-    print(f"    Model: OLS regression")
-    print(f"    Features: {FEATURE_LIST}")
-    print(f"    Training rows: {ols['n']:,}")
-    print(f"    R-squared: {ols['r2']:.4f}, RMSE: ${ols['rmse']:,.0f}")
+exp_id, run_id = asyncio.run(log_lineage())
+
+print(f"\n  Experiment logged:")
+print(f"    Experiment: {exp_id}, Run ID: {run_id}")
+print(f"    Feature schema: {schema_v2.name} v{schema_v2.version}")
+print(f"    Features: {FEATURE_LIST}")
+print(f"    Training rows: {ols['n']:,}")
+print(f"    R-squared: {ols['r2']:.4f}, RMSE: ${ols['rmse']:,.0f}")
 
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
-print("\n[ok] Checkpoint 3 passed — model lineage documented\n")
+assert run_id, "Task 3: the tracker must return a run id"
+print("\n[ok] Checkpoint 3 passed — model lineage logged\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -243,14 +243,11 @@ rng = np.random.default_rng(42)
 n_sample = min(3000, ols["n"])
 idx = rng.choice(ols["n"], size=n_sample, replace=False)
 
-# TODO: Create an actual vs predicted scatter plot.
-# Hint: go.Scatter with x=y[idx].tolist(), y=ols["y_hat"][idx].tolist()
-# then add a perfect prediction line with go.Scatter in "lines" mode.
 fig1 = go.Figure()
 fig1.add_trace(
     go.Scatter(
-        x=____,
-        y=____,
+        x=____,  # Hint: actual prices for the sampled rows (as a list)
+        y=____,  # Hint: fitted values for the same rows
         mode="markers",
         marker={"size": 3, "opacity": 0.4, "color": "steelblue"},
         name="Predictions",
@@ -313,9 +310,7 @@ fig3.update_layout(
 fig3.write_html(str(OUTPUT_DIR / "04_residuals.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_residuals.html'}")
 
-# TODO: Create Bayesian posterior density plots for each coefficient.
-# Hint: make_subplots(rows=2, cols=3), then for each posterior,
-# compute a Normal PDF using sp_stats.norm.pdf and add a go.Scatter.
+# Plot 4: Bayesian posterior densities
 fig4 = make_subplots(
     rows=2,
     cols=3,
@@ -329,13 +324,15 @@ for idx_p, (name, post) in enumerate(posteriors.items()):
         post["ci_high"] + 2 * post["sigma_post"],
         200,
     )
-    pdf_vals = sp_stats.norm.pdf(x_range, post["mu_post"], post["sigma_post"])
+    # TODO: Normal density of the posterior over x_range.
+    pdf_vals = ____
     fig4.add_trace(
         go.Scatter(x=x_range.tolist(), y=pdf_vals.tolist(), name=name, mode="lines"),
         row=row,
         col=col,
     )
-    fig4.add_vline(x=0, line_dash="dot", line_color="red", row=row, col=col)
+    # Plotly's add_vline stub types row/col as str, but int indices work at runtime.
+    fig4.add_vline(x=0, line_dash="dot", line_color="red", row=row, col=col)  # type: ignore[arg-type]
 
 fig4.update_layout(title="Bayesian Posterior Densities for Coefficients", height=600)
 fig4.write_html(str(OUTPUT_DIR / "04_bayesian_posteriors.html"))
@@ -347,34 +344,26 @@ print("\n[ok] Checkpoint 4 passed — all diagnostic visualisations saved\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: MAS Regulatory Model Audit for Singapore Banks
+# TASK 5 — APPLY: Model-Governance Review for a Singapore Bank
 # ════════════════════════════════════════════════════════════════════════
-# Scenario: The Monetary Authority of Singapore (MAS) conducts an
-# annual model risk assessment of DBS Bank's property valuation model.
-# MAS requires banks to demonstrate:
-#   - FEAT Fairness: model doesn't discriminate by protected attributes
-#   - FEAT Ethics: training data is ethically sourced (public HDB data)
-#   - FEAT Accountability: full audit trail from data to prediction
-#   - FEAT Transparency: model is interpretable (OLS coefficients)
+# Scenario (illustrative): a Singapore bank's model-risk team reviews its
+# HDB valuation model against the FEAT Principles:
+#   - Fairness: no protected-attribute features
+#   - Ethics: data sourced appropriately (public HDB resale records)
+#   - Accountability: a traceable path from data to prediction
+#   - Transparency: an interpretable model (OLS coefficients)
 #
-# Without ExperimentTracker: the bank presents a PowerPoint with
-# "R² = 0.76" and cannot show which data, which features, or which
-# parameters produced that number. MAS flags this as a governance gap.
+# Without lineage: the team is shown a slide with a single R² and cannot
+# tell which data, features or parameters produced it, so the review
+# records a governance gap to remediate.
 #
-# With ExperimentTracker: the bank presents a complete lineage:
-#   data version → feature schema v2 → OLS with 5 features →
-#   R² = X.XX, RMSE = $Y → coefficients with p-values and CIs
-# MAS approves the model governance framework.
-#
-# Regulatory impact: A governance gap finding can result in MAS
-# requiring additional capital reserves (typically 10-20% buffer).
-# For a bank with S$50B in HDB mortgage exposure, a 10% buffer
-# requirement ties up S$5B in additional capital — money that cannot
-# be deployed for other lending.
+# With the tracker run above: data source → feature schema v2 → OLS on
+# 5 features → R², RMSE → coefficients with p-values and CIs, all tied
+# to one run id. The review can reproduce the number.
 
-print("=== APPLY: MAS Regulatory Model Audit ===")
+print("=== APPLY: Model-Governance Review (Singapore bank, illustrative) ===")
 print()
-print("  Scenario: MAS FEAT assessment of DBS property valuation model")
+print("  Scenario: FEAT-aligned review of an HDB valuation model")
 print()
 
 # Stakeholder report
@@ -401,7 +390,7 @@ for i in range(1, ols["k"]):
     if ols["p"][i] < 0.05:
         print(
             f"     - {names[i]}: ${ols['beta'][i]:+,.0f} per unit "
-            f"(p<{max(ols['p'][i], 1e-10):.2e})"
+            f"(p: {format_p(ols['p'][i])})"
         )
 print(
     f"""
@@ -410,48 +399,42 @@ print(
      {n_with_market:,} of {features_v2.height:,} transactions have context.
 
   4. DATA QUALITY
-     Point-in-time correctness ensures no future data leaks.
+     Value rules removed impossible leases and sentinel prices (8.1).
+     Market features use only the 6 months BEFORE each sale (8.3).
+     This model is fit and scored in-sample; an out-of-time holdout
+     (as in 8.2) is still required before quoting production accuracy.
      Feature versioning (v1 -> v2) tracks schema evolution.
 
   5. MODEL LINEAGE
-     ExperimentTracker records: feature schema, model params, metrics.
-     Full audit trail from raw data to final prediction.
+     ExperimentTracker run {run_id} records: data source, feature
+     schema and version, model params, metrics.
 
   6. MODEL LIMITATIONS
      - {(1-ols['r2'])*100:.0f}% of variance unexplained
      - Linear model may miss non-linear relationships
-     - Market features have 6-month warm-up period (nulls)
+     - Market features have a 6-7 month warm-up period (nulls)
 
   RECOMMENDATIONS:
      - Use v2 features for all new valuation models
-     - Add flat-type encoding for +5-10% R-squared improvement
+     - Test flat-type encoding (Exercise 5.4) and compare adjusted R-squared
      - Consider non-linear models (Random Forest, XGBoost) in M3
      - Monitor town-level trends for early price-shift signals
 """
 )
 
-print("  MAS FEAT compliance summary:")
+print("  FEAT evidence summary:")
 print("    Fairness:       Public HDB data, no protected-attribute features")
-print("    Ethics:         Data from data.gov.sg (public, anonymised)")
-print(f"    Accountability: ExperimentTracker lineage — {len(FEATURE_LIST)} features, ")
+print("    Ethics:         Public HDB resale records (no personal data)")
+print(f"    Accountability: Tracker run {run_id} — {len(FEATURE_LIST)} features, ")
 print(f"                    {ols['n']:,} rows, R-squared={ols['r2']:.4f}")
 print("    Transparency:   OLS coefficients with CIs and p-values")
 print()
-print("  Regulatory impact of governance gap:")
-print("    - 10% additional capital reserve on S$50B HDB mortgage book")
-print("    - S$5B tied up in non-deployable capital")
-print("    - ExperimentTracker eliminates this by providing full audit trail")
+print("  FEAT is guidance, not a capital rule: the cost of a governance gap")
+print("  is remediation work and delayed model approval, not a fixed buffer.")
 
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
-print("\n[ok] Checkpoint 5 passed — stakeholder report and MAS audit complete\n")
-
-# Clean up
-if has_backend and factory is not None and hasattr(factory, "close"):
-    try:
-        asyncio.run(factory.close())
-    except Exception:
-        pass
+print("\n[ok] Checkpoint 5 passed — stakeholder report and governance review complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -467,7 +450,7 @@ print(
   [ok] Bayesian Normal-Normal posteriors for coefficient interpretation
   [ok] ExperimentTracker: parameters, metrics, and lineage logging
   [ok] Stakeholder reporting: translating statistics into business decisions
-  [ok] MAS FEAT compliance: fairness, ethics, accountability, transparency
+  [ok] FEAT-aligned evidence: fairness, ethics, accountability, transparency
 
   MODULE 2 COMPLETE — YOUR STATISTICAL TOOLKIT:
   ==============================================

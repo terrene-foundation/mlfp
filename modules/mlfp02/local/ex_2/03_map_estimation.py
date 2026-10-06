@@ -20,7 +20,7 @@
 #   2. Build — MAP objective with Normal prior on mu
 #   3. Train — fit MAP at different sample sizes, measure shrinkage
 #   4. Visualise — MLE vs MAP vs Prior across sample sizes
-#   5. Apply — GIC Singapore SME lending with informative prior
+#   5. Apply — a newly tracked sector: MAP with an informative prior
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -107,9 +107,14 @@ for n_small in [3, 5, 10, 20, 50, n_gdp]:
     shrinkage_data.append(
         {"n": n_small, "mle": mle_s, "map": map_s, "shrinkage_pct": shrinkage_pct}
     )
+    # Conjugate precision weight on the prior, using this sample's sigma_hat
+    prior_w = (1 / GDP_PRIOR_STD**2) / (
+        n_small / r_mle["sigma"] ** 2 + 1 / GDP_PRIOR_STD**2
+    )
     print(
         f"  n={n_small:>3}: MLE={mle_s:>7.3f}%, MAP={map_s:>7.3f}%, "
-        f"shrinkage={map_s - mle_s:+.3f}% ({shrinkage_pct:.1f}% toward prior)"
+        f"shrinkage={map_s - mle_s:+.3f}% ({shrinkage_pct:.1f}% toward prior; "
+        f"sigma_hat={r_mle['sigma']:.2f}%, precision weight={prior_w:.1%})"
     )
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
@@ -162,12 +167,13 @@ print("\n--- Checkpoint 2 passed --- MAP shrinkage visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: GIC Singapore SME Lending Prior
+# TASK 5 — APPLY: A Newly Tracked Sector — MAP with an Informative Prior
 # ════════════════════════════════════════════════════════════════════════
-# A new green-bond SME programme has 5 quarters of data.
-# An informative prior from 20 years of SME lending stabilises the estimate.
+# A bank's economics team (illustrative) tracks quarterly growth for a
+# newly reported sector — only 5 quarters exist (illustrative numbers).
+# The long-run headline growth prior mu ~ N(3.5, 1.5^2) stabilises it.
 
-print(f"\n=== APPLY: GIC SME Lending — MAP with Informative Prior ===")
+print(f"\n=== APPLY: New Sector Growth — MAP with Informative Prior ===")
 
 new_programme_data = np.array([2.1, 3.8, 1.5, 4.2, 2.9])
 n_prog = len(new_programme_data)
@@ -177,9 +183,9 @@ n_prog = len(new_programme_data)
 mle_prog = ____
 map_prog = ____
 
-print(f"New programme: {n_prog} quarters of data")
+print(f"New sector: {n_prog} quarters of data")
 print(f"Data: {new_programme_data}")
-print(f"Prior: mu ~ N({GDP_PRIOR_MEAN}, {GDP_PRIOR_STD}^2) (20-year experience)")
+print(f"Prior: mu ~ N({GDP_PRIOR_MEAN}, {GDP_PRIOR_STD}^2) (long-run headline growth)")
 print(f"\nMLE estimate: {mle_prog['mu']:.3f}%")
 print(f"MAP estimate: {map_prog['mu']:.3f}%")
 print(f"Shrinkage: {map_prog['mu'] - mle_prog['mu']:+.3f}% toward prior")
@@ -192,7 +198,7 @@ print(
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 assert map_prog["converged"], "MAP should converge on small dataset"
-print("\n--- Checkpoint 3 passed --- GIC SME lending application complete\n")
+print("\n--- Checkpoint 3 passed --- new-sector MAP application complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════

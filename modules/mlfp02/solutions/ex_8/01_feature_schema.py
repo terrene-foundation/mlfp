@@ -8,8 +8,8 @@
 # WHAT YOU'LL LEARN:
 #   - Define a FeatureSchema with typed FeatureField entries
 #   - Compute base property features from raw HDB resale data
-#   - Validate features against the schema contract
-#   - Connect to FeatureStore and register/store v1 features
+#   - Validate feature VALUES with rules the dtype schema cannot express
+#   - Materialise v1 features into a FeatureStore and read them back
 #   - Apply schema-driven feature engineering to Singapore HDB valuation
 #
 # PREREQUISITES: MLFP02 Exercises 1-7 (Bayesian inference, hypothesis
@@ -19,7 +19,7 @@
 # TASKS:
 #   1. Theory — why typed feature schemas prevent silent failures
 #   2. Build — define FeatureSchema v1 and compute features
-#   3. Train — register and store features in FeatureStore
+#   3. Train — materialise features into the FeatureStore and read back
 #   4. Visualise — feature distributions and correlation structure
 #   5. Apply — HDB flat valuation with schema-validated features
 # ════════════════════════════════════════════════════════════════════════
@@ -37,8 +37,11 @@ from shared.mlfp02.ex_8 import (
     OUTPUT_DIR,
     build_schema_v1,
     compute_v1_features,
+    create_feature_store,
     load_hdb_resale,
-    setup_feature_store,
+    materialize_features,
+    to_store_frame,
+    validate_v1_features,
 )
 
 
@@ -61,8 +64,11 @@ from shared.mlfp02.ex_8 import (
 #      "price_sqm". The old column vanishes, the model falls back to
 #      defaults, and no one notices until the accuracy report.
 #
-# FeatureSchema catches ALL THREE at registration time, not at
-# prediction time. Think of it as a unit test for your feature contract.
+# A typed schema catches phantom columns and dtype drift when features
+# are written to the store, not at prediction time. Value-level rules
+# (a lease cannot exceed 99 years, a price cannot be $10) need explicit
+# validation on top — Task 2 adds them. Think of both as unit tests for
+# your feature contract.
 #
 # Singapore HDB analogy: HDB publishes standard flat categories
 # (3-room, 4-room, 5-room). If a listing arrives as "four-room" instead
@@ -112,7 +118,7 @@ property_schema_v1 = build_schema_v1()
 
 print(f"\n  === FeatureSchema v1 ===")
 print(f"  Name: {property_schema_v1.name}, Version: {property_schema_v1.version}")
-for f in property_schema_v1.features:
+for f in property_schema_v1.fields:
     print(f"    {f.name}: {f.dtype} (nullable={f.nullable}) — {f.description}")
 
 # --- 2d. Compute v1 features ---
@@ -126,7 +132,19 @@ for feat_name in ["price_per_sqm", "storey_midpoint", "remaining_lease_years"]:
         f"min={vals.min():.1f}, max={vals.max():.1f}"
     )
 
-# --- 2e. Correlation analysis ---
+# --- 2e. Value-level validation (rules a dtype cannot express) ---
+features_v1_valid, violations = validate_v1_features(features_v1)
+print(f"\n  Validation rules:")
+for rule, n_bad in violations.items():
+    print(f"    {rule:<32} {n_bad:>6,} rows")
+n_dropped = features_v1.height - features_v1_valid.height
+print(f"  Valid rows: {features_v1_valid.height:,} ({n_dropped:,} rejected)")
+# INTERPRETATION: Every rejected row passed the dtype contract — a lease of
+# 107 years is a perfectly good float64. Value rules catch what types
+# cannot: impossible leases (a flat sold before its lease began) and
+# sentinel prices such as $10 or $9,000,000.
+
+# --- 2f. Correlation analysis (on validated rows) ---
 corr_cols = [
     "resale_price",
     "floor_area_sqm",
@@ -134,7 +152,7 @@ corr_cols = [
     "remaining_lease_years",
 ]
 corr_data = (
-    features_v1.drop_nulls(subset=corr_cols)
+    features_v1_valid.drop_nulls(subset=corr_cols)
     .select(corr_cols)
     .to_numpy()
     .astype(np.float64)
@@ -159,11 +177,14 @@ assert "transaction_id" in features_v1.columns, "Task 2: transaction_id missing"
 assert "price_per_sqm" in features_v1.columns, "Task 2: price_per_sqm missing"
 assert features_v1["price_per_sqm"].min() > 0, "Task 2: price_per_sqm must be positive"
 assert corr_matrix.shape == (4, 4), "Task 2: correlation matrix must be 4x4"
+assert features_v1_valid["remaining_lease_years"].max() <= 99, "Task 2: lease must be <= 99 years"
+assert 0 < features_v1_valid.height < features_v1.height, "Task 2: validation should reject some rows"
 print("\n[ok] Checkpoint 1 passed — v1 features computed and validated\n")
 
 # INTERPRETATION: The schema declares 4 features — all non-nullable,
-# all float64. This contract means ANY downstream model can trust that
-# these columns exist and have no nulls. The storey_midpoint extraction
+# all float64. Together with the value rules, this contract means any
+# downstream model can trust that these columns exist, have no nulls,
+# and hold physically possible values. The storey_midpoint extraction
 # from "01 TO 03" → 2.0 is a classic example of feature engineering that
 # should be captured in the schema, not rediscovered per model.
 
@@ -171,35 +192,30 @@ print("\n[ok] Checkpoint 1 passed — v1 features computed and validated\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 3 — TRAIN: Register schema and store features in FeatureStore
 # ════════════════════════════════════════════════════════════════════════
-# FeatureStore is a versioned, typed feature repository. Registering the
-# schema tells the store what columns to expect; storing features
-# validates each row against the schema before persisting.
+# kailash-ml's FeatureStore persists feature tables through DataFlow.
+# materialize() writes the schema's columns (keyed by entity id + event
+# time, idempotent upsert); get_features() reads them back. Writing ~47K
+# rows to a local SQLite file takes a minute or two.
 
-print("\n--- FeatureStore Registration ---")
+print("\n--- FeatureStore Materialisation ---")
 
-factory, fs, tracker, has_backend = asyncio.run(setup_feature_store())
+fs = create_feature_store()
+materialized = asyncio.run(
+    materialize_features(fs, property_schema_v1, features_v1_valid)
+)
+stored_v1 = asyncio.run(fs.get_features(property_schema_v1))
 
-if has_backend:
-    try:
+print(f"  Materialised {materialized['row_count']:,} rows "
+      f"(schema {materialized['group']} v{materialized['version']})")
+print(f"  Lineage hash: {materialized['lineage_hash'][:23]}...")
+print(f"  Read back: {stored_v1.shape[0]:,} rows x {stored_v1.shape[1]} columns "
+      f"{stored_v1.columns}")
 
-        async def store_v1():
-            await fs.register_features(property_schema_v1)
-            return await fs.store(features_v1, property_schema_v1)
-
-        row_count = asyncio.run(store_v1())
-        print(f"  Stored {row_count:,} v1 feature rows in FeatureStore")
-    except Exception as e:
-        has_backend = False
-        print(f"  [Skipped: FeatureStore ({type(e).__name__}: {e})]")
-else:
-    print("  [Skipped: FeatureStore backend unavailable]")
-    print("  Features remain in-memory as Polars DataFrame — all analysis continues")
-
-# Price by flat type (foreshadows ANOVA concepts from M3)
+# Price by flat type (the ANOVA question from Exercise 6.4)
 flat_types = hdb["flat_type"].unique().sort().to_list()
 print(f"\n  --- Price by Flat Type ---")
 for ft in flat_types:
-    subset = hdb.filter(pl.col("flat_type") == ft)["resale_price"]
+    subset = features_v1_valid.filter(pl.col("flat_type") == ft)["resale_price"]
     if subset.len() > 10:
         print(
             f"    {ft:<12}: n={subset.len():>7,}, "
@@ -210,21 +226,23 @@ for ft in flat_types:
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert property_schema_v1.version == 1, "Task 3: schema must be version 1"
-assert len(property_schema_v1.features) == 4, "Task 3: v1 must have 4 features"
-print("\n[ok] Checkpoint 2 passed — schema registered, features stored\n")
+assert len(property_schema_v1.fields) == 4, "Task 3: v1 must have 4 features"
+assert materialized["row_count"] == features_v1_valid.height, "Task 3: every valid row must be written"
+assert stored_v1.height == features_v1_valid.height, "Task 3: read-back must return every row"
+print("\n[ok] Checkpoint 2 passed — features materialised and read back\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — VISUALISE: Feature distributions and structure
 # ════════════════════════════════════════════════════════════════════════
-# Visual proof: the computed features should show plausible
-# distributions for Singapore HDB flats. Price_per_sqm should cluster
-# around $4,000-8,000/sqm; storey_midpoint should be discrete steps;
-# remaining_lease should be 40-99 years.
+# Visual proof: the validated features should show plausible
+# distributions for Singapore HDB flats — storey_midpoint in discrete
+# steps, remaining_lease at most 99 years. Read the printed quartiles
+# rather than assuming a range.
 
-print("\n--- Feature Distribution Summary ---")
+print("\n--- Feature Distribution Summary (validated rows) ---")
 for feat_name in ["price_per_sqm", "storey_midpoint", "remaining_lease_years"]:
-    vals = features_v1[feat_name].drop_nulls()
+    vals = features_v1_valid[feat_name].drop_nulls()
     q25 = vals.quantile(0.25)
     q75 = vals.quantile(0.75)
     print(
@@ -234,7 +252,7 @@ for feat_name in ["price_per_sqm", "storey_midpoint", "remaining_lease_years"]:
 # Plot: feature distributions
 fig = go.Figure()
 for feat_name in ["price_per_sqm", "remaining_lease_years"]:
-    vals = features_v1[feat_name].drop_nulls().to_numpy()
+    vals = features_v1_valid[feat_name].drop_nulls().to_numpy()
     fig.add_trace(
         go.Histogram(
             x=vals,
@@ -276,51 +294,61 @@ print("\n[ok] Checkpoint 3 passed — feature distributions visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: HDB Flat Valuation with Schema-Validated Features
 # ════════════════════════════════════════════════════════════════════════
-# Scenario: PropertyGuru Singapore wants to build an automated valuation
-# model (AVM) for HDB resale flats. Before any model training, they
-# need a reliable feature pipeline with typed schemas.
+# Scenario (illustrative figures): a Singapore property portal builds an
+# automated valuation model (AVM) for HDB resale flats. Before any model
+# training, it needs a reliable feature pipeline with typed schemas.
 #
 # Without a schema: an upstream change renames "remaining_lease_years"
-# to "lease_remaining". The model silently uses a default value.
-# Every valuation is wrong. PropertyGuru discovers this 3 weeks later
-# when agents report "the system says every flat is worth $350K".
+# to "lease_remaining". A model that fills missing inputs with a default
+# silently produces wrong valuations until someone notices.
 #
-# With a schema: the FeatureStore registration rejects the data at
-# ingestion. The pipeline fails loudly. PropertyGuru fixes the rename
-# in 20 minutes. Zero bad valuations reach agents.
+# With a schema: the write to the store projects onto the schema's
+# columns, so the renamed column fails loudly before anything is stored.
+# Below we trigger exactly that failure.
 #
-# S$ impact: PropertyGuru handles ~15,000 HDB listings/month in
-# Singapore. A 3-week silent failure means ~11,250 listings with wrong
-# valuations. At an average commission of $8,000 per transaction, even
-# a 5% deal-loss rate from bad valuations costs:
-#   11,250 * 5% * $8,000 = S$4.5M in lost commission revenue.
+# S$ impact (assumed figures): 15,000 listings/month, 3 weeks of silent
+# failure, 5% of affected deals lost, S$8,000 commission per deal.
 
 print("=== APPLY: HDB Flat Valuation — Schema-Driven Pipeline ===")
 print()
-print("  Scenario: PropertyGuru automated valuation model (AVM)")
+print("  Scenario: a Singapore property portal's automated valuation model")
+
+# Simulate the upstream rename and try to write it through the schema
+renamed = features_v1_valid.rename({"remaining_lease_years": "lease_remaining"})
+try:
+    to_store_frame(renamed, property_schema_v1)
+    rename_caught = False
+except pl.exceptions.ColumnNotFoundError as err:
+    rename_caught = True
+    print(f"\n  Upstream rename rejected at the schema boundary:")
+    print(f"    {type(err).__name__}: {str(err).splitlines()[0]}")
+
+listings_per_month = 15_000  # assumed
+weeks_silent = 3  # assumed
+deal_loss_rate = 0.05  # assumed
+commission = 8_000  # S$, assumed
+affected = listings_per_month * weeks_silent / 4
 print()
-print("  WITHOUT schema:")
-print("    - Upstream renames 'remaining_lease_years' to 'lease_remaining'")
-print("    - Model silently uses default values for 3 weeks")
-print("    - 11,250 listings with wrong valuations")
-print("    - S$4.5M lost commission revenue")
+print("  WITHOUT a schema (illustrative):")
+print(f"    - {affected:,.0f} listings valued with a default lease for {weeks_silent} weeks")
+print(f"    - Lost commission: S${affected * deal_loss_rate * commission:,.0f}")
 print()
 print("  WITH FeatureSchema v1:")
-print("    - FeatureStore rejects data at ingestion (dtype/name mismatch)")
-print("    - Pipeline fails loudly, fixed in 20 minutes")
-print("    - Zero bad valuations reach property agents")
+print("    - The write fails loudly at the schema boundary (shown above)")
+print("    - No wrong valuation is produced from the renamed feed")
 print()
 print("  Your v1 schema enforces:")
-for f in property_schema_v1.features:
+for f in property_schema_v1.fields:
     nullable_str = "optional" if f.nullable else "required"
     print(f"    {f.name}: {f.dtype} ({nullable_str})")
 print()
 print(
-    f"  Total features validated: {features_v1.shape[0]:,} rows "
-    f"x {len(property_schema_v1.features)} columns"
+    f"  Total features validated: {features_v1_valid.shape[0]:,} rows "
+    f"x {len(property_schema_v1.fields)} columns"
 )
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert rename_caught, "Task 5: a renamed feature column must be rejected"
 print("\n[ok] Checkpoint 4 passed — schema-driven valuation pipeline demonstrated\n")
 
 
@@ -335,12 +363,14 @@ print(
   [ok] FeatureSchema: typed fields with dtype, nullable, description
   [ok] FeatureField: individual feature contracts within a schema
   [ok] Feature computation: storey_midpoint, price_per_sqm, remaining_lease
-  [ok] FeatureStore registration: schema-validated feature persistence
+  [ok] Value validation: impossible leases and sentinel prices rejected
+  [ok] FeatureStore: materialise features and read them back
   [ok] Correlation analysis: identifying multicollinearity early
 
   KEY INSIGHT: A schema is a unit test for your feature pipeline.
-  It catches dtype drift, null smuggling, and phantom columns at
-  INGESTION time — not at prediction time when it's too late.
+  Types catch phantom columns and dtype drift; value rules catch
+  impossible values. Both fire at INGESTION time — not at prediction
+  time when it's too late.
 
   Next: In 02_point_in_time.py, you'll learn how point-in-time
   retrieval prevents data leakage — the #1 cause of models that

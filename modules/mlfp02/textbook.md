@@ -2,20 +2,30 @@
 
 > "The feature that killed a clinical trial looked perfect in every metric."
 
-Module 1 taught you how to *see* data. Module 2 teaches you how to *reason* about
+Module 1 taught you how to _see_ data. Module 2 teaches you how to _reason_ about
 it. Before a single machine-learning model is trained in Module 3, you need the
-vocabulary and the mathematical tools to answer questions like: *How confident
+vocabulary and the mathematical tools to answer questions like: _How confident
 are we in this number? Did the treatment actually work, or did we get lucky?
-Is this feature a genuine signal or a statistical artefact?* Without those
+Is this feature a genuine signal or a statistical artefact?_ Without those
 tools, every downstream model is a guess wearing a confidence interval.
 
 This chapter is a self-contained reference that you can read cover-to-cover or
 dip into when you need a refresher. Every formula is derived from first
 principles, every derivation is followed by a worked numerical example, and
 every concept is connected to the Kailash engines that implement it in practice.
-The running dataset is Singapore HDB resale prices, supplemented by small
-synthetic A/B tests and one causal inference case based on the 2021 ABSD
-cooling measures.
+The running dataset is the course's HDB resale file
+(`mlfp01/hdb_resale.parquet`, 50,150 transactions, 2015–2024), supplemented by
+the course's simulated four-arm e-commerce experiment
+(`mlfp02/experiment_data.parquet`) and a simulated panel for a _hypothetical_
+cooling measure (Lesson 2.7).
+
+> **About the data.** The HDB file is a teaching extract laid out like the
+> public resale records, not the official price series: it contains
+> deliberately dirty rows (sentinel prices of $10 and $9,000,000, leases that
+> start after the sale, typos such as `O7 TO 09`), and its prices show no
+> market trend from 2015 to 2024. Every number quoted from it in this chapter
+> is a fact about the course file, not about the Singapore housing market.
+> The experiment file and the cooling-measure panel are fully simulated.
 
 ---
 
@@ -33,8 +43,8 @@ By the end of this module you will be able to:
    families from scratch, and explain when each method fails.
 3. **Quantify uncertainty in estimates** using analytic standard errors,
    the bootstrap (percentile and BCa), and frequentist confidence
-   intervals — and state their meaning *correctly* (a confidence interval
-   is *not* "the 95% chance the parameter is in this range").
+   intervals — and state their meaning _correctly_ (a confidence interval
+   is _not_ "the 95% chance the parameter is in this range").
 4. **Design and analyse A/B tests** with proper randomisation, power
    analysis, and SRM detection; interpret p-values without falling into the
    prosecutor's fallacy.
@@ -48,8 +58,9 @@ By the end of this module you will be able to:
    technique in modern online experimentation) and derive
    `Var(Y_adj) = Var(Y)(1 - ρ²)` from scratch.
 8. **Make causal claims** from observational data using Difference-in-
-   Differences and the parallel-trends assumption, and know when propensity
-   methods are preferred.
+   Differences, test the parallel-trends assumption, and know where
+   propensity-score methods (reference material beyond this module)
+   fit in.
 9. **Integrate everything** into a capstone statistical analysis that loads
    data, engineers features, runs tests, builds a model, and presents
    findings to a non-technical audience.
@@ -89,9 +100,10 @@ Every lesson follows a consistent structure:
    kailash-ml platform. Every lesson is tied to at least one engine
    (`ExperimentTracker`, `FeatureEngineer`, `FeatureStore`,
    `ModelVisualizer`).
-5. **Worked Example** — a full end-to-end problem using real Singapore
-   data. You can run the code locally; imports and dataset names match
-   `shared.MLFPDataLoader`.
+5. **Worked Example** — a full end-to-end problem on the course data
+   files, loaded with `shared.MLFPDataLoader`. Run the code from the
+   repository root (so the loader finds `data/`); every output quoted
+   in the text was produced by the code shown.
 6. **Try It Yourself** — three to five practice problems with solutions
    at the end of each section. The solutions are written out, not just
    answers, so you can compare your reasoning step by step.
@@ -113,7 +125,7 @@ Three "layers" of depth are marked in-line:
 
 Common pitfalls are called out in boxed warnings like this:
 
-> ⚠ **Pitfall:** The p-value is *not* the probability that the null
+> ⚠ **Pitfall:** The p-value is _not_ the probability that the null
 > hypothesis is true. We will come back to this repeatedly.
 
 Everything assumes **Polars, not pandas**, and **Kailash engines, not raw
@@ -131,11 +143,11 @@ will write less code, not more.
 Imagine you live in Singapore and you wake up one morning with a scratchy
 throat. You buy a COVID Antigen Rapid Test (ART) at the pharmacy. The box
 says the test is "99% accurate." You swab, wait 15 minutes, and see two red
-lines: *positive*. How worried should you be?
+lines: _positive_. How worried should you be?
 
 The natural reaction is "99% means I'm almost certainly infected." But that
 is wrong — sometimes spectacularly wrong. The correct answer depends on how
-common COVID is in the general population *right now*, a quantity that has
+common COVID is in the general population _right now_, a quantity that has
 nothing to do with the test. During a low-prevalence week in Singapore
 (say, 0.5% of the population actively infected), a positive ART test
 actually means you have roughly an **18% chance** of being
@@ -143,7 +155,7 @@ infected (with typical ART sensitivity ~90%, specificity ~98%).
 During a surge week (say, 10% prevalence), the same positive
 result means you're about **83% likely** to be infected.
 
-The difference is not the test. The difference is the *prior*. This lesson
+The difference is not the test. The difference is the _prior_. This lesson
 teaches you the single tool that separates good probabilistic reasoning
 from confident nonsense: **Bayes' theorem**.
 
@@ -176,7 +188,7 @@ working data scientist uses both:
   probability is the long-run proportion of times the event happens. "The
   probability of heads is 0.5" means: if you flip a fair coin a million
   times, roughly half a million will be heads.
-- **Bayesian interpretation.** Probability is a *degree of belief* given
+- **Bayesian interpretation.** Probability is a _degree of belief_ given
   the information you have. "There's a 70% chance it will rain tomorrow"
   doesn't require running tomorrow a thousand times; it's a statement
   about how confident you are given the current forecast, satellite
@@ -221,7 +233,7 @@ P(A ∩ B) = P(A) × P(B)
 Flipping a coin twice: whether the first flip lands heads tells you
 nothing about the second. `P(H on flip 2 | H on flip 1) = P(H on flip 2) = 0.5`.
 
-Drawing two cards from a shuffled deck *without* replacement: the events
+Drawing two cards from a shuffled deck _without_ replacement: the events
 are dependent. If the first card is the ace of spades, the probability
 that the second card is also the ace of spades drops to zero.
 
@@ -231,7 +243,7 @@ Practical test: ask yourself two questions.
    multiplying `P(A) × P(B)` regardless of which happens first, you are
    probably dealing with independence.
 2. **Does one affect the sample space of the other?** If event `A`
-   *removes* possibilities from the pool for `B` (draws a card, uses up
+   _removes_ possibilities from the pool for `B` (draws a card, uses up
    inventory, influences someone's behaviour), the events are dependent.
 
 ### Conditional probability
@@ -254,7 +266,7 @@ P(A ∩ B) = P(B) × P(A | B) = P(A) × P(B | A)
 
 We will use both forms constantly.
 
-> ⚠ **Pitfall:** `P(A | B)` is *not* the same as `P(B | A)`. Mixing them
+> ⚠ **Pitfall:** `P(A | B)` is _not_ the same as `P(B | A)`. Mixing them
 > up is called the **prosecutor's fallacy** and has, literally, put
 > innocent people in jail. `P(match | innocent)` and
 > `P(innocent | match)` can differ by orders of magnitude when the base
@@ -275,7 +287,7 @@ The test manufacturer publishes two numbers:
   98% correctly test negative. (Equivalently,
   `P(T+ | C-) = 0.02`, the false-positive rate.)
 
-What we *want* is `P(C+ | T+)`, the probability that, given a positive
+What we _want_ is `P(C+ | T+)`, the probability that, given a positive
 test, the person actually has COVID. Intuitively, "the test is 98%
 specific, so my chance of being sick is 98%." This is wrong. We need
 Bayes' theorem, and we need to know the **prior** `P(C+)` — the base rate
@@ -297,7 +309,7 @@ P(C+ | T+) = P(T+ | C+) × P(C+) / P(T+)
 
 A positive test means there's roughly an **18% chance** you actually have
 COVID. The other 82% of the time you're a false positive — because the
-base rate is so low that *most* positive tests come from the 99.5% of
+base rate is so low that _most_ positive tests come from the 99.5% of
 people who don't have COVID but occasionally trip the 2% false-positive
 rate. One in five positives is a true positive; four in five are false
 alarms.
@@ -315,6 +327,27 @@ P(C+ | T+) = 0.90 × 0.10 / 0.108 ≈ 0.833
 A positive test now means an 83% chance of being sick — a very different
 story. Same test, same sensitivity, same specificity; only the prior has
 changed.
+
+### The same answer from a truth table
+
+Bayes' theorem is easier to trust once you have seen it as counting.
+Imagine 10,000 people at 0.5% prevalence and cross-tabulate the two
+yes/no facts — infected or not, positive or not:
+
+|                   | Test positive (T+) | Test negative (T−) | Total  |
+| ----------------- | ------------------ | ------------------ | ------ |
+| Infected (C+)     | 45                 | 5                  | 50     |
+| Not infected (C−) | 199                | 9,751              | 9,950  |
+| Total             | 244                | 9,756              | 10,000 |
+
+Fill it from the definitions: 0.5% of 10,000 are infected (50); 90% of
+them test positive (45); 2% of the 9,950 healthy people test positive
+(199). Then read the answer straight off the T+ column:
+`P(C+ | T+) = 45 / 244 ≈ 0.184` — the same 18% as before. Every cell is
+a joint probability (`P(C+ ∩ T+) = 45 / 10,000`), each row and column
+total is a marginal, and every conditional probability is a cell
+divided by its row or column total. Building this table is the most
+reliable way to set up a Bayes problem.
 
 > ⚠ **Pitfall — Base rate fallacy.** Never interpret a conditional
 > probability without thinking about the base rate. In ML, the base rate
@@ -347,13 +380,13 @@ P(A | B) = P(B | A) × P(A) / P(B)
 
 That's Bayes' theorem. The components have names that we will use forever:
 
-- `P(A)` — the **prior**. Your belief about `A` *before* seeing the data.
+- `P(A)` — the **prior**. Your belief about `A` _before_ seeing the data.
 - `P(B | A)` — the **likelihood**. How probable the data is, given the
   hypothesis.
 - `P(B)` — the **evidence** (or marginal likelihood). The overall
   probability of observing `B`, marginalised over every possible state
   of the world.
-- `P(A | B)` — the **posterior**. Your updated belief about `A` *after*
+- `P(A | B)` — the **posterior**. Your updated belief about `A` _after_
   observing `B`.
 
 A pattern you should memorise:
@@ -452,7 +485,9 @@ Var(X) = E[(X − μ)²]
 
 Done. Both forms are correct, but the second is numerically stable only
 when `E[X²]` and `μ²` are not dangerously close in magnitude. In practice,
-Polars and NumPy use a two-pass algorithm that's both exact and stable.
+NumPy computes the mean first and then the squared deviations (a
+two-pass algorithm). Use the library's variance function rather than
+coding the `E[X²] − μ²` shortcut yourself.
 
 **Standard deviation** is `σ = √Var(X)`. It has the same units as `X`,
 which makes it easier to interpret than variance.
@@ -476,7 +511,7 @@ Var (population form) = 28800 / 5 = 5760
 σ = √5760 ≈ 75.9
 ```
 
-If we treat the five values as a *sample* rather than a population, we
+If we treat the five values as a _sample_ rather than a population, we
 divide by `n − 1 = 4` instead of `n = 5`:
 
 ```
@@ -485,8 +520,8 @@ s = √7200 ≈ 84.9
 ```
 
 We'll explain why `n − 1` in Lesson 2.2 (it's called **Bessel's
-correction**). For now, remember: *population* variance divides by `n`,
-*sample* variance divides by `n − 1`.
+correction**). For now, remember: _population_ variance divides by `n`,
+_sample_ variance divides by `n − 1`.
 
 ### Distributions — the statistics theme park
 
@@ -503,7 +538,7 @@ f(x) = (1 / √(2π σ²)) × exp(−(x − μ)² / (2 σ²))
 ```
 
 Two parameters: mean `μ` and variance `σ²`. The CLT (Lesson 2.2) tells us
-that *sums of independent random variables* tend toward Normal regardless
+that _sums of independent random variables_ tend toward Normal regardless
 of their individual distributions, which is why it is everywhere.
 
 **Beta.** `X ~ Beta(α, β)`. A distribution on `[0, 1]`. Perfect for
@@ -540,12 +575,12 @@ correlated with what you're trying to measure. The most famous example
 is the **friendship paradox**: on average, your friends have more
 friends than you.
 
-This is *not* a self-esteem issue. It's a statistical fact. When you
+This is _not_ a self-esteem issue. It's a statistical fact. When you
 sample a random person and ask "how many friends do you have?", you
-get the average over people. When you sample a random *friend* (by
+get the average over people. When you sample a random _friend_ (by
 picking a random person, then picking one of their friends uniformly),
-you over-sample popular people — because popular people are *more
-often* someone's friend. The average of that biased sample is larger.
+you over-sample popular people — because popular people are _more
+often_ someone's friend. The average of that biased sample is larger.
 
 This matters in ML because we constantly deal with biased samples:
 
@@ -553,52 +588,71 @@ This matters in ML because we constantly deal with biased samples:
 - **Survey data** over-samples people willing to respond.
 - **Medical trial data** over-samples people sick enough to seek care.
 
-The correction is to either debias the sample explicitly (using inverse
-propensity weights, which we'll meet in Lesson 2.7) or to use a
-different sampling scheme that avoids the bias in the first place.
+The correction is to either debias the sample explicitly (for example
+with inverse propensity weights — a reference-material topic beyond this
+module) or to use a different sampling scheme that avoids the bias in the
+first place.
 
 ## The Kailash Engine — ExperimentTracker
 
 `ExperimentTracker` is kailash-ml's experiment metadata store. It
-doesn't run the statistics itself — that's your code, or other engines —
-but it records every parameter, metric, and artifact so experiments are
+doesn't run the statistics itself — that's your code — but it records
+every parameter, metric, and artifact so experiments are
 **reproducible** and **comparable** months later.
 
+The tracker is asynchronous: you create it with
+`await ExperimentTracker.create(store_url=...)`, open a run with
+`async with tracker.track(experiment=..., run_name=...) as run`, and
+`await` every logging call. Outside a notebook, wrap the steps in an
+`async def` and start it with `asyncio.run(...)`. Every lesson in this
+chapter uses the same pattern.
+
 ```python
+import asyncio
+
 from kailash_ml import ExperimentTracker
 
-tracker = ExperimentTracker()
+prior, sensitivity, specificity = 0.005, 0.90, 0.98
+evidence = sensitivity * prior + (1 - specificity) * (1 - prior)
+posterior = sensitivity * prior / evidence  # 0.184: computed by YOUR code
 
-with tracker.start_run(name="covid_ART_bayesian_update") as run:
-    run.log_param("prior_prevalence", 0.005)
-    run.log_param("sensitivity", 0.90)
-    run.log_param("specificity", 0.98)
 
-    posterior = 0.90 * 0.005 / (0.90 * 0.005 + 0.02 * 0.995)
-    run.log_metric("posterior_prob_covid_given_positive", posterior)
+async def log_bayes_update() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_bayes", run_name="covid_art") as run:
+        await run.log_params({"prior_prevalence": prior,
+                              "sensitivity": sensitivity,
+                              "specificity": specificity})
+        await run.log_metrics({"posterior_covid_given_positive": posterior})
+    await tracker.close()
+
+
+asyncio.run(log_bayes_update())
 ```
 
 Why is this worth doing for such a simple calculation? Because in a week
 from now, the prevalence will be different, the test version will be
 different, and you won't remember which numbers went into which
-analysis. `ExperimentTracker` makes a durable trail of *exactly* which
-prior produced *exactly* which posterior. We'll use it in every lesson
+analysis. `ExperimentTracker` makes a durable trail of _exactly_ which
+prior produced _exactly_ which posterior. We'll use it in every lesson
 from here on.
 
 ## Worked Example — Full Bayesian Update on HDB Prices
 
-Suppose you are a housing analyst at a Singapore bank. Before looking at
-any data, your manager says "4-room HDB flats in 2024 cost about
+Suppose you are a housing analyst at a bank. Before looking at any
+data, your manager says "4-room HDB flats in 2024 cost about
 SGD 500,000, give or take SGD 25,000." This is a prior belief:
 
 ```
 μ ~ N(μ₀, σ₀²),   μ₀ = 500_000,   σ₀ = 25_000
 ```
 
-You then pull `n = 1000` recent 4-room transactions from data.gov.sg. The
-sample mean is `x̄ = 540_000` with sample standard deviation `s = 80_000`.
-Treating the individual observations as Normal with known variance `σ² =
-s² = 6.4e9`, we can use the **Normal-Normal conjugate update**.
+You then pull every 2024 4-room transaction from the course's HDB file
+and drop the 10 sentinel prices (outside SGD 100K–2M) that the file
+deliberately contains. That leaves `n = 2_054` sales with sample mean
+`x̄ = 849_626` and sample standard deviation `s = 102_826`. Treating the
+individual observations as Normal with known variance
+`σ² = s² ≈ 1.0573e10`, we can use the **Normal-Normal conjugate update**.
 
 **Derivation.** If `μ ~ N(μ₀, σ₀²)` and each observation
 `xᵢ ~ N(μ, σ²)` (independent given `μ`), then the posterior is:
@@ -614,41 +668,51 @@ where:
 Plug in numbers:
 
 ```
-1/σ₀² = 1 / (25_000²)     = 1 / 625_000_000       = 1.6e-9
-n/σ²  = 1000 / 6.4e9      = 1.5625e-7
-1/σₙ² = 1.6e-9 + 1.5625e-7 ≈ 1.5785e-7
-σₙ²   ≈ 6.335e6
-σₙ    ≈ 2517
+1/σ₀² = 1 / (25_000²)          = 1.6e-9
+n/σ²  = 2_054 / 1.0573e10      ≈ 1.9427e-7
+1/σₙ² = 1.6e-9 + 1.9427e-7     ≈ 1.9587e-7
+σₙ²   ≈ 5.1055e6
+σₙ    ≈ 2_260
 
-μ₀/σ₀²    = 500_000 × 1.6e-9   = 0.0008
-n × x̄/σ² = 1000 × 540_000 / 6.4e9 = 0.084375
-sum       = 0.085175
+μ₀/σ₀²    = 500_000 × 1.6e-9            = 0.0008
+n × x̄/σ² = 2_054 × 849_626 / 1.0573e10 ≈ 0.16505
+sum       ≈ 0.16585
 
-μₙ = σₙ² × 0.085175 = 6.335e6 × 0.085175 ≈ 539_573
+μₙ = σₙ² × 0.16585 ≈ 5.1055e6 × 0.16585 ≈ 846_770
 ```
 
-So after seeing the data, your posterior mean is about **SGD 539,573**
-with standard deviation about **SGD 2,517**. Three observations:
+So after seeing the data, your posterior mean is about **SGD 846,770**
+with standard deviation about **SGD 2,260**. Four observations:
 
-1. The posterior is pulled almost all the way to the data, because with
-   `n = 1000` the data dominates the prior. This is exactly the
-   **Bernstein-von Mises phenomenon**: with enough data, any reasonable
-   prior converges to the same posterior.
-2. The posterior standard deviation (2,517) is much smaller than either
+1. The data carry about 99% of the weight (`(n/σ²) / (1/σₙ²) ≈ 0.992`),
+   so the posterior lands close to the sample mean. With enough data,
+   any prior that does not rule out the truth is overwhelmed — the
+   **Bernstein-von Mises phenomenon**.
+2. "Close" is not "identical": the prior still pulls the posterior
+   about SGD 2,900 below `x̄`, more than one posterior standard deviation.
+   That is because the manager's prior (500K ± 25K) sits 14 prior
+   standard deviations away from what the market file shows. A confident
+   prior that badly contradicts the data is itself a finding — tell the
+   manager their mental model is out of date. With a vaguer prior
+   (`σ₀ = 100_000`, as Exercise 1 uses) the pull shrinks to about SGD 180.
+3. The posterior standard deviation (2,260) is much smaller than either
    the prior (25,000) or the sample standard deviation of individual
-   prices (80,000). Averaging lots of samples sharpens our estimate of
-   the *mean*, even though individual prices stay noisy.
-3. The 95% **credible interval** (the Bayesian analog of a confidence
-   interval) is `μₙ ± 1.96 × σₙ ≈ [534,640, 544,506]`. You can literally
-   say "I'm 95% sure the true mean is in this range" — which, as we'll
-   see in Lesson 2.2, you *cannot* say about a frequentist CI.
+   prices (102,826). Averaging lots of samples sharpens our estimate of
+   the _mean_, even though individual prices stay noisy.
+4. The 95% **credible interval** (the Bayesian analog of a confidence
+   interval) is `μₙ ± 1.96 × σₙ ≈ [842,342, 851,199]`. Given the model
+   and the prior, you can say "there is a 95% probability the true mean
+   is in this range" — which, as we'll see in Lesson 2.2, you _cannot_
+   say about a frequentist CI.
 
-Code:
+Code (it reproduces every number above):
 
 ```python
+import asyncio
+
 import numpy as np
-from kailash_ml import ExperimentTracker, ModelVisualizer
 import polars as pl
+from kailash_ml import ExperimentTracker
 
 from shared import MLFPDataLoader
 
@@ -657,10 +721,11 @@ hdb = loader.load("mlfp01", "hdb_resale.parquet")
 
 prices = (
     hdb.filter(pl.col("flat_type") == "4 ROOM")
-       .filter(pl.col("month").str.to_date("%Y-%m") >= pl.date(2024, 1, 1))
-       ["resale_price"].to_numpy().astype(float)
+    .filter(pl.col("month").str.to_date("%Y-%m") >= pl.date(2024, 1, 1))
+    .filter(pl.col("resale_price").is_between(100_000, 2_000_000))  # drop sentinels
+    ["resale_price"].to_numpy().astype(float)
 )
-n = len(prices)
+n = len(prices)  # 2,054
 x_bar = prices.mean()
 s = prices.std(ddof=1)
 
@@ -675,20 +740,25 @@ print(f"posterior sd    = {post_sd:,.0f}")
 print(f"95% credible IV = [{post_mean - 1.96*post_sd:,.0f}, "
       f"{post_mean + 1.96*post_sd:,.0f}]")
 
-with ExperimentTracker().start_run(name="hdb_bayes_update") as run:
-    run.log_param("prior_mu0", mu0)
-    run.log_param("prior_sigma0", sigma0)
-    run.log_param("sample_size", n)
-    run.log_metric("posterior_mean", post_mean)
-    run.log_metric("posterior_sd", post_sd)
+
+async def log_update() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_hdb_bayes", run_name="normal_normal") as run:
+        await run.log_params({"prior_mu0": mu0, "prior_sigma0": sigma0, "sample_size": n})
+        await run.log_metrics({"posterior_mean": float(post_mean),
+                               "posterior_sd": float(post_sd)})
+    await tracker.close()
+
+
+asyncio.run(log_update())
 ```
 
-The `ModelVisualizer` overlay of prior, likelihood, and posterior
-(which the exercise walks through) shows three curves: a wide bell
-centred at 500K (prior), a narrow bell centred at 540K (likelihood of
-the sample mean), and an even narrower bell that almost perfectly
-overlaps the likelihood (posterior). The visual makes clear that the
-data has overwhelmed the prior.
+Plot the three densities on one axis (Exercise 1 does this with plotly):
+a wide bell centred at 500K (prior), a narrow bell centred at 849.6K (the
+likelihood of the sample mean), and an equally narrow bell centred at
+846.8K (posterior). The picture shows both facts at once — the data
+dominate, yet the posterior sits visibly to the prior's side of the
+likelihood.
 
 ## Try It Yourself
 
@@ -697,7 +767,7 @@ spam (sensitivity) and mistakenly marks 1% of legitimate email as spam
 (false positive rate). You know that 20% of your incoming mail is spam.
 An email is marked as spam. What is the probability it's actually spam?
 
-*Solution.* Let `S` = "is spam", `M` = "marked spam".
+_Solution._ Let `S` = "is spam", `M` = "marked spam".
 
 ```
 P(S | M) = P(M | S) × P(S) / P(M)
@@ -712,7 +782,7 @@ the likelihood as hard.
 **Problem 2 — Two children.** A colleague says, "I have two children.
 At least one is a boy." What is the probability both are boys?
 
-*Solution.* Label the children by age. The four equally likely
+_Solution._ Label the children by age. The four equally likely
 combinations are BB, BG, GB, GG. Conditioning on "at least one boy"
 eliminates GG, leaving BB, BG, GB. Only BB has two boys, so:
 
@@ -721,13 +791,13 @@ P(BB | at least one B) = 1 / 3
 ```
 
 Not `1/2`. This surprises almost everyone the first time. The subtle
-point is that "at least one boy" is a constraint on the *joint*
+point is that "at least one boy" is a constraint on the _joint_
 distribution, not on a specific child.
 
 **Problem 3 — Rolling dice.** You roll two fair six-sided dice. Let `A`
 = "sum is 7" and `B` = "first die is 3". Are `A` and `B` independent?
 
-*Solution.* `P(A) = 6/36 = 1/6` (the six combinations that sum to 7).
+_Solution._ `P(A) = 6/36 = 1/6` (the six combinations that sum to 7).
 `P(B) = 6/36 = 1/6`. `P(A ∩ B) = 1/36` (only 3+4 works). Check:
 
 ```
@@ -742,7 +812,7 @@ Then `P(A) × P(B) = 30/1296 ≠ 36/1296`. Not independent.
 a priori. You observe 500 transactions with sample mean 420K and sample
 SD 60K. Compute the posterior mean and SD for the true mean price.
 
-*Solution.* Plug into the Normal-Normal formula:
+_Solution._ Plug into the Normal-Normal formula:
 
 ```
 1/σₙ² = 1/30_000² + 500/60_000² = 1.111e-9 + 1.389e-7 ≈ 1.400e-7
@@ -759,7 +829,7 @@ Posterior mean ≈ SGD 419,844, posterior SD ≈ SGD 2,672.
 and 98% specificity for a rare disease present in 1 in 10,000 people.
 A patient tests positive. What is the probability they have the disease?
 
-*Solution.*
+_Solution._
 
 ```
 P(D) = 0.0001
@@ -795,7 +865,7 @@ when new information arrives. Write down:
 2. The sensitivity and false positive rate of whatever signal you use.
 3. The posterior probability after a positive signal.
 
-If your domain never quantifies these things, ask *why not*. That's
+If your domain never quantifies these things, ask _why not_. That's
 Module 2 in one sentence.
 
 ---
@@ -804,9 +874,9 @@ Module 2 in one sentence.
 
 ## Why This Matters
 
-Every model you will ever train is built on this question: *given some
+Every model you will ever train is built on this question: _given some
 data, what parameter values best describe the process that generated
-it?* A linear regression wants the slope and intercept. A logistic
+it?_ A linear regression wants the slope and intercept. A logistic
 regression wants a vector of coefficients. A Normal distribution wants a
 mean and variance. A deep neural network wants weights for every edge.
 
@@ -822,7 +892,7 @@ This lesson covers:
    is the most common statistical mistake).
 2. The Law of Large Numbers and the Central Limit Theorem — the two
    pillars of frequentist inference.
-3. Confidence intervals: what they actually mean (hint: *not* what you
+3. Confidence intervals: what they actually mean (hint: _not_ what you
    think).
 4. Maximum likelihood estimation from first principles: write the
    log-likelihood, take the derivative, set it to zero.
@@ -841,7 +911,7 @@ in Singapore in 2024" has a specific average price; you could in
 principle compute it exactly by including every sale.
 
 A **sample** is a subset you actually observe. The sample mean `x̄` and
-sample variance `s²` are computed from the sample. They are *random*
+sample variance `s²` are computed from the sample. They are _random_
 — a different sample would give different values.
 
 The entire point of statistics is to reason about the population (what
@@ -860,7 +930,8 @@ statistic) infinitely many times. The distribution of the resulting
 statistics is the **sampling distribution**. It is the engine behind
 every confidence interval and every p-value.
 
-Example. Suppose the true mean 4-room HDB price is `μ = 540_000` with
+Example (round hypothetical numbers, chosen for easy arithmetic).
+Suppose the true mean flat price in some market is `μ = 540_000` with
 population standard deviation `σ = 80_000`. If you repeatedly draw
 samples of size `n = 100` and compute `x̄`, how are those `x̄` values
 distributed?
@@ -870,7 +941,7 @@ The Central Limit Theorem (below) tells us: approximately
 
 - 68% of your sample means will land within `[532K, 548K]`.
 - 95% will land within `[524K, 556K]`.
-- The *individual* prices have SD 80K, but the *sample mean* has SD
+- The _individual_ prices have SD 80K, but the _sample mean_ has SD
   only 8K. The mean is far more precise than any one observation.
 
 ### Law of Large Numbers (LLN)
@@ -888,8 +959,8 @@ data is more accurate."
 
 ### Central Limit Theorem (CLT)
 
-The LLN tells you *where* the sample mean goes. The CLT tells you
-*how fast* and *in what shape*. For any population with finite
+The LLN tells you _where_ the sample mean goes. The CLT tells you
+_how fast_ and _in what shape_. For any population with finite
 variance `σ²`, the distribution of `x̄` is approximately Normal for
 large `n`:
 
@@ -952,6 +1023,41 @@ If you drew 100 samples of `n = 100` and built a 95% CI for each, you
 would expect about 95 of them to contain the true `μ`. This one
 interval either does or doesn't; we don't know which.
 
+> ⚠ **Pitfall — CI of the mean vs prediction interval.** A CI describes
+> uncertainty about the _average_. It says nothing about where a
+> _single_ new observation will fall. For the 2024 4-room sales in the
+> course file (`n = 2,054`, `x̄ = 849,626`, `s = 102,826`) the 95% CI
+> for the mean price is about `[845,181, 854,072]` — only ±4,500 wide
+> — while a 95% **prediction interval** for one flat,
+> `x̄ ± t₀.₉₇₅ × s × √(1 + 1/n)`, is about `[647,924, 1,051,329]`
+> (±201,700); 95.2% of the actual sales fall inside it. If a client
+> asks "what is my flat worth?", the honest range is the prediction
+> interval, not the CI.
+
+### PDF and CDF
+
+A continuous random variable is described by its **probability density
+function** (PDF) `f(x)`. Density is not probability: probability is
+_area_ under `f`, so `P(a ≤ X ≤ b) = ∫ₐᵇ f(x) dx` and the total area
+is 1. A histogram drawn on the density scale (bar height = proportion ÷
+bin width) is the empirical version: its bars also have total area 1.
+
+The **cumulative distribution function** (CDF) accumulates that area:
+
+```
+F(x) = P(X ≤ x) = ∫ f(t) dt   from −∞ to x
+P(a < X ≤ b) = F(b) − F(a)
+```
+
+The CDF rises from 0 to 1 and never decreases. The Normal critical
+values used throughout this module are CDF statements:
+`Φ(1.96) − Φ(−1.96) ≈ 0.95`. On the course data, the share of 2024
+4-room sales at or below SGD 900,000 — the **empirical CDF** at 900K —
+is 0.689; a Normal with the sample's mean and SD gives
+`Φ((900,000 − 849,626) / 102,826) = Φ(0.49) ≈ 0.688`. When the two
+agree, a Normal model is adequate for that question; when they
+disagree (in the tails, typically), trust the data.
+
 ### Bessel's correction — why `n − 1`
 
 The population variance is:
@@ -967,7 +1073,7 @@ If we knew `μ`, we could estimate `σ²` by plugging in the sample:
 ```
 
 This is unbiased. But we don't know `μ`; we use `x̄` instead. Here's
-the problem: `x̄` is the sample value that *minimises* the sum of
+the problem: `x̄` is the sample value that _minimises_ the sum of
 squared deviations. Using it in place of `μ` systematically
 under-estimates the true variance — the sample hugs its own mean too
 tightly.
@@ -1001,7 +1107,7 @@ Take expectations:
 
 ```
 E[Σᵢ (xᵢ − x̄)²] = Σᵢ E[(xᵢ − μ)²] − n × E[(x̄ − μ)²]
-                = nσ² − n × (σ²/n)     (the last term is Var(x̄) = σ²/n by CLT logic)
+                = nσ² − n × (σ²/n)     (Var(x̄) = σ²/n exactly, for independent draws)
                 = nσ² − σ² = (n − 1) σ²
 ```
 
@@ -1031,7 +1137,7 @@ The **log-likelihood** is:
 
 We take logs for two reasons:
 
-1. Products of small probabilities *underflow* in floating-point
+1. Products of small probabilities _underflow_ in floating-point
    arithmetic. Sums don't.
 2. The derivative of a sum is simpler than the derivative of a
    product. The logarithm turns MLE into an additive problem.
@@ -1078,7 +1184,7 @@ Set to zero:
 ```
 
 So the MLE of the mean is the **sample mean**. Totally unsurprising,
-but now we know *why*: it is the value that maximises the joint
+but now we know _why_: it is the value that maximises the joint
 probability of the observed data under the Normal model.
 
 **Solve for `σ²`.** Take the partial derivative with respect to `σ²`:
@@ -1095,7 +1201,7 @@ n × σ̂² = Σᵢ (xᵢ − μ̂)²
 σ̂²_MLE = (1/n) × Σᵢ (xᵢ − x̄)²
 ```
 
-The MLE of the variance divides by `n`, *not* `n − 1`. That makes it
+The MLE of the variance divides by `n`, _not_ `n − 1`. That makes it
 slightly biased (see Bessel's correction). MLE estimators can be
 biased; we accept that trade-off in exchange for other desirable
 properties (asymptotic efficiency and consistency).
@@ -1162,9 +1268,10 @@ I_n(μ) = n / σ²
 
 The **Cramér-Rao bound** says no unbiased estimator can have variance
 smaller than `1 / I_n(θ)`. For the Normal mean, this bound is `σ²/n`
-— and the sample mean achieves it exactly. The sample mean is
-**asymptotically efficient**; you cannot do better with an unbiased
-estimator.
+— and the sample mean achieves it exactly, at every `n`. The sample
+mean is **efficient**: you cannot do better with an unbiased estimator.
+(For most other models the MLE reaches the bound only as `n → ∞`, which
+is what "asymptotically efficient" means.)
 
 ### MAP — adding a prior (THEORY)
 
@@ -1226,7 +1333,7 @@ finite samples:
    or explicit mode-finding.
 3. **Model misspecification.** If the data don't come from the
    model family you're fitting, MLE converges to the
-   *Kullback-Leibler closest* member of the family, which may be a
+   _Kullback-Leibler closest_ member of the family, which may be a
    bad approximation. Solution: expand the model family or use
    robust methods.
 4. **Infinite likelihood.** A Gaussian mixture with a component
@@ -1239,56 +1346,92 @@ finite samples:
 
 ## The Kailash Engine — ExperimentTracker + ModelVisualizer
 
-For MLE work we use two engines in combination. `ExperimentTracker`
-logs the parameters and metrics; `ModelVisualizer` renders the
-log-likelihood curve so you can see whether the maximum is sharp
-(lots of information) or flat (not much).
+For MLE work you write the log-likelihood and maximise it yourself
+(here with `scipy.optimize`); the engines show and record the result.
+`ModelVisualizer().histogram(...)` draws the data the model is fitted
+to, and `ExperimentTracker` logs the estimates. `ModelVisualizer` has
+no line-chart method, so the log-likelihood curve is drawn with plotly
+directly (as the exercises do). The example fits a Normal to quarterly
+GDP growth from the course's economic-indicators file — the Lesson 2.2
+exercise — and draws the **profile log-likelihood** of `μ`: for each
+candidate `μ`, `σ` is re-fitted (`σ̂²(μ) = mean((x − μ)²)`) before the
+log-likelihood is evaluated. A sharp peak means lots of information
+about `μ`; a flat one means little.
 
 ```python
-from kailash_ml import ExperimentTracker, ModelVisualizer
-from scipy import stats
+import asyncio
+
 import numpy as np
+import plotly.graph_objects as go
+from scipy import optimize, stats
+from kailash_ml import ExperimentTracker, ModelVisualizer
 
-x = prices  # from the HDB dataset
+from shared import MLFPDataLoader
 
-mu_grid = np.linspace(x.mean() - 3 * x.std(ddof=1) / np.sqrt(len(x)),
-                      x.mean() + 3 * x.std(ddof=1) / np.sqrt(len(x)),
-                      200)
-loglik = [stats.norm.logpdf(x, loc=mu, scale=x.std(ddof=0)).sum()
-          for mu in mu_grid]
+econ = MLFPDataLoader().load("mlfp01", "economic_indicators.csv")
+g = econ["gdp_growth_pct"].drop_nulls().to_numpy()  # n = 101
 
-viz = ModelVisualizer()
-viz.line(mu_grid, loglik, xlabel="mu", ylabel="log-likelihood",
-         title="Log-likelihood for HDB mean price")
 
-with ExperimentTracker().start_run(name="hdb_mle_normal") as run:
-    run.log_param("n", len(x))
-    run.log_metric("mu_mle", float(x.mean()))
-    run.log_metric("sigma_mle", float(x.std(ddof=0)))
-    run.log_metric("fisher_info", float(len(x) / x.var()))
+def nll(p):  # p = (mu, log_sigma) so sigma stays positive
+    return -stats.norm.logpdf(g, p[0], np.exp(p[1])).sum()
+
+
+res = optimize.minimize(nll, x0=[0.0, 0.0], method="BFGS")
+mu_hat, sigma_hat = res.x[0], np.exp(res.x[1])  # 3.90, 4.07 (= mean, /n SD)
+fisher_n = len(g) / sigma_hat**2                  # information about mu
+se_mu = 1 / np.sqrt(fisher_n)                     # 0.405
+
+mu_grid = np.linspace(mu_hat - 4 * se_mu, mu_hat + 4 * se_mu, 200)
+profile = [stats.norm.logpdf(g, m, np.sqrt(np.mean((g - m) ** 2))).sum()
+           for m in mu_grid]
+fig_ll = go.Figure(go.Scatter(x=mu_grid, y=profile, mode="lines"))
+fig_ll.update_layout(title="Profile log-likelihood of mu (GDP growth, %)",
+                     xaxis_title="mu", yaxis_title="log-likelihood")
+fig_data = ModelVisualizer().histogram(
+    econ, "gdp_growth_pct", bins=30,
+    title=f"GDP growth: MLE mu={mu_hat:.2f}, sigma={sigma_hat:.2f}")
+
+
+async def log_mle() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_mle", run_name="gdp_normal") as run:
+        await run.log_params({"n": len(g), "distribution": "normal"})
+        await run.log_metrics({"mu_mle": float(mu_hat), "sigma_mle": float(sigma_hat),
+                               "fisher_info_mu": float(fisher_n), "se_mu": float(se_mu)})
+    await tracker.close()
+
+
+asyncio.run(log_mle())
 ```
 
 ## Worked Example — MLE, Fisher Information, and a Confidence Interval
 
-Use the same 4-room HDB data (2024) as Lesson 2.1. Suppose `n = 1000`,
-`x̄ = 540_000`, `s = 80_000`.
+Use the same 2024 4-room HDB data as Lesson 2.1 (sentinel prices
+removed): `n = 2_054`, `x̄ = 849_626`, `s = 102_826`.
 
-**MLE of `μ`:** `540_000` (the sample mean).
+**MLE of `μ`:** `849_626` (the sample mean).
 
-**MLE of `σ²`:** roughly `s² × (n − 1) / n ≈ 80_000² × 0.999 ≈ 6.395e9`.
+**MLE of `σ²`:** `s² × (n − 1) / n ≈ 1.0573e10 × 0.99951 ≈ 1.0568e10`,
+so `σ̂_MLE ≈ 102_801`.
 
-**Fisher information (per-parameter `μ`):** `n / σ² ≈ 1000 / 6.4e9 ≈
-1.5625e-7`.
+**Fisher information about `μ`:** `I_n = n / σ̂² ≈ 2_054 / 1.0568e10 ≈
+1.944e-7`.
 
-**Cramér-Rao bound on `Var(μ̂)`:** `1 / I_n ≈ 6.4e6`, so
-`SE(μ̂) ≈ √6.4e6 ≈ 2530`.
+**Cramér-Rao bound on `Var(μ̂)`:** `1 / I_n ≈ 5.145e6`, so
+`SE(μ̂) ≈ √5.145e6 ≈ 2_268`.
 
-**95% CI for `μ`:** `540_000 ± 1.96 × 2530 ≈ [535_042, 544_958]`.
+**95% CI for `μ`:** `849_626 ± 1.96 × 2_268 ≈ [845_181, 854_072]`.
 
-Compare to Lesson 2.1's posterior credible interval, which was
-`[534_640, 544_506]`. The frequentist CI and the Bayesian credible
-interval are almost identical because the data dominates the prior.
-Bernstein-von Mises in action.
+Compare to Lesson 2.1's posterior credible interval,
+`[842_342, 851_199]`. The two intervals have almost the same width
+(2,268 vs 2,260 standard error) because the data carry about 99% of the
+information — but the credible interval is shifted about SGD 2,900
+toward the manager's badly-placed prior. Re-run the update with the
+vaguer prior `σ₀ = 100_000` and the posterior mean moves to 849,447: the
+two intervals then nearly coincide. That is Bernstein-von Mises in
+action — and a reminder that "the data dominate" is a statement about
+the _weights_, not a guarantee that a confident, wrong prior does no
+harm.
 
 ## Try It Yourself
 
@@ -1296,7 +1439,7 @@ Bernstein-von Mises in action.
 exponential distribution `f(x; λ) = λ × e^(−λx)` from `n` i.i.d.
 observations.
 
-*Solution.* Log-likelihood:
+_Solution._ Log-likelihood:
 
 ```
 ℓ(λ) = Σᵢ log(λ) + Σᵢ (−λxᵢ) = n log λ − λ Σᵢ xᵢ
@@ -1315,7 +1458,7 @@ So the MLE of the rate is the reciprocal of the sample mean (since
 **Problem 2 — Poisson MLE.** Derive the MLE for `λ` in the Poisson
 distribution `P(X = k) = e^(−λ) λ^k / k!` from `n` i.i.d. observations.
 
-*Solution.* Log-likelihood:
+_Solution._ Log-likelihood:
 
 ```
 ℓ(λ) = Σᵢ (−λ + xᵢ log λ − log(xᵢ!)) = −nλ + log(λ) Σᵢ xᵢ + const
@@ -1333,7 +1476,7 @@ Again the sample mean — Poisson mean equals `λ`.
 **Problem 3 — CLT check.** You have a sample of `n = 64` observations
 with `x̄ = 100` and `s = 16`. Compute the 95% CI for the population mean.
 
-*Solution.*
+_Solution._
 
 ```
 SE = s / √n = 16 / 8 = 2
@@ -1344,7 +1487,7 @@ CI = 100 ± 1.96 × 2 = [96.08, 103.92]
 percentile of the `t(8)` distribution is about 2.306 (instead of
 1.96 for Normal). Compute the CI.
 
-*Solution.*
+_Solution._
 
 ```
 SE = 16 / 3 = 5.333
@@ -1359,11 +1502,11 @@ average bus arrival delay is `[3.2, 5.6]` minutes." Your manager
 says "So there's a 95% chance the real delay is between 3.2 and 5.6
 minutes?" Is the manager right? Why or why not?
 
-*Solution.* No. The manager is stating a Bayesian credible interval,
+_Solution._ No. The manager is stating a Bayesian credible interval,
 but the statistician reported a frequentist CI. The correct
 interpretation is: "If we repeated the sampling procedure many
 times, about 95% of the constructed intervals would contain the
-true mean delay." The *true mean* is a fixed number — either in
+true mean delay." The _true mean_ is a fixed number — either in
 this interval or not — so it does not have a probability. In
 practice, with a flat prior and large `n`, the numerical answer is
 often the same, but the interpretation differs.
@@ -1407,7 +1550,7 @@ This lesson gives you two tools that work when theory alone isn't
 enough:
 
 1. **The bootstrap** lets you estimate the sampling distribution of
-   *any* statistic by resampling with replacement. It's one of the
+   _any_ statistic by resampling with replacement. It's one of the
    most powerful ideas in modern statistics.
 2. **Hypothesis testing** frames your question as a decision: is the
    observed effect bigger than what random noise would produce? We
@@ -1424,8 +1567,8 @@ defensible scientific claim.
 
 In 1979 Bradley Efron asked a deceptively simple question: if the
 sampling distribution of a statistic is what we care about, and we
-can't draw new samples from the population, why not *resample from
-the sample we have*? Each resample is a best-effort simulation of
+can't draw new samples from the population, why not _resample from
+the sample we have_? Each resample is a best-effort simulation of
 "another draw from the population," and the distribution of the
 statistic across resamples approximates the true sampling
 distribution.
@@ -1499,7 +1642,7 @@ you for free.
 2. **Heavy tails.** If the population has infinite variance, the
    bootstrap inherits the problem.
 3. **Dependent data.** Standard bootstrap destroys time-series
-   structure. Use a *block bootstrap* or a *stationary bootstrap*
+   structure. Use a _block bootstrap_ or a _stationary bootstrap_
    instead.
 4. **Very small `n`.** Below about `n = 10`, the bootstrap
    distribution is too discrete to be useful.
@@ -1512,7 +1655,7 @@ you for free.
   the raw data. No model assumed.
 - **Parametric bootstrap** fits a parametric model (e.g. a Normal
   distribution with MLE parameters), then draws new samples from
-  *that model*. Useful when you trust the model family but need
+  _that model_. Useful when you trust the model family but need
   resamples.
 
 ## Mathematical Foundations — Hypothesis Testing
@@ -1526,8 +1669,10 @@ Hypothesis testing frames inference as a decision problem. You have:
 - **Test statistic `T`.** A function of the data whose distribution
   under `H₀` is known (at least approximately).
 - **Significance level `α`.** The probability of rejecting `H₀` when
-  it is actually true. Common choices: `α = 0.05` (social science),
-  `α = 0.01`, or `α = 5 × 10⁻⁷` (physics "five sigma").
+  it is actually true. Common choices: `α = 0.10`, `0.05` and `0.01`
+  (business and social science), `α = 0.0005` (some laboratory
+  sciences — about 3.5 standard errors, two-sided), or `α ≈ 3 × 10⁻⁷`
+  (particle physics "five sigma", one-sided).
 
 You compute `T` from the data, compare it to its distribution under
 `H₀`, and compute a **p-value**: the probability, under `H₀`, of
@@ -1537,28 +1682,28 @@ observing a test statistic at least as extreme as the one you saw.
 
 > ⚠ **Pitfall — The single most common statistical mistake.** A
 > p-value is **NOT** the probability that `H₀` is true. It is **NOT**
-> the probability that your finding is false. It is **NOT** `1 −
-> P(H₁ is true)`. Do not say any of these things.
+> the probability that your finding is false. It is **NOT**
+> `1 − P(H₁ is true)`. Do not say any of these things.
 
 The correct interpretation:
 
 > "The probability of observing data at least as extreme as ours,
-> *given that `H₀` is true*."
+> _given that `H₀` is true_."
 
 Notice the conditioning: `P(data | H₀)`. That's not the same as
 `P(H₀ | data)` — we're back to the prosecutor's fallacy from
 Lesson 2.1.
 
 If `p ≤ α`, we **reject** `H₀`. If `p > α`, we **fail to reject**
-`H₀`. We *never* say "accept `H₀`" — absence of evidence is not
+`H₀`. We _never_ say "accept `H₀`" — absence of evidence is not
 evidence of absence.
 
 ### Type I vs Type II errors
 
-|                     | H₀ true                       | H₀ false                          |
-|---------------------|-------------------------------|-----------------------------------|
-| **Reject H₀**       | Type I error (prob = `α`)     | Correct rejection (prob = `1−β`)  |
-| **Fail to reject**  | Correct (prob = `1−α`)        | Type II error (prob = `β`)        |
+|                    | H₀ true                   | H₀ false                         |
+| ------------------ | ------------------------- | -------------------------------- |
+| **Reject H₀**      | Type I error (prob = `α`) | Correct rejection (prob = `1−β`) |
+| **Fail to reject** | Correct (prob = `1−α`)    | Type II error (prob = `β`)       |
 
 - **α** = significance level = Type I error rate. You set this.
 - **β** = Type II error rate. You don't set it directly, but you can
@@ -1577,22 +1722,24 @@ where `δ` is the minimum detectable effect, `σ` is the pooled
 standard deviation, and `z_p` is the standard normal `p`-th
 percentile.
 
-**Numerical example.** You want to detect a SGD 10,000 increase in
-4-room HDB price (`δ = 10_000`) with `σ = 80_000`, `α = 0.05`,
+**Numerical example** (hypothetical market). You want to detect a
+SGD 10,000 increase in mean flat price (`δ = 10_000`) when prices have
+`σ = 80_000`, with `α = 0.05`,
 power 0.80 (`β = 0.20`). Then `z_(0.975) ≈ 1.96` and `z_(0.80) ≈
 0.84`. So:
 
 ```
 n ≈ 2 × ((1.96 + 0.84) × 80_000 / 10_000)²
   ≈ 2 × (2.8 × 8)²
-  ≈ 2 × 501.8
-  ≈ 1003 per group
+  ≈ 2 × 501.76
+  ≈ 1003.5 → round UP to 1,004 per group
 ```
 
-You need about 1000 flats per group, or 2000 total, to detect a
+Sample sizes always round up (1,003 per group would fall just short of
+80% power). You need 1,004 flats per group, or 2,008 total, to detect a
 10K difference with 80% power. If you only have 200 flats per
 group, you cannot reasonably expect to detect that effect — the
-experiment is *underpowered*.
+experiment is _underpowered_.
 
 ### The t-statistic
 
@@ -1610,7 +1757,24 @@ Normal.
 **Derivation intuition.** The numerator is how far the sample mean
 is from the hypothesised value, measured in SGD. The denominator is
 the standard error of the sample mean, also in SGD. The ratio is
-*unitless*: how many standard errors away is our estimate?
+_unitless_: how many standard errors away is our estimate?
+
+### One-tailed vs two-tailed tests
+
+The alternative hypothesis decides which tail(s) count as "extreme".
+
+- **Two-tailed** (`H₁: μ ≠ μ₀`): a big deviation in _either_ direction
+  is evidence against `H₀`. `p = 2 × P(T ≥ |t|)`. This is the default.
+- **One-tailed** (`H₁: μ > μ₀`, or `μ < μ₀`): only one direction counts.
+  `p = P(T ≥ t)` for "greater than". For the same `t`, the one-tailed
+  p-value is half the two-tailed one.
+
+Choose the tail **before** seeing the data, and only when an effect in
+the other direction would genuinely lead to the same decision as no
+effect. Switching to one-tailed after seeing the data, to halve the
+p-value, is a form of p-hacking. Example: a one-sample test with
+`t = 1.80` and 60 degrees of freedom has one-tailed `p ≈ 0.038`
+(significant at 5%) but two-tailed `p ≈ 0.077` (not significant).
 
 ### Two-sample t-test
 
@@ -1651,7 +1815,7 @@ the gold standard when you can afford the compute.
 
 If you test one hypothesis at `α = 0.05`, you have a 5% chance of a
 false positive. If you test 20 hypotheses at `α = 0.05`, you expect
-*one* false positive by chance, even if none of the 20 effects is
+_one_ false positive by chance, even if none of the 20 effects is
 real. This is the **multiple testing problem**.
 
 **Bonferroni correction** (conservative). Divide `α` by the number
@@ -1665,7 +1829,7 @@ If you test 20 hypotheses and want FWER (family-wise error rate)
 below 5%, test each at `α = 0.05 / 20 = 0.0025`.
 
 Bonferroni is simple but aggressive — it controls the probability
-of *any* false positive, which is often too strict.
+of _any_ false positive, which is often too strict.
 
 **Benjamini-Hochberg FDR** (recommended in practice). Controls the
 expected proportion of false discoveries among rejections, not the
@@ -1676,31 +1840,34 @@ family-wise rate. Procedure:
    `q` is your desired FDR.
 3. Reject all hypotheses with p-values `≤ p_(k)`.
 
-BH FDR keeps the *proportion* of false discoveries below `q`
+BH FDR keeps the _proportion_ of false discoveries below `q`
 while allowing more rejections than Bonferroni when many tests
 are significant.
 
 ## The Kailash Engine — ExperimentTracker for A/B Tests
 
 A well-run A/B test logs everything: sample sizes, effect size,
-p-value, CI, power, and any adjustments for multiple testing.
-`ExperimentTracker` is built for this.
+p-value, CI, power, and any adjustments for multiple testing. You
+compute the bootstrap and the permutation test yourself (NumPy);
+`ExperimentTracker` records the inputs and results so the analysis can
+be audited and re-run.
 
 ```python
-from kailash_ml import ExperimentTracker
-from scipy import stats
+import asyncio
+
 import numpy as np
+from kailash_ml import ExperimentTracker
 
-group_a = np.array([...])   # control conversions: 0 or 1
-group_b = np.array([...])   # treatment conversions
+# The worked example below: 50,000 visitors per arm, 2,255 vs 2,510 conversions
+group_a = np.r_[np.ones(2_255), np.zeros(50_000 - 2_255)]  # control: 1 = converted
+group_b = np.r_[np.ones(2_510), np.zeros(50_000 - 2_510)]  # treatment
+p_a, p_b = group_a.mean(), group_b.mean()
+diff = p_b - p_a  # 0.0051
 
-p_a = group_a.mean()
-p_b = group_b.mean()
-diff = p_b - p_a
-
-# Bootstrap CI for the difference
 rng = np.random.default_rng(42)
-B = 10_000
+B = 2_000  # use 10,000 for a final report
+
+# Bootstrap CI: resample each arm with replacement, recompute the difference
 diffs = np.empty(B)
 for b in range(B):
     a_star = rng.choice(group_a, len(group_a), replace=True)
@@ -1708,26 +1875,36 @@ for b in range(B):
     diffs[b] = b_star.mean() - a_star.mean()
 ci_lo, ci_hi = np.quantile(diffs, [0.025, 0.975])
 
-# Permutation test p-value
+# Permutation test: under H0 the labels are exchangeable
 pool = np.concatenate([group_a, group_b])
-obs = diff
 perm_diffs = np.empty(B)
 for b in range(B):
     rng.shuffle(pool)
     perm_diffs[b] = pool[len(group_a):].mean() - pool[:len(group_a)].mean()
-p_val = float(np.mean(np.abs(perm_diffs) >= np.abs(obs)))
+# (+1)/(B+1) counts the observed split itself, so p is never reported as 0
+p_val = (np.sum(np.abs(perm_diffs) >= abs(diff)) + 1) / (B + 1)
+print(f"diff={diff:.4f}  95% CI=[{ci_lo:.4f}, {ci_hi:.4f}]  permutation p={p_val:.4f}")
 
-with ExperimentTracker().start_run(name="homepage_ab_test") as run:
-    run.log_param("test_type", "permutation")
-    run.log_param("alpha", 0.05)
-    run.log_param("n_bootstrap", B)
-    run.log_metric("p_a", float(p_a))
-    run.log_metric("p_b", float(p_b))
-    run.log_metric("diff", float(diff))
-    run.log_metric("ci_lo", float(ci_lo))
-    run.log_metric("ci_hi", float(ci_hi))
-    run.log_metric("p_value", p_val)
+
+async def log_ab_test() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_ab", run_name="homepage_test") as run:
+        await run.log_params({"test_type": "permutation", "alpha": 0.05, "n_resamples": B})
+        await run.log_metrics({"p_a": float(p_a), "p_b": float(p_b), "diff": float(diff),
+                               "ci_lo": float(ci_lo), "ci_hi": float(ci_hi),
+                               "p_value": float(p_val)})
+    await tracker.close()
+
+
+asyncio.run(log_ab_test())
 ```
+
+It prints `diff=0.0051  95% CI=[0.0026, 0.0078]  permutation p=0.0005`.
+The bootstrap CI matches the analytic CI in the worked example below.
+The permutation p-value is `1/2001`: none of the 2,000 shuffled splits
+was as extreme as the real one, so 0.0005 is the _smallest_ p-value this
+many permutations can report — the true value is smaller (the z-test
+gives 0.00015). Report it as "p < 0.001", never as "p = 0".
 
 Three months later, if someone asks "what was the CI on our homepage
 test?", the tracker has it. If someone wants to re-run with a
@@ -1735,20 +1912,11 @@ different `α`, the parameters are right there.
 
 ## Worked Example — Full A/B Analysis
 
-**Setup.** 10,000 visitors split evenly between two homepage
-variants. Variant A has 451 conversions (4.51%). Variant B has 502
-conversions (5.02%). Is this real?
+**Setup.** 100,000 visitors split evenly between two homepage
+variants (50,000 per arm). Variant A has 2,255 conversions (4.51%);
+variant B has 2,510 (5.02%). Is the difference real?
 
 **Step 1: Point estimate.**
-
-```
-p_a = 451 / 5000 = 0.0902         NO wait, we said 10k split evenly
-```
-
-Let me redo the setup: 5000 per group. Then `p_a = 451/5000 =
-0.0902 = 9.02%`. That's high for a homepage. Let's make it
-realistic: 50_000 per group, 2255 conversions for A (4.51%) and
-2510 for B (5.02%).
 
 ```
 p_a = 2255/50000 = 0.0451
@@ -1768,7 +1936,7 @@ se_diff = √(p_a(1 − p_a)/n_a + p_b(1 − p_b)/n_b)
 CI = 0.0051 ± 1.96 × 0.001348 = [0.00246, 0.00774]
 ```
 
-Both endpoints are positive, so 0 is *not* in the 95% CI. This
+Both endpoints are positive, so 0 is _not_ in the 95% CI. This
 suggests `H₀: diff = 0` would be rejected at `α = 0.05`.
 
 **Step 3: z-test p-value.**
@@ -1781,16 +1949,20 @@ p = 2 × (1 − Φ(3.78)) ≈ 0.00016
 Highly significant. The observed difference would occur under
 `H₀` less than 2 times in 10,000.
 
-**Step 4: Power analysis.** What minimum effect could we have
-detected at 80% power with these sample sizes?
+**Step 4: Power analysis.** What minimum effect could this design
+detect at 80% power with these sample sizes?
 
 ```
 MDE ≈ (1.96 + 0.84) × se_diff ≈ 2.8 × 0.001348 ≈ 0.00378
 ```
 
-We could reliably detect differences of about 0.38 percentage
-points or larger. The observed 0.51 exceeds this, so the test
-was well-powered.
+The design could reliably detect differences of about 0.38 percentage
+points or larger. This is a property of the _design_ (sample size,
+baseline variance, α, power) and belongs in the plan before launch: had
+the true lift been 0.2 points, a non-significant result would have
+been uninformative, not evidence of "no effect". Do not compute power
+after the fact from the observed effect — that number adds nothing to
+the p-value.
 
 **Step 5: Interpret.** Variant B converts about 0.51 percentage
 points better than A (95% CI [0.25, 0.77]). p < 0.001. With 50K
@@ -1798,33 +1970,37 @@ per arm, this is a well-powered test that is very unlikely to be
 a fluke. **Recommendation:** roll out B. But remember the
 **effect size** matters as much as significance — a 0.51
 percentage-point lift at $10 per conversion and 100K weekly
-visitors is roughly 510 × 2 × $10 = $10,200 per week. If the new
-variant costs $50K to build, ROI is about 5 weeks. Significance
-alone does not tell you that.
+visitors is 100,000 × 0.0051 = 510 extra conversions, or
+510 × $10 = $5,100 per week. If the new variant costs $50K to build,
+it pays back in about 10 weeks — and at the CI's lower end (0.25
+points) in about 20. Significance alone does not tell you that.
 
 ## Try It Yourself
 
 **Problem 1 — Bootstrap median.** A sample of 10 salaries (in thousands)
 is `[45, 48, 52, 55, 58, 60, 62, 65, 70, 95]`. Estimate the 95% CI
-for the *median* by bootstrap (conceptually — describe the
+for the _median_ by bootstrap (conceptually — describe the
 procedure and give the expected CI width in words).
 
-*Solution.* The procedure is: sample 10 values with replacement
+_Solution._ The procedure is: sample 10 values with replacement
 from this list, compute the median, repeat 10_000 times, take the
 2.5 and 97.5 percentiles. The median of the original sample is
 `(58 + 60)/2 = 59`. The bootstrap distribution of the median will
 be concentrated near 59 but with significant spread because the
 median for small samples is a discrete statistic (it jumps
-between sample values). Expect a CI roughly like `[52, 65]`.
-Notice the CI is asymmetric — the outlier at 95 shifts some
-bootstrap medians upward.
+between sample values). With `np.random.default_rng(42)` and 10,000
+resamples the percentile CI is `[51.5, 66]` — roughly symmetric around 59. Notice what is _missing_: the outlier at 95 barely moves the
+bootstrap medians (it only matters when it is drawn five or more
+times), which is exactly why the median is called a robust
+statistic. A bootstrap CI for the _mean_ of the same data would be
+pulled upward by that outlier.
 
 **Problem 2 — One-sample t-test.** A new HDB valuation model
 predicts prices with an average error of SGD 25,000 on 25 flats,
 sample SD of errors = SGD 12,000. Is the average error
 significantly different from 0 at `α = 0.05`?
 
-*Solution.*
+_Solution._
 
 ```
 t = 25_000 / (12_000 / √25) = 25_000 / 2400 ≈ 10.42
@@ -1840,7 +2016,7 @@ p-values `[0.002, 0.008, 0.01, 0.015, 0.03, 0.04, 0.06, 0.08, 0.1,
 0.12, 0.2, 0.3, 0.4, 0.5, 0.7]`. Which do you reject at FDR
 `q = 0.05` (Benjamini-Hochberg)?
 
-*Solution.* Sort (already sorted). Compute `(k/m) × q` for each:
+_Solution._ Sort (already sorted). Compute `(k/m) × q` for each:
 
 ```
 k=1: 1/15 × 0.05 = 0.00333   p=0.002 ≤ 0.00333 ✓
@@ -1862,7 +2038,7 @@ controlling false discoveries.
 from a baseline of 10% with 90% power. What sample size do you
 need per group? (Assume `α = 0.05` two-sided.)
 
-*Solution.*
+_Solution._
 
 ```
 p₁ = 0.10, p₂ = 0.12, δ = 0.02
@@ -1871,19 +2047,19 @@ z_(0.975) ≈ 1.96, z_(0.90) ≈ 1.28
 
 n ≈ 2 × ((1.96 + 1.28)² × 0.0979) / 0.02²
   ≈ 2 × (10.498 × 0.0979) / 0.0004
-  ≈ 2 × 1.028 / 0.0004
-  ≈ 5140 per group
+  ≈ 2 × 1.0277 / 0.0004
+  ≈ 5138.6 → 5,139 per group (round up)
 ```
 
-(Approximately — formulas vary slightly.) You need roughly 5000
-per group. If you have 10K visitors a week, you're running a
-week-long experiment.
+(Formulas that use separate variances for the two arms give a
+slightly different answer.) You need about 5,140 per group, or 10,280
+in total — a little over a week if you have 10K visitors a week.
 
 **Problem 5 — Interpret a p-value.** A colleague says, "The test
 returned p = 0.03. So there's only a 3% chance our result is wrong."
 What is the correct thing to say?
 
-*Solution.* "There's a 3% chance of observing data this extreme if
+_Solution._ "There's a 3% chance of observing data this extreme if
 there were truly no effect." The 3% is `P(data | H₀)`, not
 `P(error)` and definitely not `P(H₀ | data)`. The colleague's
 phrasing is a version of the base-rate fallacy; you need a prior
@@ -1917,7 +2093,7 @@ point estimates go wrong.
 Lessons 2.1–2.3 gave you the tools. Lesson 2.4 shows you how to use
 them in practice, before and during an experiment, so you don't end
 up with data that can't answer your question. The hardest part of
-A/B testing isn't the math — it's the *design*. A perfectly executed
+A/B testing isn't the math — it's the _design_. A perfectly executed
 test of the wrong hypothesis is worse than useless; it's actively
 misleading.
 
@@ -1945,8 +2121,8 @@ A good hypothesis has three parts:
 3. **Metric.** How will you measure it? "Daily spend (SGD) per
    unique customer over 14 days."
 
-Write it as one sentence: *"The BOGO banner increases daily spend
-per customer by at least SGD 5 over a 14-day period."* Now you
+Write it as one sentence: _"The BOGO banner increases daily spend
+per customer by at least SGD 5 over a 14-day period."_ Now you
 have something falsifiable, measurable, and scoped.
 
 Common mistakes:
@@ -1964,8 +2140,8 @@ Common mistakes:
 
 Randomisation is the one thing that separates experiments from
 observational analysis. By assigning subjects to treatment and
-control *randomly*, you ensure the two groups are statistically
-equivalent on every variable you measure *and* every variable you
+control _randomly_, you ensure the two groups are statistically
+equivalent on every variable you measure _and_ every variable you
 don't. Any difference in outcome can then be attributed to the
 treatment.
 
@@ -2044,7 +2220,8 @@ start prevents weeks of post-hoc confusion.
   individual patterns. Always prefer transaction-level when
   possible.
 - **Leakage.** Future information sneaking into the training
-  set. We'll cover this formally in Lesson 2.7.
+  set. We'll cover this formally in Lesson 2.8 (point-in-time
+  correctness).
 
 ### Clean DataOps architecture
 
@@ -2060,10 +2237,12 @@ A production-grade experimentation pipeline looks like:
    `ExperimentTracker`) consume these metrics through a
    well-defined interface, never by reaching into the raw tables.
 
-Kailash's `FeatureStore` and `ExperimentTracker` together
-implement this architecture out of the box. You get schema
-validation, versioning, and lineage for free — provided you use
-the engines instead of rolling your own ETL.
+Two Kailash engines cover parts of this architecture. `FeatureStore`
+(Lesson 2.8) holds typed feature tables keyed by entity and event
+time, each materialisation stamped with a schema version and a lineage
+hash. `ExperimentTracker` sits on the connector side: every analysis
+run records its parameters and results. Transfer and event processing
+remain your pipeline's job.
 
 ### Sample Ratio Mismatch (SRM)
 
@@ -2071,7 +2250,7 @@ Suppose you designed a 50/50 A/B test. You expect roughly equal
 numbers of users in each arm. When the data comes in, arm A has
 52,000 users and arm B has 48,000. Is this bad?
 
-Yes. It's called a **Sample Ratio Mismatch** and it is *the*
+Yes. It's called a **Sample Ratio Mismatch** and it is _the_
 single most common experiment-ruining bug. Causes include:
 
 - Bot filtering applied to one arm but not the other.
@@ -2081,8 +2260,9 @@ single most common experiment-ruining bug. Causes include:
 - Logging loss on one variant.
 - Eligibility checks run on different data in each arm.
 
-Detection is a chi-squared goodness-of-fit test. Under the
-expected split `p_A : p_B = 0.5 : 0.5`:
+Detection is a chi-squared goodness-of-fit test of the observed counts
+against the counts the **design** promised. For a 50/50 design the
+expected split is `p_A : p_B = 0.5 : 0.5`:
 
 ```
 expected_A = n × 0.5
@@ -2102,59 +2282,103 @@ the critical value is about 10.83.
 chi² = (52_000 − 50_000)² / 50_000 + (48_000 − 50_000)² / 50_000
      = 4_000_000 / 50_000 + 4_000_000 / 50_000
      = 80 + 80
-     = 160
+     = 160          (p ≈ 2 × 10⁻³⁶)
 ```
 
 That's way above 10.83. SRM is confirmed — your experiment is
 broken. Do not interpret the treatment effect. Fix the
 assignment pipeline and re-run.
 
+**Unequal designs: test against the design, not 50/50.** Many
+experiments split traffic unevenly. The course's experiment file
+(`mlfp02/experiment_data.parquet`, 500,000 simulated users) was
+_designed_ as four arms at 40% / 35% / 15% / 10% (control,
+treatment_a, treatment_b, variant_c). The observed counts are:
+
+| Arm         | Designed share | Expected | Observed | χ² contribution |
+| ----------- | -------------- | -------- | -------- | --------------- |
+| control     | 40%            | 200,000  | 188,732  | 635             |
+| treatment_a | 35%            | 175,000  | 165,413  | 525             |
+| treatment_b | 15%            | 75,000   | 70,855   | 229             |
+| variant_c   | 10%            | 50,000   | 75,000   | 12,500          |
+
+With 3 degrees of freedom, χ² ≈ 13,889 is an unmistakable SRM, and
+almost all of it comes from **variant_c**, which received 50% more
+users than designed. Its results cannot be trusted, and nothing ships
+until the assignment bug is found.
+
+Now look at the pair the course actually analyses, control vs
+treatment_a. Their designed ratio is 40 : 35, so control's expected
+share of the pair is 0.40 / 0.75 ≈ 0.533. Against that, χ² = 0.24 and
+p ≈ 0.62: this pair was split exactly as designed, which is why
+Exercises 3, 4 and 7 analyse control vs treatment_a. Had you tested the
+same pair against a default 50/50, you would get χ² ≈ 1,535 — a false
+alarm caused purely by using the wrong expected split.
+
 > ⚠ **Pitfall — Rationalising SRM.** "It's only a 4% difference,
 > probably fine." No. A 4% difference at `n = 100K` is
 > overwhelming evidence of a broken pipeline. The threshold for
-> SRM panic is a p-value below 0.001, *not* below 0.05.
+> SRM panic is a p-value below 0.001, _not_ below 0.05. And an SRM is
+> a stop sign, not a footnote: a report that flags SRM and then
+> recommends "ship" is self-contradictory.
 
 ## The Kailash Engine — ExperimentTracker for Design
 
-`ExperimentTracker` has explicit support for experiment design:
-you record the hypothesis, the power analysis, the randomisation
-scheme, and the SRM check as metadata on the experiment, *before*
-you look at any outcome data.
+`ExperimentTracker` does not design experiments, but it is the right
+place to **commit** the design: the allocation, `α`, power and SRM
+threshold are logged as parameters _before_ anyone looks at an outcome
+metric, and the SRM checks are logged next to them. The example runs
+both SRM checks above on the real experiment file.
 
 ```python
-from kailash_ml import ExperimentTracker
+import asyncio
+
 from scipy import stats
+from kailash_ml import ExperimentTracker
 
-tracker = ExperimentTracker()
-with tracker.start_run(name="homepage_bogo_banner") as run:
-    # Design-time parameters
-    run.log_param("hypothesis",
-                  "BOGO banner increases 14d spend by >= SGD 5/customer")
-    run.log_param("primary_metric", "spend_14d_per_customer")
-    run.log_param("randomization", "user_id_hash_bucket")
-    run.log_param("alpha", 0.05)
-    run.log_param("power", 0.80)
-    run.log_param("mde_sgd", 5.0)
-    run.log_param("baseline_std_sgd", 35.0)
-    # Computed sample size for Welch's t-test:
-    n_per_arm = 2 * ((1.96 + 0.84) * 35 / 5) ** 2
-    run.log_param("n_per_arm_planned", int(n_per_arm))
-    run.log_param("duration_days", 14)
+from shared import MLFPDataLoader
 
-    # After launch, log the actual assignment and SRM check:
-    observed_a, observed_b = 52_000, 48_000
-    expected = (observed_a + observed_b) / 2
-    chi2 = ((observed_a - expected)**2 + (observed_b - expected)**2) / expected
-    p_srm = 1 - stats.chi2.cdf(chi2, df=1)
-    run.log_metric("srm_chi2", float(chi2))
-    run.log_metric("srm_p_value", float(p_srm))
-    if p_srm < 0.001:
-        run.log_param("srm_status", "FAIL — stop analysis")
-    else:
-        run.log_param("srm_status", "PASS")
+# Design, fixed BEFORE launch: four arms with an unequal split
+DESIGN = {"control": 0.40, "treatment_a": 0.35, "treatment_b": 0.15, "variant_c": 0.10}
+ALPHA, POWER, SRM_ALPHA = 0.05, 0.80, 0.001
+
+exp = MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
+counts = dict(exp.group_by("experiment_group").len().iter_rows())
+n = sum(counts.values())
+
+# 1. Whole experiment against the DESIGNED allocation (never a default 50/50)
+observed = [counts[arm] for arm in DESIGN]
+expected = [n * share for share in DESIGN.values()]
+chi2_all, p_all = stats.chisquare(observed, f_exp=expected)
+
+# 2. The pair we analyse, against its own designed ratio 40:35
+n_c, n_t = counts["control"], counts["treatment_a"]
+w_c = DESIGN["control"] / (DESIGN["control"] + DESIGN["treatment_a"])
+chi2_pair, p_pair = stats.chisquare([n_c, n_t], f_exp=[w_c * (n_c + n_t), (1 - w_c) * (n_c + n_t)])
+print(f"all arms: chi2={chi2_all:,.0f} -> {'SRM: stop' if p_all < SRM_ALPHA else 'ok'}")
+print(f"control vs treatment_a: chi2={chi2_pair:.2f}, p={p_pair:.2f}"
+      f" -> {'SRM: stop' if p_pair < SRM_ALPHA else 'ok'}")
+
+
+async def log_design() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_ab", run_name="design_and_srm") as run:
+        await run.log_params({"allocation": str(DESIGN), "alpha": ALPHA, "power": POWER,
+                              "srm_alpha": SRM_ALPHA, "analysed_pair": "control_vs_treatment_a"})
+        await run.log_metrics({"srm_chi2_all_arms": float(chi2_all),
+                               "srm_p_all_arms": float(p_all),
+                               "srm_chi2_pair": float(chi2_pair),
+                               "srm_p_pair": float(p_pair)})
+    await tracker.close()
+
+
+asyncio.run(log_design())
 ```
 
-The magic of logging the design *before* the results is that you
+It prints `all arms: chi2=13,889 -> SRM: stop` and
+`control vs treatment_a: chi2=0.24, p=0.62 -> ok`.
+
+The magic of logging the design _before_ the results is that you
 cannot be tempted to rationalise after the fact. The hypothesis,
 the MDE, the power, and the SRM threshold are all committed
 before you see an outcome number.
@@ -2167,8 +2391,8 @@ enough to cover the production cost.
 
 **Step 1 — Hypothesis.**
 
-> *"The BOGO banner increases 14-day average spend per customer by
-> at least SGD 5 compared to the current home page."*
+> _"The BOGO banner increases 14-day average spend per customer by
+> at least SGD 5 compared to the current home page."_
 
 **Step 2 — Primary and secondary metrics.**
 
@@ -2181,7 +2405,7 @@ customer = SGD 80, SD = 35. We want to detect `δ = 5` with
 `α = 0.05` and power 0.80.
 
 ```
-n_per_arm ≈ 2 × ((1.96 + 0.84) × 35 / 5)² ≈ 2 × 19.6² ≈ 768
+n_per_arm ≈ 2 × ((1.96 + 0.84) × 35 / 5)² ≈ 2 × 19.6² ≈ 768.3 → 769
 ```
 
 Round up to 1000 per arm for safety margin. With about 500
@@ -2202,7 +2426,7 @@ the secondary metrics for context.
 **Step 7 — Decide.** If the 95% CI excludes 0 and the lower
 bound exceeds the break-even point (say SGD 2), roll out. If the
 CI straddles 0, fail to reject the null and do not roll out — but
-*also* report the point estimate and CI so stakeholders can see
+_also_ report the point estimate and CI so stakeholders can see
 how uncertain the result was.
 
 ## Try It Yourself
@@ -2211,7 +2435,7 @@ how uncertain the result was.
 users, observing 101,500 in arm A and 98,500 in arm B. Is this
 SRM?
 
-*Solution.*
+_Solution._
 
 ```
 expected = 100_000
@@ -2222,10 +2446,10 @@ chi² = (1500² + 1500²) / 100_000 = 4_500_000 / 100_000 = 45
 Investigate.
 
 **Problem 2 — Underpowered test.** You have 100 users per arm
-and want to detect a 1% lift on a 10% baseline conversion. Can
-you do it at `α = 0.05`, power 0.80?
+and want to detect a 1-percentage-point lift on a 10% baseline
+conversion (10% → 11%). Can you do it at `α = 0.05`, power 0.80?
 
-*Solution.* Pooled `p ≈ 0.105`, `σ² ≈ 0.094`.
+_Solution._ Pooled `p ≈ 0.105`, `σ² ≈ 0.094`.
 
 ```
 n ≈ 2 × (2.8² × 0.094) / 0.01² ≈ 2 × 0.737 / 0.0001 ≈ 14_740
@@ -2233,15 +2457,19 @@ n ≈ 2 × (2.8² × 0.094) / 0.01² ≈ 2 × 0.737 / 0.0001 ≈ 14_740
 
 You need roughly 15,000 per arm, not 100. The test is hopelessly
 underpowered. Either run much longer or redesign the hypothesis.
+(The formula already gives the size of _each_ arm — do not halve it.
+At an 8% baseline the same 1-point lift needs
+`2 × (1.960 + 0.842)² × 0.08 × 0.92 / 0.01² ≈ 11,554` per arm, the
+example the Lesson 2.4 slides use.)
 
 **Problem 3 — Hypothesis critique.** Rewrite this bad hypothesis:
 "We want to see if the new checkout flow is better."
 
-*Solution.*
+_Solution._
 
-> *"The new checkout flow increases completion rate by at least
+> _"The new checkout flow increases completion rate by at least
 > 0.5 percentage points compared to the current flow, over a
-> 30-day period among all desktop users."*
+> 30-day period among all desktop users."_
 
 Change, metric, direction, effect size, scope — all explicit.
 
@@ -2249,7 +2477,7 @@ Change, metric, direction, effect size, scope — all explicit.
 carousel. Which should be the primary metric: click-through rate,
 add-to-cart, purchase, or 7-day revenue per customer?
 
-*Solution.* 7-day revenue per customer. CTR captures only the
+_Solution._ 7-day revenue per customer. CTR captures only the
 first action; purchases can be dragged around by the carousel
 without increasing overall revenue. Revenue captures the ultimate
 business goal.
@@ -2259,15 +2487,15 @@ homepage A/B test every two weeks. Given `n = 5000` visitors per
 day, baseline 5% conversion, and a 0.5-percentage-point MDE, is
 14 days enough?
 
-*Solution.*
+_Solution._
 
 ```
 Required n per arm ≈ 2 × (2.8² × 0.05 × 0.95) / 0.005²
-                  ≈ 2 × 0.372 / 0.000025
-                  ≈ 29_760
+                  ≈ 2 × 0.3724 / 0.000025
+                  ≈ 29_792
 ```
 
-So ~60K users total, or 12 days at 5000/day. 14 days works with
+So ~59,600 users total, or 12 days at 5000/day. 14 days works with
 a small margin. If you added a weekend effect buffer, you might
 push to 21 days.
 
@@ -2276,8 +2504,9 @@ push to 21 days.
 - **Lesson 2.3** supplies the statistical machinery.
 - **Lesson 2.7** explains how CUPED reduces the sample size
   required for a given power.
-- **Module 4** uses experiment tracking for hyperparameter
-  sweeps, where the "variants" are model configurations.
+- **Module 3 (Lesson 3.7)** uses experiment tracking for
+  hyperparameter search, where the "variants" are model
+  configurations.
 - **Module 6** uses the same design discipline for prompt
   optimisation and RLHF reward model selection.
 
@@ -2286,7 +2515,7 @@ push to 21 days.
 Take the last experiment your team ran. Answer: was the
 hypothesis pre-registered? Was there a power analysis? Was
 randomisation at the user level or session level? Was SRM
-checked? If any answer is "no," next time fix it *before*
+checked? If any answer is "no," next time fix it _before_
 running the test.
 
 ---
@@ -2302,11 +2531,11 @@ regression, GLMs, neural networks (a linear layer is just OLS
 per neuron), ridge, lasso, even the attention mechanism in
 transformers is a soft version of linear projection.
 
-More importantly, regression is how you *explain* a prediction.
+More importantly, regression is how you _explain_ a prediction.
 A coefficient has a direction, a magnitude, and a significance.
 You can say "holding all else equal, a one-unit increase in X
-is associated with a `β̂` change in Y, and we are 95% sure
-that effect is between `a` and `b`." No tree, no deep network,
+is associated with a `β̂` change in Y, and the 95% confidence
+interval for that effect is `[a, b]`." No tree, no deep network,
 and no AutoML pipeline gives you that.
 
 This lesson derives OLS, the t-statistic on a coefficient,
@@ -2379,7 +2608,7 @@ understand each piece:
 - `XᵀX` is a `(p+1) × (p+1)` matrix: the "covariance structure"
   of the predictors (unscaled).
 - `(XᵀX)⁻¹` undoes the predictor covariance so each `β̂ⱼ` is
-  the *unique* contribution of predictor `j` after accounting
+  the _unique_ contribution of predictor `j` after accounting
   for all others.
 
 For a simple regression (one predictor, intercept):
@@ -2398,7 +2627,7 @@ log-likelihood is:
 ℓ(β, σ²) = −(n/2) log(2π σ²) − (1/(2σ²)) × Σᵢ (yᵢ − xᵢᵀβ)²
 ```
 
-Maximising over `β` is equivalent to *minimising* `Σᵢ (yᵢ −
+Maximising over `β` is equivalent to _minimising_ `Σᵢ (yᵢ −
 xᵢᵀβ)²` — which is exactly OLS. So OLS = MLE under Normal
 errors. Beautiful.
 
@@ -2415,7 +2644,7 @@ errors. Beautiful.
 
 ### Non-linear extensions in a linear framework
 
-Linear regression is linear *in the parameters*, not in the
+Linear regression is linear _in the parameters_, not in the
 predictors. You can add:
 
 - **Polynomial terms:** `x`, `x²`, `x³`. Captures curvature.
@@ -2435,7 +2664,7 @@ small `β₁`. For example, `β̂₁ = 0.05` means "y increases by about
 For a categorical predictor with `k` levels, create `k − 1` dummy
 variables. The omitted level is the **base** (or reference)
 category. The intercept then represents the mean for the base,
-and each dummy's coefficient represents the *difference* from the
+and each dummy's coefficient represents the _difference_ from the
 base.
 
 Example: flat type ∈ {3-room, 4-room, 5-room}. Let 3-room be the
@@ -2449,12 +2678,13 @@ base. Then:
 how much more (or less) a 4-room flat costs than a 3-room flat,
 holding all else equal.
 
-> ⚠ **Pitfall — Dummy variable trap.** If you include *all* `k`
+> ⚠ **Pitfall — Dummy variable trap.** If you include _all_ `k`
 > dummies plus an intercept, `XᵀX` is singular (the dummies sum
 > to 1, which equals the intercept column). `β̂` cannot be
-> computed. Drop one dummy; `pd.get_dummies(..., drop_first=True)`
-> handles this automatically in pandas, and Polars' `to_dummies`
-> combined with dropping a column does the same.
+> computed. Drop one dummy: Polars' `df.to_dummies(columns=["town"],
+drop_first=True)` does it for you, or create all dummies and drop
+> the base column yourself (the worked example below does this so it
+> can choose Ang Mo Kio as the base).
 
 ## Mathematical Foundations — Inference
 
@@ -2497,11 +2727,15 @@ t_j = β̂ⱼ / SE(β̂ⱼ)
 Under `H₀` and Normal errors, `t_j ~ t(n − p − 1)`. For `n` large,
 cutoffs:
 
-- |t| > 1.64 → p < 0.10 (90% confidence)
-- |t| > 1.96 → p < 0.05 (95% confidence)
-- |t| > 2.58 → p < 0.01 (99% confidence)
+- |t| > 1.645 → p < 0.10 (90% confidence) \*
+- |t| > 1.960 → p < 0.05 (95% confidence) \*\*
+- |t| > 2.576 → p < 0.01 (99% confidence) \*\*\*
 
-This is the *same* t-statistic from Lesson 2.3, applied to a
+These are two-sided cutoffs from the standard Normal. With few
+residual degrees of freedom use the t-distribution instead
+(e.g. 2.228 rather than 1.960 at 10 df).
+
+This is the _same_ t-statistic from Lesson 2.3, applied to a
 regression coefficient instead of a sample mean. The conceptual
 unity is the entire point.
 
@@ -2555,13 +2789,13 @@ you the model is useful, and t tells you which predictors matter.
 Suppose `n = 5`. Predictors: floor area (sqm) and age (years).
 Response: price (SGD 000s).
 
-| i | area | age | price |
-|---|------|-----|-------|
-| 1 | 60   | 10  | 420   |
-| 2 | 70   | 5   | 490   |
-| 3 | 80   | 15  | 510   |
-| 4 | 90   | 20  | 540   |
-| 5 | 100  | 25  | 580   |
+| i   | area | age | price |
+| --- | ---- | --- | ----- |
+| 1   | 60   | 10  | 420   |
+| 2   | 70   | 5   | 490   |
+| 3   | 80   | 15  | 510   |
+| 4   | 90   | 20  | 540   |
+| 5   | 100  | 25  | 580   |
 
 Design matrix `X` (with intercept column):
 
@@ -2574,99 +2808,174 @@ X = [[1, 60, 10],
 y = [420, 490, 510, 540, 580]
 ```
 
-Compute `β̂ = (XᵀX)⁻¹ Xᵀ y` (you would do this in NumPy, but the
-point is that a closed-form solution exists). Numerical answer
-(rounded): `β̂ ≈ [318, 3.0, −2.5]`. Interpretation:
+Compute `β̂ = (XᵀX)⁻¹ Xᵀ y` — in NumPy,
+`np.linalg.solve(X.T @ X, X.T @ y)` — the point is that a closed-form
+solution exists. Numerical answer: `β̂ ≈ [139.05, 5.263, −3.474]`.
+Interpretation:
 
-- Baseline (area=0, age=0): SGD 318K — meaningless extrapolation,
+- Baseline (area=0, age=0): SGD 139K — meaningless extrapolation,
   but a necessary intercept.
-- Each additional square metre: +SGD 3,000.
-- Each additional year of age: −SGD 2,500.
+- Each additional square metre: +SGD 5,263, holding age fixed.
+- Each additional year of age: −SGD 3,474, holding area fixed.
 
 Fit:
 
 ```
-ŷ = [318 + 3×60 − 2.5×10, 318 + 3×70 − 2.5×5, …]
-  = [473, 515.5, 520.5, 538, 555.5]
-Residuals e = y − ŷ = [−53, −25.5, −10.5, 2, 24.5]
-SS_res ≈ 2809 + 650 + 110 + 4 + 600 ≈ 4173
+ŷ = [139.05 + 5.263×60 − 3.474×10, 139.05 + 5.263×70 − 3.474×5, …]
+  = [420.11, 490.11, 508.00, 543.26, 578.53]
+Residuals e = y − ŷ = [−0.11, −0.11, 2.00, −3.26, 1.47]
+SS_res ≈ 0.011 + 0.011 + 4.0 + 10.65 + 2.17 ≈ 16.84
 ȳ = 508, SS_tot = (420−508)² + … + (580−508)² = 7744 + 324 + 4 + 1024 + 5184 = 14_280
-R² = 1 − 4173/14_280 ≈ 0.708
+R² = 1 − 16.84/14_280 ≈ 0.9988
 ```
 
-So ~71% of variance explained. Not great for HDB prices (there
-are many more confounders — location, lease, storey), but
-consistent with a deliberately tiny example.
+Two checks you can always make: the residuals of an OLS fit with an
+intercept sum to zero (here −0.11 − 0.11 + 2.00 − 3.26 + 1.47 ≈ 0, up
+to rounding),
+and no other `β` gives a smaller `SS_res`. The toy data were built to
+lie almost exactly on a plane, hence `R² ≈ 0.999`; real HDB prices
+are far noisier, as the worked example below shows.
 
 ## The Kailash Engine — TrainingPipeline + ModelVisualizer
 
-kailash-ml's `TrainingPipeline` wraps OLS fitting with
-experiment-tracking and visualisation. Conceptually:
+In Module 2 you build the regression table **by hand** — the
+normal equations, standard errors, t, p, R² and F you just derived —
+in NumPy, and use `ModelVisualizer().residuals(y, y_hat)` to inspect
+the residuals. `TrainingPipeline` is kailash-ml's engine for training
+_predictive_ models from a feature store
+(`TrainingPipeline(feature_store, registry).train(data, schema,
+model_spec, eval_spec, experiment_name)`); it reports predictive
+metrics, not an inferential coefficient table, and it becomes the
+workhorse in Module 3. There is no engine call that prints `β̂`, `SE`,
+`t` and `p` for you: that is the point of this lesson.
 
-```python
-from kailash_ml import TrainingPipeline, ModelVisualizer, ExperimentTracker
-import polars as pl
+### Checking fit honestly: hold-out and k-fold cross-validation
 
-from shared import MLFPDataLoader
+`R²` computed on the rows used for fitting is optimistic: every extra
+predictor can only raise it. To measure how well the model predicts
+_new_ flats, fit on some rows and score on rows the fit never saw.
 
-loader = MLFPDataLoader()
-hdb = loader.load("mlfp01", "hdb_resale.parquet")
+- **Train/test split.** Hold out, say, 20% of rows; fit on the other
+  80%; report `R²` on the hold-out.
+- **k-fold cross-validation.** Split the rows into `k` folds (often
+  5). Fit `k` times, each time scoring on the one fold left out, and
+  average the `k` scores. Every row is used for testing exactly once,
+  so the estimate is less noisy than a single split.
 
-features = hdb.select([
-    "floor_area_sqm",
-    "remaining_lease_years",
-    "storey_mid",
-    "town",
-    "flat_type",
-]).to_pandas()  # for the estimator boundary; kailash-ml exposes polars internally
-target = hdb["resale_price"].to_numpy()
-
-pipeline = TrainingPipeline(task="regression", estimator="ols")
-pipeline.fit(features, target)
-
-print(pipeline.summary())     # coefficients, SE, t, p, R², F
-ModelVisualizer().coefficient_plot(pipeline)
-```
-
-The `summary()` method produces a regression table with every
-inferential statistic we derived by hand: `β̂`, `SE`, `t`,
-`p-value`, `95% CI`, `R²`, adjusted `R²`, F statistic and its
-p-value, and residual diagnostics.
+Module 3 (Lesson 3.2) treats cross-validation in depth. Here it is a
+sanity check: if cross-validated `R²` is close to in-sample `R²`, the
+model is not over-fitted.
 
 ## Worked Example — Predicting HDB Prices
 
-Target: 4-room resale price. Predictors: floor area, storey,
-remaining lease, distance to CBD, town (one-hot).
+Target: resale price, all flat types. Predictors: floor area, storey
+(midpoint of `storey_range`), remaining lease (99 years minus the
+flat's age at sale), and town (one-hot, Ang Mo Kio as base). The
+course file has no coordinates, so distance-to-CBD features would need
+geocoding first (a Module 3 feature-engineering topic).
 
-Expected coefficient signs (your *prior*):
+Expected coefficient signs (your _prior_):
 
 - `floor_area_sqm`: positive. Bigger flats cost more.
 - `storey_mid`: slightly positive. Higher floors have better
   views.
 - `remaining_lease_years`: positive. Longer leases are worth
   more.
-- `distance_to_cbd_km`: negative. Closer to Raffles costs more.
-- `town` dummies: vary. Central towns positive, outer towns
-  negative, with "Ang Mo Kio" as base.
+- `town` dummies: vary. Mature central towns positive relative to
+  Ang Mo Kio, newer outlying towns near zero or negative.
 
-After fitting (n ≈ 50_000), a plausible table:
+The full analysis — cleaning, design matrix, the inferential table,
+fit statistics and a 5-fold cross-validated `R²`:
 
-| Predictor              | β̂        | SE    | t     | p       |
-|------------------------|-----------|-------|-------|---------|
-| intercept              | 280_000   | 5_000 | 56.0  | < 0.001 |
-| floor_area_sqm         | 3_200     | 60    | 53.3  | < 0.001 |
-| storey_mid             | 2_500     | 150   | 16.7  | < 0.001 |
-| remaining_lease_years  | 900       | 80    | 11.25 | < 0.001 |
-| distance_to_cbd_km     | −15_000   | 300   | −50.0 | < 0.001 |
-| town[BISHAN]           | 55_000    | 2_500 | 22.0  | < 0.001 |
-| town[TOA PAYOH]        | 40_000    | 2_300 | 17.4  | < 0.001 |
-| … (other towns)        | …         | …     | …     | …       |
+```python
+import numpy as np
+import polars as pl
+from scipy import stats
+from kailash_ml import ModelVisualizer
 
-R² = 0.84, adjusted R² = 0.839, F = 3200 (p < 0.001). Every
-coefficient is significant. Signs match priors. The model is
-well-specified enough that we can start using it for valuations
-— *with the caveat* that R² on training data isn't generalisation
-error; we'll need Module 3's cross-validation to verify.
+from shared import MLFPDataLoader
+
+hdb = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+sale_year = pl.col("month").str.slice(0, 4).cast(pl.Int64)
+df = (
+    hdb.with_columns(
+        # "07 TO 09" -> 8.0; the file has typos such as "O7 TO 09" (letter O)
+        storey_mid=pl.col("storey_range").str.split(" TO ")
+        .list.eval(pl.element().str.replace_all("O", "0").cast(pl.Float64)).list.mean(),
+        remaining_lease_years=(99 - (sale_year - pl.col("lease_commence_date"))).cast(pl.Float64),
+    )
+    # Drop the file's impossible rows: sentinel prices, leases starting after the sale
+    .filter(pl.col("resale_price").is_between(100_000, 2_000_000),
+            pl.col("remaining_lease_years").is_between(1, 99))
+    .to_dummies(columns=["town"], drop_first=False)
+)
+towns = sorted(c for c in df.columns if c.startswith("town_") and c != "town_ANG MO KIO")
+cols = ["floor_area_sqm", "storey_mid", "remaining_lease_years", *towns]  # base: Ang Mo Kio
+
+X = np.column_stack([np.ones(df.height), df.select(cols).to_numpy().astype(float)])
+y = df["resale_price"].to_numpy().astype(float)
+n, k = X.shape
+
+XtX_inv = np.linalg.inv(X.T @ X)
+beta = XtX_inv @ X.T @ y                       # normal equations
+resid = y - X @ beta
+sigma2 = resid @ resid / (n - k)               # n - p - 1 degrees of freedom
+se = np.sqrt(sigma2 * np.diag(XtX_inv))
+t = beta / se
+p = 2 * stats.t.sf(np.abs(t), df=n - k)
+r2 = 1 - resid @ resid / np.sum((y - y.mean()) ** 2)
+adj_r2 = 1 - (1 - r2) * (n - 1) / (n - k)
+F = (r2 / (k - 1)) / ((1 - r2) / (n - k))
+
+table = pl.DataFrame({"term": ["intercept", *cols], "beta": beta, "se": se, "t": t, "p": p})
+print(table.filter(~pl.col("term").str.starts_with("town_")
+                   | pl.col("term").is_in(["town_BISHAN", "town_PUNGGOL", "town_WOODLANDS"])))
+print(f"n={n:,}  R2={r2:.3f}  adj R2={adj_r2:.3f}  F={F:,.0f} on ({k - 1}, {n - k}) df")
+
+# 5-fold cross-validation: R2 on rows the fit never saw
+folds = np.random.default_rng(42).permutation(n) % 5
+cv_r2 = []
+for f in range(5):
+    tr, te = folds != f, folds == f
+    b = np.linalg.lstsq(X[tr], y[tr], rcond=None)[0]
+    e = y[te] - X[te] @ b
+    cv_r2.append(1 - e @ e / np.sum((y[te] - y[te].mean()) ** 2))
+print(f"5-fold CV R2 = {np.mean(cv_r2):.3f} (+/- {np.std(cv_r2):.3f})")
+
+fig = ModelVisualizer().residuals(y, X @ beta)  # residuals vs fitted
+```
+
+Results on the course file (`n = 46,614` after removing the 3,536
+impossible rows):
+
+| Predictor             | β̂       | SE    | t     | p       |
+| --------------------- | ------- | ----- | ----- | ------- |
+| intercept             | −45,593 | 3,668 | −12.4 | < 0.001 |
+| floor_area_sqm        | 9,090   | 17    | 524.7 | < 0.001 |
+| storey_mid            | −49     | 36    | −1.37 | 0.17    |
+| remaining_lease_years | 26      | 32    | 0.82  | 0.41    |
+| town_BISHAN           | 127,522 | 3,383 | 37.7  | < 0.001 |
+| town_QUEENSTOWN       | 131,464 | 3,388 | 38.8  | < 0.001 |
+| town_TOA PAYOH        | 135,466 | 3,426 | 39.5  | < 0.001 |
+| town_PUNGGOL          | 2,917   | 2,952 | 0.99  | 0.32    |
+| town_WOODLANDS        | 1,484   | 2,941 | 0.50  | 0.61    |
+| … (other towns)       | …       | …     | …     | …       |
+
+`R² = 0.860`, adjusted `R² = 0.860`, `F ≈ 9,877` on (29, 46,584) df
+(p < 0.001), and 5-fold cross-validated `R² = 0.860` — no sign of
+over-fitting. Read the table the way the lesson taught:
+
+- **Floor area** dominates: each extra square metre is associated with
+  about SGD 9,090 more, holding storey, lease and town fixed.
+- **Town** matters: a Bishan, Queenstown or Toa Payoh flat sells for
+  roughly SGD 130K more than a comparable Ang Mo Kio flat; Punggol and
+  Woodlands are not distinguishable from Ang Mo Kio (|t| < 1).
+- **Storey and remaining lease are not significant** (|t| < 1.96).
+  Your priors said they should matter — and in the real market they
+  do — but this teaching file carries no storey or lease signal. That
+  is the honest reading: a coefficient whose CI straddles zero is
+  "no detectable effect in _this_ data", not "confirmed". Never keep a
+  sign story the t-statistic does not support.
 
 ## Try It Yourself
 
@@ -2674,7 +2983,7 @@ error; we'll need Module 3's cross-validation to verify.
 `x = [1, 2, 3, 4, 5]`, `y = [2, 4, 5, 4, 5]`, compute
 `β̂₀` and `β̂₁`.
 
-*Solution.*
+_Solution._
 
 ```
 x̄ = 3, ȳ = 4
@@ -2687,7 +2996,7 @@ x̄ = 3, ȳ = 4
 
 **Problem 2 — R² for the above.**
 
-*Solution.*
+_Solution._
 
 ```
 ŷ = [2.8, 3.4, 4.0, 4.6, 5.2]
@@ -2703,7 +3012,7 @@ R² = 1 − 2.4/6 = 0.6
 `SE = 300`, `n − p − 1 = 200`. Is the coefficient significant
 at `α = 0.05`?
 
-*Solution.*
+_Solution._
 
 ```
 t = 1500 / 300 = 5.0
@@ -2716,7 +3025,7 @@ p < 0.001. Yes, highly significant.
 area + β₂ × central + β₃ × (area × central)`. What does `β₃`
 represent?
 
-*Solution.* `β₃` is the *additional* increase in price per
+_Solution._ `β₃` is the _additional_ increase in price per
 square metre for flats in central locations, beyond the
 baseline increase `β₁`. In other words, the effect of area is
 `β₁` for non-central flats and `β₁ + β₃` for central flats.
@@ -2727,7 +3036,7 @@ locations (as you'd expect).
 3-room as base. `β̂_4room = 50_000`, `β̂_5room = 90_000`.
 Interpret.
 
-*Solution.* Holding all else equal, a 4-room flat costs SGD
+_Solution._ Holding all else equal, a 4-room flat costs SGD
 50K more than a 3-room, and a 5-room flat costs SGD 90K more
 than a 3-room. The 5-room premium over 4-room is `90K − 50K =
 40K`. If the standard errors and t-stats support it, every
@@ -2744,8 +3053,8 @@ pair is significantly different from every other.
   and for DiD identification.
 - **Module 3** adds regularisation (ridge, lasso) and cross-
   validated model selection.
-- **Module 5** uses linear regression as a probing tool for LLM
-  hidden states.
+- **Module 4 (Lesson 4.8)** shows that a neural network's output
+  layer is a linear (or logistic) regression on learned features.
 
 ## Reflection
 
@@ -2763,7 +3072,7 @@ next to it, even if the model itself is something fancier.
 
 Linear regression is for continuous outcomes. Half the problems
 you'll face are binary: clicks or no clicks, churn or stay,
-default or pay, positive or negative. You *could* try to fit a
+default or pay, positive or negative. You _could_ try to fit a
 linear model to `y ∈ {0, 1}`, but the predictions quickly slip
 out of `[0, 1]` and the coefficients become nonsensical. The
 right tool is **logistic regression**.
@@ -2810,8 +3119,10 @@ inverse is the **logit**:
 logit(p) = log(p / (1 − p))
 ```
 
-`p / (1 − p)` is the **odds ratio**: if `p = 0.8`, odds = 4
-(i.e. 4 to 1 in favour). `log(odds)` is the **log-odds**.
+`p / (1 − p)` is the **odds**: if `p = 0.8`, odds = 4 (i.e. 4 to 1
+in favour). `log(odds)` is the **log-odds**. The ratio of two odds —
+say the odds for a large flat divided by the odds for a small one — is
+the **odds ratio**, which is what `e^β` measures below.
 
 ### Logistic regression model
 
@@ -2844,9 +3155,12 @@ log-odds by `β₁`. Exponentiating, this multiplies the odds by
 - `β₁ = 0.693` → `e^0.693 = 2` → odds **double**.
 - `β₁ = −0.693` → `e^(−0.693) = 0.5` → odds **halve**.
 
-**Numerical example.** Suppose a churn model has `β_discount =
-−0.5`. Then each additional 10% discount multiplies churn odds
-by `e^(−0.5) ≈ 0.607`, i.e. cuts churn odds by about 39%.
+**Numerical example.** Suppose a churn model measures discount in
+units of 10 percentage points and estimates `β_discount = −0.5`. Then
+each additional 10 points of discount multiplies churn odds by
+`e^(−0.5) ≈ 0.607`, i.e. cuts churn odds by about 39%. Note that this
+is a change in _odds_, not in probability: if the churn probability
+was 20% (odds 0.25), the new odds are 0.152, a probability of 13.2%.
 
 ## Mathematical Foundations — Maximum Likelihood for Logistic Regression
 
@@ -2885,12 +3199,15 @@ Take the derivative with respect to `β`:
 Beautiful. The residual in the probability space is `yᵢ − pᵢ`; the
 gradient is the sum of residuals weighted by the feature vector.
 
-Unfortunately, setting this to zero does *not* yield a closed
+Unfortunately, setting this to zero does _not_ yield a closed
 form because `pᵢ` depends non-linearly on `β`. We solve it by
-iterative methods — typically **iteratively reweighted least
-squares** (IRLS) or Newton-Raphson. In practice, sklearn and
-kailash-ml use `liblinear` or L-BFGS solvers that converge in a
-handful of iterations.
+iterative methods — classically **Newton-Raphson**, which for
+logistic regression is the same as **iteratively reweighted least
+squares** (IRLS). The course code uses `scipy.optimize.minimize`
+with BFGS, a _quasi-Newton_ method: it builds up an approximation of
+the curvature from successive gradients instead of computing the exact
+Hessian. All of these converge to the same MLE in a handful of
+iterations on a problem this size.
 
 ### Sigmoid derivative (useful identity)
 
@@ -2955,7 +3272,8 @@ Metrics you'll meet in Module 3:
 A two-sample t-test compares two group means. With three or more
 groups you could do all pairwise t-tests, but the multiple-testing
 problem kicks in: three tests at α = 0.05 give an overall false
-positive rate of about `1 − 0.95³ ≈ 14%`.
+positive rate of up to `1 − 0.95³ ≈ 14%` (a little less in practice,
+because pairwise tests that share groups are correlated).
 
 **ANOVA** (Analysis of Variance) performs a single test of the
 joint hypothesis `H₀: μ₁ = μ₂ = … = μ_k` (all group means are
@@ -2999,53 +3317,82 @@ informative.
 
 ### Numerical example — HDB across flat types
 
-Three groups: 3-room, 4-room, 5-room. Summary:
+Three groups: the 2024 3-room, 4-room and 5-room sales in the course
+file (sentinel prices removed). Summary:
 
-| Group  | n   | x̄      | s    |
-|--------|-----|---------|------|
-| 3-room | 100 | 400_000 | 60_000 |
-| 4-room | 100 | 540_000 | 80_000 |
-| 5-room | 100 | 680_000 | 90_000 |
+| Group  | n     | x̄         | s       |
+| ------ | ----- | --------- | ------- |
+| 3-room | 1,252 | 595,100   | 73,599  |
+| 4-room | 2,054 | 849,626   | 102,826 |
+| 5-room | 1,047 | 1,084,859 | 129,845 |
 
-Overall mean: `x̄ ≈ 540_000`.
+Overall (weighted) mean: `x̄ = 832,999`, `N = 4,353`.
 
 ```
-SS_between = 100 × (400 − 540)² × 10^6
-           + 100 × (540 − 540)² × 10^6
-           + 100 × (680 − 540)² × 10^6
-           = 100 × 19_600 × 10^6 + 0 + 100 × 19_600 × 10^6
-           = 3.92e12
+SS_between = 1_252 × (595_100 − 832_999)²
+           + 2_054 × (849_626 − 832_999)²
+           + 1_047 × (1_084_859 − 832_999)²
+           = 7.086e13 + 0.057e13 + 6.641e13
+           ≈ 1.3784e14
 df_between = 3 − 1 = 2
-MS_between = 1.96e12
+MS_between ≈ 6.892e13
 
-SS_within = 99 × 60_000² + 99 × 80_000² + 99 × 90_000²
-          = 99 × (3.6e9 + 6.4e9 + 8.1e9)
-          = 99 × 1.81e10 ≈ 1.79e12
-df_within = 300 − 3 = 297
-MS_within ≈ 6.03e9
+SS_within = 1_251 × 73_599² + 2_053 × 102_826² + 1_046 × 129_845²
+          = 0.678e13 + 2.171e13 + 1.764e13
+          ≈ 4.612e13
+df_within = 4_353 − 3 = 4_350
+MS_within ≈ 1.0602e10
 
-F = 1.96e12 / 6.03e9 ≈ 325
+F = 6.892e13 / 1.0602e10 ≈ 6_501
 ```
 
-`F ≈ 325` with df `(2, 297)` — vastly beyond any reasonable
-critical value. We reject `H₀`. At least one flat-type mean
-differs (which — surprise — is all of them).
+`F ≈ 6,501` with df `(2, 4,350)` — vastly beyond any reasonable
+critical value (about 3.0 at α = 0.05). We reject `H₀`: at least one
+flat-type mean differs.
 
 ### Post-hoc tests
 
 ANOVA only tells you "somewhere, means differ." To find
-*which* pairs differ, run post-hoc tests with corrections:
+_which_ pairs differ, run post-hoc tests with corrections:
 
-- **Tukey's Honestly Significant Difference (HSD).** Tests all
-  pairwise differences controlling the family-wise error rate.
-  Default for most one-way ANOVAs.
-- **Bonferroni pairwise.** Simpler but more conservative.
+- **Tukey's Honestly Significant Difference (HSD).** Compares every
+  pair of means against the **studentized range** distribution —
+  the distribution of (largest mean − smallest mean) / SE among `k`
+  groups — so the family-wise error rate over _all_ pairs is held at
+  α. It is not the same as running pairwise t-tests and dividing α by
+  the number of pairs. Default for most one-way ANOVAs.
+- **Bonferroni pairwise.** Ordinary pairwise t-tests at `α / m`.
+  Simpler but more conservative than Tukey for all-pairs comparisons.
 - **Scheffé.** Controls all possible contrasts, not just
   pairs. Most conservative.
 - **Dunnett's.** Compares each group to a single control.
 
-For our HDB example, all three pairs (3 vs 4, 3 vs 5, 4 vs 5)
-would be highly significant under Tukey's HSD.
+In code, `scipy.stats.f_oneway` runs the ANOVA and
+`scipy.stats.tukey_hsd` the post-hoc test:
+
+```python
+import polars as pl
+from scipy import stats
+
+from shared import MLFPDataLoader
+
+hdb = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+sales_2024 = hdb.filter(
+    pl.col("month").str.starts_with("2024"),
+    pl.col("resale_price").is_between(100_000, 2_000_000),  # drop sentinel prices
+)
+groups = [sales_2024.filter(pl.col("flat_type") == ft)["resale_price"].to_numpy()
+          for ft in ("3 ROOM", "4 ROOM", "5 ROOM")]
+
+f_stat, p_value = stats.f_oneway(*groups)  # one-way ANOVA
+print(f"F = {f_stat:,.0f}", "p < 0.001" if p_value < 0.001 else f"p = {p_value:.3f}")
+print(stats.tukey_hsd(*groups))          # studentized-range post-hoc test
+```
+
+It prints `F = 6,501 p < 0.001` and a Tukey table in which every pair
+differs (p < 0.001): 4-room minus 3-room ≈ SGD 254,526 (95% CI
+245,871 to 263,182), 5-room minus 4-room ≈ 235,233 (226,066 to
+244,400), 5-room minus 3-room ≈ 489,759 (479,650 to 499,869).
 
 ### ANOVA vs regression
 
@@ -3056,66 +3403,125 @@ the F-statistic from the regression equals the ANOVA F. In
 modern practice, most statisticians just run regressions and
 use ANOVA as a reporting frame.
 
-## The Kailash Engine — TrainingPipeline for Classification
+## The Kailash Engine — ModelVisualizer for Classification
+
+As in Lesson 2.5, the model itself is fitted by hand: you write the
+Bernoulli negative log-likelihood and minimise it. `ModelVisualizer`
+then draws the two standard classification views — the ROC curve
+(`roc_curve(y_true, y_scores)`) and the confusion matrix
+(`confusion_matrix(y_true, y_pred)`). The standard errors come from
+the Fisher information `XᵀWX` with `W = diag(p̂(1 − p̂))` — the
+logistic counterpart of `σ²(XᵀX)⁻¹` in OLS.
+
+## Worked Example — Is This Flat Above the Median Price?
+
+**Setup.** The Exercise 6 question on the course's HDB file: for
+sales from 2020 onward (`n = 24,904`), predict whether a flat sells
+above the median price (SGD 847,465), using its floor area. Floor area
+is standardised, so one unit of the predictor is one standard
+deviation (26.8 sqm).
 
 ```python
-from kailash_ml import TrainingPipeline, ModelVisualizer
+import numpy as np
+import polars as pl
+from scipy.optimize import minimize
+from scipy.special import expit
+from kailash_ml import ModelVisualizer
 
-pipeline = TrainingPipeline(task="classification", estimator="logistic")
-pipeline.fit(X_train, y_train)
+from shared import MLFPDataLoader
 
-print(pipeline.summary())
-# Coefficient    β̂       SE    z     p      exp(β̂)
-# tenure_months  -0.04  0.003  −13   <.001   0.961
-# discount_pct   -0.02  0.002  −10   <.001   0.980
-# has_complaint  +1.20  0.100  +12   <.001   3.32
-# …
+df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet").filter(pl.col("month") >= "2020-01")
+y = (df["resale_price"] > df["resale_price"].median()).cast(pl.Int8).to_numpy()
+area = df["floor_area_sqm"].to_numpy()
+X = np.column_stack([np.ones(len(y)), (area - area.mean()) / area.std()])  # 1 unit = 1 SD
 
-ModelVisualizer().coefficient_plot(pipeline, as_odds_ratio=True)
+
+def nll(b):  # Bernoulli negative log-likelihood = binary cross-entropy
+    p = np.clip(expit(X @ b), 1e-12, 1 - 1e-12)
+    return -np.sum(y * np.log(p) + (1 - y) * np.log(1 - p))
+
+
+beta = minimize(nll, np.zeros(2), method="BFGS").x   # quasi-Newton MLE
+p_hat = expit(X @ beta)
+W = p_hat * (1 - p_hat)
+se = np.sqrt(np.diag(np.linalg.inv(X.T @ (X * W[:, None]))))  # from the Fisher information
+odds_ratio = np.exp(beta[1])
+or_ci = np.exp(beta[1] + np.array([-1.96, 1.96]) * se[1])
+accuracy = np.mean((p_hat >= 0.5) == y)
+print(f"beta = {beta.round(3)}, z = {beta[1] / se[1]:.1f}")
+print(f"odds ratio per SD of area = {odds_ratio:.1f} (95% CI {or_ci[0]:.1f}-{or_ci[1]:.1f})")
+print(f"accuracy at 0.5 = {accuracy:.3f}")
+
+viz = ModelVisualizer()
+fig_roc = viz.roc_curve(y, p_hat)
+fig_cm = viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))
 ```
 
-The `exp(β̂)` column is the odds ratio. A value of 3.32 on
-"has_complaint" means customers with complaints have 3.32 times
-the odds of churning, all else equal.
+**Results.**
 
-## Worked Example — Employee Attrition
+| Term                  | β̂      | SE    | z    | e^β̂ (odds ratio)       |
+| --------------------- | ------ | ----- | ---- | ---------------------- |
+| intercept             | −0.064 | 0.020 | −3.2 | —                      |
+| floor area (per 1 SD) | 3.996  | 0.061 | 65.4 | 54.4 (CI 48.2 to 61.3) |
 
-**Setup.** You have HR data on 14_999 employees (roles,
-salaries, tenure, promotion history, attrition flag). Goal:
-predict `attrition ∈ {0, 1}` and interpret the top drivers.
+Accuracy at the 0.5 threshold is 0.815 and the ROC AUC is 0.92.
 
-**Model.** Logistic regression on standardised predictors. After
-fitting:
+**Interpretation.**
 
-| Predictor                | β̂      | OR     | Interpretation                                   |
-|--------------------------|---------|--------|--------------------------------------------------|
-| years_since_last_promotion | +0.35 | 1.42   | Each additional year → 42% more churn odds      |
-| monthly_hours            | +0.20  | 1.22   | 10 extra hours/mo → 22% more churn odds          |
-| promoted_last_2y         | −0.60  | 0.55   | Promotion → 45% less churn odds                  |
-| compensation_pct_of_band | −0.45  | 0.64   | Well-paid employees → 36% less churn odds        |
-| dept_sales               | +0.30  | 1.35   | Sales dept has 35% more churn odds than baseline |
+- Each extra standard deviation of floor area (26.8 sqm) multiplies the
+  odds of an above-median price by about 54. Per 10 sqm the odds ratio
+  is `e^(3.996 × 10 / 26.8) ≈ 4.4`. These are _odds_ multipliers, not
+  probability multipliers.
+- The intercept is the log-odds at the average floor area (97 sqm):
+  `σ(−0.064) ≈ 0.48`, so an average-sized flat is close to a coin flip.
+  The 50% point sits at about 97.4 sqm.
+- The confusion matrix (10,058 true negatives, 2,394 false positives,
+  2,217 false negatives, 10,235 true positives) shows the errors are
+  balanced — expected, because the target was split at the median.
+- A single predictor this strong is a warning sign as much as a
+  result: in this file, price is almost a function of floor area
+  (Lesson 2.5 found `R² = 0.86` with area and town). Adding town
+  dummies would be the next step.
+
+## Interpretation Drill — Employee Attrition (illustrative)
+
+The coefficients below are **invented for practice**: the course has no
+HR dataset. Continuous predictors are standardised, so `e^β` is the odds
+multiplier per one standard deviation; binary predictors are 0/1, so
+`e^β` compares the two groups.
+
+| Predictor                         | β̂     | OR   | Interpretation                                        |
+| --------------------------------- | ----- | ---- | ----------------------------------------------------- |
+| years_since_last_promotion (std.) | +0.35 | 1.42 | +1 SD of time since promotion → 42% higher churn odds |
+| monthly_hours (std.)              | +0.20 | 1.22 | +1 SD of monthly hours → 22% higher churn odds        |
+| promoted_last_2y (0/1)            | −0.60 | 0.55 | Promoted in last 2 years → 45% lower churn odds       |
+| compensation_pct_of_band (std.)   | −0.45 | 0.64 | +1 SD of pay within band → 36% lower churn odds       |
+| dept_sales (0/1)                  | +0.30 | 1.35 | Sales staff have 35% higher churn odds than base dept |
 
 **Interpretation for the CEO:**
 
-> "Three levers matter most for retention: make sure high
-> performers are promoted within two years, keep monthly hours
-> reasonable, and keep pay at or above band midpoint. The single
-> biggest risk factor is going 2+ years without a promotion; it
-> increases churn odds by 42% per extra year. The model has
-> AUROC 0.83 on held-out data."
+> "Promotion timing and pay matter most. Employees promoted in the
+> last two years have roughly half the odds of leaving; each standard
+> deviation of extra time since a promotion raises the odds by about
+> 40%. Keeping pay above the band midpoint and hours reasonable are
+> the next levers."
+
+To turn "+1 SD" into "+1 year", divide `β` by the predictor's standard
+deviation before exponentiating — exactly what we did for floor area
+above.
 
 ## Try It Yourself
 
 **Problem 1 — Odds interpretation.** A logistic regression
 reports `β̂_age = 0.02` with p < 0.001. Interpret the odds ratio.
 
-*Solution.* `e^0.02 ≈ 1.0202`. Each additional year of age
+_Solution._ `e^0.02 ≈ 1.0202`. Each additional year of age
 increases the odds of the positive class by about 2%, holding
 others fixed. Small but significant at large `n`.
 
 **Problem 2 — Sigmoid.** Compute `σ(0)`, `σ(2)`, `σ(−2)`.
 
-*Solution.*
+_Solution._
 
 ```
 σ(0) = 1 / (1 + e^0) = 1/2 = 0.5
@@ -3130,7 +3536,7 @@ multiclass scheme should you use if:
 (a) you need calibrated probabilities;
 (b) you're using a tree-based model?
 
-*Solution.* (a) Multinomial (softmax) logistic regression —
+_Solution._ (a) Multinomial (softmax) logistic regression —
 gives proper probabilities that sum to 1. (b) OvR is usually
 fine for trees, since tree-based calibration is already
 suspect.
@@ -3138,7 +3544,7 @@ suspect.
 **Problem 4 — ANOVA.** You run a 4-variant homepage test. Is
 the right tool ANOVA or pairwise t-tests?
 
-*Solution.* ANOVA first to test "any difference." If
+_Solution._ ANOVA first to test "any difference." If
 significant, follow with Tukey HSD to find which pairs
 differ. Pairwise t-tests without correction inflate the
 false positive rate.
@@ -3146,7 +3552,7 @@ false positive rate.
 **Problem 5 — ANOVA F.** `MS_between = 800`, `MS_within = 40`.
 Compute F and describe the result.
 
-*Solution.* `F = 20`. Enormously large — the effect is much
+_Solution._ `F = 20`. Enormously large — the effect is much
 bigger than noise. Depending on df, p is essentially 0.
 
 ## Cross-References
@@ -3187,10 +3593,13 @@ two problems remain:
 This lesson gives you two tools:
 
 1. **CUPED (Controlled-experiment Using Pre-Experiment Data),** a
-   variance-reduction technique that can cut required sample
-   sizes by 50% or more. It is the single most impactful
-   modern A/B testing technique, used by Microsoft, Netflix,
-   Airbnb, and essentially every top tech company.
+   variance-reduction technique introduced by Deng, Xu, Kohavi and
+   Walker (2013). When the pre-experiment metric is strongly
+   correlated with the outcome it can cut the required sample size
+   by half or more; it is now a standard feature of large online
+   experimentation platforms. How much it helps depends entirely on
+   that correlation — on the course's experiment file it helps very
+   little, as you will see.
 2. **Difference-in-Differences (DiD),** a causal inference
    method that works on observational data when you have
    pre/post data for a treated and a control group. Classic
@@ -3211,14 +3620,14 @@ to `Y_control`. The variance of the estimated difference is
 **Key observation.** Most of the variability in `Y` is not
 caused by the treatment — it's caused by the user's pre-existing
 behaviour. Some users spend a lot no matter what; some spend
-little no matter what. If we can *subtract out* the predictable
+little no matter what. If we can _subtract out_ the predictable
 part of `Y` using pre-experiment behaviour, we reduce the
 noise without touching the treatment effect.
 
 ### The adjustment
 
 Let `X_pre` be a pre-experiment covariate (e.g. the user's
-spend in the 14 days *before* the experiment started). Define
+spend in the 14 days _before_ the experiment started). Define
 the CUPED-adjusted outcome:
 
 ```
@@ -3242,7 +3651,7 @@ Differentiate with respect to θ and set to zero:
 θ* = Cov(Y, X_pre) / Var(X_pre)
 ```
 
-This is *exactly* the OLS regression slope of `Y` on `X_pre`.
+This is _exactly_ the OLS regression slope of `Y` on `X_pre`.
 CUPED is regression-adjusted estimation in disguise.
 
 ### Deriving the variance reduction
@@ -3277,8 +3686,9 @@ Var(Y_adj) = Var(Y) × (1 − ρ²)
 ```
 
 That's it. If the correlation between pre- and post-experiment
-metrics is `ρ = 0.7`, variance drops by `1 − 0.49 = 0.51`:
-a **51% reduction**. If `ρ = 0.9`, variance drops by 81%.
+metrics is `ρ = 0.7`, the adjusted variance is `1 − 0.49 = 0.51` of
+the original: a **49% reduction** (`ρ²`). If `ρ = 0.9`, variance drops
+by 81%.
 
 ### Sample size multiplier
 
@@ -3288,14 +3698,18 @@ Required sample size scales with variance. So:
 n_CUPED / n_raw = 1 − ρ²
 ```
 
-| ρ   | Variance reduction | Sample size multiplier |
-|-----|--------------------|------------------------|
-| 0.3 | 9%                 | 1.10                   |
-| 0.5 | 25%                | 1.33                   |
-| 0.7 | 49%                | 1.96                   |
-| 0.8 | 64%                | 2.78                   |
-| 0.9 | 81%                | 5.26                   |
-| 0.95| 90%                | 10.0                   |
+| ρ    | Variance reduction (`ρ²`) | `n_CUPED / n_raw` | Speed-up (`n_raw / n_CUPED`) |
+| ---- | ------------------------- | ----------------- | ---------------------------- |
+| 0.21 | 4.4%                      | 0.956             | 1.05                         |
+| 0.3  | 9%                        | 0.91              | 1.10                         |
+| 0.5  | 25%                       | 0.75              | 1.33                         |
+| 0.7  | 49%                       | 0.51              | 1.96                         |
+| 0.8  | 64%                       | 0.36              | 2.78                         |
+| 0.9  | 81%                       | 0.19              | 5.26                         |
+| 0.95 | 90%                       | 0.0975            | 10.3                         |
+
+The first row is the course's own experiment (below): with `ρ = 0.21`
+CUPED saves only about 4% of the sample.
 
 With `ρ = 0.8`, your 50K-user experiment becomes an 18K-user
 experiment at the same power. Run it three times as fast.
@@ -3307,6 +3721,12 @@ experiment at the same power. Run it three times as fast.
   and subtracting it biases the estimate.
 - **θ should be estimated from both arms pooled** (not from
   one arm), to avoid bias.
+- **Use only pre-treatment covariates.** Adding a second covariate
+  "because it correlates with revenue" is tempting; if it was
+  measured during the experiment (e.g. in-experiment basket value),
+  part of the treatment effect is subtracted away with it.
+- **Check SRM first** (Lesson 2.4). CUPED is applied to an arm pair
+  whose allocation matches the design.
 - **CUPED reduces variance, not bias.** If your experiment is
   broken (SRM, leakage, bad randomisation), CUPED won't save
   you.
@@ -3330,7 +3750,7 @@ The **individual treatment effect** is:
 
 **The Fundamental Problem of Causal Inference:** you observe at
 most one of `Yᵢ(1)` and `Yᵢ(0)`. The other is the
-**counterfactual** — what *would have* happened. You can never
+**counterfactual** — what _would have_ happened. You can never
 directly observe an individual treatment effect.
 
 The way out is to estimate averages:
@@ -3352,7 +3772,7 @@ select into treatment.
 
 You have two groups (treated, control) observed at two time
 points (pre, post). The treatment happens between pre and post,
-but *only for the treated group*. You want the causal effect
+but _only for the treated group_. You want the causal effect
 of the treatment.
 
 Naive approaches fail:
@@ -3372,13 +3792,13 @@ ATT = (Y_treat_post − Y_treat_pre) − (Y_control_post − Y_control_pre)
 In words: take the change in the treated group and subtract the
 change in the control group. The difference is the causal effect
 — assuming the control's change is a valid proxy for what the
-treated group *would have* experienced without treatment.
+treated group _would have_ experienced without treatment.
 
 ### The parallel trends assumption
 
 DiD identifies the ATT only if, in the counterfactual world
 without treatment, the treated and control groups would have
-experienced the *same change* over time. Formally:
+experienced the _same change_ over time. Formally:
 
 ```
 E[Y(0)_post − Y(0)_pre | treated] = E[Y(0)_post − Y(0)_pre | control]
@@ -3386,7 +3806,7 @@ E[Y(0)_post − Y(0)_pre | treated] = E[Y(0)_post − Y(0)_pre | control]
 
 This is untestable (we never observe the counterfactual) but
 we can check it empirically with **pre-trends**: if the two
-groups were evolving in parallel for several periods *before*
+groups were evolving in parallel for several periods _before_
 treatment, the assumption is more credible.
 
 ### Regression form
@@ -3401,7 +3821,7 @@ Yᵢₜ = β₀ + β₁ × Dᵢ + β₂ × Tₜ + δ × (Dᵢ × Tₜ) + εᵢ�
 - `Tₜ = 1` if period `t` is post-treatment.
 - `Dᵢ × Tₜ = 1` only for treated units in the post period.
 
-The coefficient `δ` on the interaction *is* the DiD estimate.
+The coefficient `δ` on the interaction _is_ the DiD estimate.
 The standard error comes from the usual OLS formula (with
 clustered standard errors if you have many observations per
 unit).
@@ -3416,88 +3836,155 @@ assumption. You can stress-test it:
    finds a significant "effect," parallel trends fails.
 2. **Fake treatment group.** Pretend a third group, similar to
    the control, was treated. Should find no effect.
-3. **Pre-trend regression.** Regress the outcome on time
-   within the pre-treatment period, separately for treated and
-   control. Slopes should be similar.
+3. **Pre-trend test.** Using only pre-treatment data, fit
+   `Y = b₀ + b₁ × time + b₂ × D + b₃ × (D × time) + ε`. The
+   coefficient `b₃` is the difference between the treated and control
+   slopes; test `H₀: b₃ = 0` with its t-statistic. A small p-value
+   means the trends were already diverging — DiD is not credible.
+   (A test whose null distribution is not centred at zero, or that
+   compares a statistic with itself, can never reject; always check
+   that your test _can_ fail on data built to violate the
+   assumption.)
 
-### Numerical example — Singapore ABSD cooling measures
+### Numerical example — a hypothetical cooling measure
 
-In December 2021, Singapore raised the Additional Buyer's Stamp
-Duty (ABSD) for investment properties. To estimate the policy's
-causal effect on HDB resale prices, we need a control group that
-was *not* affected.
+Property cooling measures cannot be randomised, so DiD is the natural
+design. A clean example needs a treated group that the measure
+actually reaches and a comparable group it does not. (A tempting but
+wrong choice for HDB resale is "investment buyers vs first-time
+buyers": HDB flats must be owner-occupied, so there is no investment
+segment, and the course file has no buyer-type column anyway.)
 
-- **Treated:** non-owner-occupier (investment) purchases.
-- **Control:** first-time buyers (exempt from ABSD hike).
+Exercise 7 therefore uses a **simulated** panel of HDB-style resale
+prices around a _hypothetical_ measure that applies only to
+Central-region flats: 6 quarters before and 6 after, 200 sales per
+region per quarter, a common trend of SGD 2,000 per quarter, and a true
+policy effect of **−SGD 20,000** on Central flats. Cell means:
 
-Pre-period: Jan–Nov 2021. Post-period: Jan–Nov 2022.
-
-Hypothetical means (SGD, simplified):
-
-|                     | Pre     | Post    | Change  |
-|---------------------|---------|---------|---------|
-| Treated (investment)| 560_000 | 585_000 | +25_000 |
-| Control (first-time)| 520_000 | 560_000 | +40_000 |
+|                       | Pre     | Post    | Change  |
+| --------------------- | ------- | ------- | ------- |
+| Treated (Central)     | 556,229 | 548,862 | −7,367  |
+| Control (Non-Central) | 453,858 | 469,699 | +15,841 |
 
 ```
-DiD = (585_000 − 560_000) − (560_000 − 520_000)
-    = 25_000 − 40_000
-    = −15_000
+DiD = (548_862 − 556_229) − (469_699 − 453_858)
+    = −7_367 − 15_841
+    = −23_208        (SE ≈ 4_334, 95% CI [−31_702, −14_713])
 ```
 
-Investment-segment prices grew SGD 15K *less* than they would
-have under the counterfactual (proxied by first-time buyers).
-That's the causal effect of the ABSD hike. Statistically
-significant if the standard error supports it.
+Central prices grew about SGD 23K _less_ than the Non-Central
+counterfactual implies. The true simulated effect (−20,000) sits
+inside the CI; the gap is sampling noise.
 
-**Parallel trends check.** Plot both groups' monthly mean prices
-from 2019 through mid-2021. Are the slopes similar? If yes,
-assumption holds. If the treated group was already decelerating
-before the policy, DiD over-estimates the effect.
+**Parallel trends check.** On the six pre-measure quarters, the
+pre-trend test above gives a slope difference of SGD 1,045 per quarter
+(SE 1,788, p = 0.56): no evidence of diverging trends. A placebo that
+pretends the measure started in quarter 3 (still pre-period) finds
++2,149 (SE 6,110, p = 0.73) — no fake effect. Rebuild the panel with an
+extra Central-only trend of SGD 3,000 per quarter and the same test
+rejects (slope difference 4,045, p = 0.024): the test can tell the two
+situations apart.
 
 ## The Kailash Engine — ExperimentTracker + Regression
 
+CUPED and DiD are both regressions you compute yourself; the tracker
+records the inputs and the estimates. The block runs CUPED on the
+course experiment (control vs treatment_a, the pair that passed its
+SRM check) and the DiD and pre-trend test on the simulated panel:
+
 ```python
-from kailash_ml import ExperimentTracker, TrainingPipeline
+import asyncio
+
 import numpy as np
 import polars as pl
+from scipy import stats
+from kailash_ml import ExperimentTracker
 
-# ── CUPED ──────────────────────────────────────────────────────
-# X_pre: pre-experiment metric, Y: outcome, T: treatment indicator
-theta = np.cov(Y, X_pre, ddof=1)[0, 1] / np.var(X_pre, ddof=1)
-Y_adj = Y - theta * (X_pre - X_pre.mean())
+from shared import MLFPDataLoader
+from shared.mlfp02.ex_7 import simulate_hdb_cooling_panel
 
-rho = float(np.corrcoef(Y, X_pre)[0, 1])
-var_reduction = 1 - rho ** 2
+# ── CUPED on the course experiment: control vs treatment_a ─────────────
+exp = MLFPDataLoader().load("mlfp02", "experiment_data.parquet").filter(
+    pl.col("experiment_group").is_in(["control", "treatment_a"])  # passed SRM (Lesson 2.4)
+)
+y = exp["revenue"].to_numpy()
+x_pre = exp["pre_metric_value"].to_numpy()  # measured BEFORE assignment
+treated = (exp["experiment_group"] == "treatment_a").to_numpy()
 
-with ExperimentTracker().start_run(name="homepage_test_cuped") as run:
-    run.log_param("covariate", "spend_pre_14d")
-    run.log_metric("rho", rho)
-    run.log_metric("variance_reduction", var_reduction)
-    run.log_metric("theta", theta)
+theta = np.cov(y, x_pre)[0, 1] / np.var(x_pre, ddof=1)  # pooled over both arms
+y_adj = y - theta * (x_pre - x_pre.mean())
+rho = np.corrcoef(y, x_pre)[0, 1]
 
-    # raw estimate
-    diff_raw = Y[T == 1].mean() - Y[T == 0].mean()
-    se_raw = (Y[T == 1].var(ddof=1)/sum(T==1)
-              + Y[T == 0].var(ddof=1)/sum(T==0)) ** 0.5
-    run.log_metric("diff_raw", diff_raw)
-    run.log_metric("se_raw", se_raw)
 
-    # cuped estimate
-    diff_cuped = Y_adj[T == 1].mean() - Y_adj[T == 0].mean()
-    se_cuped = (Y_adj[T == 1].var(ddof=1)/sum(T==1)
-                + Y_adj[T == 0].var(ddof=1)/sum(T==0)) ** 0.5
-    run.log_metric("diff_cuped", diff_cuped)
-    run.log_metric("se_cuped", se_cuped)
+def diff_and_se(v: np.ndarray) -> tuple[float, float]:
+    a, b = v[treated], v[~treated]
+    return a.mean() - b.mean(), np.sqrt(a.var(ddof=1) / len(a) + b.var(ddof=1) / len(b))
 
-# ── DiD ────────────────────────────────────────────────────────
-# df has columns: price, treated (0/1), post (0/1)
-pipeline = TrainingPipeline(task="regression", estimator="ols")
-pipeline.fit(df[["treated", "post", "treated_x_post"]].to_pandas(),
-             df["price"].to_numpy())
-print(pipeline.summary())
-# δ (coefficient on treated_x_post) is the DiD estimate.
+
+diff_raw, se_raw = diff_and_se(y)
+diff_cuped, se_cuped = diff_and_se(y_adj)
+reduction = 1 - np.var(y_adj, ddof=1) / np.var(y, ddof=1)  # = rho^2
+print(f"rho={rho:.3f}  variance reduction={reduction:.1%}")
+print(f"raw   lift {diff_raw:.3f} (SE {se_raw:.4f})")
+print(f"CUPED lift {diff_cuped:.3f} (SE {se_cuped:.4f})")
+
+# ── DiD on the simulated cooling-measure panel (true effect -20,000) ───
+panel = simulate_hdb_cooling_panel(n_per_period=200, n_pre=6, n_post=6,
+                                   policy_effect=-20_000, seed=99)
+
+
+def ols(X: np.ndarray, yv: np.ndarray) -> tuple[np.ndarray, np.ndarray, int]:
+    b = np.linalg.lstsq(X, yv, rcond=None)[0]
+    e = yv - X @ b
+    dof = len(yv) - X.shape[1]
+    return b, np.sqrt(e @ e / dof * np.diag(np.linalg.inv(X.T @ X))), dof
+
+
+d = panel["central"].to_numpy().astype(float)  # treated group
+post = panel["post"].to_numpy().astype(float)  # after the measure
+X = np.column_stack([np.ones_like(d), d, post, d * post])
+b, se, _ = ols(X, panel["price"].to_numpy())
+print(f"DiD delta = {b[3]:,.0f} (SE {se[3]:,.0f})")
+
+# Pre-trend test: pre-period only, does the treated group's slope differ?
+pre = panel.filter(pl.col("post") == 0)
+t = pre["period"].to_numpy().astype(float)
+g = pre["central"].to_numpy().astype(float)
+b_pre, se_pre, dof = ols(np.column_stack([np.ones_like(t), t, g, g * t]), pre["price"].to_numpy())
+p_trend = 2 * stats.t.sf(abs(b_pre[3] / se_pre[3]), df=dof)
+print(f"pre-trend slope difference = {b_pre[3]:,.0f}/quarter, p = {p_trend:.2f}")
+
+
+async def log_results() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_causal", run_name="cuped_and_did") as run:
+        await run.log_params({"cuped_covariate": "pre_metric_value",
+                              "did_panel": "simulated, true effect -20000"})
+        await run.log_metrics({"theta": float(theta), "variance_reduction": float(reduction),
+                               "lift_raw": float(diff_raw), "lift_cuped": float(diff_cuped),
+                               "did_delta": float(b[3]), "pretrend_p": float(p_trend)})
+    await tracker.close()
+
+
+asyncio.run(log_results())
 ```
+
+It prints:
+
+```text
+rho=0.210  variance reduction=4.4%
+raw   lift 3.160 (SE 0.1638)
+CUPED lift 3.175 (SE 0.1601)
+DiD delta = -23,208 (SE 4,334)
+pre-trend slope difference = 1,045/quarter, p = 0.56
+```
+
+Two honest readings. First, CUPED is only as good as `ρ`: here the
+pre-period metric correlates weakly with revenue (0.21), so the
+standard error shrinks by about 2% — the 49% figure needs `ρ = 0.7`.
+Second, the DiD coefficient `δ` from the interaction regression is
+exactly the four-means calculation above, with its standard error for
+free.
 
 ## Worked Example — CUPED on a Conversion Test
 
@@ -3523,21 +4010,21 @@ the experiment nearly 3x faster.
 **Problem 1 — CUPED math.** `ρ = 0.6`. What is the variance
 reduction and sample size multiplier?
 
-*Solution.* `1 − 0.36 = 0.64` variance remaining. So sample
+_Solution._ `1 − 0.36 = 0.64` variance remaining. So sample
 size multiplier is `1/0.64 = 1.5625`. Variance reduction is
 36%. Sample size needed is 64% of raw.
 
 **Problem 2 — θ estimation.** `Cov(Y, X_pre) = 30`, `Var(X_pre) = 25`.
 Compute `θ*`.
 
-*Solution.* `θ* = 30 / 25 = 1.2`.
+_Solution._ `θ* = 30 / 25 = 1.2`.
 
 **Problem 3 — Parallel trends.** You look at monthly averages
 2018–2020 for treated and control groups. Treated is growing
 at 2% per quarter, control at 1.5% per quarter. Does parallel
 trends hold?
 
-*Solution.* Not cleanly — there's a 0.5% gap in growth rates.
+_Solution._ Not cleanly — there's a 0.5% gap in growth rates.
 You'd do a formal pre-trend regression and check if the
 difference is statistically significant. If yes, DiD is biased;
 consider Synthetic Control or an event-study model instead.
@@ -3546,7 +4033,7 @@ consider Synthetic Control or an event-study model instead.
 `Y_treat_post = 130`, `Y_control_pre = 90`, `Y_control_post = 110`.
 Compute the DiD.
 
-*Solution.*
+_Solution._
 
 ```
 DiD = (130 − 100) − (110 − 90) = 30 − 20 = 10
@@ -3558,7 +4045,7 @@ Treatment added 10 units beyond the underlying time trend.
 simultaneously with a city-wide subway-closure crisis. What
 happens to your DiD estimate?
 
-*Solution.* If the crisis affects only the treated city (or
+_Solution._ If the crisis affects only the treated city (or
 asymmetrically), the control is no longer a valid proxy and
 parallel trends fails. DiD confounds the subway effect with
 the campaign effect. Fix: find a better control (another city
@@ -3578,9 +4065,10 @@ unaffected by the crisis) or wait for the post-crisis data.
 ## Reflection
 
 Pick a question your team answers with an A/B test. Is there a
-pre-experiment metric that correlates with the outcome? If
-yes, your next experiment can be 30–70% faster with CUPED.
-That alone is worth the cost of this lesson.
+pre-experiment metric that correlates with the outcome? Compute
+`ρ` on last quarter's data before you plan: at `ρ = 0.5` CUPED cuts
+the required sample by a quarter, at `ρ = 0.8` by almost two thirds,
+and at `ρ = 0.2` (the course's experiment file) by only 4%.
 
 ---
 
@@ -3594,101 +4082,136 @@ messy data, a deadline, and an audience that doesn't care
 about p-values. You have to pull together every tool from
 Module 2 — probability, estimation, testing, regression,
 logistic regression, and causal inference — and produce a
-*useful* answer.
+_useful_ answer.
 
-This final lesson walks through a complete end-to-end project
-on Singapore HDB data. The narrative is: **"What drives HDB
-resale prices, and are price changes between years driven by
-flat characteristics or by market dynamics?"**
+### Choose a project
+
+Every option uses a dataset already in the course data folder:
+
+- **Option A — HDB resale valuation** (`mlfp01/hdb_resale.parquet`).
+  Typed features, point-in-time retrieval, regression with lineage.
+  Exercise 8 walks through it step by step, and it is the path this
+  lesson follows.
+- **Option B — Singapore economic indicators**
+  (`mlfp01/economic_indicators.csv`). Model GDP growth from trade
+  balance, unemployment and inflation.
+- **Option C — Experiment design and analysis**
+  (`mlfp02/experiment_data.parquet`). SRM against the designed split,
+  CUPED, and a defended ship / no-ship decision on a four-arm
+  experiment with one broken arm.
+
+The guiding question for Option A: **"What drives HDB resale prices in
+the course file, and how well does a model trained on the past predict
+next year's sales?"**
 
 ## The Full Pipeline
 
-### Step 1 — Load and explore
+### Step 1 — Load, describe, validate
+
+Profile the raw file with `DataExplorer` (through the course's
+`run_profile` helper, which runs the async `profile()` for you), then
+apply explicit validation rules. The file contains impossible rows on
+purpose: leases that start after the sale (so more than 99 years
+remain) and sentinel prices.
+
+### Step 2 — Engineer features
+
+`FeatureEngineer.generate` proposes candidate features from a typed
+schema (here temporal parts of the sale date and an
+area × lease interaction); `FeatureEngineer.select` ranks them against
+the target and keeps the best `top_k`.
 
 ```python
 import polars as pl
-from kailash_ml import DataExplorer
-from shared import MLFPDataLoader
+from kailash_ml import FeatureEngineer, FeatureField, FeatureSchema
 
-loader = MLFPDataLoader()
-hdb = loader.load("mlfp01", "hdb_resale.parquet")
+from shared import MLFPDataLoader, run_profile
+from shared.mlfp02.ex_8 import compute_v1_features, load_hdb_resale, validate_v1_features
 
-DataExplorer().explore(hdb, target="resale_price")
+# Step 1 - describe: profile the raw file, then apply the validation rules
+hdb = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+profile = run_profile(hdb)
+print(f"{profile.n_rows:,} rows, {len(profile.alerts)} profile alerts")
+valid, violations = validate_v1_features(compute_v1_features(load_hdb_resale()))
+print(violations)  # rule -> number of rows breaking it
+print(f"{hdb.height - valid.height:,} rows removed, {valid.height:,} kept")
+
+# Step 2 - engineer: temporal + interaction candidates, then keep the best
+df = valid.with_columns(pl.col("transaction_date").cast(pl.Datetime))
+schema = FeatureSchema(
+    name="hdb_capstone", entity_id_column="transaction_id",
+    features=[FeatureField("floor_area_sqm", "float64"),
+              FeatureField("remaining_lease_years", "float64"),
+              FeatureField("transaction_date", "datetime")])
+fe = FeatureEngineer(max_features=10)
+generated = fe.generate(df, schema, strategies=["temporal", "interactions"])
+selected = fe.select(generated.data, generated, target="resale_price", top_k=3)
+print([c for c in generated.data.columns if c not in df.columns])
+print(selected.selected_columns)
 ```
 
-The explorer prints schema, summary stats, missing counts, and
-target distribution. Use it to catch typos, out-of-range
-values, and imbalanced categories before modelling.
+On the course file: the profile raises 7 alerts; the rules remove
+3,536 rows (3,298 leases starting after the sale, 251 sentinel prices,
+some rows breaking both), leaving 46,614. `generate` adds
+`floor_area_sqm_x_remaining_lease_years` and the `transaction_date`
+month, day-of-week and hour parts; `select` keeps `floor_area_sqm`
+(importance 0.88), the area × lease interaction (0.05) and the sale
+month (0.03). The hour of a monthly date is constant — a generated
+feature with zero importance is exactly what selection is for.
 
-### Step 2 — Feature engineering
+### Step 3 — Hypothesise
 
-Temporal features (month, quarter, year), geographic features
-(distance to CBD, proximity to nearest MRT), and interaction
-terms (area × central) are the first round. See Module 3 for
-a systematic approach; here we prototype.
+Write three hypotheses, each testable with the data you have:
 
-```python
-from kailash_ml import FeatureEngineer
+1. _"Floor area is the strongest predictor of price, controlling
+   for storey, lease and town."_
+2. _"Town matters: after controlling for flat characteristics, the
+   town dummies are jointly significant."_
+3. _"Remaining lease affects price non-linearly: the squared lease
+   term is significant."_
 
-engineer = FeatureEngineer()
-hdb_feat = engineer.add_temporal(hdb, date_col="month")
-hdb_feat = engineer.add_distance_to_point(
-    hdb_feat, lat_col="lat", lon_col="lon",
-    point_lat=1.2833, point_lon=103.8500, name="dist_to_raffles_km"
-)
-```
+### Step 4 — Test and model
 
-### Step 3 — Hypothesis
+Fit the Lesson 2.5 regression (floor area, storey midpoint, remaining
+lease, town dummies with Ang Mo Kio as base) and read the tests:
 
-Write three hypotheses, each testable:
+- **H1:** `floor_area_sqm` has `t ≈ 525`; no other predictor comes
+  close. Supported.
+- **H2:** an F-test comparing the model with and without the 26 town
+  dummies gives `F ≈ 405` on (26, 46,583) df, p < 0.001. Supported.
+- **H3:** adding `remaining_lease_years²` gives a squared-term
+  `t ≈ −1.16` (p = 0.25). Not supported _in this file_ — report it as
+  a null result, not as "no effect in the market".
 
-1. *"Floor area is the single strongest predictor of price,
-   controlling for lease and location."*
-2. *"The 2021 cooling measures reduced investment-segment
-   growth by at least SGD 10K."*
-3. *"Remaining lease affects price non-linearly: the last 30
-   years of lease lose value faster than the middle 30."*
+### Step 5 — Check for leakage, then evaluate out of time
 
-### Step 4 — Tests
+A valuation model will be used on _future_ sales, so evaluate it that
+way: train only on what was known at a cutoff date, and test on what
+came after. Doing this by hand is error-prone; the `FeatureStore` makes
+it structural (next section). Two leakage traps to avoid:
 
-- Hypothesis 1: fit a multivariate OLS, look at the t-statistic
-  on `floor_area_sqm` and the partial R² contribution.
-- Hypothesis 2: DiD with treated = investment, control =
-  first-time buyers.
-- Hypothesis 3: fit a regression with `remaining_lease` and
-  `remaining_lease²`; check if the squared term is significant.
-
-### Step 5 — Model
-
-```python
-from kailash_ml import TrainingPipeline
-
-pipeline = TrainingPipeline(task="regression", estimator="ols")
-pipeline.fit(hdb_feat.select([
-    "floor_area_sqm", "remaining_lease_years", "dist_to_raffles_km",
-    "storey_mid", "year", "flat_type", "town"
-]).to_pandas(),
-    hdb_feat["resale_price"].to_numpy())
-
-print(pipeline.summary())
-```
+- **Target leakage.** A feature computed from the row's own price —
+  for example a town median that _includes_ the current month — leaks
+  the answer into the inputs. Exercise 8.3 builds town features from
+  the six months _before_ each sale only.
+- **Time leakage.** Fitting on 2024 sales and then "predicting" 2023
+  sales uses the future to explain the past. A point-in-time read
+  prevents it.
 
 ### Step 6 — Interpret
 
-Write a two-paragraph narrative for a non-technical audience:
+Write a short narrative for a non-technical audience, using only
+numbers your analysis produced:
 
-> "Floor area is the biggest driver of HDB resale prices: each
-> additional square metre adds about SGD 3,200, all else
-> equal. Location matters almost as much — being 1 km closer to
-> Raffles is worth SGD 15K. Remaining lease has a non-linear
-> effect: flats with less than 30 years of lease lose value
-> sharply, consistent with CPF loan-eligibility rules.
->
-> "The December 2021 ABSD hike reduced investment-segment
-> price growth by SGD 18K relative to the first-time-buyer
-> control group (95% CI [SGD 12K, SGD 24K], p < 0.001). The
-> policy had a measurable cooling effect on the targeted
-> segment without dampening first-time-buyer prices."
+> "Floor area is by far the biggest driver of resale prices in this
+> data: each additional square metre is associated with about
+> SGD 9,100 more, all else equal. Location matters too — flats in
+> Bishan, Queenstown and Toa Payoh sell for roughly SGD 130,000 more
+> than comparable flats in Ang Mo Kio. Storey and remaining lease
+> show no detectable effect in this dataset. Even a simple model
+> using only floor area and lease, trained on 2023 sales, explains 83%
+> of the variation in 2024 prices, so the relationship holds up on
+> sales the model has never seen."
 
 ### Step 7 — Present
 
@@ -3698,55 +4221,120 @@ A good final report has:
    do.
 2. **Chart 1:** coefficient plot with 95% CIs, sorted by
    magnitude. Labels in plain English.
-3. **Chart 2:** DiD event-study plot showing both groups' means
-   over time, vertical line at treatment date.
-4. **Methodology appendix.** Data sources, assumptions, checks
-   run (SRM, pre-trends, residual diagnostics).
+3. **Chart 2:** predicted vs actual (or residuals) for the
+   out-of-time test year. For a policy question (Option C, or a
+   DiD extension), an event-study plot of both groups' means over
+   time with a vertical line at the treatment date.
+4. **Methodology appendix.** Data sources, validation rules and
+   rows removed, assumptions, checks run (SRM, pre-trends, residual
+   diagnostics, point-in-time cutoff).
 
 ## Kailash Engines — Full Integration
 
+### Point-in-time correctness with the FeatureStore
+
+A `FeatureSchema` (from `kailash_ml.features`) is a typed contract: an
+entity id, an **event timestamp**, and typed fields. `materialize`
+writes a frame to the store (an idempotent upsert keyed by entity and
+time, stamped with a version and lineage hash). `get_features(schema,
+timestamp=cutoff)` then returns only rows stamped **at or before** the
+cutoff — the store, not your discipline, guarantees that a model
+"trained in December 2023" sees nothing from 2024.
+
+The block below materialises the 2023–2024 sales (about 10,000 rows),
+takes the end-of-2023 snapshot as the training set and the 2024 rows as
+an out-of-time test set, fits OLS on the snapshot, and logs the run.
+Two practical notes: use the `kailash_ml.features.FeatureSchema` here
+(the top-level `kailash_ml.FeatureSchema` used by `FeatureEngineer`
+above is a different class that `FeatureStore` rejects), and give
+DataFlow an **absolute** sqlite path. Materialising writes row by row,
+so allow several minutes.
+
 ```python
-from kailash_ml import (
-    DataExplorer, PreprocessingPipeline, FeatureEngineer,
-    FeatureStore, FeatureSchema, TrainingPipeline,
-    ExperimentTracker, ModelVisualizer
+import asyncio
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import polars as pl
+from dataflow import DataFlow
+from kailash_ml import ExperimentTracker, ModelVisualizer
+from kailash_ml.features import FeatureField, FeatureGroup, FeatureSchema, FeatureStore
+
+from shared.mlfp02.ex_8 import compute_v1_features, load_hdb_resale, validate_v1_features
+
+# 1. Validate (drops the 3,536 impossible rows), keep 2023-2024
+valid, violations = validate_v1_features(compute_v1_features(load_hdb_resale()))
+recent = valid.filter(pl.col("transaction_date") >= pl.date(2023, 1, 1))
+
+# 2. Typed contract: entity id + event time + typed fields
+schema = FeatureSchema(
+    name="mlfp02_hdb_capstone",
+    fields=(
+        FeatureField("floor_area_sqm", "float64"),
+        FeatureField("remaining_lease_years", "float64"),
+        FeatureField("resale_price", "float64"),
+    ),
+    entity_id_column="transaction_id",
+    timestamp_column="transaction_date",
+)
+frame = recent.select(
+    pl.col("transaction_id").cast(pl.Int64),
+    pl.col("transaction_date").cast(pl.Datetime("us")),
+    *[pl.col(f.name).cast(pl.Float64) for f in schema.fields],
 )
 
-# 1. Schema
-schema = FeatureSchema({
-    "resale_price": {"dtype": "float", "description": "SGD"},
-    "floor_area_sqm": {"dtype": "float", "min": 20, "max": 300},
-    "remaining_lease_years": {"dtype": "float", "min": 0, "max": 99},
-    "dist_to_raffles_km": {"dtype": "float", "min": 0},
-    "town": {"dtype": "categorical"},
-})
+# DataFlow needs an ABSOLUTE sqlite path: a relative "sqlite:///x.db" fails on write
+STORE_URL = f"sqlite:///{Path('mlfp02_capstone.db').resolve()}"
 
-# 2. Feature store
-store = FeatureStore()
-store.register_schema("mlfp02_hdb", schema)
-store.ingest("mlfp02_hdb", hdb_feat)
 
-# 3. Retrieve with as-of (prevents leakage)
-features_2024 = store.get_features("mlfp02_hdb", as_of="2024-12-31")
+async def materialise_and_snapshot(cutoff: datetime) -> tuple[pl.DataFrame, pl.DataFrame]:
+    store = FeatureStore(DataFlow(STORE_URL), default_tenant_id="_single")
+    await store.materialize(FeatureGroup(schema, dataflow=store.dataflow), frame)
+    as_of = await store.get_features(schema, timestamp=cutoff)  # rows stamped <= cutoff
+    everything = await store.get_features(schema)
+    return as_of, everything
 
-# 4. Train
-pipeline = TrainingPipeline(task="regression", estimator="ols")
-pipeline.fit(features_2024.drop("resale_price").to_pandas(),
-             features_2024["resale_price"].to_numpy())
 
-# 5. Log everything
-with ExperimentTracker().start_run(name="mlfp02_capstone") as run:
-    run.log_param("model", "ols")
-    run.log_param("n", len(features_2024))
-    run.log_metric("r_squared", pipeline.r_squared_)
-    run.log_metric("adjusted_r_squared", pipeline.adj_r_squared_)
-    run.log_metric("f_statistic", pipeline.f_stat_)
-    run.log_artifact("coefficient_plot",
-                     ModelVisualizer().coefficient_plot(pipeline))
+train, everything = asyncio.run(materialise_and_snapshot(datetime(2023, 12, 31, 23, 59, 59)))
+test = everything.join(train.select("transaction_id"), on="transaction_id", how="anti")
+print(f"stored {everything.height:,} rows; as of 31 Dec 2023: {train.height:,}; 2024 hold-out: {test.height:,}")
+
+
+def design(df: pl.DataFrame) -> np.ndarray:
+    return np.column_stack([np.ones(df.height),
+                            df.select("floor_area_sqm", "remaining_lease_years").to_numpy()])
+
+
+beta = np.linalg.lstsq(design(train), train["resale_price"].to_numpy(), rcond=None)[0]
+y_test = test["resale_price"].to_numpy()
+pred = design(test) @ beta
+r2_test = 1 - np.sum((y_test - pred) ** 2) / np.sum((y_test - y_test.mean()) ** 2)
+print(f"area +{beta[1]:,.0f}/sqm, lease {beta[2]:+,.0f}/yr, out-of-time R2 = {r2_test:.3f}")
+fig = ModelVisualizer().residuals(y_test, pred)
+
+
+async def log_capstone() -> None:
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_capstone", run_name="pit_ols") as run:
+        await run.log_params({"feature_schema": schema.name, "schema_version": str(schema.version),
+                              "train_as_of": "2023-12-31", "test": "2024"})
+        await run.log_metrics({"beta_area": float(beta[1]), "r2_out_of_time": float(r2_test),
+                               "n_train": float(train.height), "n_test": float(test.height)})
+    await tracker.close()
+
+
+asyncio.run(log_capstone())
 ```
 
-Every step is logged, versioned, and lineage-traced. A year
-from now, you (or a new teammate) can rerun the exact analysis.
+It prints `stored 9,990 rows; as of 31 Dec 2023: 4,991; 2024
+hold-out: 4,999` and `area +9,120/sqm, lease +78/yr, out-of-time R2 =
+0.831`. The out-of-time `R²` (0.831) is close to the in-sample and
+cross-validated values from Lesson 2.5 (0.86 with towns; 0.83 with
+area alone), so the model is not exploiting anything that disappears
+in the following year. The tracker run ties the result to the schema
+name and version, the cutoff and the test year: a year from now you
+can say exactly which data produced which number.
 
 ## Cross-References
 
@@ -3755,10 +4343,10 @@ from now, you (or a new teammate) can rerun the exact analysis.
 - **Module 4** introduces unsupervised methods (clustering,
   dimensionality reduction) as complements to the supervised
   tools we used here.
-- **Module 5** adds LLM-based synthesis — a good final report
+- **Module 6** adds LLM-based synthesis — a good final report
   can be drafted by an agent using the experiment tracker's
   metadata as context.
-- **Module 6** adds alignment and governance — every model
+- **Module 6** also adds alignment and governance — every model
   that goes to production needs a documented sign-off.
 
 ## Reflection
@@ -3776,7 +4364,7 @@ audit? Specifically:
 
 If any answer is "no," you now know what to do about it. That's
 the goal of Module 2: graduate from "running stats functions"
-to *statistical thinking*.
+to _statistical thinking_.
 
 ---
 
@@ -3787,7 +4375,7 @@ to *statistical thinking*.
 - Probability is the language of uncertainty. Bayes' theorem
   updates beliefs when new evidence arrives.
 - Population parameters (Greek) vs sample statistics (Latin).
-- Confidence intervals are properties of the *procedure*, not
+- Confidence intervals are properties of the _procedure_, not
   of individual intervals.
 - A/B tests need hypotheses, randomisation, power analysis,
   and SRM checks.
@@ -3805,8 +4393,8 @@ to *statistical thinking*.
   precise your estimator can be.
 - Bootstrap resamples with replacement to estimate sampling
   distributions when formulas don't exist.
-- CUPED reduces variance by `(1 − ρ²)` via regression on a
-  pre-experiment covariate.
+- CUPED multiplies variance by `(1 − ρ²)` — a reduction of `ρ²` —
+  via regression on a pre-experiment covariate.
 - DiD identifies causal effects under the parallel trends
   assumption.
 - ANOVA is regression with categorical predictors; the F-test
@@ -3824,17 +4412,21 @@ to *statistical thinking*.
 
 ## Engines You Now Own
 
-- **ExperimentTracker** — log every parameter and metric.
-- **FeatureEngineer** — generate temporal, interaction, and
-  polynomial features.
-- **FeatureStore** — store features with schema, versioning,
-  and point-in-time correctness.
-- **TrainingPipeline** — fit linear and logistic regressions
-  with full inferential output.
-- **ModelVisualizer** — coefficient plots, residual
-  diagnostics, posterior overlays.
+- **ExperimentTracker** — record every parameter and metric of an
+  analysis run (async: `await ExperimentTracker.create(...)`,
+  `async with tracker.track(...)`). It records; your code computes.
+- **FeatureEngineer** — `generate` candidate features (temporal,
+  interaction, polynomial) from a typed schema; `select` the best.
+- **FeatureStore** — typed, versioned feature tables with lineage
+  and point-in-time reads (`get_features(schema, timestamp=...)`).
+- **ModelVisualizer** — residual plots, ROC curves, confusion
+  matrices, histograms.
 - **DataExplorer** — from Module 1, used to sanity-check every
   new dataset before modelling.
+- **TrainingPipeline** — met in name only here: it trains
+  _predictive_ models from a feature store and becomes the core
+  engine in Module 3. In Module 2 you built the inferential
+  regression tables yourself.
 
 ## What's Next
 
@@ -3849,7 +4441,8 @@ inside a full MLOps workflow.
 > with you into Module 3 and every production model you ever
 > build.
 
-See you in Module 3: Supervised ML — Theory to Production.
+See you in Module 3: Supervised Machine Learning for Building and
+Deploying Models.
 
 ---
 
@@ -3898,6 +4491,7 @@ MAP estimator:           θ̂_MAP = argmax_θ (ℓ(θ) + log P(θ))
 Normal-Normal posterior: 1/σₙ² = 1/σ₀² + n/σ²
                          μₙ = σₙ² × (μ₀/σ₀² + n×x̄/σ²)
 95% CI (Normal):         x̄ ± 1.96 × (s / √n)
+95% prediction interval: x̄ ± t_(0.975, n−1) × s × √(1 + 1/n)   (one new observation)
 ```
 
 ## Hypothesis Testing (Lesson 2.3)
@@ -3945,6 +4539,7 @@ F-statistic:             F = (SS_reg / p) / (SS_res / (n − p − 1))
 ```
 Sigmoid:                 σ(z) = 1 / (1 + e^(−z))
 Sigmoid derivative:      σ'(z) = σ(z) × (1 − σ(z))
+Odds:                    odds = p / (1 − p)
 Logit (log-odds):        logit(p) = log(p / (1 − p))
 Model:                   logit(P(y=1 | x)) = xᵀβ
 Log-likelihood:          ℓ(β) = Σᵢ [yᵢ × xᵢᵀβ − log(1 + e^(xᵢᵀβ))]
@@ -3964,7 +4559,7 @@ SS_within:               Σ_g Σ_i (xᵢ_g − x̄_g)²
 ```
 CUPED adjustment:        Y_adj = Y − θ × (X_pre − E[X_pre])
 Optimal theta:           θ* = Cov(Y, X_pre) / Var(X_pre)
-CUPED variance:          Var(Y_adj) = Var(Y) × (1 − ρ²)
+CUPED variance:          Var(Y_adj) = Var(Y) × (1 − ρ²)     (reduction = ρ²)
 Sample size ratio:       n_CUPED / n_raw = 1 − ρ²
 
 Potential outcomes:      τᵢ = Yᵢ(1) − Yᵢ(0)
@@ -3997,7 +4592,7 @@ probabilities.
 and evidence. Derived from the symmetry of the multiplication rule.
 
 **Bayesian.** An approach that treats parameters as random variables
-with probability distributions. Contrast with *frequentist*.
+with probability distributions. Contrast with _frequentist_.
 
 **Bessel's correction.** Dividing by `n − 1` instead of `n` when
 estimating sample variance, to get an unbiased estimator.
@@ -4023,7 +4618,7 @@ random variables with finite variance is approximately Normally
 distributed regardless of the original distribution.
 
 **Confidence interval (CI).** A random interval that contains the true
-parameter with a specified probability *under repeated sampling*. Not
+parameter with a specified probability _under repeated sampling_. Not
 a Bayesian credible interval.
 
 **Conjugate prior.** A prior distribution that, combined with a given
@@ -4200,7 +4795,7 @@ tools. Skim this before submitting any analysis.
    parameter."** It doesn't; that's the Bayesian interpretation. Use
    a credible interval if you want that statement.
 4. **Treating a p-value as `P(H₀ | data)`.** p is `P(data ≥ observed
-   | H₀)`. Never the reverse.
+| H₀)`. Never the reverse.
 5. **Running an underpowered experiment and concluding "no effect."**
    A non-significant p-value with low power is uninformative. Always
    compute power up front.
@@ -4212,7 +4807,7 @@ tools. Skim this before submitting any analysis.
 8. **Interpreting `R²` without checking assumptions.** High `R²` on a
    misspecified model is worthless. Plot residuals.
 9. **Omitting the dummy-variable base.** Either drop one dummy or
-   fit without an intercept — never both all `k` dummies *and* an
+   fit without an intercept — never both all `k` dummies _and_ an
    intercept, which produces a singular `XᵀX`.
 10. **Confusing ANOVA with post-hoc tests.** ANOVA says "somewhere
     there's a difference." Use Tukey HSD to find which pairs differ.
@@ -4239,7 +4834,7 @@ tools. Skim this before submitting any analysis.
     prevalence is 0.1%" — in whom? Hospitalised patients have a very
     different base rate from the general public.
 19. **Not logging the experiment design.** If you didn't log the
-    hypothesis, power analysis, and SRM threshold *before* looking
+    hypothesis, power analysis, and SRM threshold _before_ looking
     at results, you can't defend against post-hoc rationalisation.
 20. **Assuming correlation implies causation.** It doesn't. Ever.
     Causal claims require either randomisation or explicit causal
@@ -4252,26 +4847,26 @@ tools. Skim this before submitting any analysis.
 Use this table to decide which tool from Module 2 fits a given
 question.
 
-| Question                                                        | Tool                                      |
-|-----------------------------------------------------------------|-------------------------------------------|
-| "Given a positive signal, what's the probability of X?"         | Bayes' theorem (Lesson 2.1)               |
-| "What's my best guess at the parameter?"                        | MLE (Lesson 2.2)                          |
-| "What's my best guess with prior knowledge?"                    | MAP (Lesson 2.2)                          |
-| "Is the sample mean reliably different from zero?"              | One-sample t-test (Lesson 2.3)            |
-| "Are two groups different on average?"                          | Two-sample t-test or permutation test     |
-| "What's a distribution-free CI for a weird statistic?"          | Bootstrap percentile or BCa               |
-| "Is my randomisation working?"                                  | SRM chi-squared check (Lesson 2.4)        |
-| "Do I have enough sample size?"                                 | Power analysis (Lesson 2.3/2.4)           |
-| "How much does X drive Y, controlling for Z?"                   | Linear regression with covariates (2.5)   |
-| "Is this coefficient statistically significant?"                | t-statistic on `β̂` (Lesson 2.5)           |
-| "Does my model do better than random?"                          | F-test (Lesson 2.5)                       |
-| "How much variance am I explaining?"                            | R² / adjusted R² (Lesson 2.5)             |
-| "Will the customer click?"                                      | Logistic regression (Lesson 2.6)          |
-| "How much more likely is Y given a 1-unit change in X?"         | Exponentiated logistic coefficient (2.6)  |
-| "Do three or more groups have different means?"                 | ANOVA + Tukey HSD (Lesson 2.6)            |
-| "How do I detect smaller effects with the same sample?"         | CUPED (Lesson 2.7)                        |
-| "What's the effect of a policy I can't randomise?"              | DiD with parallel-trends check (2.7)      |
-| "How do I tell a story with all of the above?"                  | Capstone pipeline (Lesson 2.8)            |
+| Question                                                | Tool                                     |
+| ------------------------------------------------------- | ---------------------------------------- |
+| "Given a positive signal, what's the probability of X?" | Bayes' theorem (Lesson 2.1)              |
+| "What's my best guess at the parameter?"                | MLE (Lesson 2.2)                         |
+| "What's my best guess with prior knowledge?"            | MAP (Lesson 2.2)                         |
+| "Is the sample mean reliably different from zero?"      | One-sample t-test (Lesson 2.3)           |
+| "Are two groups different on average?"                  | Two-sample t-test or permutation test    |
+| "What's a distribution-free CI for a weird statistic?"  | Bootstrap percentile or BCa              |
+| "Is my randomisation working?"                          | SRM chi-squared check (Lesson 2.4)       |
+| "Do I have enough sample size?"                         | Power analysis (Lesson 2.3/2.4)          |
+| "How much does X drive Y, controlling for Z?"           | Linear regression with covariates (2.5)  |
+| "Is this coefficient statistically significant?"        | t-statistic on `β̂` (Lesson 2.5)          |
+| "Does my model do better than random?"                  | F-test (Lesson 2.5)                      |
+| "How much variance am I explaining?"                    | R² / adjusted R² (Lesson 2.5)            |
+| "Will the customer click?"                              | Logistic regression (Lesson 2.6)         |
+| "How much more likely is Y given a 1-unit change in X?" | Exponentiated logistic coefficient (2.6) |
+| "Do three or more groups have different means?"         | ANOVA + Tukey HSD (Lesson 2.6)           |
+| "How do I detect smaller effects with the same sample?" | CUPED (Lesson 2.7)                       |
+| "What's the effect of a policy I can't randomise?"      | DiD with parallel-trends check (2.7)     |
+| "How do I tell a story with all of the above?"          | Capstone pipeline (Lesson 2.8)           |
 
 ---
 
@@ -4294,8 +4889,8 @@ difficulty:
    Core reference for Lesson 2.7.
 5. **Trustworthy Online Controlled Experiments** (Kohavi, Tang, Xu).
    Practical guide to A/B testing at scale, including CUPED,
-   sequential testing, and interference. Written by the team that
-   ran thousands of experiments at Microsoft.
+   sequential testing, and interference. Written by practitioners who
+   led large-scale online experimentation programmes.
 6. **Causal Inference: The Mixtape** (Cunningham). Free online.
    Friendly introduction to DiD, IV, RDD, and synthetic control.
 7. **The Elements of Statistical Learning** (Hastie, Tibshirani,
@@ -4331,10 +4926,10 @@ answer all 20 without looking, you're ready.
 5. Derive the two equivalent forms of variance.
 6. Why does sample variance divide by `n − 1` rather than `n`?
 7. State the Central Limit Theorem in one sentence.
-8. What is the *correct* interpretation of a 95% confidence
-   interval? What is the *incorrect* one that most people use?
+8. What is the _correct_ interpretation of a 95% confidence
+   interval? What is the _incorrect_ one that most people use?
 9. Derive the MLE for the Normal mean and variance.
-10. Explain the p-value in plain language. What is it *not*?
+10. Explain the p-value in plain language. What is it _not_?
 11. What is power, and what four things determine it?
 12. Describe how a permutation test works, step by step.
 13. What is an SRM, and how do you detect it?
@@ -4354,5 +4949,5 @@ Solutions are throughout Lessons 2.1–2.7. No cheat sheet.
 
 ---
 
-*End of Module 2 textbook chapter. Continue to Module 3 — Supervised
-Machine Learning: Theory to Production.*
+_End of Module 2 textbook chapter. Continue to Module 3 — Supervised
+Machine Learning for Building and Deploying Models._

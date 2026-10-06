@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -345,12 +345,14 @@ $$\hat{\theta}_{\text{MAP}} \;=\; \arg\max_\theta P(\text{data} \mid \theta)\,P(
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    Every MLE run you log to <code>ExperimentTracker</code> captures the
-    likelihood function, the optimiser trajectory, and the final parameter
-    vector. When you return to the experiment six months later (or when a
-    reviewer asks you to justify a number), you replay the entire fit. In
-    today's exercise you will call <code>scipy.optimize.minimize</code>
-    directly; the tracker just records what you did.
+    <code>ExperimentTracker</code> records what you choose to log — parameters
+    (e.g. the model family and starting values) and metrics (e.g. the fitted
+    $\hat\mu$, $\hat\sigma$ and the final log-likelihood) — against a run id
+    and timestamp, so a reviewer can see six months later which fit produced
+    a number. It does not store the likelihood function or replay the
+    optimiser: the fit itself is your <code>scipy.optimize.minimize</code>
+    call. Today's exercise fits everything directly with SciPy and logs
+    nothing; you will use the tracker's async API in Lesson 2.4.
   </p>
 </div>
 
@@ -361,8 +363,11 @@ $$\hat{\theta}_{\text{MAP}} \;=\; \arg\max_\theta P(\text{data} \mid \theta)\,P(
   <h3>📝 Goal</h3>
   <p>
     Load Singapore quarterly GDP growth rates from
-    <code>economic_indicators.csv</code>, compute the MLE of $(\mu, \sigma^2)$
-    for a Normal model, and construct a 95% confidence interval for the mean.
+    <code>economic_indicators.csv</code> (a Module 1 dataset), compute the MLE of
+    $(\mu, \sigma^2)$ for a Normal model, and construct a 95% confidence
+    interval for the mean. The file mixes monthly and quarterly rows; GDP
+    growth is only filled on the quarterly rows, so <code>drop_nulls()</code>
+    keeps exactly those.
   </p>
 
   <div class="step">
@@ -373,10 +378,11 @@ from scipy import stats
 from shared import MLFPDataLoader
 
 loader = MLFPDataLoader()
-df = loader.load("mlfp02", "economic_indicators.csv")
+df = loader.load("mlfp01", "economic_indicators.csv")
 growth = df["gdp_growth_pct"].drop_nulls().to_numpy()
 n = len(growth)
 print(f"n = {n}")</code></pre>
+    <pre><code class="language-text">n = 101</code></pre>
   </div>
 
   <div class="step">
@@ -390,8 +396,12 @@ sigma2_s  = growth.var(ddof=1)   # divide by n-1 (unbiased)
 print(f"MLE variance        = {sigma2_ml:.4f}")
 print(f"Unbiased variance   = {sigma2_s:.4f}")
 print(f"Ratio (n/(n-1))     = {sigma2_s/sigma2_ml:.4f}")</code></pre>
+    <pre><code class="language-text">MLE variance        = 16.5341
+Unbiased variance   = 16.6994
+Ratio (n/(n-1))     = 1.0100</code></pre>
     <p>
-      The ratio should be exactly $n/(n-1)$ — Bessel's correction in numbers.
+      The ratio is exactly $n/(n-1) = 101/100$ — Bessel's correction in numbers.
+      With $n = 101$ the correction is only 1%; with $n = 5$ it would be 25%.
     </p>
   </div>
 
@@ -416,9 +426,10 @@ result = minimize(
 )
 mu_fit, log_sigma_fit = result.x
 print(f"Numerical MLE: mu = {mu_fit:.4f}, sigma = {np.exp(log_sigma_fit):.4f}")</code></pre>
+    <pre><code class="language-text">Numerical MLE: mu = 3.8995, sigma = 4.0662</code></pre>
     <p>
-      The numerical fit should match $\bar{x}$ and the biased sample std to
-      within floating-point precision.
+      The numerical fit matches $\bar{x}$ and the biased sample std
+      ($\sqrt{16.5341} = 4.0662$) to the printed precision.
     </p>
   </div>
 
@@ -430,6 +441,15 @@ t_crit = stats.t.ppf(0.975, df=n - 1)
 lo, hi = mu_hat - t_crit * se, mu_hat + t_crit * se
 print(f"mu_hat = {mu_hat:.3f} ± {t_crit * se:.3f}")
 print(f"95% CI  = [{lo:.3f}, {hi:.3f}]")</code></pre>
+    <pre><code class="language-text">mu_hat = 3.900 ± 0.807
+95% CI  = [3.093, 4.706]</code></pre>
+    <p>
+      Average quarterly growth is about 3.9%, and the interval is roughly
+      3.1% to 4.7%. Remember the caveats: quarterly growth rates are
+      autocorrelated (not i.i.d.) and include a few extreme quarters
+      (the minimum is −13.5%), so this interval is optimistic — the
+      "When MLE fails" table below names the fixes.
+    </p>
   </div>
 </div>
 

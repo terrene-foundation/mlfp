@@ -1,82 +1,64 @@
-# MLFP02 — Task 3: Regression Modelling & Interpretation
+# MLFP02 — Task 3: Regression, ANOVA & Logistic Inference
 
-**Weight**: 25 marks · **Difficulty**: Hard · **Dataset**: `data/mlfp02/sg_credit_scoring.parquet` (100,000 rows, 36 columns)
+**Weight**: 25 marks · **Outcomes**: 2.5 (multiple regression, dummy coding, t/F inference, interactions), 2.6 (logistic regression, odds ratios, one-way ANOVA, Tukey HSD)
+**Data**: `mlfp01/hdb_resale.parquet` (HDB resale transactions, raw) and `mlfp02/sg_credit_scoring.parquet` (100,000 borrowers).
 
 ## Scenario
 
-A Singapore lender wants to understand what drives the **loan amount** it
-extends, and separately what drives **default**. You will fit a multiple linear
-regression with full inference, test whether non-linear terms are justified, and
-fit a logistic model for odds-ratio interpretation. Everything is closed-form
-and deterministic — no train/test split, no random solver.
+**Valuation desk.** A valuer wants a transparent price model for HDB resale
+flats: resale price explained by floor area, remaining lease, storey and flat
+type, with `3 ROOM` as the reference flat type. They want to know which
+effects are statistically distinguishable from zero, how well the model fits,
+whether the price-per-square-metre slope differs by flat type, and how well
+the model prices **later** sales it was not fitted on.
 
-Implement `solve() -> dict`.
+Facts about the raw file you must respect:
 
-## Preprocessing (no rows dropped — `n_obs == 100000`)
+- `month` is the sale month (`YYYY-MM`). An HDB lease runs 99 years from
+  `lease_commence_date`; remaining lease is measured at the sale year. The
+  `remaining_lease` text column is unreliable — do not use it.
+- `storey_range` looks like `"04 TO 06"`; some entries contain data-entry
+  typos where the letter `O` was typed for the digit `0`. Storey is the
+  midpoint of the range.
+- Recording errors that must not influence the fit: resale prices outside
+  S$100,000–S$2,000,000, and sales dated before the lease commenced.
 
-- `income_imp` = `income_sgd` with nulls (30,000 of them) filled by the
-  **median** of `income_sgd`.
-- `edu_ord` = `education` ordinal-encoded:
-  `primary→1, secondary→2, diploma→3, degree→4, postgraduate→5` (Float64).
+**Pricing analyst.** Separately, the analyst wants to know whether **price
+per square metre** differs across a set of flat types, and which pairs of flat
+types differ once you account for making several comparisons at once.
 
-## Required computation
+**Credit risk.** The risk team wants a logistic model of `default` on
+`credit_utilization, num_late_payments, previous_defaults, debt_to_income,
+num_hard_inquiries`, with odds ratios expressed **per one standard deviation**
+of each feature (standard deviation of the training data), and a verdict on
+whether the two strongest drivers actually differ in strength.
 
-1. **OLS — predict `loan_amount_sgd`** from `OLS_FEATURES`
-   = `[income_imp, age, employment_years, debt_to_income, credit_age_years,
-   num_dependents, edu_ord]`. **Standardise each predictor** (z-score,
-   population sd `ddof=0`), prepend an intercept column of ones, and solve
-   `beta` with `np.linalg.lstsq` against the **raw** target. Standardising keeps
-   the design matrix well-conditioned once the squared term is added.
-2. **Inference** — `r_squared`, `adj_r_squared`, `f_statistic`, `f_p_value`,
-   plus per-coefficient `t_stats` and two-sided `p_values`:
-   - `sigma2 = rss / (n − p)`, `se = sqrt(diag(sigma2 · (XᵀX)⁻¹))`
-   - `t = beta / se`, `p = 2 · stats.t.sf(|t|, df=n−p)`
-   - `f_statistic = (r² / (p−1)) / ((1−r²) / (n−p))`
-   - `coefficients`, `t_stats`, `p_values` are dicts keyed by feature name plus
-     `"intercept"`.
-3. **Partial F-test** — add two terms built from the **standardised** base
-   columns: `income_std²` and `age_std · employment_std`. Refit, then with
-   `q = 2`:
-   `partial_f = ((rss − rss_full)/q) / (rss_full/(n − p_full))`,
-   `partial_f_p_value = stats.f.sf(partial_f, q, n − p_full)`,
-   `delta_r_squared = r²_full − r²`. (Expect: significant F but a **negligible**
-   ΔR² — significance is not the same as practical importance.)
-4. **Logistic — predict `default`** from `LOGIT_FEATURES`
-   = `[credit_utilization, num_late_payments, previous_defaults, debt_to_income,
-   num_hard_inquiries]`. Standardise the features, prepend an intercept, fit by
-   Newton-Raphson / IRLS to convergence. Report `odds_ratios = exp(beta)` (dict
-   incl. `"intercept"`) and `strongest_logit_predictor` = the feature (excluding
-   intercept) with the largest `|beta|`.
+## What to submit
 
-## Return contract — `dict` with these exact keys
+`starter.py` with three functions (signatures fixed):
 
-```
-n_obs (int), coefficients (dict), t_stats (dict), p_values (dict),
-r_squared, adj_r_squared, f_statistic, f_p_value,
-partial_f, partial_f_p_value, delta_r_squared,
-odds_ratios (dict), strongest_logit_predictor (str)
-```
+| Function                                     | Returns                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fit_price_model(transactions)`              | dict: `n_used` (rows used in the fit), `coefficients`, `std_errors`, `p_values` (dicts keyed `"intercept"`, `"floor_area_sqm"`, `"remaining_lease_years"`, `"storey_mid"`, and `"flat_type=<TYPE>"` for every non-reference type present), `r_squared`, `adj_r_squared`, `f_statistic`, `interaction_f`, `interaction_p` (test of adding floor-area × flat-type terms), `predict` (a function: raw rows in the same schema → numpy array of predicted prices, one per row) |
+| `anova_flat_types(transactions, flat_types)` | dict: `f_stat`, `p_value`, `eta_squared`, `tukey` — keyed `"<A>                                                                                                                                                                                                                                                                                                                                                                                                            | <B>"`with the two type names in alphabetical order, each`{"p_adj": float, "significant": bool}` at the 5% family-wise level |
+| `fit_default_model(train)`                   | dict: `odds_ratios`, `std_errors` (of the per-SD log-odds coefficients; both dicts keyed by the five feature names), `top_two` (the two features with the largest absolute effect), `top_two_p` (two-sided p-value that their effects are equal), `top_two_differ` (bool, 5% level), `predict_proba` (function: rows → default probabilities)                                                                                                                              |
 
-The three OLS dicts are keyed by `"intercept"` + the 7 `OLS_FEATURES`;
-`odds_ratios` is keyed by `"intercept"` + the 5 `LOGIT_FEATURES`.
+## Acceptance criteria
 
-## Visible sanity checks
-
-- `0.85 < r_squared < 0.87` (loan amount is highly predictable here)
-- `partial_f_p_value < 0.01` **but** `delta_r_squared < 1e-3`
-- `odds_ratios["debt_to_income"] > 1` (more leverage → higher default odds)
-- `strongest_logit_predictor in LOGIT_FEATURES`
-
-## Grading (12 automated checks, all must pass)
-
-return type is `dict` · all 13 keys · `n_obs` · OLS coefficients · t-stats ·
-p-values · R² · adjusted R² · F-statistic · partial F · partial-F p-value ·
-ΔR² (negligible) · odds ratios · strongest logistic predictor.
+- The grader fits your price model on a **secret raw sample** of transactions
+  before a **secret cut-off month**, compares every coefficient, standard error
+  and p-value with an independent classical-OLS reference on the same rows,
+  and scores `predict` on later transactions you never see: held-out R² must
+  be within 0.01 of the reference model's.
+- ANOVA and Tukey results are checked on a secret, already-validated sample
+  and a secret choice and order of flat types.
+- The logistic model is checked against an independent maximum-likelihood fit
+  (unpenalised) on a secret training sample; held-out AUC must be within 0.01
+  of the reference.
 
 ## Rules
 
-- **Polars only** for data wrangling — no pandas. `numpy` / `scipy.stats` for the
-  linear algebra and distributions. **No raw `sklearn` model training** — these
-  are closed-form statistical fits.
-- Load via `shared.MLFPDataLoader`.
-- Fully **deterministic** — closed-form OLS and a convex logistic MLE.
+- Polars for data handling (no pandas); numpy / scipy for the statistics.
+  You implement the fits yourself — `statsmodels` and scikit-learn models are
+  not allowed in your submission.
+- Develop on the real files via `shared.MLFPDataLoader` (see `starter.py`).

@@ -55,8 +55,8 @@ from shared.mlfp02.ex_1 import (
 #
 # The base rate fallacy: people overweight the test result and underweight
 # the base rate P(A). A COVID test with 99.5% specificity sounds nearly
-# perfect, but when prevalence is only 2%, most positive results are false
-# positives. This same error affects:
+# perfect, yet at 2% prevalence about 1 in 4 positive results is false, and
+# below ~0.6% prevalence MOST positives are false (about 85% at 0.1%). This same error affects:
 #   - Fraud detection (low base rate of actual fraud)
 #   - Medical screening (low prevalence of disease)
 #   - Property valuation (low base rate of "overpriced" listings)
@@ -83,7 +83,9 @@ p_positive = sensitivity * prevalence + (1 - specificity) * (1 - prevalence)
 # P(infected | positive test)
 p_infected_given_positive = (sensitivity * prevalence) / p_positive
 
-# P(not infected | positive test) — false positive rate among positives
+# P(not infected | positive test) — the FALSE DISCOVERY RATE (1 − PPV).
+# Not to be confused with the false positive rate FP/(FP+TN) = 1 − specificity
+# = 0.5%, which is a property of the test and does not move with prevalence.
 p_false_positive = 1 - p_infected_given_positive
 
 print(f"\n=== Bayes' Theorem: COVID ART Test ===")
@@ -96,7 +98,10 @@ print(
     f"P(infected | positive test) = {p_infected_given_positive:.4f} "
     f"({p_infected_given_positive:.1%})"
 )
-print(f"P(false positive)           = {p_false_positive:.4f} ({p_false_positive:.1%})")
+print(
+    f"P(not infected | positive)  = {p_false_positive:.4f} ({p_false_positive:.1%})"
+    "  ← false discovery rate"
+)
 # INTERPRETATION: Even with a 99.5% specificity test, when prevalence is
 # only 2%, a positive test means you're truly infected only ~77% of the
 # time. This is the base rate fallacy — ignoring prevalence leads to
@@ -154,7 +159,7 @@ fig1 = make_subplots(
     cols=2,
     subplot_titles=[
         "P(infected | positive test) vs Prevalence",
-        "False Positive Rate vs Prevalence",
+        "False Discovery Rate P(not infected | +) vs Prevalence",
     ],
 )
 
@@ -190,14 +195,14 @@ fig1.add_hline(
     annotation_text="50% — coin flip",
 )
 
-# Right: false positive rate
+# Right: false discovery rate, P(not infected | positive test)
 fp_fine = [1 - p for p in post_fine]
 fig1.add_trace(
     go.Scatter(
         x=prev_fine * 100,
         y=np.array(fp_fine) * 100,
         mode="lines",
-        name="False positive rate",
+        name="False discovery rate",
         line={"color": "blue", "width": 2},
     ),
     row=1,
@@ -207,7 +212,7 @@ fig1.add_trace(
 fig1.update_xaxes(title_text="Prevalence (%)", row=1, col=1)
 fig1.update_xaxes(title_text="Prevalence (%)", row=1, col=2)
 fig1.update_yaxes(title_text="Posterior (%)", row=1, col=1)
-fig1.update_yaxes(title_text="False Positive Rate (%)", row=1, col=2)
+fig1.update_yaxes(title_text="P(not infected | +) (%)", row=1, col=2)
 fig1.update_layout(title="Base Rate Fallacy: Why Test Results Mislead", height=450)
 fig1.write_html(str(OUTPUT_DIR / "bayes_prevalence_sweep.html"))
 print("Saved: bayes_prevalence_sweep.html")
@@ -225,8 +230,8 @@ print("\n✓ Checkpoint 3 passed — visualisations saved\n")
 #
 # This is conditional probability from real data — no formula needed,
 # just counting. But the Bayesian insight is: your PRIOR expectation
-# (market average for 4-room is ~$500K) should be updated by the
-# EVIDENCE (Bishan-specific transactions).
+# (the market-wide 4-room picture, computed below) should be updated by
+# the EVIDENCE (Bishan-specific transactions).
 
 print("=== APPLICATION: HDB Bishan Valuation ===")
 
@@ -283,8 +288,8 @@ print(
     """
   ✓ Bayes' theorem: P(A|B) = P(B|A)P(A)/P(B) — the engine behind
     every Bayesian update
-  ✓ Base rate fallacy: a 99.5% specificity test is unreliable when
-    prevalence is low — most positives are false positives
+  ✓ Base rate fallacy: at 2% prevalence about 1 in 4 positives from a
+    99.5%-specificity test is false; below ~0.6% prevalence most are
   ✓ Prevalence sweep: posterior probability is a smooth function of
     the base rate — visualised for stakeholder communication
   ✓ Real-world application: Bishan property valuation using

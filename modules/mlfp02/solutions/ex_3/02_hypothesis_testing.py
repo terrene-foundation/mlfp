@@ -27,7 +27,8 @@
 # THEORY:
 #   - Two-proportion z-test: H0: p_treatment = p_control
 #     z = (p_t - p_c) / sqrt(p_pool * (1-p_pool) * (1/n1 + 1/n2))
-#   - p-value = P(data | H0 true) -- NOT P(H0 is true)
+#   - p-value = P(data at least as extreme as observed | H0 true)
+#     -- NOT P(H0 is true)
 #   - Cohen's h = 2(arcsin(sqrt(p2)) - arcsin(sqrt(p1)))
 #   - Cohen's d = (mean2 - mean1) / s_pooled
 #   - Convention: |effect| < 0.2 negligible, < 0.5 small, < 0.8 medium, else large
@@ -335,20 +336,24 @@ print(f"Saved: {out_path}")
 #     Run longer or with more traffic.
 #   - p > 0.05 AND |Cohen's h| < 0.1 -> No evidence of meaningful effect.
 #
-# BUSINESS IMPACT: For a platform processing S$10M daily GMV, a 2pp
-# conversion lift means ~S$200K additional daily revenue. Even a
-# "small" Cohen's h of 0.05 translates to real money at scale.
+# The |h| >= 0.1 cut-off is a BUSINESS threshold — the smallest effect
+# this team considers worth shipping. It is deliberately below Cohen's
+# conventional 0.2 "small" label, because at platform scale a modest
+# lift in qualifying orders is still worth real money.
 
 print(f"\n=== Business Decision Summary ===")
-decision = (
-    "Ship the treatment"
-    if p_value_conversion < ALPHA and abs(h_conversion) > 0.1
-    else (
-        "Need more data"
-        if abs(h_conversion) > 0.05
-        else "No meaningful effect detected"
-    )
-)
+PRACTICAL_H = 0.1  # business threshold for a meaningful effect
+significant = p_value_conversion < ALPHA
+practical = abs(h_conversion) >= PRACTICAL_H
+if significant and practical:
+    decision = "Ship the treatment — significant AND practically meaningful"
+elif significant:
+    decision = "Significant but practically negligible — ship only if tiny gains matter"
+elif practical:
+    decision = "Likely underpowered — run longer or with more traffic"
+else:
+    decision = "No evidence of a meaningful effect"
+extra_orders_per_100k = (p_treatment - p_control) * 100_000
 print(
     f"""
 Experiment: e-commerce recommendation algorithm A/B test
@@ -356,7 +361,9 @@ Sample: {n_total:,} users ({n_control:,} control, {n_treatment:,} treatment)
 
 Primary metric (conversion):
   Lift: {p_treatment - p_control:+.4f} ({(p_treatment - p_control)/p_control:+.1%} relative)
-  p-value: {p_value_conversion:.6f} | Cohen's h: {h_conversion:.4f} ({h_magnitude})
+  p-value: {p_value_conversion:.6f} | Cohen's h: {h_conversion:.4f}
+  (Cohen's label: {h_magnitude}; business threshold |h| >= {PRACTICAL_H})
+  Extra qualifying orders per 100,000 users: {extra_orders_per_100k:,.0f}
 
 Multiple metrics tested: {m} (corrections needed -- see 03_multiple_testing.py)
   FWER without correction: {fwer:.1%}
@@ -377,7 +384,7 @@ print(
   [x] Two-proportion z-test for conversion rates
   [x] Mann-Whitney U for skewed continuous metrics (revenue)
   [x] Welch's t-test for continuous metrics (AOV, engagement)
-  [x] p-value: P(data | H0 true) -- NOT P(H0 is true)
+  [x] p-value: P(data at least as extreme | H0 true) -- NOT P(H0 is true)
   [x] Cohen's h and d -- practical vs statistical significance
   [x] Business decision framework: both p-value AND effect size
 

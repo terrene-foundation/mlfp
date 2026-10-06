@@ -115,3 +115,11 @@ for the same pre-filter figure at integration.
   running on the fleet host (`OllamaUnreachableError` — matches the M6 exercise agent's "Need Ollama" list).
   Full M6 verification needs an Ollama host; the non-LLM set is verified.
 - M5 pending its first clean fleet run (queued).
+
+## Final verification (2026-10-06)
+- M3 is 40/40: fleet gave 38/40 with only the two unbounded-LightGBM workflow exercises (ex_7/01, ex_7/05)
+  hanging; both confirmed finishing locally after the search-budget cap (n_trials 20→12, n_estimators ≤500,
+  ≤8k-row search subsample, n_jobs=8). The credit dev frame is 80,000 rows (docstring said ~4,240 — corrected).
+- M5 confirmed locally: ex_1/01 autoencoder, ex_7/05 ONNX export → registry → InferenceServer serving all pass.
+- Repeated fleet mirror resets (other repos' concurrent trestle runs reset the shared mlfp mirror) killed several
+  re-runs; the per-module local + fleet results above stand as the verification.

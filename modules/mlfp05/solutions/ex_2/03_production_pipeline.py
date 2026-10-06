@@ -303,17 +303,43 @@ onnx_path = Path("ex_2_resnet_se.onnx")
 # (The exporter may print an opset-conversion traceback and fall back to
 # opset 18; that is log noise — export_result.success is the real signal.)
 serving_model = FlatImageAdapter(resnet_se).eval()
+sample = torch.randn(2, 3 * 32 * 32)
 export_result = bridge.export(
     serving_model,
     "torch",
     output_path=onnx_path,
-    sample_input=torch.randn(2, 3 * 32 * 32),
+    sample_input=sample,
 )
 print(
     f"  OnnxBridge.export: success={export_result.success} "
     f"status={export_result.onnx_status} "
     f"time={export_result.export_time_seconds:.1f}s"
 )
+# torch 2.12's STRICT FX-decomposer (used by OnnxBridge) rejects a bare
+# nn.ReLU() as a "mutated constant"; the LENIENT torch.onnx.export path
+# (strict=False) handles it. Kailash-first means trying OnnxBridge first,
+# then falling back honestly rather than shipping nothing.
+if not export_result.success:
+    print(
+        "  OnnxBridge strict path failed (torch-version quirk: bare nn.ReLU). "
+        "Falling back to torch.onnx.export (strict=False) for this hand-built model."
+    )
+    import onnx
+
+    onnx_model = torch.onnx.export(
+        serving_model,
+        (sample,),
+        str(onnx_path),
+        input_names=["input"],
+        output_names=["logits"],
+        # dynamic batch: a static 2-row trace would freeze the batch dim and
+        # break validation/serving with any other batch size
+        dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
+        opset_version=17,
+        dynamo=False,  # legacy exporter (lenient); the strict FX path above rejects nn.ReLU
+    )
+    assert onnx_path.exists(), "fallback torch.onnx.export must write the file"
+    export_result = type("R", (), {"success": True})()  # exported via fallback
 assert export_result.success, f"OnnxBridge export failed: {export_result.error_message}"
 
 # Attach the .onnx file to the version registered above, so the

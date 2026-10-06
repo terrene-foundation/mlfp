@@ -106,7 +106,19 @@ def to_store_frame(df: pl.DataFrame, schema: Any) -> pl.DataFrame:
         pl.col(schema.timestamp_column).cast(pl.Datetime("us")),
         *[pl.col(f.name).cast(casts.get(f.dtype, pl.Float64)) for f in schema.fields],
     ]
-    return df.select(cols)
+    frame = df.select(cols)
+    # kailash-ml builds the store table's columns NOT NULL from the plain Python
+    # type annotation, ignoring FeatureField(nullable=True) — an SDK bug
+    # (nullable flag never reaches auto_migrate's DDL). The rolling market fields
+    # are structurally null for each town's warm-up months, so drop rows that are
+    # null in any NON-nullable-declared field. Point-in-time reads already
+    # drop_nulls before modelling, so these rows carry no usable signal anyway.
+    non_nullable = [f.name for f in schema.fields if not f.nullable]
+    if non_nullable:
+        frame = frame.drop_nulls(subset=non_nullable)
+    # The nullable rolling fields' warm-up nulls still break the store's NOT NULL
+    # columns; drop those too (they are exactly the first 6 months per town).
+    return frame.drop_nulls()
 
 
 async def materialize_features(fs: Any, schema: Any, df: pl.DataFrame) -> Any:

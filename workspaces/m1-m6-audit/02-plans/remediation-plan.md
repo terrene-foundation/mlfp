@@ -34,3 +34,18 @@ Cross-module: `specs/module-N.md` corrections ride with the module's S2.
 Waves of ≤3 worktree agents, each on an explicit branch `audit/mNN-<shard>` cut
 from the integration branch tip; merged into `fix/m1-m6-audit`, then one PR per
 module. Phase A (S1–S5 correctness) for all modules, then Phase B (S5 redesign, S6).
+
+## Verification status (2026-10-06) — what each PR carries
+- **#15 (base):** snippet checker 0 across all teaching files; redline-check 0 BLOCKING; all 594 slides pass
+  the overflow check; all 400 notebooks parse clean (402).
+- **#16 (M1):** solutions 8/8 on the fleet; speaker notes regenerated (78 slides 1:1); notebooks regenerated.
+- **#17 (M2):** solutions 33/33 on the fleet; 5-task assessment graders pass their reference (adversarial fail);
+  storey-typo + FeatureStore NOT-NULL fixes verified.
+- **#18 (M3):** solutions 40/40 after the ex_7 search-budget cap (ex_7/01 and ex_7/05 confirmed locally; the
+  hanging LightGBM workflow exercises bounded); 4-task assessment graders pass.
+- **#19 (M4):** solutions 37/38 on the fleet (only `04_bertopic`, which needs `TOPIC_EMBED_MODEL`); new TF-IDF
+  technique passes on the fleet; 5-task assessment graders pass (task_4 NMF best-of-24).
+- **#20 (M5):** exercises confirmed passing locally (ex_1/01, ex_7/05 ONNX export → serving); fleet run queued.
+- **#21 (M6):** 13/39 pass on the fleet = exactly the NON-LLM exercises (PACT/governance, drift, LoRA math).
+  The other 26 call preflight_ollama and correctly fail loudly without an Ollama host (matches the exercise
+  agent's "Need Ollama" list). Full M6 verification needs an Ollama host.

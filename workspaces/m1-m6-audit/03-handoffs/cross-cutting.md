@@ -83,3 +83,26 @@ then 2–120 km/h speed filter → 43,934 rows (hourly 1,743–1,893). Textbook 
 lesson 1.8 slides + notes were the outliers (47,547) and are now aligned. The deck capstone slides should be checked
 for the same pre-filter figure at integration.
 
+## Landed during integration (2026-10-06) — fleet-verified
+- `.gitattributes`: `data/**/*.parquet` no longer marked LFS (the plain-blob datasets 404'd every fresh
+  clone's smudge; genuine LFS = modules/**/readings/*.pdf only). git-lfs + uv installed on all fleet hosts.
+- FeatureStore NOT-NULL: kailash-ml builds the store table with NOT NULL columns from the plain Python type
+  annotation, ignoring FeatureField(nullable=True) — confirmed SDK bug. Course fix landed: store only rows with
+  usable market context (drop warm-up nulls) in shared/mlfp02/ex_8.py; M2 suite now 33/33.
+- M3 ex_7 LightGBM n_jobs capped at 8 (was unbounded → ~38 cores/fit, starved the fleet; ex_7/01 + ex_7/05
+  timed out). Suite relaunched with OMP caps.
+- M4 task_4 topic-modelling: reference is best-of-24 seeded NMF (fidelity + assignment-confidence scoring);
+  strict mean-NPMI floor kept with a worst-topic tolerance (one borderline topic may dip > -0.10). Still
+  occasionally dips on the hardest 4-section draws — a stronger deterministic topic method is a small follow-up.
+- M2 odds definition fixed (p/(1-p) = odds, not odds ratio). M1 lesson 1.8 numbers reconciled to the canonical
+  ex_8-cleaned 43,934 rows / 1,743–1,893 hourly. M1 deck slide-7 median corrected to 849,124.
+- Notebooks: all 400 regenerated (402 parse clean) after making M6 ex_3/04 + ex_4/05 notebook-safe.
+- M4 spec gaps landed: ex_6/06 TF-IDF from scratch (+ UMass via existing NPMI), verified on the fleet.
+- M2 spec gaps landed (8 techniques): Poisson/Exponential/AIC, LLN, parametric bootstrap, one-sample/one-tailed,
+  likelihood curve, log-linear price model, k-fold CV, geo features (town centroids/haversine/CBD gradient).
+  Multinomial logit in progress.
+- M6 spec gap: shared/mlfp06/ex_5.answer_question now extracts evidence from corpus text (was returning ground
+  truth); LoRA training/merging (ex_2/07) in progress.
+- M3 spec gap in progress: ex_5 log-loss in metrics taxonomy; ModelExplainer additivity investigation on the
+  real credit model (ex_6/01 already explains why it uses raw TreeExplainer).
+- M5 spec gap in progress: ex_2/05 Mixup, label smoothing, Kaiming init.

@@ -11,15 +11,15 @@
 #   - Trade longer prompts for better consistency and accuracy
 #   - Compare few-shot against the zero-shot baseline
 #
-# PREREQUISITES: 01_zero_shot.py
+# PREREQUISITES: 01_zero_shot.py (baseline metrics for comparison)
 # ESTIMATED TIME: ~30 min
 #
 # TASKS:
 #   1. Theory — what examples do to LLM behaviour
 #   2. Build — prompt with curated positive/negative exemplars
 #   3. Train — evaluate on SST-2 eval docs
-#   4. Visualise — few-shot metrics vs zero-shot expectation
-#   5. Apply — MAS supervisory report triage
+#   4. Visualise — few-shot metrics vs your measured zero-shot run
+#   5. Apply — supervisory incident-report triage at a financial regulator
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -30,10 +30,14 @@ from dotenv import load_dotenv
 
 from shared.mlfp06.ex_1 import (
     CATEGORIES,
+    compute_metrics,
     get_eval_docs,
+    load_technique_metrics,
     normalise_label,
+    plot_comparison_bars,
     print_summary,
     run_delegate,
+    save_technique_metrics,
 )
 
 load_dotenv()
@@ -106,18 +110,65 @@ print("\n[ok] Checkpoint passed — few-shot evaluation complete\n")
 # ════════════════════════════════════════════════════════════════════════
 print_summary(few_shot_results, "Few-Shot (4 examples)")
 
+# R9A: visual proof — few-shot vs zero-shot accuracy comparison.
+# The zero-shot bar comes from YOUR run of 01_zero_shot.py (saved to
+# outputs/ex1_prompting/technique_metrics.json). If you have not run it
+# yet, the chart shows only the few-shot bar — no invented baseline.
+few_shot_metrics = compute_metrics(few_shot_results, "Few-Shot")
+save_technique_metrics(few_shot_metrics)
+plot_comparison_bars(
+    load_technique_metrics(["Zero-Shot"]) + [few_shot_metrics],
+    title="Few-Shot vs Zero-Shot — Accuracy / Tokens / Latency",
+    filename="ex1_02_few_shot_comparison.png",
+)
+
+# INTERPRETATION: Few-shot usually buys a few percentage points over
+# zero-shot in exchange for several times the input tokens (the four
+# examples are re-sent on every call). Compare the two bars from YOUR
+# run: did accuracy rise, and by how much did tokens grow? On a 20-doc
+# sample one doc is 5 points, so small differences are within noise.
+# The bar chart makes the trade-off visible: how many extra tokens does
+# each percentage point of accuracy cost you?
+
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: MAS Supervisory Report Triage
+# TASK 5 — APPLY: Supervisory Incident-Report Triage at a Financial Regulator
 # ════════════════════════════════════════════════════════════════════════
-# MAS receives ~800 supervisory incident reports/week that need tagging
-# as "material" or "routine". Few-shot fits because: domain-specific
-# vocabulary, MAS's OWN definition of "material" differs from the textbook,
-# and 6 examples encode that definition without weight updates.
+# SCENARIO (illustrative): a financial regulator receives several hundred
+# incident reports per week from the institutions it supervises. Each
+# report needs tagging as "material" or "routine" so senior examiners
+# look at the material ones first.
 #
-# BUSINESS IMPACT: Senior examiners cost S$250/hr. A 5% routing improvement
-# on 800 reports/week saves ~S$5K/week = S$260K/year, vs S$1,560/year in
-# LLM cost. 167x ROI.
+# Zero-shot struggles because:
+#   - The domain is specialised (banking operational-risk vocabulary)
+#   - "Material" is defined by the regulator's own supervisory policy,
+#     not by a textbook — the model's pre-training prior is the wrong one
+#   - Examiner time is expensive; misclassification costs senior time
+#
+# Few-shot fits because:
+#   - The supervision team can supply 6 examples from its historical log
+#     that encode ITS definition of "material"
+#   - The LLM mimics those examples instead of relying on its prior
+#   - The extra cost is just the examples' tokens on every call —
+#     measured below from your two runs
+zero_shot_saved = load_technique_metrics(["Zero-Shot"])
+if zero_shot_saved:
+    extra_per_call = (
+        few_shot_metrics["total_tokens"] / max(few_shot_metrics["n"], 1)
+        - zero_shot_saved[0]["total_tokens"] / max(zero_shot_saved[0]["n"], 1)
+    )
+    print(f"\n  Extra tokens per call paid for the examples: {extra_per_call:,.0f}")
+#
+# BUSINESS IMPACT (illustrative figures): suppose a senior examiner's
+# time costs S$250/hour and each mis-routed report wastes 30 minutes
+# (S$125). At 800 reports/week, a 5-point routing improvement is
+# 40 reports/week = S$5,000/week ≈ S$260,000/year of reclaimed
+# capacity. Price the extra example tokens with the reference price
+# from 01 and compare — the examples are almost always the cheaper side.
+#
+# OPERATIONAL NOTE: Store the examples in a version-controlled repo
+# (not in the Python file). When the supervisory definition evolves,
+# the compliance team updates the examples without touching code.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -131,69 +182,14 @@ print(
   [x] Built a few-shot prompt with curated positive/negative examples
   [x] Understood in-context learning — LLMs learn patterns from the prompt
   [x] Traded longer prompts for better accuracy and output consistency
+  [x] Sized the approach against a supervisory-report triage use case
+  [x] Compared the extra example tokens against the accuracy they buy
 
-  Next: 03_chain_of_thought.py — make the model show its reasoning.
+  KEY INSIGHT: Examples are the cheapest form of "training" an LLM.
+  You don't update weights — you update the prompt. When the
+  definition changes, you edit the examples, not retrain the model.
+
+  Next: 03_chain_of_thought.py — make the model show its reasoning
+  before answering, and watch accuracy climb on ambiguous inputs.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Output (LLM-as-judge over the classifier's predictions).
-# We'd pass the predicted label + true label as (prompt, response) pairs
-# and ask a judge to score coherence/faithfulness. Attention is optional
-# here — only meaningful for open-weight models.
-if False:  # scaffold — requires OPENAI_API_KEY + judge budget
-    obs = LLMObservatory(run_id="ex_1_prompting_run")
-    # Build (prompt, response) pairs from the exercise results:
-    # prompts = [r["text"] for r in zero_shot_results]
-    # responses = [r["pred"] for r in zero_shot_results]
-    # obs.output.evaluate(prompts, responses, criteria="coherence,label_fidelity")
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-    # Optional: obs.plot_dashboard().show()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Output     (HEALTHY): judge coherence 0.91, label_fidelity 0.84
-#   [?] Attention  (n/a): API-only model — lens short-circuits to UNKNOWN
-#   [?] Retrieval  (n/a): no retrieval in this exercise
-#   [?] Agent      (n/a): no tool-using agent in this exercise
-#   [?] Alignment  (n/a): no fine-tuning signal to compare
-#   [?] Governance (n/a): no PACT engine attached
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [OUTPUT LENS] judge coherence 0.91 is HEALTHY (>0.80). label_fidelity
-#     0.84 means the judge thought 84% of predictions were coherent
-#     labels in the allowed category set. The remaining 16% are where
-#     the LLM drifted off-template ("Positive sentiment, I think" instead
-#     of "positive") — a signature of under-constrained zero-shot.
-#     >> Prescription: tighten the prompt (structured output in ex_1.6)
-#        or add few-shot exemplars (ex_1.2).
-#
-#  [ATTENTION LENS] GPT-class models are API-only — the Attention lens
-#     short-circuits to UNKNOWN. To actually inspect attention, switch to
-#     an open-weight model (e.g. Qwen2-0.5B via transformers) and call
-#     obs.attention.logit_lens(prompt=..., answer_token=...).
-#
-#  [OTHER LENSES] All n/a — prompting has no retrieval, no agent loop, no
-#     fine-tuning pair, no governance envelope. This is exactly the
-#     signature the design doc predicts for Lesson 6.1.
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

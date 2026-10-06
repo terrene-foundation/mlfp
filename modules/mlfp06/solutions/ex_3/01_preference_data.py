@@ -24,7 +24,9 @@
 #      Singapore fintech
 #
 # DATASET: UltraFeedback Binarized (trl-lib/ultrafeedback_binarized)
-#   Real human-curated preference pairs. 2K subsample.
+#   AI-feedback (GPT-4-rated) preference pairs: each prompt's completions
+#   were scored by GPT-4; the top-rated one is 'chosen', a lower-rated
+#   one 'rejected'. 2K subsample.
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -55,6 +57,11 @@ from shared.mlfp06.ex_3 import (
 # Analogy: you cannot rate every wine on a 0-100 scale consistently, but
 # you CAN reliably say "I prefer this glass to that one". Pairwise
 # preference is the cheapest reliable human signal.
+#
+# UltraFeedback goes one step cheaper: the "judge" is not a human but an
+# AI rater (GPT-4 scored every completion). This is AI feedback (RLAIF).
+# It scales to hundreds of thousands of pairs, but the labels inherit the
+# rater's own biases — including a taste for longer answers (see VISUALISE).
 
 print("=" * 70)
 print("TASK 1: Load UltraFeedback Binarized")
@@ -85,7 +92,7 @@ sample_chosen = pref_data["chosen"][0]
 sample_rejected = pref_data["rejected"][0]
 
 print(f"PROMPT:\n  {sample_prompt[:280]}\n")
-print(f"CHOSEN (human-preferred):\n  {sample_chosen[:280]}...\n")
+print(f"CHOSEN (higher AI-feedback rating):\n  {sample_chosen[:280]}...\n")
 print(f"REJECTED (less preferred):\n  {sample_rejected[:280]}...\n")
 
 # INTERPRETATION: chosen is NOT necessarily longer, more formal, or more
@@ -160,9 +167,9 @@ kaipay_pairs = pl.DataFrame(
             "The app crashes when I try to view my August statement.",
         ],
         "chosen": [
-            "I'm sorry for the scare. Failed PayNow transfers normally auto-reverse within 2 hours on the same business day. I've logged a priority trace on your reference and escalated to our settlements team. You'll get an SMS the moment the S$2400 lands back. If you haven't seen it by 5pm today, reply here and I'll open a formal reversal claim with MAS reference.",
+            "I'm sorry for the scare. Failed PayNow transfers normally auto-reverse within 2 hours on the same business day. I've logged a priority trace on your reference and escalated to our settlements team. You'll get an SMS the moment the S$2400 lands back. If you haven't seen it by 5pm today, reply here and I'll open a formal reversal claim for you.",
             "Tap 'Forgot PIN' on the login screen, verify your NRIC last 4 digits and OTP, then set a new 6-digit PIN. The new PIN is active immediately — no overnight delay. Let me know if the OTP doesn't arrive and I'll walk through mobile-number verification.",
-            "I can't reverse a cleared debit directly, but I can raise a dispute with your gym on your behalf under PDPA recurring-authorisation rules. I'll need the merchant name and today's transaction ID. Once lodged, your gym must respond within 10 business days.",
+            "I can't reverse a cleared debit directly, but I can stop future debits to your gym today and raise a dispute on yesterday's charge. I'll need the merchant name and the transaction ID. We'll update you on the dispute within 10 business days.",
             "Thanks for reporting. The August statement crash is a known issue on app build 4.2.1. Fix is rolling out today — please update from the App Store/Play Store after 4pm. If you need the statement now, I can email a PDF to your registered address within 15 minutes.",
         ],
         "rejected": [
@@ -180,7 +187,7 @@ print(f"  Prompt:   {kaipay_pairs['prompt'][0][:80]}...")
 print(f"  Chosen:   {kaipay_pairs['chosen'][0][:100]}...")
 print(f"  Rejected: {kaipay_pairs['rejected'][0][:100]}...")
 
-# --- Business impact back-of-envelope ---
+# --- Business impact back-of-envelope (illustrative planning figures) ---
 DAILY_SUPPORT_CONVERSATIONS = 18000
 ESCALATION_RATE_BEFORE = 0.12  # 12% escalate to human agent
 ESCALATION_RATE_AFTER = 0.07  # 7% after DPO alignment (target)
@@ -209,58 +216,6 @@ assert {"prompt", "chosen", "rejected"}.issubset(set(kaipay_pairs.columns))
 print("\n✓ Application checkpoint passed — KaiPay alignment dataset ready\n")
 
 
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Alignment (reward margin curve, win-rate, hacking scan).
-# For DPO, we expect reward margin to climb then plateau. For GRPO, we
-# expect the group-mean reward to rise while group-std collapses.
-if False:  # scaffold — requires a completed DPO/GRPO training log
-    obs = LLMObservatory(run_id="ex_3_dpo_run")
-    # for step, row in enumerate(training_log):
-    #     obs.alignment.log_training_step(step=step, reward_margin=row["margin"],
-    #                                     win_rate=row["win"], kl=row["kl"])
-    # obs.alignment.reward_hacking_scan(chosen_texts, rejected_texts)
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Alignment  (HEALTHY): reward margin climbs 0.02 -> 0.71 over
-#       1000 steps; win-rate vs reference = 0.63; no hacking flagged.
-#   [✓] Output     (HEALTHY): judge score on preference pairs = 0.82
-#   [?] Attention / Retrieval / Agent / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [ALIGNMENT LENS] Margin 0.02 -> 0.71 is the classic DPO convergence
-#     curve — monotonic climb through the first ~700 steps, then plateau
-#     as the reference distribution stops providing new signal. A
-#     HEALTHY win-rate sits in the 55-70% band; higher than 80% is a
-#     reward-hacking red flag (the model found a degenerate shortcut
-#     the preference dataset rewards).
-#     >> Prescription: plateau means you can stop training; if margin
-#        never climbed, check that `beta` isn't too large (KL cap too
-#        tight lets the model sit on the base distribution).
-#  [OUTPUT LENS] Judge score 0.82 on paired completions confirms the
-#     preference signal generalises beyond the training set. If the
-#     judge disagrees with the preference labels you'd see <0.5 here.
-# ════════════════════════════════════════════════════════════════════
-
-
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
@@ -269,7 +224,7 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Loaded UltraFeedback Binarized — real human preference pairs
+  [x] Loaded UltraFeedback Binarized — AI-feedback (GPT-4-rated) pairs
   [x] Understood the (prompt, chosen, rejected) triple structure
   [x] Split into train/eval for DPO
   [x] Visualised chosen-vs-rejected length distribution
@@ -280,7 +235,8 @@ print(
   KEY INSIGHT: Pairwise preferences are the cheapest reliable human
   signal. Humans struggle to rate responses on a 1-10 scale consistently,
   but they CAN reliably pick a winner between two candidates. DPO
-  exploits exactly that.
+  exploits exactly that — and AI-feedback datasets like UltraFeedback
+  scale it up, at the price of inheriting the AI rater's biases.
 
   Next: 02_dpo_loss.py derives the DPO loss and implements it from scratch.
 """

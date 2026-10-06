@@ -36,11 +36,13 @@
 <p class="lead">
   You have squeezed every drop of behaviour out of a frozen model with
   prompting. Now you hit the wall. The model uses the wrong tone, invents
-  Singapore regulations that do not exist, refuses to extract certain
-  fields, or simply does not know your domain well enough. It is time to
-  change the weights. But a 7B model has roughly 14 GB of parameters, and
-  full fine-tuning requires 4× that in optimiser state — you do not want
-  to retrain the whole thing. This lesson teaches you the two techniques
+  regulations that do not exist, refuses to extract certain fields, or
+  simply does not know your domain well enough. It is time to change the
+  weights. But a 7B model is roughly 14 GB of fp16 weights, and full
+  fine-tuning with Adam in mixed precision needs about 16 bytes per
+  parameter (fp16 weights and gradients, an fp32 master copy, and two
+  fp32 Adam moments) — roughly 112 GB before activations. You do not
+  want to retrain the whole thing. This lesson teaches you the two techniques
   that dominate modern fine-tuning (LoRA and adapters), implemented from
   scratch so you know what is happening, then maps the full landscape of
   ten fine-tuning techniques so you know when to reach for which.
@@ -163,8 +165,9 @@ $$\mathbf{y} \;=\; W_0 \mathbf{x} + \frac{\alpha}{r}\, B A \mathbf{x}$$
   to <em>zero</em>. That means at step 0 the LoRA branch contributes
   <em>nothing</em> ($BA\mathbf{x} = \mathbf{0}$) and the model behaves
   exactly like the base. Fine-tuning is then a strictly additive
-  perturbation — you cannot accidentally make the model worse on the
-  very first step.
+  perturbation that starts from exactly the base model's behaviour, so
+  any change in quality is caused by training, not by a random
+  initialisation.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -229,12 +232,14 @@ class LoRALayer(nn.Module):
   <p>
     With $B$ initialised to zero, $BA\mathbf{x} = \mathbf{0}$ at step 0.
     The LoRA branch contributes nothing and the forward pass is
-    numerically identical to the frozen base. This guarantees that the
-    first gradient step is the <em>only</em> step that has to deal with
-    the full complexity of the loss landscape at the base's solution
-    point — previous work tried symmetric Gaussian init and found
-    instability. Kaiming-init on $A$ with zero-init on $B$ is the
-    cheapest way to get a clean starting point.
+    numerically identical to the frozen base. Why not zero <em>both</em>
+    matrices? Because the gradients would then be stuck: the gradient
+    with respect to $B$ is proportional to $A\mathbf{x}$, and the
+    gradient with respect to $A$ is proportional to $B^\top$. With $A$
+    random and $B = 0$, the first step updates $B$ (its gradient is
+    non-zero), and from the second step on both matrices learn. One
+    random factor and one zero factor is the cheapest way to start at
+    the base model <em>and</em> still be able to move.
   </p>
 </div>
 
@@ -294,7 +299,7 @@ class LoRALayer(nn.Module):
   <text x="720" y="215" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">to next layer</text>
 
   <!-- Parameter count -->
-  <text x="400" y="280" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Trainable params per adapter: 2dm + biases  ≈  $2 \cdot 4096 \cdot 16 \approx 131\text{k}$</text>
+  <text x="400" y="280" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Trainable params per adapter: 2·d·m + biases ≈ 2 · 4096 · 16 ≈ 131k (d = 4096, m = 16)</text>
   <text x="400" y="300" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" font-style="italic">inserted after attention and FFN of each transformer block</text>
 </svg>
 <figcaption>An adapter module: down-project to a bottleneck dimension $m$, apply a non-linearity, up-project back to $d$, add a residual. The bottleneck is what makes it parameter-efficient.</figcaption>
@@ -341,7 +346,7 @@ class LoRALayer(nn.Module):
     <tr>
       <td>Inference cost</td>
       <td><strong>Zero</strong> — $BA$ merges into $W_0$ after training</td>
-      <td>Extra forward pass per adapter — ~5–10% latency</td>
+      <td>Extra layers in every forward pass — a latency cost that cannot be merged away</td>
     </tr>
     <tr>
       <td>Modularity</td>
@@ -354,11 +359,12 @@ class LoRALayer(nn.Module):
 <div class="callout foundations">
   <span class="label">🟢 Rule of thumb</span>
   <p>
-    Default to LoRA. It has better parameter efficiency, zero inference
-    overhead after merging, and is the de-facto standard backed by every
-    major fine-tuning library. Use adapters only when you need multiple
-    <em>active</em> adapters simultaneously in the same forward pass —
-    because merged LoRA weights are, well, merged.
+    Default to LoRA. It has comparable parameter efficiency, zero
+    inference overhead once merged, and is the standard choice in the
+    open fine-tuning libraries. Adapters (and unmerged LoRA) keep the
+    task-specific weights separate from the base, which is what you want
+    when one base model must serve many tasks and swap between them at
+    request time — merged LoRA weights are, well, merged.
   </p>
 </div>
 
@@ -441,7 +447,7 @@ class LoRALayer(nn.Module):
     <text x="50" y="400" fill="#5B21B6">Knowledge distillation, full SFT, DPSGD for differential privacy. Use when you need more than LoRA can give.</text>
   </g>
 </svg>
-<figcaption>Ten fine-tuning techniques arranged by trainable-parameter count (x-axis) and grouped by role (colour). Default to LoRA; reach for the specialised techniques only when it fails.</figcaption>
+<figcaption>Fine-tuning techniques arranged by trainable-parameter count (x-axis; the percentages are typical orders of magnitude for a 7B-class model and depend on configuration) and grouped by role (colour). EWC, the tenth technique, is a training strategy listed in the table below. Default to LoRA; reach for the specialised techniques only when it fails.</figcaption>
 </figure>
 
 <table>
@@ -506,7 +512,7 @@ class LoRALayer(nn.Module):
 <h2>Model Merging: Combining Multiple Fine-Tuned Models</h2>
 
 <p>
-  You trained one LoRA for legal Q&amp;A and another for retail support.
+  Suppose you trained one LoRA for legal Q&amp;A and another for retail support.
   Can you combine them without retraining? Yes — this is
   <strong>model merging</strong>. The mathematics is surprisingly clean
   because LoRA updates are additive; you can linearly combine them.
@@ -533,8 +539,10 @@ class LoRALayer(nn.Module):
   DARE (<em>Yu et al. 2023</em>) observes that most fine-tuning updates
   are redundant. Randomly drop a fraction $p$ of the delta parameters
   (set them to zero) and rescale the survivors by $1/(1-p)$. Surprisingly,
-  you can often drop 90% of the updates and preserve quality. DARE
-  composes with TIES: TIES-DARE is the de-facto merging recipe.
+  you can often drop 90% of the updates and preserve quality. DARE is
+  a pre-processing step, so it composes with other merges — DARE
+  followed by TIES ("DARE-TIES") is a common recipe in open merging
+  tools.
 </p>
 
 <h3>SLERP — Spherical Linear Interpolation</h3>
@@ -549,10 +557,14 @@ class LoRALayer(nn.Module):
 $$\theta_{\text{slerp}} \;=\; \frac{\sin((1-t)\phi)}{\sin \phi}\,\theta_1 + \frac{\sin(t\phi)}{\sin \phi}\,\theta_2$$
 
 <p>
-  where $\phi$ is the angle between $\theta_1$ and $\theta_2$. SLERP is
-  the default for merging exactly two checkpoints where you want smooth
-  interpolation rather than linear averaging. At $t = 0.5$ you get the
-  geodesic midpoint.
+  where $\phi$ is the angle between $\theta_1$ and $\theta_2$ (in
+  practice computed per weight tensor, each flattened to a vector). SLERP
+  is a common choice for merging exactly two checkpoints: linear
+  averaging of two vectors that point in different directions shrinks
+  their norm, while SLERP walks the arc and keeps it. At $t = 0.5$ you
+  get the geodesic midpoint. Exercise 2.4 implements TIES and SLERP from
+  scratch on synthetic weight tensors and plots exactly this norm
+  effect.
 </p>
 
 <div class="callout advanced">
@@ -575,7 +587,11 @@ $$\theta_{\text{slerp}} \;=\; \frac{\sin((1-t)\phi)}{\sin \phi}\,\theta_1 + \fra
 <p>
   A 7B parameter model in fp16 is ~14 GB — too much for a consumer GPU.
   <strong>Quantisation</strong> compresses the weights to lower
-  precision (int8, int4, even 3-bit) so the model fits. Common formats:
+  precision so the model fits. The memory arithmetic is just bytes per
+  weight: fp32 = 4 bytes, fp16 = 2, int8 = 1, int4 = 0.5. So int8 halves
+  the fp16 footprint (7B: ~14 GB → ~7 GB) and int4 quarters it
+  (~3.5 GB), before small overheads for the per-block scales. Exercise
+  2.5 builds an int8 quantiser from scratch. Common formats:
 </p>
 
 <ul>
@@ -599,71 +615,85 @@ $$\theta_{\text{slerp}} \;=\; \frac{\sin((1-t)\phi)}{\sin \phi}\,\theta_1 + \fra
 <div class="callout kailash">
   <span class="label">⚙ Kailash — AlignmentPipeline + AdapterRegistry</span>
   <p>
-    The <code>kailash-align</code> package wraps all of this. You
-    configure an <code>AlignmentConfig</code> — base model, dataset
-    path, method (sft/dpo/grpo), LoRA hyperparameters — hand it to
-    <code>AlignmentPipeline</code>, and call <code>.train()</code>. The
-    trained adapter is automatically versioned in an
-    <code>AdapterRegistry</code> so you can load, swap, and merge
-    adapters without filesystem plumbing.
+    The <code>kailash-align</code> package wraps all of this. You compose
+    an <code>AlignmentConfig</code> from typed sub-configs — the method
+    (<code>"sft"</code>, <code>"dpo"</code>, <code>"grpo"</code>, …), a
+    HuggingFace base-model id, a <code>LoRAConfig</code> (what to adapt)
+    and an <code>SFTConfig</code> (how to train) — hand it to
+    <code>AlignmentPipeline</code>, and <code>await</code> its
+    <code>train()</code> with a dataset and an adapter name. The trained
+    adapter can then be recorded in an <code>AdapterRegistry</code> with
+    its base model, method and metrics, so later lessons can find and
+    load it without filesystem plumbing.
   </p>
 </div>
 
-<pre><code class="language-python">import asyncio
-from kailash_align import AlignmentConfig, AlignmentPipeline, AdapterRegistry
-from shared.kailash_helpers import setup_environment
+<p>
+  Exercise 2.6 fine-tunes on 2,000 IMDB movie reviews (public,
+  <code>stanfordnlp/imdb</code>) reshaped into instruction/response
+  pairs: the instruction asks for the sentiment of a review, the response
+  is <code>"Sentiment: positive. …"</code> or
+  <code>"Sentiment: negative. …"</code>. <code>load_imdb_sft()</code>
+  downloads and caches them and returns <code>(full, train, eval)</code>
+  frames with a 90/10 split. The base model is a HuggingFace repo id read
+  from the <code>SFT_BASE_MODEL</code> environment variable (the helper
+  falls back to a 0.5B instruct model small enough for a laptop or a
+  free Colab GPU) — never a hardcoded name.
+</p>
 
-setup_environment()
+<pre><code class="language-python">import polars as pl
+from datasets import Dataset
+from kailash_align import AdapterRegistry, AdapterSignature, AlignmentPipeline
+from shared.mlfp06.ex_2 import build_sft_config, load_imdb_sft
 
-cfg = AlignmentConfig(
-    method="sft",
-    base_model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    train_data="data/mlfp06/sg_domain_qa_train.parquet",
-    eval_data="data/mlfp06/sg_domain_qa_eval.parquet",
-    # LoRA hyperparameters
-    lora_r=8,
-    lora_alpha=16,
-    lora_dropout=0.05,
-    target_modules=["q_proj", "v_proj"],
-    # Training
-    epochs=3,
-    batch_size=4,
-    learning_rate=2e-4,
-    max_seq_length=512,
-    output_dir="artifacts/mlfp06/sft_adapter",
-)
+# AlignmentConfig(method="sft", base_model_id=&lt;SFT_BASE_MODEL&gt;,
+#   lora=LoRAConfig(rank=16, alpha=32, dropout=0.05, target_modules=("q_proj", "v_proj")),
+#   sft=SFTConfig(num_train_epochs=3, learning_rate=2e-4, max_seq_length=512, ...),
+#   dpo=DPOConfig(), experiment_dir="outputs/ex2_finetuning/sft_output")
+cfg = build_sft_config()
 
-async def run_sft():
-    pipeline = AlignmentPipeline(cfg)
-    result = await pipeline.train()
+_, train_data, eval_data = load_imdb_sft()
+# SFT trains on one `text` column: instruction + response, as a HF Dataset
+sft = train_data.select((pl.col("instruction") + "\n\n" + pl.col("response")).alias("text"))
+hf_ds = Dataset.from_dict(sft.to_dict(as_series=False))
 
-    registry = AdapterRegistry("artifacts/mlfp06/registry")
-    registry.register(
-        name="sg_domain_sft",
-        version="v1",
-        path=result.adapter_path,
-        metadata={"base_model": cfg.base_model, "method": "sft", "r": cfg.lora_r},
-    )
+result = await AlignmentPipeline(cfg).train(hf_ds, adapter_name="imdb_sentiment_sft_v1")
+print(result.training_metrics["train_loss"], result.adapter_path)
 
-    print(f"Final train loss: {result.train_loss:.4f}")
-    print(f"Final eval loss:  {result.eval_loss:.4f}")
-    return result
+version = await AdapterRegistry().register_adapter(
+    name="imdb_sentiment_sft_v1",
+    adapter_path=result.adapter_path,
+    signature=AdapterSignature(base_model_id=cfg.base_model_id,
+                               adapter_type="lora", training_method="sft"),
+    training_metrics={"train_loss": result.training_metrics["train_loss"]},
+)</code></pre>
 
-asyncio.run(run_sft())</code></pre>
+<p>
+  Two details matter. First, <code>train()</code> wants a HuggingFace
+  <code>Dataset</code>, not a polars frame. Second, the text column must
+  hold instruction <em>and</em> response: training on the raw review text
+  would teach the model to write movie reviews, not to answer the
+  instruction. <code>result.training_metrics</code> is the trainer's
+  summary dict (<code>train_loss</code>, <code>train_runtime</code>,
+  <code>train_samples_per_second</code>).
+</p>
 
 <h3>Reading the loss curves</h3>
 
 <p>
-  During training you will see two numbers: <em>train loss</em> (how
-  well the model fits the training data) and <em>eval loss</em> (how
-  well it generalises to held-out data). Healthy LoRA runs show both
-  curves decreasing smoothly. Warning signs:
+  <code>train()</code> takes no eval split, so Exercise 2.6 reports the
+  training loss only. To read both curves, score the held-out
+  <code>eval_data</code> from <code>load_imdb_sft()</code> yourself (for
+  example, the loss of the trained model on those pairs, or its
+  sentiment accuracy). <em>Train loss</em> says how well the model fits
+  the training data; <em>eval loss</em> says how well it generalises.
+  Healthy LoRA runs show both decreasing smoothly. Warning signs:
 </p>
 
 <ul>
   <li><strong>Eval loss rising while train loss falls</strong> — overfitting. Reduce epochs or increase dropout.</li>
   <li><strong>Both losses flat</strong> — learning rate too low, or rank too small for the task.</li>
-  <li><strong>Eval loss starts below 0.5 and never moves</strong> — task is too easy or there is train/eval leakage.</li>
+  <li><strong>Eval loss far below train loss from the first step</strong> — check the train/eval split for overlap (leakage).</li>
 </ul>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -693,8 +723,11 @@ $$\text{reduction} \;=\; \frac{r(d+k)}{dk}$$
   adds two small matrix multiplies. Gradient computation now only
   needs to flow through $A$ and $B$, which is where the big savings
   come from — the optimiser state for Adam (which stores $m$ and $v$
-  per parameter, doubling memory) is now negligible. In practice LoRA
-  training uses ~30% of the GPU memory of full fine-tuning.
+  per parameter) is now negligible. For the 7B example: full
+  fine-tuning needs ~112 GB of weights, gradients and optimiser state;
+  LoRA needs the ~14 GB of frozen fp16 weights plus a few hundred MB for
+  the adapter and its optimiser state (plus activations in both cases).
+  QLoRA shrinks the frozen part again to ~3.5 GB.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -703,12 +736,15 @@ $$\text{reduction} \;=\; \frac{r(d+k)}{dk}$$
 <div class="callout warning">
   <span class="label">⚠ Mistake 1: Targeting the wrong modules</span>
   <p>
-    The <code>target_modules</code> argument controls which linear
-    layers get LoRA. Hitting <em>only</em> <code>q_proj</code> and
-    <code>v_proj</code> (the query and value projections in
-    attention) is the safest starting point. Applying LoRA to every
-    linear layer in the model wastes parameters; applying it to only
-    the output projection often underfits.
+    <code>LoRAConfig(target_modules=...)</code> controls which linear
+    layers get LoRA, and the names are architecture-specific
+    (<code>q_proj</code>/<code>v_proj</code> in Llama- and Qwen-style
+    models; other families use other names). The config does not check
+    them against your model — a typo surfaces only when training starts.
+    The query and value projections (the original LoRA paper's choice,
+    and the course default) are a cheap starting point; the QLoRA paper
+    found that adapting <em>every</em> linear layer was needed to match
+    full fine-tuning quality, at a higher parameter count.
   </p>
 </div>
 
@@ -725,10 +761,12 @@ $$\text{reduction} \;=\; \frac{r(d+k)}{dk}$$
   <span class="label">⚠ Mistake 3: Forgetting to set the adapter on inference</span>
   <p>
     After training, the base model is still loaded without the LoRA
-    weights unless you explicitly load the adapter. Always check that
-    your inference path calls
-    <code>registry.load("adapter_name", "version")</code>
-    before running predictions.
+    weights unless you explicitly load the adapter. Look the adapter up
+    with <code>await registry.get_adapter("imdb_sentiment_sft_v1")</code>
+    (it returns the version record, including its
+    <code>adapter_path</code> and base model), and make sure your serving
+    code actually applies that adapter to the base before running
+    predictions — Exercise 8.1 does this hand-off.
   </p>
 </div>
 
@@ -758,20 +796,24 @@ $$\text{reduction} \;=\; \frac{r(d+k)}{dk}$$
 <div class="try-it">
   <h3>🎯 Exercise B — Run AlignmentPipeline</h3>
   <p>
-    Run <code>ex_2.py</code> on the Singapore domain Q&amp;A dataset.
-    Plot the train and eval loss curves from the result. Identify
-    whether the model is still improving at the end and whether
-    overfitting is starting.
+    Run <code>ex_2/06_sft_alignment_pipeline.py</code> on the IMDB
+    instruction pairs. Then score the 200 held-out <code>eval_data</code>
+    pairs with the base model and with the fine-tuned adapter: how often
+    does each answer with the correct <code>Sentiment:</code> label?
+    Compare with the training loss — is the gain real on data the
+    adapter never saw?
   </p>
 </div>
 
 <div class="try-it">
   <h3>🎯 Exercise C — Merge with SLERP</h3>
   <p>
-    Train two LoRA adapters on different slices of
-    <code>sg_domain_qa.parquet</code> (e.g., finance-only vs
-    technology-only). Merge them at $t = 0.5$ with SLERP. Evaluate on
-    the held-out set and compare to each individual adapter.
+    In <code>ex_2/04_model_merging.py</code>, take the two synthetic
+    weight tensors and compute the norm of the linear average and of the
+    SLERP merge at $t \in \{0, 0.25, 0.5, 0.75, 1\}$. At which $t$ is
+    the gap between them largest, and why? (Hint: compare the angle
+    $\phi$ between the tensors with the norm-shrink factor
+    $\cos(\phi/2)$ of the linear midpoint.)
   </p>
 </div>
 
@@ -784,11 +826,10 @@ $$\text{reduction} \;=\; \frac{r(d+k)}{dk}$$
   <em>is</em> SVD reframed as a trainable parametrisation. The
   transformer linear layers you are perturbing come from
   <strong>Lesson 5.4</strong>. The optimiser behaviour and learning-rate
-  scheduling assumptions come from <strong>Lessons 5.2 and 5.3</strong>.
-  Lesson 6.3 takes the SFT adapter you train here and aligns it to
-  human preferences with DPO — same pipeline, different loss. Lesson
-  6.8 loads this adapter back via <code>AdapterRegistry</code> and
-  deploys it through Nexus.
+  scheduling assumptions come from <strong>Lesson 4.8</strong>.
+  Lesson 6.3 uses the same pipeline with a different loss — DPO on
+  preference pairs. Lesson 6.8 finds the adapters you trained via
+  <code>AdapterRegistry</code> and serves the capstone through Nexus.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->

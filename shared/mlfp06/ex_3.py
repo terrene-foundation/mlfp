@@ -138,14 +138,19 @@ def dpo_loss(
 # ════════════════════════════════════════════════════════════════════════
 
 
-def grpo_advantages(rewards: torch.Tensor) -> torch.Tensor:
-    """Compute GRPO advantages: r_i minus the group mean per prompt.
+def grpo_advantages(rewards: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    """Compute GRPO group-relative advantages (Shao et al., 2024, DeepSeekMath).
+
+        A_i = (r_i - mean(r_group)) / (std(r_group) + eps)
 
     rewards: [n_prompts, K] tensor of scalar rewards, K completions per prompt.
-    Returns advantages of the same shape, each row summing to ~0.
+    Returns advantages of the same shape: each row has mean ~0 and std ~1,
+    so the update size does not depend on the reward scale. A group whose
+    completions all score the same gets advantage 0 (no learning signal).
     """
     group_mean = rewards.mean(dim=1, keepdim=True)
-    return rewards - group_mean
+    group_std = rewards.std(dim=1, keepdim=True)
+    return (rewards - group_mean) / (group_std + eps)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -225,10 +230,10 @@ def show_beta_sensitivity(betas: list[float], losses: list[float]) -> Path:
             ha="center",
             fontsize=9,
         )
-    ax.set_xlabel("Beta (alignment temperature)")
+    ax.set_xlabel("Beta (KL-penalty coefficient)")
     ax.set_ylabel("DPO loss (synthetic batch)")
     ax.set_title(
-        "Beta sensitivity — higher beta, stronger preference pressure",
+        "Beta sensitivity — same margin, higher beta = lower loss (less drift needed)",
         fontsize=13,
         fontweight="bold",
     )
@@ -257,7 +262,9 @@ def show_grpo_advantages(rewards: torch.Tensor, advantages: torch.Tensor) -> Pat
         vmin=-abs(advantages).max(),
         vmax=abs(advantages).max(),
     )
-    axes[1].set_title("GRPO advantages  r_i - mean(r)", fontsize=12, fontweight="bold")
+    axes[1].set_title(
+        "GRPO advantages  (r_i - mean) / std", fontsize=12, fontweight="bold"
+    )
     axes[1].set_xlabel(f"Completion index (K={K})")
     axes[1].set_ylabel("Prompt index")
     fig.colorbar(im1, ax=axes[1])

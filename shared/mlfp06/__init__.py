@@ -5,7 +5,7 @@
 Exercise-specific infrastructure (LLM setup, datasets, metrics, classifiers)
 that technique files import. Each exercise gets its own submodule:
 
-    from shared.mlfp06.ex_1 import load_sst2, zero_shot_classify, compute_metrics
+    from shared.mlfp06.ex_1 import load_sst2, normalise_label, compute_metrics
     ...
 
 Available after `uv sync` from any directory.

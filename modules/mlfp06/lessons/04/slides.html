@@ -27,7 +27,7 @@
   <ul>
     <li><strong>Freshness:</strong> re-index daily (trivial) vs retrain daily (absurd).</li>
     <li><strong>Attribution:</strong> RAG cites source chunks. Fine-tuning blurs facts into weights.</li>
-    <li><strong>Cost:</strong> indexing 1M docs = pennies. Fine-tuning on 1M docs = thousands.</li>
+    <li><strong>Cost:</strong> indexing is one embedding pass per chunk. Fine-tuning on the same corpus means GPU training runs — and repeating them every time the facts change.</li>
   </ul>
   <div class="callout-slide foundations"><strong>🟢 Foundations:</strong> fine-tune for skills and style. RAG for facts and freshness.</div>
 </section>
@@ -48,9 +48,9 @@
       <!-- Documents -->
       <rect x="15" y="30" width="100" height="80" rx="6" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
       <text x="65" y="50" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10">Documents</text>
-      <text x="65" y="66" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">MAS notices</text>
-      <text x="65" y="78" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">PDPA guidelines</text>
-      <text x="65" y="90" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">AI Verify docs</text>
+      <text x="65" y="66" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Ex 4 corpus:</text>
+      <text x="65" y="78" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">1,000 web passages</text>
+      <text x="65" y="90" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">+ Q&amp;A pairs</text>
 
       <!-- Arrow -->
       <line x1="115" y1="70" x2="135" y2="70" stroke="#0D9488" stroke-width="1.5" marker-end="url(#rag-arr)"/>
@@ -74,7 +74,7 @@
       <text x="344" y="68" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#15803D">[0.12, -0.34, ...]</text>
       <text x="344" y="80" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#15803D">[0.56, 0.09, ...]</text>
       <text x="344" y="92" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#15803D">[-.21, 0.78, ...]</text>
-      <text x="344" y="104" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">d = 384 or 768</text>
+      <text x="344" y="104" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">d = 768 (nomic-embed-text)</text>
 
       <!-- Arrow down to vector store -->
       <line x1="399" y1="70" x2="465" y2="142" stroke="#0D9488" stroke-width="1.5" marker-end="url(#rag-arr)"/>
@@ -82,7 +82,7 @@
       <!-- ========= VECTOR STORE (shared, center) ========= -->
       <rect x="460" y="120" width="120" height="70" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2.5"/>
       <text x="520" y="145" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#0D9488">Vector Store</text>
-      <text x="520" y="162" text-anchor="middle" font-family="Inter" font-size="8" fill="#0F766E">FAISS / Chroma</text>
+      <text x="520" y="162" text-anchor="middle" font-family="Inter" font-size="8" fill="#0F766E">cosine index</text>
       <text x="520" y="175" text-anchor="middle" font-family="Inter" font-size="8" fill="#0F766E">+ BM25 index</text>
 
       <!-- ========= QUERY PATH (bottom) ========= -->
@@ -91,8 +91,8 @@
       <!-- User query -->
       <rect x="15" y="222" width="115" height="55" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
       <text x="72" y="242" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#1E40AF">User query</text>
-      <text x="72" y="260" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#3B82F6">"What is MAS stance</text>
-      <text x="72" y="270" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#3B82F6"> on crypto custody?"</text>
+      <text x="72" y="260" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#3B82F6">"Pros and cons of</text>
+      <text x="72" y="270" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#3B82F6"> online English classes?"</text>
 
       <!-- Arrow -->
       <line x1="130" y1="250" x2="150" y2="250" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#rag-arr-blue)"/>
@@ -145,6 +145,7 @@
     <tbody>
       <tr><td>Fixed size</td><td>Split every N tokens</td><td>Simple, fast, baseline</td></tr>
       <tr><td>Sentence</td><td>Split on sentence boundaries</td><td>Preserves meaning</td></tr>
+      <tr><td>Paragraph</td><td>Split on blank lines</td><td>Documents with clear structure</td></tr>
       <tr><td>Semantic</td><td>Embed, cluster, split at topic shifts</td><td>Best quality, slower</td></tr>
     </tbody>
   </table>
@@ -158,10 +159,10 @@
     <tbody>
       <tr><td>Sparse</td><td>BM25 (from 4.6)</td><td>Exact keyword match</td></tr>
       <tr><td>Dense</td><td>Sentence embeddings + cosine</td><td>Semantic similarity</td></tr>
-      <tr><td>Hybrid</td><td>Combine dense + sparse scores</td><td>Best of both</td></tr>
+      <tr><td>Hybrid</td><td>Reciprocal rank fusion: $\sum_r 1/(k + \text{rank}_r)$, $k=60$</td><td>Best of both</td></tr>
     </tbody>
   </table>
-  <div class="callout-slide theory"><strong>🔵 Theory:</strong> hybrid retrieval with re-ranking (cross-encoder) is the production standard.</div>
+  <div class="callout-slide theory"><strong>🔵 Theory:</strong> hybrid retrieval plus a re-ranking pass is the common production pattern. RRF fuses <em>ranks</em>, so BM25 and cosine scores never need a common scale. Exercise 4 scores all of them with hit@k against each question's source document.</div>
 </section>
 
 <section>
@@ -175,13 +176,14 @@
       <tr><td>Context recall</td><td>Did we retrieve all relevant chunks?</td></tr>
     </tbody>
   </table>
+  <p style="font-size:.75em">Exercise 4.5 computes these with the local LLM as the judge — so judge parse failures must raise, never default to a score.</p>
 </section>
 
 <section>
   <h2>HyDE — Hypothetical Document Embeddings</h2>
   <figure style="text-align:center">
     <svg viewBox="0 0 600 140" xmlns="http://www.w3.org/2000/svg">
-      <rect x="20" y="30" width="120" height="80" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/><text x="80" y="60" text-anchor="middle" font-weight="600" font-size="10">Query</text><text x="80" y="80" text-anchor="middle" font-size="9" fill="#64748B">"MAS regulation..."</text>
+      <rect x="20" y="30" width="120" height="80" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/><text x="80" y="60" text-anchor="middle" font-weight="600" font-size="10">Query</text><text x="80" y="80" text-anchor="middle" font-size="9" fill="#64748B">short question</text>
       <line x1="145" y1="70" x2="175" y2="70" stroke="#0D9488" stroke-width="2"/><polygon points="175,70 169,66 169,74" fill="#0D9488"/>
       <rect x="180" y="30" width="140" height="80" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="250" y="55" text-anchor="middle" font-weight="600" font-size="10" fill="#3B82F6">LLM generates</text><text x="250" y="75" text-anchor="middle" font-size="9">hypothetical answer</text><text x="250" y="90" text-anchor="middle" font-size="9" fill="#64748B">(not used as answer)</text>
       <line x1="325" y1="70" x2="355" y2="70" stroke="#0D9488" stroke-width="2"/><polygon points="355,70 349,66 349,74" fill="#0D9488"/>
@@ -196,29 +198,37 @@
 <section>
   <h2>RAG code</h2>
   <pre><code class="language-python" data-trim>
-from sentence_transformers import SentenceTransformer
 import numpy as np
+from shared.mlfp06._ollama_bootstrap import make_delegate, make_embedder, run_delegate_text
+from shared.mlfp06.ex_4 import load_rag_corpus
 
-encoder = SentenceTransformer("all-MiniLM-L6-v2")
-chunk_embeddings = encoder.encode(chunks)
+corpus = load_rag_corpus()                    # section, text, question, answer
+chunks = corpus["text"].to_list()
+query = corpus["question"][0]
 
-query_emb = encoder.encode([query])
-sims = np.dot(chunk_embeddings, query_emb.T).flatten()
+embedder = make_embedder()                    # OLLAMA_EMBED_MODEL, 768-dim
+E = np.array(await embedder.embed(chunks))
+q = np.array((await embedder.embed([query]))[0])
+sims = (E @ q) / (np.linalg.norm(E, axis=1) * np.linalg.norm(q))  # cosine
 top_k = np.argsort(sims)[-5:][::-1]
 
-context = "\n".join([chunks[i] for i in top_k])
-answer = llm.generate(f"Context: {context}\nQ: {query}\nA:")
+context = "\n\n".join(chunks[i] for i in top_k)
+prompt = ("Answer using ONLY the context. If it is not there, say so.\n\n"
+          f"Context:\n{context[:2000]}\n\nQuestion: {query}\nAnswer:")
+answer, usage, secs = await run_delegate_text(make_delegate(), prompt)
   </code></pre>
 </section>
 
 <section>
-  <h2>Singapore context</h2>
-  <ul>
-    <li>MAS regulatory documents — financial compliance queries.</li>
-    <li>PDPA (Personal Data Protection Act) — data handling questions.</li>
-    <li>AI Verify — responsible AI governance checks.</li>
+  <h2>Advanced RAG patterns</h2>
+  <ul style="font-size:.82em">
+    <li><strong>Metadata filtering:</strong> store source, date and section with each chunk; filter <em>before</em> similarity search ("only notices issued after 2024").</li>
+    <li><strong>Multi-hop retrieval:</strong> retrieve, let the LLM name the missing fact, retrieve again — for questions whose answer spans two documents.</li>
+    <li><strong>Document summarisation:</strong> index a summary per document alongside its chunks; route broad questions to summaries, narrow ones to chunks.</li>
   </ul>
-  <div class="callout-slide kailash"><strong>⚙ Kailash:</strong> <code>RAGResearchAgent</code> and <code>MemoryAgent</code> in Kaizen provide production-ready RAG with memory persistence.</div>
+  <p style="font-size:.78em">Typical Singapore use: question answering over public regulatory texts (MAS notices, PDPA guidance) — swap them in for the Exercise 4 corpus.</p>
+  <div class="callout-slide kailash"><strong>⚙ Kailash:</strong> Kaizen also ships ready-made <code>RAGResearchAgent</code> (retrieve + answer over a vector store) and <code>MemoryAgent</code> (conversation memory) in <code>kaizen_agents.agents</code>; Exercise 4 builds the pipeline by hand so every stage is visible.</div>
+  <aside class="notes">Spec 6.4 advanced patterns. Metadata filtering: cheapest precision win. Multi-hop: HotpotQA-style questions (we meet that dataset in 6.5). Summaries: hierarchical retrieval. Mention the Kaizen RAG agents as the packaged alternative.</aside>
 </section>
 
 <section>

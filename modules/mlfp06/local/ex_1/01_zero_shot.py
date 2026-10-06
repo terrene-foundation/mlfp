@@ -9,7 +9,8 @@
 #   - Call an LLM with zero examples using Kaizen Delegate
 #   - Write a minimal classification prompt (task + categories + input)
 #   - Normalise free-form LLM text into a discrete label
-#   - Measure accuracy, cost, and latency across a sample
+#   - Measure accuracy, tokens, and latency across a sample (plus an
+#     illustrative hosted-price estimate from the token count)
 #
 # PREREQUISITES: M5 (transformers, attention). Understanding that LLMs
 # predict the next token — prompts shift which tokens become likely.
@@ -21,7 +22,7 @@
 #   2. Build — write the zero-shot prompt
 #   3. Train — there is no training; we EVALUATE on SST-2 eval docs
 #   4. Visualise — per-doc predictions + headline metrics
-#   5. Apply — Singapore DBS multilingual review triage
+#   5. Apply — multilingual app-review triage at a Singapore retail bank
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -32,10 +33,15 @@ from dotenv import load_dotenv
 
 from shared.mlfp06.ex_1 import (
     CATEGORIES,
+    REFERENCE_PRICE_USD_PER_MTOK,
+    compute_metrics,
     get_eval_docs,
     normalise_label,
+    plot_accuracy_bars,
     print_summary,
+    reference_cost_usd,
     run_delegate,
+    save_technique_metrics,
 )
 
 load_dotenv()
@@ -48,7 +54,7 @@ load_dotenv()
 # word ("wonderful", "tedious", "masterpiece") already has a representation
 # in the model. Zero-shot exploits that prior — no examples, no fine-tuning.
 #
-# Cost/quality trade-off: cheapest, fastest, least consistent. Use it as
+# Token/quality trade-off: cheapest, fastest, least consistent. Use it as
 # your baseline before climbing the prompting ladder.
 
 
@@ -102,22 +108,81 @@ print("\n[ok] Checkpoint passed — zero-shot evaluation complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE — headline metrics
+# TASK 4 — VISUALISE — headline metrics + per-category accuracy chart
 # ════════════════════════════════════════════════════════════════════════
 print_summary(zero_shot_results, "Zero-Shot")
 
+# Persist the MEASURED metrics so 02-05 can compare against your own run
+zero_shot_metrics = compute_metrics(zero_shot_results, "Zero-Shot")
+save_technique_metrics(zero_shot_metrics)
+
+# R9A: visual proof — per-category accuracy bar chart
+plot_accuracy_bars(
+    zero_shot_results,
+    CATEGORIES,
+    title="Zero-Shot Accuracy by Category (SST-2)",
+    filename="ex1_01_zero_shot_accuracy.png",
+)
+
+# INTERPRETATION: Zero-shot gives you a baseline with zero engineering
+# effort. If the number here is "good enough" for your use case, STOP —
+# every technique below this one costs more tokens, more latency, and
+# more prompt-engineering effort. Only move up the ladder when zero-shot
+# fails your accuracy bar.
+# The bar chart reveals whether errors are SYMMETRIC (equal miss rate on
+# both categories) or SKEWED (e.g. the model defaults to "positive" on
+# ambiguous inputs). Skewed errors signal that zero-shot's prior from
+# pre-training is biased — few-shot examples (Exercise 1.2) can fix it.
+
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: DBS Bank Multilingual Review Triage
+# TASK 5 — APPLY: Multilingual App-Review Triage at a Singapore Retail Bank
 # ════════════════════════════════════════════════════════════════════════
-# DBS Bank receives ~40K app-store reviews/month across English, Mandarin,
-# Malay, Tamil. Zero-shot is the right tool: no labelled data exists for
-# Malay/Tamil, the LLM already knows sentiment, and cost matters at scale.
+# SCENARIO (illustrative): a Singapore retail bank receives tens of
+# thousands of app-store reviews per month across English, Mandarin,
+# Malay, and Tamil. The CX team wants every review tagged
+# positive/negative within 10 minutes of posting so complaints can be
+# routed to the on-call support lead.
 #
-# BUSINESS IMPACT: Each viral complaint prevented is worth ~S$8K. Catching
-# 20 extra negatives/month = S$160K/mo, vs S$120/mo in LLM cost. 1,300x ROI.
+# Why zero-shot is the right tool here:
+#   - The LLM already understands sentiment across all four languages
+#   - No labelled training data exists for Malay/Tamil reviews
+#   - Volume is high, so tokens per review drive the running cost
+#   - The downstream action (route to an agent) is reversible, so
+#     occasional misclassifications are recoverable
 #
-# LIMITATIONS: Sarcasm and mixed reviews are hard — those need CoT (Ex 1.3).
+# The sizing below uses YOUR measured tokens-per-review, an assumed
+# monthly volume, and the illustrative reference price — swap in your
+# own volume and your provider's real rate when you size a deployment.
+MONTHLY_REVIEWS = 40_000  # illustrative volume, not a real bank's figure
+tokens_per_review = zero_shot_metrics["total_tokens"] / max(zero_shot_metrics["n"], 1)
+monthly_tokens = int(tokens_per_review * MONTHLY_REVIEWS)
+print("\n  Illustrative sizing for the review-triage scenario:")
+print(f"    measured tokens/review : {tokens_per_review:,.0f}")
+print(f"    assumed reviews/month  : {MONTHLY_REVIEWS:,}")
+print(
+    f"    tokens/month           : {monthly_tokens:,} "
+    f"≈ ${reference_cost_usd(monthly_tokens):,.2f}/month at the "
+    f"${REFERENCE_PRICE_USD_PER_MTOK:.2f}/Mtok reference price "
+    f"(self-hosted Ollama: hardware cost only)"
+)
+print(
+    f"    measured accuracy      : {zero_shot_metrics['accuracy']:.0%} on "
+    f"{zero_shot_metrics['n']} SST-2 docs (1 - accuracy = misrouting rate)"
+)
+#
+# BUSINESS IMPACT: the value side depends on what a missed complaint
+# costs the bank. If, say, catching a frustrated customer before they
+# escalate on social media avoids S$1,000 of remediation effort, then
+# 20 extra complaints caught per month is worth S$20,000/month — compare
+# that with the token bill printed above. The decision rule
+# is the ratio, not the absolute numbers: zero-shot wins whenever its
+# accuracy clears the bar at a fraction of the cost of the higher rungs.
+#
+# LIMITATIONS:
+#   - Sarcasm is hard ("wow, another outage, just what I needed")
+#   - Mixed reviews (4-star with a complaint) may be misrouted
+#   - For these edge cases, Exercise 1.3 (chain-of-thought) does better
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -128,74 +193,18 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Invoked an LLM via Kaizen Delegate with a cost budget
+  [x] Invoked a local Ollama LLM via Kaizen Delegate (make_delegate)
   [x] Wrote a minimal zero-shot classification prompt
   [x] Normalised free-form LLM output into discrete labels
-  [x] Measured accuracy, cost, and latency on a real SST-2 sample
-  [x] Identified a production scenario where zero-shot is optimal
+  [x] Measured accuracy, tokens, and latency on a real SST-2 sample
+  [x] Sized a production scenario (bank app-review triage) where
+      zero-shot is the economically optimal choice
 
-  Next: 02_few_shot.py — add a handful of examples and watch accuracy improve.
+  KEY INSIGHT: Zero-shot is the first rung of the prompting ladder.
+  Every subsequent technique spends more tokens per call — only climb higher
+  when the business outcome needs the accuracy.
+
+  Next: 02_few_shot.py — add a handful of examples and watch accuracy
+  improve without changing the model or the task.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Output (LLM-as-judge over the classifier's predictions).
-# We'd pass the predicted label + true label as (prompt, response) pairs
-# and ask a judge to score coherence/faithfulness. Attention is optional
-# here — only meaningful for open-weight models.
-if False:  # scaffold — requires OPENAI_API_KEY + judge budget
-    obs = LLMObservatory(run_id="ex_1_prompting_run")
-    # Build (prompt, response) pairs from the exercise results:
-    # prompts = [r["text"] for r in zero_shot_results]
-    # responses = [r["pred"] for r in zero_shot_results]
-    # obs.output.evaluate(prompts, responses, criteria="coherence,label_fidelity")
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-    # Optional: obs.plot_dashboard().show()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Output     (HEALTHY): judge coherence 0.91, label_fidelity 0.84
-#   [?] Attention  (n/a): API-only model — lens short-circuits to UNKNOWN
-#   [?] Retrieval  (n/a): no retrieval in this exercise
-#   [?] Agent      (n/a): no tool-using agent in this exercise
-#   [?] Alignment  (n/a): no fine-tuning signal to compare
-#   [?] Governance (n/a): no PACT engine attached
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [OUTPUT LENS] judge coherence 0.91 is HEALTHY (>0.80). label_fidelity
-#     0.84 means the judge thought 84% of predictions were coherent
-#     labels in the allowed category set. The remaining 16% are where
-#     the LLM drifted off-template ("Positive sentiment, I think" instead
-#     of "positive") — a signature of under-constrained zero-shot.
-#     >> Prescription: tighten the prompt (structured output in ex_1.6)
-#        or add few-shot exemplars (ex_1.2).
-#
-#  [ATTENTION LENS] GPT-class models are API-only — the Attention lens
-#     short-circuits to UNKNOWN. To actually inspect attention, switch to
-#     an open-weight model (e.g. Qwen2-0.5B via transformers) and call
-#     obs.attention.logit_lens(prompt=..., answer_token=...).
-#
-#  [OTHER LENSES] All n/a — prompting has no retrieval, no agent loop, no
-#     fine-tuning pair, no governance envelope. This is exactly the
-#     signature the design doc predicts for Lesson 6.1.
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

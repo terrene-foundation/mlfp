@@ -19,7 +19,7 @@
 #   2. Build — explicit 4-step reasoning template
 #   3. Train — evaluate and preserve reasoning traces
 #   4. Visualise — compare accuracy vs zero-shot/few-shot
-#   5. Apply — SGH clinical triage notes
+#   5. Apply — clinical triage notes at a local hospital
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -30,10 +30,15 @@ from dotenv import load_dotenv
 
 from shared.mlfp06.ex_1 import (
     CATEGORIES,
+    compute_metrics,
     get_eval_docs,
+    load_technique_metrics,
     normalise_label,
+    plot_comparison_bars,
+    plot_tokens_vs_accuracy,
     print_summary,
     run_delegate,
+    save_technique_metrics,
 )
 
 load_dotenv()
@@ -56,7 +61,7 @@ load_dotenv()
 async def cot_classify(text: str) -> tuple[str, str, float, float]:
     """Classify with an explicit 4-step reasoning template.
 
-    Returns (label, reasoning_trace, cost_usd, elapsed_s).
+    Returns (label, reasoning_trace, total_tokens, elapsed_s).
     """
     # TODO: Build a prompt that asks the model to (1) identify opinion words,
     # (2) assess tone, (3) consider sarcasm, (4) state final classification
@@ -108,18 +113,68 @@ print("\n[ok] Checkpoint passed — CoT evaluation complete\n")
 # ════════════════════════════════════════════════════════════════════════
 print_summary(cot_results, "Chain-of-Thought")
 
+# R9A: visual proof — CoT vs zero-shot/few-shot accuracy + tokens-vs-accuracy
+# scatter. Earlier rungs come from YOUR saved runs of 01 and 02; any rung
+# you have not run yet is left out rather than replaced by a made-up number.
+cot_metrics = compute_metrics(cot_results, "CoT")
+save_technique_metrics(cot_metrics)
+all_methods = load_technique_metrics(["Zero-Shot", "Few-Shot"]) + [cot_metrics]
+
+plot_comparison_bars(
+    all_methods,
+    title="CoT vs Prior Methods — Accuracy / Tokens / Latency",
+    filename="ex1_03_cot_comparison.png",
+)
+
+plot_tokens_vs_accuracy(
+    all_methods,
+    title="Tokens vs Accuracy — Prompting Ladder So Far",
+    filename="ex1_03_tokens_vs_accuracy.png",
+)
+
+# INTERPRETATION: CoT is the first technique that noticeably slows things
+# down. The reasoning trace is AUDITABLE — you can read WHY the model
+# chose a label, which matters for regulated industries (healthcare,
+# finance, legal). For simple tasks, the cost is hard to justify; for
+# ambiguous/high-stakes tasks, the auditability alone is worth it.
+# The scatter plot shows the tokens-accuracy trade-off — each method
+# usually buys accuracy with more tokens. The slope between two points is
+# the marginal token cost of each accuracy point. On SST-2 (mostly clear-cut
+# sentiment) CoT may NOT beat zero-shot; read your own points, not the theory.
+
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Singapore General Hospital Clinical Triage
+# TASK 5 — APPLY: Clinical Triage Notes at a Local Hospital
 # ════════════════════════════════════════════════════════════════════════
-# SGH pilot: LLM classifies triage nurse dictations as "ambulatory" or
-# "resuscitation". CoT is mandatory because every decision must be
-# AUDITABLE for quarterly clinical governance review. The reasoning
-# trace is the artefact that survives the audit — and is also used to
-# train junior nurses by comparing LLM reasoning against human decisions.
+# SCENARIO (illustrative): a local hospital pilots an assistant where the
+# triage nurse dictates a 2-3 sentence assessment at intake. An LLM
+# classifies the note as "ambulatory" (non-urgent) or "resuscitation"
+# (urgent). Misclassification in either direction is costly:
+#   - Under-triage (urgent -> non-urgent): life-threatening delay
+#   - Over-triage (non-urgent -> urgent): wastes resus bay capacity
 #
-# BUSINESS IMPACT: Moving from 85% to 92% accuracy on 200 intakes/day
-# avoids S$4.6M/year in incident costs, vs S$110K/year in LLM cost. 42x ROI.
+# Why CoT is mandatory here:
+#   - Every decision must be AUDITABLE. When a case is reviewed months
+#     later, the clinician must see the LLM's reasoning, not just its
+#     output. Zero-shot "label only" responses fail this bar.
+#   - Notes contain COMPETING signals ("alert but diaphoretic", "stable
+#     vitals but known MI history"). CoT forces the model to weigh them.
+#   - The reasoning trace is used to TRAIN triage nurses — they review
+#     disagreements between the LLM and the nurse to refine their own
+#     decision-making.
+#
+# BUSINESS IMPACT (illustrative figures): suppose zero-shot is 85%
+# accurate and CoT 92% on 200 intakes/day. That is 30 errors/day falling
+# to 16 — about 14 fewer misclassified intakes per day in total, split
+# between under- and over-triage. If each under-triage near-miss costs
+# ~S$8,500 in incident review (staff time + root-cause analysis) and
+# even a third of the avoided errors are under-triage, that is ~5 near-
+# misses/day avoided — far more than CoT's extra reasoning tokens cost.
+# Re-run the arithmetic with YOUR measured accuracies from the chart.
+#
+# AUDIT TRAIL: Every CoT response is persisted to the hospital's clinical
+# governance store alongside the case record. Access is controlled by
+# PACT governance (Exercise 7) and reviewed quarterly.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -132,70 +187,15 @@ print(
     """
   [x] Built a chain-of-thought prompt with an explicit 4-step template
   [x] Preserved full reasoning traces for downstream audit
+  [x] Parsed a discrete label out of a multi-line response
+  [x] Measured the token/latency penalty of reasoning tokens
   [x] Recognised CoT's role in regulated, auditability-critical settings
 
-  Next: 04_zero_shot_cot.py — one magic phrase replaces the template.
+  KEY INSIGHT: CoT's biggest value in production isn't accuracy — it's
+  AUDITABILITY. The reasoning trace is the artefact that survives the
+  quarterly compliance review.
+
+  Next: 04_zero_shot_cot.py — skip the hand-crafted template and use
+  one magic phrase instead.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Output (LLM-as-judge over the classifier's predictions).
-# We'd pass the predicted label + true label as (prompt, response) pairs
-# and ask a judge to score coherence/faithfulness. Attention is optional
-# here — only meaningful for open-weight models.
-if False:  # scaffold — requires OPENAI_API_KEY + judge budget
-    obs = LLMObservatory(run_id="ex_1_prompting_run")
-    # Build (prompt, response) pairs from the exercise results:
-    # prompts = [r["text"] for r in zero_shot_results]
-    # responses = [r["pred"] for r in zero_shot_results]
-    # obs.output.evaluate(prompts, responses, criteria="coherence,label_fidelity")
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-    # Optional: obs.plot_dashboard().show()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Output     (HEALTHY): judge coherence 0.91, label_fidelity 0.84
-#   [?] Attention  (n/a): API-only model — lens short-circuits to UNKNOWN
-#   [?] Retrieval  (n/a): no retrieval in this exercise
-#   [?] Agent      (n/a): no tool-using agent in this exercise
-#   [?] Alignment  (n/a): no fine-tuning signal to compare
-#   [?] Governance (n/a): no PACT engine attached
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [OUTPUT LENS] judge coherence 0.91 is HEALTHY (>0.80). label_fidelity
-#     0.84 means the judge thought 84% of predictions were coherent
-#     labels in the allowed category set. The remaining 16% are where
-#     the LLM drifted off-template ("Positive sentiment, I think" instead
-#     of "positive") — a signature of under-constrained zero-shot.
-#     >> Prescription: tighten the prompt (structured output in ex_1.6)
-#        or add few-shot exemplars (ex_1.2).
-#
-#  [ATTENTION LENS] GPT-class models are API-only — the Attention lens
-#     short-circuits to UNKNOWN. To actually inspect attention, switch to
-#     an open-weight model (e.g. Qwen2-0.5B via transformers) and call
-#     obs.attention.logit_lens(prompt=..., answer_token=...).
-#
-#  [OTHER LENSES] All n/a — prompting has no retrieval, no agent loop, no
-#     fine-tuning pair, no governance envelope. This is exactly the
-#     signature the design doc predicts for Lesson 6.1.
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

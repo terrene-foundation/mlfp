@@ -47,7 +47,7 @@ torch.manual_seed(42)
 # enormously wasteful for the common case.
 #
 # Quantisation maps the continuous FP16 range onto a small integer grid:
-#   INT8:  256 levels (~6x memory savings vs FP16 for weights)
+#   INT8:  256 levels (~2x memory savings vs FP16, 4x vs FP32)
 #   INT4:  16 levels  (~4x vs FP16 but bigger quality hit)
 #   NF4:   16 levels laid out to match the normal distribution exactly
 #
@@ -181,9 +181,11 @@ assert mae < scale, "Task 3: MAE should be below the quantisation step"
 assert rel_err < 0.05, "INT8 relative error should be under 5%"
 print("✓ Checkpoint 3 passed — round-trip error is bounded by 1 LSB\n")
 
-# INTERPRETATION: The relative error is well under 1%, which is why
-# INT8 quantisation barely moves the needle on downstream accuracy for
-# most transformer layers.  INT4 pushes this to ~2-5% and you start to
+# INTERPRETATION: The relative error printed above is about 1% (1.1% with
+# this seed): one shared scale per tensor means the single largest weight
+# sets the step size for all of them. That is small enough that INT8
+# rarely moves downstream accuracy much for most transformer layers, and
+# per-row or per-group scales shrink it further.  INT4 pushes this to ~2-5% and you start to
 # need GPTQ / AWQ tricks to stay competitive on instruction tasks.
 
 
@@ -199,6 +201,9 @@ print("=" * 70)
 precisions = ["FP32", "FP16 / BF16", "INT8", "INT4 / NF4", "INT2 (Q2_K)"]
 bytes_per_param = [4, 2, 1, 0.5, 0.25]
 memory_gb = [7 * b for b in bytes_per_param]
+
+fname = OUTPUT_DIR / "ex2_quantisation_memory.png"
+fname.unlink(missing_ok=True)  # the checkpoint must see THIS run's plot
 
 fig, ax = plt.subplots(1, 1, figsize=(9, 5))
 colors = ["crimson", "darkorange", "goldenrod", "steelblue", "seagreen"]
@@ -216,7 +221,6 @@ ax.set_ylabel("Memory for 7B weights (GB)")
 ax.set_title("Quantisation memory footprint (7B model)", fontweight="bold")
 ax.grid(True, axis="y", alpha=0.3)
 plt.tight_layout()
-fname = OUTPUT_DIR / "ex2_quantisation_memory.png"
 plt.savefig(fname, dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved: {fname}")
@@ -229,7 +233,7 @@ print("✓ Checkpoint 4 passed — memory footprint visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore SME on-device assistant (GGUF on CPU)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore F&B retail chain runs 42 outlets across
+# SCENARIO (illustrative): A Singapore F&B retail chain runs 42 outlets across
 # Singapore, Johor Bahru, and Batam.  Each outlet has a cheap point-
 # of-sale tablet (ARM CPU, 8 GB RAM, no GPU) that staff use to answer
 # customer questions in English, Malay, and Bahasa Indonesia: menu
@@ -256,13 +260,13 @@ print("✓ Checkpoint 4 passed — memory footprint visualised\n")
 # Keeps data on-device (PDPA win), works offline, response time ~900 ms
 # on the tablet CPU which clears the 1.5 s SLA.
 #
-# BUSINESS IMPACT:
+# BUSINESS IMPACT (illustrative figures):
 #   - Staff training time drops: new hires used to spend ~3 hours
 #     learning the menu card.  The assistant cuts that to ~45 min.
 #     42 outlets * 4 new hires/quarter * 2.25 hrs saved * S$14/hr =
 #     ~S$5,300/quarter staff onboarding saving.
 #   - Upsell: assistant suggests pairings (dessert, drinks, upsize).
-#     Early pilot at two outlets showed a 4% lift on ticket size.
+#     Suppose a pilot at two outlets showed a 4% lift on ticket size.
 #     At S$2.4M combined annual revenue per outlet, 4% * 42 outlets *
 #     S$2.4M = ~S$4,030,000/year in upsell revenue.
 #   - Avoided cloud spend: option A would have cost ~S$28/outlet/month
@@ -292,61 +296,6 @@ print(f"  Recommended: GGUF Q4_K_M deployed via llama.cpp on tablet CPU")
 # ── Checkpoint 5 ─────────────────────────────────────────────────────────
 assert total_annual_benefit > 0, "Task 5: SME scenario should have positive ROI"
 print("✓ Checkpoint 5 passed — SME assistant ROI analysed\n")
-
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Alignment (KL divergence from base, reward margin).
-# Secondary: Output (judge quality on paired completions), Attention
-# (layer-wise shift in target modules for LoRA).
-if False:  # scaffold — requires trained base + adapter checkpoint
-    obs = LLMObservatory(run_id="ex_2_finetune_run")
-    # Typical alignment read:
-    # for step, metrics in enumerate(training_log):
-    #     obs.alignment.log_training_step(step=step, **metrics)
-    # obs.alignment.evaluate_pair(base_responses, adapter_responses)
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Alignment  (WARNING): KL divergence from base = 0.42 nats
-#       Fix: healthy range 0.2-1.0; this is low-end — adapter barely
-#            moved. Increase LoRA rank or learning rate.
-#   [✓] Output     (HEALTHY): judge win-rate 0.58 vs base (>0.50 = good)
-#   [✓] Attention  (HEALTHY): shift concentrated in q_proj/v_proj as
-#       expected for LoRA; no drift in frozen layers.
-#   [?] Retrieval / Agent / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [ALIGNMENT LENS] KL 0.42 nats is the SIGNATURE of a cautiously-trained
-#     LoRA adapter — it diverged from the base distribution but not
-#     enough to break it. Above 2.0 nats signals over-fit; below 0.2
-#     signals the adapter barely learned. Our value is slightly under the
-#     0.5 floor we want for visible task lift.
-#     >> Prescription: raise lora_r from 8 -> 16 or train another epoch.
-#  [OUTPUT LENS] Win-rate 0.58 > 0.50 confirms the adapter is better
-#     than base on held-out prompts — tiny lift but statistically real.
-#  [ATTENTION LENS] Shift localised in the target modules = LoRA is
-#     doing what it's supposed to do (low-rank delta on attention
-#     projections, frozen MLP). If attention shifted everywhere you'd
-#     know you accidentally unfroze a module.
-# ════════════════════════════════════════════════════════════════════
 
 
 # ════════════════════════════════════════════════════════════════════════

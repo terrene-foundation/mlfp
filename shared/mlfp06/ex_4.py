@@ -36,10 +36,9 @@ setup_environment()
 MODEL = DEFAULT_CHAT_MODEL
 EMBED_MODEL = DEFAULT_EMBED_MODEL
 
-# Real embedding dimensionality — nomic-embed-text returns 768-dim vectors.
-# The previous pedagogical 8-dim "LLM-as-projector" trick was a workaround
-# for the OpenAI-cost-per-call problem; with a free local embedder we use
-# the real thing so retrieval behaves like a production RAG system.
+# Embedding dimensionality of the default embedder (nomic-embed-text,
+# overridable via OLLAMA_EMBED_MODEL): 768-dim dense vectors from a real
+# embedding model, so retrieval behaves like a production RAG system.
 EMBED_DIM = 768
 
 OUTPUT_DIR = Path("outputs") / "ex4_rag"
@@ -101,16 +100,14 @@ def split_corpus(
 # ════════════════════════════════════════════════════════════════════════
 
 
-def make_delegate(budget_usd: float = 1.0) -> object:
+def make_delegate() -> object:
     """Construct an Ollama-backed Kaizen Delegate for RAG generation.
 
-    The ``budget_usd`` parameter is retained for API compatibility with
-    older callers and IGNORED — Ollama is free, so cost budgets are
-    meaningless. The Delegate raises :class:`OllamaUnreachableError`
-    transparently if the daemon is not running (no silent fallback).
+    The model comes from ``OLLAMA_CHAT_MODEL`` (via the course bootstrap).
+    There is no cost budget: Ollama runs locally and is free. If the daemon
+    is not running the call fails loudly — start it with ``ollama serve``.
     """
-    del budget_usd  # API compat — see docstring
-    return _make_chat_delegate(model=MODEL)
+    return _make_chat_delegate()
 
 
 async def delegate_text(delegate: object, prompt: str) -> str:
@@ -123,36 +120,29 @@ async def delegate_text(delegate: object, prompt: str) -> str:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# EMBEDDING HELPERS (pedagogical — uses an LLM as a low-dim projector)
+# EMBEDDING HELPERS — dedicated Ollama embedding model
 # ════════════════════════════════════════════════════════════════════════
 
 
-async def generate_embedding(text: str, delegate: object | None = None) -> list[float]:
+async def generate_embedding(text: str) -> list[float]:
     """Embed a single string with the Ollama embedding model.
 
     Returns a 768-dimensional dense vector from ``nomic-embed-text``
-    (overridable via ``OLLAMA_EMBED_MODEL``). The ``delegate`` argument
-    is retained for API compatibility with the previous OpenAI-era
-    signature and is ignored — embedding goes through a dedicated
-    embedding adapter, not a chat Delegate.
+    (overridable via ``OLLAMA_EMBED_MODEL``). Embedding goes through a
+    dedicated embedding adapter, not a chat Delegate.
     """
-    del delegate  # API compat — see docstring
-    embedder = make_embedder(model=EMBED_MODEL)
+    embedder = make_embedder()
     vectors = await embedder.embed([text])
     return list(vectors[0])
 
 
-async def embed_many(texts: list[str], budget_usd: float = 3.0) -> list[list[float]]:
+async def embed_many(texts: list[str]) -> list[list[float]]:
     """Embed a batch of texts via a single Ollama embedding call.
 
-    The embedding adapter batches internally, which is materially faster
-    than the previous one-call-per-text loop (that was a workaround for
-    OpenAI per-call rate limits, not a real constraint with local Ollama).
-    The ``budget_usd`` argument is retained for API compatibility and
-    ignored.
+    The embedding adapter batches internally, which is much faster than
+    one call per text.
     """
-    del budget_usd  # API compat — see docstring
-    embedder = make_embedder(model=EMBED_MODEL)
+    embedder = make_embedder()
     vectors = await embedder.embed(texts)
     return [list(v) for v in vectors]
 
@@ -201,13 +191,9 @@ class DenseVectorStore:
 # ════════════════════════════════════════════════════════════════════════
 
 
-async def rag_answer(query: str, context: str, budget_usd: float = 0.5) -> str:
-    """Generate an answer grounded in retrieved context.
-
-    The ``budget_usd`` argument is retained for API compatibility and ignored
-    (Ollama is free).
-    """
-    delegate = make_delegate(budget_usd=budget_usd)
+async def rag_answer(query: str, context: str) -> str:
+    """Generate an answer grounded in retrieved context."""
+    delegate = make_delegate()
     prompt = (
         "Answer the question using ONLY the provided context. "
         "If the context doesn't contain enough information, say so.\n\n"

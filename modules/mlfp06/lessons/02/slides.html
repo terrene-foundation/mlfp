@@ -179,15 +179,16 @@ class LoRALayer(nn.Module):
       <text x="40" y="50" font-family="Inter" font-size="11" fill="#0D9488">Fewer params</text>
       <text x="740" y="50" text-anchor="end" font-family="Inter" font-size="11" fill="#0D9488">More expressive</text>
 
-      <circle cx="70" cy="60" r="6" fill="#22C55E"/><text x="70" y="85" text-anchor="middle" font-size="10">Prompt Tuning</text>
-      <circle cx="150" cy="60" r="6" fill="#22C55E"/><text x="150" y="85" text-anchor="middle" font-size="10">Prefix Tuning</text>
-      <circle cx="240" cy="60" r="6" fill="#0D9488"/><text x="240" y="85" text-anchor="middle" font-size="10" font-weight="700">LoRA</text>
-      <circle cx="320" cy="60" r="6" fill="#0D9488"/><text x="320" y="85" text-anchor="middle" font-size="10">Adapters</text>
-      <circle cx="410" cy="60" r="6" fill="#3B82F6"/><text x="410" y="85" text-anchor="middle" font-size="10">LLRD</text>
-      <circle cx="490" cy="60" r="6" fill="#3B82F6"/><text x="490" y="85" text-anchor="middle" font-size="10">Progressive Freeze</text>
-      <circle cx="580" cy="60" r="6" fill="#8B5CF6"/><text x="580" y="85" text-anchor="middle" font-size="10">Distillation</text>
-      <circle cx="660" cy="60" r="6" fill="#8B5CF6"/><text x="660" y="85" text-anchor="middle" font-size="10">Full SFT</text>
-      <circle cx="730" cy="60" r="6" fill="#8B5CF6"/><text x="730" y="85" text-anchor="middle" font-size="10">DPSGD</text>
+      <circle cx="70" cy="60" r="6" fill="#22C55E"/><text x="70" y="82" text-anchor="middle" font-size="10">Prompt Tuning</text>
+      <circle cx="140" cy="60" r="6" fill="#22C55E"/><text x="140" y="98" text-anchor="middle" font-size="10">Prefix Tuning</text>
+      <circle cx="210" cy="60" r="6" fill="#0D9488"/><text x="210" y="82" text-anchor="middle" font-size="10" font-weight="700">LoRA</text>
+      <circle cx="280" cy="60" r="6" fill="#0D9488"/><text x="280" y="98" text-anchor="middle" font-size="10">Adapters</text>
+      <circle cx="350" cy="60" r="6" fill="#3B82F6"/><text x="350" y="82" text-anchor="middle" font-size="10">EWC</text>
+      <circle cx="420" cy="60" r="6" fill="#3B82F6"/><text x="420" y="98" text-anchor="middle" font-size="10">Progressive Freeze</text>
+      <circle cx="490" cy="60" r="6" fill="#3B82F6"/><text x="490" y="82" text-anchor="middle" font-size="10">LLRD</text>
+      <circle cx="560" cy="60" r="6" fill="#8B5CF6"/><text x="560" y="98" text-anchor="middle" font-size="10">Distillation</text>
+      <circle cx="630" cy="60" r="6" fill="#8B5CF6"/><text x="630" y="82" text-anchor="middle" font-size="10">Full SFT</text>
+      <circle cx="700" cy="60" r="6" fill="#8B5CF6"/><text x="700" y="98" text-anchor="middle" font-size="10">DP-SGD</text>
 
       <rect x="40" y="120" width="720" height="40" rx="6" fill="#F0FDF4" stroke="#22C55E"/>
       <text x="50" y="144" font-family="Inter" font-size="11" fill="#166534"><tspan font-weight="700">Soft prompts:</tspan> prepend learned vectors. Single-task, very cheap.</text>
@@ -196,7 +197,7 @@ class LoRALayer(nn.Module):
       <text x="50" y="189" font-family="Inter" font-size="11" fill="#0F766E"><tspan font-weight="700">PEFT:</tspan> LoRA + adapters. &lt;1% params, base knowledge preserved. Default.</text>
 
       <rect x="40" y="210" width="720" height="40" rx="6" fill="#F3E8FF" stroke="#8B5CF6"/>
-      <text x="50" y="234" font-family="Inter" font-size="11" fill="#6D28D9"><tspan font-weight="700">Heavy guns:</tspan> full SFT, distillation, DPSGD. Only when PEFT is not enough.</text>
+      <text x="50" y="234" font-family="Inter" font-size="11" fill="#6D28D9"><tspan font-weight="700">Heavy guns:</tspan> full SFT, distillation, DP-SGD. Only when PEFT is not enough.</text>
     </svg>
   </figure>
 </section>
@@ -214,7 +215,7 @@ class LoRALayer(nn.Module):
       <tr><td><strong>LLRD</strong></td><td>Full SFT where earlier layers are general</td></tr>
       <tr><td><strong>Progressive Freeze</strong></td><td>Small dataset, prevent forgetting</td></tr>
       <tr><td><strong>Distillation</strong></td><td>Compress a large model to deployable size</td></tr>
-      <tr><td><strong>DPSGD</strong></td><td>Training data has PII</td></tr>
+      <tr><td><strong>DP-SGD</strong></td><td>Training data has PII</td></tr>
       <tr><td><strong>EWC</strong></td><td>Sequential multi-task, prevent forgetting</td></tr>
     </tbody>
   </table>
@@ -251,7 +252,7 @@ class LoRALayer(nn.Module):
     <li><strong>GPTQ / AWQ</strong> — post-training 4-bit, calibrated</li>
     <li><strong>GGUF</strong> — llama.cpp; runs on CPU + Apple Silicon</li>
     <li><strong>bitsandbytes</strong> — on-the-fly during PyTorch training</li>
-    <li><strong>QLoRA:</strong> 4-bit base + fp16 LoRA → fine-tune 65B on 1x 48GB GPU</li>
+    <li><strong>QLoRA:</strong> 4-bit base + 16-bit LoRA → fine-tune a 65B model on one 48 GB GPU (Dettmers et al., 2023)</li>
   </ul>
   <div style="background:#EFF6FF; padding:14px 18px; border-left:4px solid #3B82F6; border-radius:4px;">
     <strong>Serious LoRA runs on constrained hardware should default to QLoRA.</strong>
@@ -307,22 +308,23 @@ class LoRALayer(nn.Module):
       <rect x="620" y="30" width="130" height="200" rx="6" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
       <text x="685" y="52" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#334155">Memory (7B)</text>
 
-      <!-- Full fine-tune bar -->
-      <rect x="635" y="65" width="100" height="22" rx="3" fill="#F43F5E"/>
-      <text x="685" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">Full FT: 28 GB</text>
+      <!-- Full fine-tune bar (16 bytes/param: fp16 weights + grads, fp32 master + Adam m, v) -->
+      <text x="635" y="68" font-family="Inter" font-weight="600" font-size="9" fill="#BE123C">Full FT: ~112 GB</text>
+      <rect x="635" y="72" width="100" height="14" rx="3" fill="#F43F5E"/>
 
-      <!-- LoRA bar -->
-      <rect x="635" y="97" width="50" height="22" rx="3" fill="#3B82F6"/>
-      <text x="660" y="112" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">LoRA: 14 GB</text>
+      <!-- LoRA bar (fp16 frozen base, 2 bytes/param) -->
+      <text x="635" y="102" font-family="Inter" font-weight="600" font-size="9" fill="#1E40AF">LoRA: ~14 GB</text>
+      <rect x="635" y="106" width="13" height="14" rx="3" fill="#3B82F6"/>
 
-      <!-- QLoRA bar -->
-      <rect x="635" y="129" width="18" height="22" rx="3" fill="#0D9488"/>
-      <text x="668" y="144" font-family="Inter" font-weight="600" font-size="9" fill="#0D9488">QLoRA: 5 GB</text>
+      <!-- QLoRA bar (4-bit base, ~0.5 bytes/param) -->
+      <text x="635" y="136" font-family="Inter" font-weight="600" font-size="9" fill="#0D9488">QLoRA: ~4-5 GB</text>
+      <rect x="635" y="140" width="5" height="14" rx="2" fill="#0D9488"/>
 
       <!-- Scale note -->
-      <text x="685" y="175" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">QLoRA makes 65B</text>
-      <text x="685" y="188" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">possible on 1x 48GB</text>
-      <text x="685" y="201" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">consumer GPU</text>
+      <text x="685" y="172" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">weights + training state,</text>
+      <text x="685" y="183" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">excl. activations</text>
+      <text x="685" y="201" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">QLoRA fits 65B</text>
+      <text x="685" y="212" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">on one 48 GB GPU</text>
     </svg>
   </figure>
 </section>
@@ -331,50 +333,62 @@ class LoRALayer(nn.Module):
 <section>
   <h2>Configure <code>AlignmentPipeline</code></h2>
   <pre><code class="language-python" data-trim>
-from kailash_align import AlignmentConfig, AlignmentPipeline, AdapterRegistry
+import os
+from kailash_align import AlignmentConfig, DPOConfig, LoRAConfig, SFTConfig
 
 cfg = AlignmentConfig(
     method="sft",
-    base_model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    train_data="data/mlfp06/sg_domain_qa_train.parquet",
-    eval_data="data/mlfp06/sg_domain_qa_eval.parquet",
-    lora_r=8, lora_alpha=16, lora_dropout=0.05,
-    target_modules=["q_proj", "v_proj"],
-    epochs=3, batch_size=4, learning_rate=2e-4,
-    max_seq_length=512,
-    output_dir="artifacts/mlfp06/sft_adapter",
+    # a HuggingFace repo id, read from the environment (never hardcoded)
+    base_model_id=os.environ.get("SFT_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct"),
+    lora=LoRAConfig(rank=16, alpha=32, dropout=0.05,
+                    target_modules=("q_proj", "v_proj")),
+    sft=SFTConfig(num_train_epochs=3, per_device_train_batch_size=4,
+                  gradient_accumulation_steps=4, learning_rate=2e-4,
+                  max_seq_length=512),
+    dpo=DPOConfig(),                 # unused for SFT, but required
+    experiment_dir="outputs/ex2_finetuning/sft_output",
 )
   </code></pre>
+  <p style="font-size:0.8em;">Typed sub-configs: <code>LoRAConfig</code> (what to adapt), <code>SFTConfig</code> (how to train). Exercise 2.6 builds exactly this via <code>build_sft_config()</code>.</p>
 </section>
 
 <!-- 15 Train + register -->
 <section>
   <h2>Train and register the adapter</h2>
   <pre><code class="language-python" data-trim>
-pipeline = AlignmentPipeline(cfg)
-result = await pipeline.train()
+import polars as pl
+from datasets import Dataset
+from kailash_align import AdapterRegistry, AdapterSignature, AlignmentPipeline
+from shared.mlfp06.ex_2 import load_imdb_sft
 
-registry = AdapterRegistry("artifacts/mlfp06/registry")
-registry.register(
-    name="sg_domain_sft",
-    version="v1",
-    path=result.adapter_path,
-    metadata={"base_model": cfg.base_model, "method": "sft", "r": cfg.lora_r},
-)
+_, train_data, _ = load_imdb_sft()      # IMDB instruction/response pairs
+# SFT trains on the `text` column: instruction + response, as a HF Dataset
+sft = train_data.select(
+    (pl.col("instruction") + "\n\n" + pl.col("response")).alias("text"))
+hf_ds = Dataset.from_dict(sft.to_dict(as_series=False))
 
-print(f"train={result.train_loss:.4f}  eval={result.eval_loss:.4f}")
+result = await AlignmentPipeline(cfg).train(
+    hf_ds, adapter_name="imdb_sentiment_sft_v1")
+print(result.training_metrics["train_loss"], result.adapter_path)
+
+version = await AdapterRegistry().register_adapter(
+    name="imdb_sentiment_sft_v1", adapter_path=result.adapter_path,
+    signature=AdapterSignature(base_model_id=cfg.base_model_id,
+                               adapter_type="lora", training_method="sft"),
+    training_metrics={"train_loss": result.training_metrics["train_loss"]})
   </code></pre>
-  <p style="font-size:0.8em;">AdapterRegistry is your single source of truth — every downstream lesson loads from it.</p>
+  <p style="font-size:0.8em;">The registry records base model, method and metrics for every adapter. No eval split is passed to <code>train()</code>, so it reports a training loss only.</p>
 </section>
 
 <!-- 16 Reading loss curves -->
 <section>
   <h2>Reading the loss curves</h2>
+  <p style="font-size:0.75em; color:#64748B;">Exercise 2.6 logs the training loss; hold out an eval split (the <code>eval_data</code> from <code>load_imdb_sft()</code>) to read both curves.</p>
   <ul style="font-size:0.85em;">
     <li><strong>Healthy:</strong> train ↓ smoothly, eval ↓ following with small gap</li>
     <li><strong>Overfitting:</strong> train ↓, eval ↑ — reduce epochs or raise dropout</li>
     <li><strong>Underfitting:</strong> both flat — raise LR or increase rank</li>
-    <li><strong>Leakage:</strong> eval &lt; 0.5 from step 1 — check train/eval split</li>
+    <li><strong>Leakage:</strong> eval loss far below train loss from step 1 — check the train/eval split for overlap</li>
   </ul>
 </section>
 
@@ -420,8 +434,8 @@ print(f"train={result.train_loss:.4f}  eval={result.eval_loss:.4f}")
     <li>✓ Explain LoRA as $W_0 + BA$ and compute the parameter reduction</li>
     <li>✓ Implement <code>LoRALayer</code> and <code>AdapterLayer</code> from scratch</li>
     <li>✓ Choose among 10 fine-tuning techniques for a given constraint</li>
-    <li>✓ Merge LoRA adapters with TIES / DARE / SLERP</li>
-    <li>✓ Configure <code>AlignmentPipeline</code> and register the result</li>
+    <li>✓ Explain TIES / DARE / SLERP merging; implement TIES and SLERP on weight deltas</li>
+    <li>✓ Configure <code>AlignmentPipeline</code> and register the adapter in <code>AdapterRegistry</code></li>
     <li>✓ Read training/eval loss curves to diagnose the run</li>
   </ul>
   <div style="background:#F0FDFA; padding:16px 20px; border-left:4px solid #0D9488; border-radius:4px; margin-top:1em;">

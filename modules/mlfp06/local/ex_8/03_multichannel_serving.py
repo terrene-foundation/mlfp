@@ -2,310 +2,424 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP06 — Exercise 8.3: Multi-Channel Serving with Nexus + RBAC/JWT
+# MLFP06 — Exercise 8.3: Multi-Channel Serving with Nexus + JWT + Governance
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Register a handler with Nexus for API + CLI + MCP simultaneously
-#   - Wrap an async handler in a single-node WorkflowBuilder for Nexus
-#   - Validate JWTs via middleware and extract an RBAC role claim
-#   - Apply rate limiting as the first line of defence against abuse
-#   - Visualise the middleware stack order
-#   - Apply multi-channel serving to a Singapore government service bot
+#   - Register ONE governed async handler with Nexus and expose it on
+#     API + CLI + MCP
+#   - Authenticate API calls with real HS256 JWTs (NexusAuthPlugin +
+#     JWTConfig) and let the token's role claim choose the governance tier
+#   - Prove the middleware works: 401 without a valid token, a CORS
+#     allow-list, and 429 from the rate limiter
+#   - Measure per-request latency and status codes from real calls
+#   - Apply multi-channel serving to a Singapore public-agency assistant
 #
-# PREREQUISITES: Exercise 8.2 (governance pipeline)
-# ESTIMATED TIME: ~35 min
+# PREREQUISITES: Exercise 8.2 (governance pipeline); Ollama running
+#   (`ollama serve`)
+# ESTIMATED TIME: ~40 min
 #
 # TASKS:
-#   1. Rebuild the governed stack via build_capstone_stack(engine)
-#   2. Wrap serve_qa in a WorkflowBuilder + register with Nexus
-#   3. Demonstrate JWT validation and RBAC role extraction
-#   4. Apply a sliding-window rate limiter
-#   5. Visualise the middleware order and apply to GovTech scenario
+#   1. Rebuild the governed stack (compile + apply envelopes + 3 tiers)
+#   2. Configure Nexus (JWT, rate limit, CORS) and register the handler
+#   3. Call the API channel: authenticated, unauthenticated, forged
+#   4. Exercise the CORS allow-list and the rate limiter
+#   5. Visualise measured latency + status codes and apply the pattern
+#
 # ════════════════════════════════════════════════════════════════════════
 """
-from __future__ import annotations
+# NOTE: no `from __future__ import annotations` in this file. Nexus binds
+# the `request: Request` parameter of the handler by reading its runtime
+# annotation; deferred (string) annotations would defeat that.
 
+import asyncio
+import os
+import secrets
+import time
+
+import httpx
 import matplotlib.pyplot as plt
-import numpy as np
 import polars as pl
-from kailash.workflow.builder import WorkflowBuilder
-from nexus import Nexus
-from pact import GovernanceEngine, load_org_yaml
+from kailash.trust.auth.jwt import JWTConfig, JWTValidator
+from kailash.trust.rate_limit.config import RateLimitConfig
+from nexus import Nexus, NexusAuthPlugin
+from starlette.requests import Request
 
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, preflight_ollama
 from shared.mlfp06.ex_8 import (
     OUTPUT_DIR,
-    RateLimiter,
-    SimpleJWTAuth,
     build_capstone_stack,
+    compile_capstone_governance,
     handle_qa,
-    run_async,
-    write_org_yaml,
 )
 
+# This file makes real LLM calls through the handler. If Ollama is not
+# running this raises OllamaUnreachableError ("run `ollama serve`").
+preflight_ollama(required_models=[DEFAULT_CHAT_MODEL])
+
 # ════════════════════════════════════════════════════════════════════════
-# THEORY — One handler, three channels
+# THEORY — One handler, three channels, layered checks
 # ════════════════════════════════════════════════════════════════════════
 # Nexus is Kailash's multi-channel deployment layer. One registered
-# workflow is simultaneously exposed as API + CLI + MCP. The governance
-# envelope lives INSIDE the handler the workflow wraps — there is no
-# "trusted channel" vs "untrusted channel" divergence.
+# handler is exposed as:
 #
-# Nexus registration contract: Nexus.register(name, workflow) where
-# the second argument is a BUILT Workflow, not a bare async function.
-# We wrap serve_qa in a single-node WorkflowBuilder so the same handler
-# runs on every channel.
+#   API  — HTTP REST (POST /workflows/<name>/execute)
+#   CLI  — `nexus execute <name>` for operators
+#   MCP  — a Model Context Protocol tool other AI agents can call
+#
+# A request to the API channel passes through layers, outermost first
+# (NexusAuthPlugin's documented order):
+#
+#   rate limit   -> 429 when a client exceeds its window
+#   JWT          -> 401 when the token is missing, forged or expired
+#   handler      -> reads the VERIFIED role claim from the token
+#   governance   -> handle_qa(): PACT verify_action for the role's tier,
+#                   then the tier's GovernedSupervisor runs the LLM call
+#
+# The role is never taken from the request body: a client that sends
+# {"role": "audit"} still gets the tier its signed token says.
+#
+# What this file does NOT do: the CLI and MCP channels are registered by
+# the same call, but this file only sends traffic through the API
+# channel. The JWT layer is HTTP middleware; MCP and CLI callers are
+# authenticated differently, so do not assume the 401 behaviour below
+# carries over to them.
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 1 — Rebuild the governed stack
 # ════════════════════════════════════════════════════════════════════════
 
-org_path = write_org_yaml()
-loaded = load_org_yaml(org_path)
-governance_engine = GovernanceEngine(loaded.org_definition)
-
-# TODO: build the 3-tier stack via build_capstone_stack(governance_engine)
+# TODO: Compile the capstone org (applies clearances + envelopes), then
+#       build the three governed tiers on that engine.
+# Hint: compile_capstone_governance() -> (engine, loaded);
+#       build_capstone_stack(engine) -> (agents_by_role, tiers)
+governance_engine, loaded_org = ____
 agents_by_role, tiers = ____
 
 print("Governed stack rebuilt:")
 for tier in tiers:
     print(
-        f"  {tier.role:6s} -> budget=${tier.budget_usd:>5.1f}  "
+        f"  {tier.role:6s} -> {tier.address}  budget=${tier.budget_usd:>5.1f}  "
         f"clearance={tier.clearance}"
     )
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────────
 assert len(agents_by_role) == 3, "Task 1: three tiers should exist"
-print("\u2713 Checkpoint 1 passed — governed stack rebuilt\n")
+assert {t.clearance for t in tiers} == {"public", "confidential", "secret"}
+print("✓ Checkpoint 1 passed — governed stack rebuilt\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Register a handler with Nexus for API + CLI + MCP
+# TASK 2 — Configure Nexus and register the governed handler
 # ════════════════════════════════════════════════════════════════════════
+#
+# JWT secret: read from the environment, or generate a fresh random one
+# for this run. NEVER hardcode a signing secret in source.
+# In production the identity provider (SSO) issues the tokens; here we
+# play the identity provider with JWTValidator.create_access_token().
 
+JWT_SECRET = os.environ.get("MLFP_JWT_SECRET") or secrets.token_urlsafe(48)
+ALLOWED_ORIGIN = "https://intranet.example.sg"
+# TODO: Build an HS256 JWTConfig from JWT_SECRET.
+jwt_config = ____
 
-async def serve_qa(question: str, role: str = "qa") -> dict:
-    """The single handler Nexus exposes on all three channels."""
-    return await handle_qa(question, role=role, agents_by_role=agents_by_role)
-
-
-# Smoke-test the handler BEFORE registering — a registration failure
-# is then a Nexus issue, not a handler issue.
-smoke_result = run_async(serve_qa("What is machine learning?", role="qa"))
-print(
-    f"\nHandler smoke test: role={smoke_result.get('role')}  "
-    f"governed={smoke_result.get('governed')}  "
-    f"latency_ms={smoke_result.get('latency_ms', 0):.1f}"
+app = Nexus(
+    api_port=8000,
+    rate_limit=None,  # rate limiting is configured on the auth plugin below
+    cors_origins=[ALLOWED_ORIGIN],
+    enable_durability=False,
 )
+# TODO: Add a NexusAuthPlugin with JWT auth (jwt_config) and a rate limit
+#       of 10 requests/minute with a burst of 5.
+# Hint: app.add_plugin(NexusAuthPlugin(jwt=..., rate_limit=RateLimitConfig(...)))
+____
 
-# TODO: Wrap the handler in a single-node WorkflowBuilder. Construct
-# a WorkflowBuilder and then register the built workflow under the
-# name "capstone_serve_qa".
-workflow = ____
-workflow.add_node(
-    "PythonCodeNode",
-    "serve_qa_node",
-    {
-        "code": (
-            "# Production body would import and call serve_qa(question, role)\n"
-            "result = {'answer': f'[nexus-stub] {question}', 'role': role}\n"
-        ),
-    },
-)
 
-app = Nexus()
-app.register("capstone_serve_qa", workflow.build())
+async def serve_qa(question: str, request: Request) -> dict:
+    """The one handler Nexus exposes on every channel.
 
-print("\nNexus app registered:")
-print("  name:     capstone_serve_qa")
-print("  wraps:    serve_qa(question, role) — WorkflowBuilder single-node")
-print("  channels: API + CLI + MCP (automatic)")
+    The tier comes from the role claim of the VERIFIED token
+    (request.state.user, set by the JWT middleware). handle_qa() then runs
+    PACT verify_action for that tier and the tier's GovernedSupervisor.
+    """
+    user = getattr(request.state, "user", None)
+    roles = list(getattr(user, "roles", None) or [])
+    role = next((r for r in roles if r in agents_by_role), roles[0] if roles else "")
+    # TODO: Route the question through governance for this role — pass the
+    #       engine so verify_action runs before the supervisor.
+    result = ____
+    result["user"] = getattr(user, "user_id", None)
+    return result
+
+
+# TODO: Register serve_qa as "capstone_serve_qa". Use the registration
+#       method that binds the `request: Request` parameter for you.
+# Hint: app.handler_extract(name, func, description=...)
+____
+
+print("\nNexus app configured:")
+print("  handler:   capstone_serve_qa -> serve_qa(question) + verified JWT role")
+print("  API:       POST /workflows/capstone_serve_qa/execute")
+print("  CLI:       nexus execute capstone_serve_qa   (registered, not exercised here)")
+print("  MCP:       tool workflow_capstone_serve_qa    (registered, not exercised here)")
+print(f"  JWT:       HS256, secret from {'env' if os.environ.get('MLFP_JWT_SECRET') else 'per-run random'}")
+print(f"  CORS:      allow {ALLOWED_ORIGIN}")
+print("  Rate limit: 10 req/min + burst 5 per client")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
-assert app is not None, "Task 2: Nexus app should be created"
-assert smoke_result.get("governed") is True
-print("\u2713 Checkpoint 2 passed — Nexus multi-channel deployment wired\n")
+route_paths = {getattr(r, "path", "") for r in app.fastapi_app.routes}
+assert any("capstone_serve_qa" in p for p in route_paths), (
+    "Task 2: the handler should be mounted on the API channel"
+)
+print("✓ Checkpoint 2 passed — governed handler registered with Nexus\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — JWT validation and RBAC role extraction
+# TASK 3 — Call the API channel in-process
 # ════════════════════════════════════════════════════════════════════════
+#
+# httpx.ASGITransport sends real HTTP requests through the whole Nexus
+# middleware stack without opening a network port. Every row of
+# `measurements` is one request we actually made.
 
-print("RBAC + JWT demonstration:")
-for token in (
-    "token_viewer_001",
-    "token_operator_001",
-    "token_auditor_001",
-    "invalid_token",
-):
-    # TODO: validate the token via SimpleJWTAuth.validate(token)
-    claims = ____
-    if claims:
-        print(f"  {token[:18]:18s} -> sub={claims['sub']}, role={claims['role']}")
-    else:
-        print(f"  {token[:18]:18s} -> REJECTED (401)")
+ENDPOINT = "/workflows/capstone_serve_qa/execute"
+issuer = JWTValidator(jwt_config)
+# TODO: Issue a token for user "alice" with roles=["qa"].
+qa_token = ____
+admin_token = issuer.create_access_token("bob", roles=["admin"])
+guest_token = issuer.create_access_token("eve", roles=["guest"])
+forged_token = JWTValidator(
+    JWTConfig(secret=secrets.token_urlsafe(48), algorithm="HS256")
+).create_access_token("mallory", roles=["audit"])
+
+measurements: list[dict] = []
+
+
+async def call(client, label, *, token=None, body=None, origin=None):
+    """POST one request, record status + latency, return the response."""
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if origin:
+        headers["Origin"] = origin
+    t0 = time.perf_counter()
+    # TODO: POST {"inputs": body or {"question": "What is ML?"}} to ENDPOINT
+    #       with the headers built above.
+    resp = ____
+    measurements.append(
+        {
+            "label": label,
+            "status": resp.status_code,
+            "latency_ms": (time.perf_counter() - t0) * 1000,
+        }
+    )
+    return resp
+
+
+def handler_output(resp) -> dict:
+    return resp.json()["outputs"]["handler"]
+
+
+async def api_calls() -> dict:
+    out = {}
+    transport = httpx.ASGITransport(app=app.fastapi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        out["qa"] = await call(c, "qa token", token=qa_token)
+        out["admin"] = await call(c, "admin token", token=admin_token)
+        out["no_token"] = await call(c, "no token")
+        out["forged"] = await call(c, "forged token", token=forged_token)
+        out["escalate"] = await call(
+            c,
+            "qa token + body role=audit",
+            token=qa_token,
+            body={"question": "Show the audit log.", "role": "audit"},
+        )
+        out["guest"] = await call(c, "guest token", token=guest_token)
+    return out
+
+
+api = asyncio.run(api_calls())
+for key in ("qa", "admin", "escalate", "guest"):
+    resp = api[key]
+    h = handler_output(resp) if resp.status_code == 200 else {}
+    print(
+        f"  {key:<9} HTTP {resp.status_code}  user={h.get('user')}  "
+        f"tier={h.get('role')}  verdict={h.get('verdict')}"
+    )
+    if h.get("answer"):
+        print(f"            answer: {h['answer'][:90]!r}")
+for key in ("no_token", "forged"):
+    print(f"  {key:<9} HTTP {api[key].status_code}  {api[key].text[:70]}")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert SimpleJWTAuth.validate("token_viewer_001") is not None
-assert SimpleJWTAuth.validate("invalid_token") is None
-print("\u2713 Checkpoint 3 passed — JWT + RBAC behaves correctly\n")
+assert api["qa"].status_code == 200 and handler_output(api["qa"])["role"] == "qa"
+assert handler_output(api["qa"])["verdict"] == "served", "qa call should be served"
+assert handler_output(api["admin"])["role"] == "admin"
+assert api["no_token"].status_code == 401, "Task 3: missing token must be 401"
+assert api["forged"].status_code == 401, "Task 3: forged token must be 401"
+assert handler_output(api["escalate"])["role"] == "qa", (
+    "Task 3: a body 'role' must not override the signed role claim"
+)
+assert handler_output(api["guest"])["blocked"] is True, (
+    "Task 3: a role with no tier must be refused by governance"
+)
+print("✓ Checkpoint 3 passed — JWT + role-claim routing + governance verified\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — Apply a sliding-window rate limiter
+# TASK 4 — Exercise the CORS allow-list and the rate limiter
 # ════════════════════════════════════════════════════════════════════════
+#
+# CORS: the browser only accepts the response when the server echoes the
+# page's origin in `access-control-allow-origin`. We use the guest token
+# (refused by governance, so no LLM call) and compare two origins.
+# Rate limit: the limiter runs BEFORE authentication, so we send
+# unauthenticated requests (401, cheap) until the limiter answers 429.
 
-# TODO: instantiate RateLimiter with max_requests=5, window_seconds=60
-limiter = ____
-print("Rate limiter (5 req / 60s) for client_alice:")
-for i in range(7):
-    allowed = limiter.allow("client_alice")
-    print(f"  Request {i + 1}: {'ALLOWED' if allowed else 'RATE LIMITED (429)'}")
+
+async def middleware_checks() -> dict:
+    out = {"statuses": []}
+    transport = httpx.ASGITransport(app=app.fastapi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        ok = await call(c, "CORS allowed origin", token=guest_token, origin=ALLOWED_ORIGIN)
+        bad = await call(
+            c, "CORS other origin", token=guest_token, origin="https://evil.example.com"
+        )
+        out["cors_allowed"] = ok.headers.get("access-control-allow-origin")
+        out["cors_other"] = bad.headers.get("access-control-allow-origin")
+        for i in range(40):
+            resp = await call(c, f"burst {i + 1}")
+            out["statuses"].append(resp.status_code)
+            if resp.status_code == 429:
+                break
+    return out
+
+
+mw = asyncio.run(middleware_checks())
+print(f"  CORS {ALLOWED_ORIGIN}: allow-origin header = {mw['cors_allowed']}")
+print(f"  CORS https://evil.example.com: allow-origin header = {mw['cors_other']}")
+first_429 = mw["statuses"].index(429) + 1 if 429 in mw["statuses"] else None
+print(f"  Burst statuses: {mw['statuses']}")
+print(f"  First 429 after {first_429} burst requests (plus the earlier calls)")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
-assert not limiter.allow("client_alice"), "6th+ request should be rate-limited"
-print("\u2713 Checkpoint 4 passed — rate limiter enforces the window\n")
+assert mw["cors_allowed"] == ALLOWED_ORIGIN, "Task 4: allowed origin must be echoed"
+assert mw["cors_other"] is None, "Task 4: other origins must not be echoed"
+assert first_429 is not None, "Task 4: the rate limiter must answer 429"
+print("✓ Checkpoint 4 passed — CORS allow-list and rate limiter verified\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Visualise and Apply: Singapore GovTech service bot
+# TASK 5 — Visualise measured requests, then apply
 # ════════════════════════════════════════════════════════════════════════
 
-middleware_stack = pl.DataFrame(
-    {
-        "Order": [1, 2, 3, 4, 5, 6],
-        "Layer": [
-            "CORS",
-            "Rate Limit",
-            "JWT / RBAC",
-            "Request Log",
-            "Handler",
-            "Governance",
-        ],
-        "Enforces": [
-            "origin whitelist",
-            "per-client sliding window",
-            "role claim extraction",
-            "structured JSON logs",
-            "serve_qa()",
-            "GovernedSupervisor envelope",
-        ],
-    }
+requests_df = pl.DataFrame(measurements)
+requests_df.write_parquet(OUTPUT_DIR / "ex8_api_requests.parquet")
+status_counts = requests_df.group_by("status").len().sort("status")
+print("Requests made in this run:")
+print(requests_df.select("label", "status", pl.col("latency_ms").round(1)))
+print(status_counts)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Measured latency per request, coloured by HTTP status
+# ════════════════════════════════════════════════════════════════════════
+# Every bar is a request made above. Requests that reached the LLM (200
+# and served) are slow; requests stopped by JWT (401) or the rate limiter
+# (429) never reach the model and return in milliseconds — the cheapest
+# place to refuse traffic is the outermost layer.
+
+status_colour = {200: "#2ecc71", 401: "#e67e22", 429: "#e74c3c"}
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 4.5))
+ax1.bar(
+    range(requests_df.height),
+    requests_df["latency_ms"].to_list(),
+    color=[status_colour.get(s, "#95a5a6") for s in requests_df["status"]],
 )
-middleware_stack.write_parquet(OUTPUT_DIR / "middleware_stack.parquet")
-print("\nMiddleware stack order:")
-print(middleware_stack)
-
-# ════════════════════════════════════════════════════════════════════════
-# VISUALISE — Latency histogram per channel
-# ════════════════════════════════════════════════════════════════════════
-
-rng = np.random.default_rng(42)
-api_latencies = rng.lognormal(mean=5.5, sigma=0.4, size=200)
-cli_latencies = rng.lognormal(mean=4.8, sigma=0.3, size=200)
-mcp_latencies = rng.lognormal(mean=5.2, sigma=0.5, size=200)
-
-fig, ax = plt.subplots(figsize=(9, 4))
-ax.hist(api_latencies, bins=30, alpha=0.6, color="#e74c3c", label="API (HTTP)")
-ax.hist(cli_latencies, bins=30, alpha=0.6, color="#3498db", label="CLI (local)")
-ax.hist(mcp_latencies, bins=30, alpha=0.6, color="#2ecc71", label="MCP (protocol)")
-ax.set_xlabel("Latency (ms)")
-ax.set_ylabel("Frequency")
-ax.set_title("Per-Channel Latency Distribution (Simulated)", fontweight="bold")
-ax.legend(fontsize=9)
-ax.grid(axis="y", alpha=0.3)
+ax1.set_yscale("log")
+ax1.set_xlabel("Request (in order sent)")
+ax1.set_ylabel("Latency (ms, log scale)")
+ax1.set_title("Measured Latency per Request", fontweight="bold")
+ax2.bar(
+    [str(s) for s in status_counts["status"]],
+    status_counts["len"].to_list(),
+    color=[status_colour.get(s, "#95a5a6") for s in status_counts["status"]],
+)
+ax2.set_xlabel("HTTP status")
+ax2.set_ylabel("Requests")
+ax2.set_title("Status Codes Observed", fontweight="bold")
 plt.tight_layout()
-fname = OUTPUT_DIR / "ex8_channel_latency.png"
+fname = OUTPUT_DIR / "ex8_api_requests.png"
 plt.savefig(fname, dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"\n  Saved: {fname}")
 
+# ── Checkpoint 5 ─────────────────────────────────────────────────────────
+assert {200, 401, 429} <= set(requests_df["status"].to_list())
+print("✓ Checkpoint 5 passed — measured requests visualised\n")
 
-# SCENARIO: Singapore GovTech ships ONE internal policy assistant used
-# by ~15,000 public servants. JWTs carry a role claim ("viewer",
-# "operator", "auditor"). Deploy consolidation: 3 codebases -> 1.
+
+# SCENARIO: A Singapore public agency ships an internal policy assistant
+# used by officers across several ministries (illustrative: ~15,000
+# users). Each ministry's SSO issues JWTs carrying a role claim; the
+# claim picks the governance tier. Rate limiting keeps one runaway script
+# from starving everyone else; CORS limits browser access to the
+# agency's intranet origin.
+#
+# BUSINESS IMPACT (illustrative): one governed handler behind three
+# channels replaces three separately built and separately audited
+# integrations. A governance change — tightening the qa tier's envelope —
+# lands in one place and applies to every channel on the next deploy.
 
 print("\n" + "=" * 70)
-print("  APPLY — GovTech Multi-Ministry Policy Assistant")
+print("  APPLY — Multi-Ministry Policy Assistant (illustrative)")
 print("=" * 70)
+print(
+    f"""
+  Channels:    API (intranet portal), CLI (ops), MCP (AI copilots)
+  Auth:        SSO-issued JWT; role claim -> governance tier
+  Measured:    {status_counts.height} distinct status codes over {requests_df.height} requests
+  Refused at the edge (401/429): {requests_df.filter(pl.col('status') != 200).height}
+  Governance:  PACT verify_action + GovernedSupervisor inside the handler
+"""
+)
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — Governance lens over the qa tier's audit
+# ══════════════════════════════════════════════════════════════════
+# The qa tier's GovernedSupervisor recorded every request it served in
+# this run; the governance lens reads those records.
+from shared.mlfp06.diagnostics import LLMObservatory
+
+obs = LLMObservatory(governance=agents_by_role["qa"].audit, run_id="ex_8_3_serving")
+# TODO: Take the governance lens's audit snapshot (last 50 records).
+snapshot = ____
+print("\n── LLM Observatory: qa-tier audit snapshot ──")
+print(snapshot.select("action", "verdict"))
+print(f"  qa audit chain verifies: {agents_by_role['qa'].audit.verify_chain()}")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
-print("═" * 70)
+print("\n" + "=" * 70)
 print("  WHAT YOU'VE MASTERED")
-print("═" * 70)
+print("=" * 70)
 print(
     """
-  [x] Wrapped an async handler in a single-node WorkflowBuilder
-  [x] Registered the workflow with Nexus — API + CLI + MCP at once
-  [x] Validated JWTs and extracted RBAC role claims
-  [x] Rate-limited per-client traffic with a sliding window
-  [x] Visualised the middleware stack order
-  [x] Applied multi-channel serving to a GovTech scenario
+  [x] Registered one governed handler with Nexus for API + CLI + MCP
+  [x] Authenticated API calls with real HS256 JWTs (401 when missing/forged)
+  [x] Routed each request to a governance tier from the SIGNED role claim
+  [x] Verified the CORS allow-list and saw the rate limiter answer 429
+  [x] Plotted latency and status codes measured from real requests
 
-  Next: 04_drift_monitoring.py adds production drift monitoring.
+  KEY INSIGHT: refuse as early as possible. The rate limiter and JWT
+  layer stop bad traffic in milliseconds; governance and the LLM only
+  see requests that earned their way in.
+
+  Next: 04_drift_monitoring.py watches the deployed model for drift and
+  tests the governed stack end to end.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: ALL SIX — the capstone wires Align + Kaizen + PACT +
-# Nexus + RAG + Agents end-to-end, so every lens should be lit.
-if False:  # scaffold — requires the full capstone stack
-    obs = LLMObservatory(run_id="ex_8_capstone_run")
-    # obs.output.evaluate(prompts=[...], responses=[...])
-    # obs.retrieval.evaluate(queries=[...], retrieved_contexts=[...], answers=[...])
-    # for run_id, trace in supervisor.all_traces.items():
-    #     obs.agent.register_trace(trace)
-    # obs.alignment.log_training_step(...)
-    # obs.governance.verify_chain(audit_df)
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-    # obs.plot_dashboard().show()  # all six panels at once
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad (CAPSTONE)
-# ════════════════════════════════════════════════════════════════
-#   [✓] Output     (HEALTHY): faithfulness 0.88, judge coherence 0.91
-#   [✓] Retrieval  (HEALTHY): recall@5 = 0.79, context util 0.72
-#   [✓] Agent      (HEALTHY): 14 TAOD steps, no stuck loops, cost $0.04
-#   [✓] Alignment  (HEALTHY): KL 0.6 nats, win-rate 0.61 vs base
-#   [!] Governance (WARNING): 1 of 8 drills escalated; budget at 71%
-#       Fix: raise escalation threshold or narrow data_access envelope.
-#   [?] Attention  (UNKNOWN): API-only judge/prod model — enable the
-#       open-weight evaluator to light up this panel.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [CAPSTONE COMPOSITE] The capstone is the first exercise where you
-#     see the full six-lens dashboard. Five lenses GREEN + one YELLOW
-#     is a realistic "ship it with a watch-item" disposition. The
-#     governance WARNING is the escalation on 1/8 drills — investigate
-#     which drill escalated before production rollout; that's exactly
-#     the kind of pre-deploy check the dashboard is designed for.
-#  [CROSS-LENS READING] Notice how each lens is answering a different
-#     question: Output says "is the answer good?"; Retrieval says "did
-#     we give it the right context?"; Agent says "did it use the right
-#     steps?"; Alignment says "is the fine-tune pulling its weight?";
-#     Governance says "did we stay inside the envelope?". A single
-#     aggregate "quality score" would hide all of this.
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

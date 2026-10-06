@@ -19,3 +19,37 @@ Source of truth for every correction: the INSTALLED stack (`.venv`, kailash-ml 2
 - P4 Default model fallbacks: `SFT_BASE_MODEL` → "Qwen/Qwen2.5-0.5B-Instruct" (shared/mlfp06 ex_2/ex_3, slides), Ollama bootstrap defaults — env var first with a documented default (zero-config Colab) vs env-models.md "never hardcode".
 - P5 Spec assessment lines ("Quiz + project") vs shipped auto-graded tasks — reconcile after the S5 redesign.
 - P6 Upstream SDK issues (kailash-ml setup() leak, kailash-dataflow relative sqlite path, ONNX external data, Nexus CORS preflight 401, A2A un-awaited coroutine, HumanApprovalAgent placeholder, …) — D1 "no upstream" covered PACT only; decide whether to file the rest.
+
+## P7 — Template re-point: kailash-coc-claude-py → kailash-coc-py (OWNER DECISION NEEDED)
+
+Via trestle fleet steward (2026-10-07): loom has RETIRED the `kailash-coc-claude-*`
+template variants; mlfp's upstream (`kailash-coc-claude-py` 3.21.10, synced
+2026-06-22) will receive no more deliveries — including the lighter-hooks
+coc-base delivery (4.5× fewer hook processes). Migration path per loom:
+re-point upstream template to `kailash-coc-py`, run /sync-from-template,
+restart sessions. **Timing gate:** hold until loom announces "TEMPLATE DONE: py"
+(Python delivery queued behind Rust). Side note: routing the advisory-hooks
+diff (d8b3f006) upstream requires a /codify proposal from this repo after the
+re-point; loom will not adopt it from a relay.
+
+### P1 — corroborating measurement (2026-10-07)
+
+The ICU vitals timestamps are not admission-aligned at all: median first vital
+is ~3,032 h BEFORE admission (range −26,680 h … +17,245 h); only 4 of 8,000
+admissions have ANY vital inside the 24 h prediction window (198 readings
+total). `build_vital_features` therefore produces nulls for ~99.95% of
+admissions. Any M3 ex_1 redesign should regenerate vitals with timestamps
+drawn inside each admission's stay. Measured via shared/mlfp03/ex_1.py
+loaders on the current parquet.
+
+### P6 — corroborating repro (2026-10-07): ModelExplainer additivity unit mismatch
+
+kailash-ml 2.2.2 `ModelExplainer(model, X).explain_global()` raises
+`shap.utils._exceptions.ExplainerError` on a binary sklearn-API LightGBM
+model: its internal TreeExplainer emits LOG-ODDS SHAP values while
+`assert_additivity` compares against `model.predict` PROBABILITY output
+(measured: SHAP sum 0.9983 vs predict 0.6174). `check_additivity` is not
+exposed, so the engine is unusable for this model class in 2.2.2. Repro and
+unit-level analysis live in modules/mlfp03/solutions/ex_6/06 (Checkpoint 0).
+Upstream fix: explain in predict's output space (model_output="probability")
+or compare against raw margins consistently.

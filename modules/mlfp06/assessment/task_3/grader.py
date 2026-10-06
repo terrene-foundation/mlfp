@@ -1,178 +1,226 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Automated grader for MLFP06 Assessment Task 3 — Tool-Using Agent.
+"""Grader for MLFP06 Assessment Task 3 — Serve a Governed Endpoint.
 
-Usage:
-    python grader.py starter.py     # grade your attempt
-    python grader.py solution.py    # verify the reference passes
+    python grader.py starter.py          # grade a submission
+    python grader.py solution.py         # verify the reference passes
+    python grader.py solution.py --seed 123   # replay a grading run
 
-The graded signal is TOOL SELECTION + ARGUMENTS, recorded by the tool wrappers
-themselves — fully deterministic and independent of the model's prose. Because
-each tool computes its result deterministically from real SST-2 data, "correct
-tool + correct args" guarantees the correct computed value was produced as an
-observation. The model's final wording is graded only as a soft floor (small
-local models often fail to restate the value), so the pass criteria do not
-depend on bit-stable text.
+Ground truth the student cannot influence: the grader mints its own tokens
+(per-run subjects and roles) with the returned issuer, drives the returned
+app's full middleware stack in-process via httpx.ASGITransport, and reads the
+handler's outputs. A forged token is minted with the grader's own secret. A
+canned handler (fixed role/subject strings, body-role trust, no real JWT
+verification) fails the per-run subject/role checks.
+
+No LLM is contacted; no network port is opened.
 """
 from __future__ import annotations
 
-import argparse
-import importlib.util
-import json
+import asyncio
+import secrets
 import sys
 from pathlib import Path
 
-REQUIRED_TOOLS = {
-    "dataset_size",
-    "count_by_label",
-    "average_review_length",
-    "get_review_by_index",
-}
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from grading_harness import Checks, finalize, load_student_module, main, quiet  # noqa: E402
 
-# (expected_tool, arg_predicate) per question, in order.
-EXPECTED = [
-    ("dataset_size", None),
-    ("count_by_label", lambda a: "positive" in str(a.get("label", "")).lower()),
-    ("count_by_label", lambda a: "negative" in str(a.get("label", "")).lower()),
-    ("average_review_length", None),
-    ("get_review_by_index", lambda a: _as_int(a.get("index")) == 0),
-]
+WEIGHT = 30
+GATES = ("returns_contract",)
+ALLOWED_ORIGIN = "https://intranet.example.sg"
+LONG = "x" * 300
+SHORT = "What is the leave policy?"
 
 
-def _as_int(v):
+def _handler_output(resp) -> dict:
     try:
-        return int(v)
-    except (TypeError, ValueError):
-        return None
+        return resp.json()["outputs"]["handler"]
+    except Exception:
+        return {}
 
 
-def load_student_module(path: Path):
-    spec = importlib.util.spec_from_file_location("student_task3", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def _first_call(tools_called):
-    """Return (name, args_dict) of the first tool call, or (None, {})."""
-    if not tools_called:
-        return None, {}
-    entry = tools_called[0]
-    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
-        return entry[0], (entry[1] if isinstance(entry[1], dict) else {})
-    if isinstance(entry, str):
-        return entry, {}
-    return None, {}
-
-
-def _names(tools_called):
-    out = []
-    for entry in tools_called or []:
-        if isinstance(entry, (list, tuple)) and entry:
-            out.append(entry[0])
-        elif isinstance(entry, str):
-            out.append(entry)
-    return out
-
-
-def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
+def grade(student_path: Path, seed: int) -> dict:
+    checks = Checks()
     try:
-        student = load_student_module(student_path)
+        st = load_student_module(student_path, "student_m6_task3")
     except Exception as e:
-        score["error"] = f"Failed to import: {type(e).__name__}: {e}"
-        return score
-    if not hasattr(student, "solve"):
-        score["error"] = "Module does not define a solve() function"
-        return score
+        return finalize(checks, WEIGHT, seed, f"Failed to import: {type(e).__name__}: {e}", GATES)
+    if not callable(getattr(st, "solve", None)):
+        return finalize(checks, WEIGHT, seed, "Module does not define solve()", GATES)
     try:
-        r = student.solve()
+        with quiet():
+            r = st.solve()
     except Exception as e:
-        score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
-        return score
+        return finalize(checks, WEIGHT, seed, f"solve() raised {type(e).__name__}: {e}", GATES)
 
-    c = score["checks"]
-    c["returns_dict"] = isinstance(r, dict)
-    if not c["returns_dict"]:
-        return _finalize(score)
+    app = r.get("app") if isinstance(r, dict) else None
+    issuer = r.get("issuer") if isinstance(r, dict) else None
+    endpoint = r.get("endpoint") if isinstance(r, dict) else None
+    try:
+        probe_token = issuer.create_access_token("probe", roles=["qa"])
+        gate_ok = hasattr(app, "fastapi_app") and isinstance(endpoint, str) and isinstance(probe_token, str)
+    except Exception as e:
+        gate_ok = False
+        checks.add("returns_contract", False, f"issuer.create_access_token raised {type(e).__name__}: {e}")
+    if gate_ok:
+        checks.add("returns_contract", True)
+    if not checks.results.get("returns_contract"):
+        return finalize(checks, WEIGHT, seed, None, GATES)
 
-    tool_names = r.get("tool_names")
-    transcripts = r.get("transcripts")
+    import httpx
 
-    c["tool_names_complete"] = isinstance(tool_names, list) and REQUIRED_TOOLS.issubset(
-        set(tool_names)
+    # Per-run identities: subjects and the unknown role are fresh every run.
+    qa_subject = f"grader-qa-{seed}"
+    admin_subject = f"grader-admin-{seed}"
+    unknown_role = f"auditor-{seed}"
+    qa_tok = issuer.create_access_token(qa_subject, roles=["qa"])
+    admin_tok = issuer.create_access_token(admin_subject, roles=["admin"])
+    unknown_tok = issuer.create_access_token(f"grader-x-{seed}", roles=[unknown_role])
+    from kailash.trust.auth.jwt import JWTConfig, JWTValidator
+
+    forged_tok = JWTValidator(
+        JWTConfig(secret=secrets.token_urlsafe(48), algorithm="HS256")
+    ).create_access_token("mallory", roles=["admin"])
+
+    async def run_probes():
+        out: dict[str, object] = {}
+        transport = httpx.ASGITransport(app=app.fastapi_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            def auth(tok):
+                return {"Authorization": f"Bearer {tok}"}
+
+            out["qa_short"] = await c.post(
+                endpoint, json={"inputs": {"question": SHORT}}, headers=auth(qa_tok)
+            )
+            out["qa_long"] = await c.post(
+                endpoint, json={"inputs": {"question": LONG}}, headers=auth(qa_tok)
+            )
+            out["admin_long"] = await c.post(
+                endpoint, json={"inputs": {"question": LONG}}, headers=auth(admin_tok)
+            )
+            out["escalate"] = await c.post(
+                endpoint,
+                json={"inputs": {"question": LONG, "role": "admin"}},
+                headers=auth(qa_tok),
+            )
+            out["unknown"] = await c.post(
+                endpoint, json={"inputs": {"question": SHORT}}, headers=auth(unknown_tok)
+            )
+            out["no_token"] = await c.post(endpoint, json={"inputs": {"question": SHORT}})
+            out["forged"] = await c.post(
+                endpoint, json={"inputs": {"question": SHORT}}, headers=auth(forged_tok)
+            )
+            out["cors_ok"] = await c.post(
+                endpoint,
+                json={"inputs": {"question": SHORT}},
+                headers={**auth(qa_tok), "Origin": ALLOWED_ORIGIN},
+            )
+            out["cors_evil"] = await c.post(
+                endpoint,
+                json={"inputs": {"question": SHORT}},
+                headers={**auth(qa_tok), "Origin": "https://evil.example.com"},
+            )
+            burst = []
+            for _ in range(15):
+                resp = await c.post(endpoint, json={"inputs": {"question": SHORT}})
+                burst.append(resp.status_code)
+                if resp.status_code == 429:
+                    break
+            out["burst"] = burst
+        return out
+
+    try:
+        with quiet():
+            api = asyncio.run(run_probes())
+    except Exception as e:
+        return finalize(
+            checks,
+            WEIGHT,
+            seed,
+            f"in-process probes raised {type(e).__name__}: {e}",
+            GATES,
+        )
+
+    qa_short = api["qa_short"]
+    qa_short_h = _handler_output(qa_short)
+    checks.add(
+        "qa_short_served",
+        qa_short.status_code == 200
+        and qa_short_h.get("role") == "qa"
+        and qa_short_h.get("verdict") == "served"
+        and qa_short_h.get("blocked") is False
+        and qa_short_h.get("answer") == f"[qa] {SHORT}",
+        f"status {qa_short.status_code}, handler {qa_short_h}",
     )
-    c["transcripts_length"] = isinstance(transcripts, list) and len(transcripts) == len(
-        EXPECTED
-    )
-    if not c["transcripts_length"]:
-        return _finalize(score)
 
-    c["transcript_keys"] = all(
-        isinstance(t, dict) and {"question", "tools_called", "answer"} <= set(t.keys())
-        for t in transcripts
-    )
-    if not c["transcript_keys"]:
-        return _finalize(score)
-
-    # Every question must have invoked at least one tool.
-    c["every_question_used_a_tool"] = all(
-        len(t.get("tools_called") or []) >= 1 for t in transcripts
+    qa_long_h = _handler_output(api["qa_long"])
+    checks.add(
+        "qa_long_blocked",
+        api["qa_long"].status_code == 200
+        and qa_long_h.get("blocked") is True
+        and qa_long_h.get("role") == "qa",
+        f"a 300-char question costs $0.02 > qa cap $0.015; handler returned {qa_long_h}",
     )
 
-    # No hallucinated tool names — every called tool is registered.
-    c["no_hallucinated_tool"] = all(
-        all(n in REQUIRED_TOOLS for n in _names(t.get("tools_called")))
-        for t in transcripts
+    admin_long_h = _handler_output(api["admin_long"])
+    checks.add(
+        "admin_long_served",
+        api["admin_long"].status_code == 200
+        and admin_long_h.get("verdict") == "served"
+        and admin_long_h.get("role") == "admin",
+        f"status {api['admin_long'].status_code}, handler {admin_long_h}",
     )
 
-    # Correct tool selected for each question (first tool call).
-    tool_ok = 0
-    arg_ok_label = 0
-    arg_ok_index = True
-    for t, (exp_tool, pred) in zip(transcripts, EXPECTED):
-        name, args = _first_call(t.get("tools_called"))
-        if name == exp_tool:
-            tool_ok += 1
-        if exp_tool == "count_by_label" and pred is not None:
-            if name == exp_tool and pred(args):
-                arg_ok_label += 1
-        if exp_tool == "get_review_by_index" and pred is not None:
-            if not (name == exp_tool and pred(args)):
-                arg_ok_index = False
-    c["correct_tool_selected"] = tool_ok == len(EXPECTED)
-    c["count_by_label_args_correct"] = arg_ok_label == 2  # positive + negative
-    c["get_review_index_arg_correct"] = arg_ok_index
-
-    # Deterministic coverage: across the five questions, every one of the four
-    # tools is exercised at least once (Q0 size, Q1/Q2 count, Q3 avg, Q4 index).
-    exercised = set()
-    for t in transcripts:
-        exercised.update(_names(t.get("tools_called")))
-    c["all_tools_exercised"] = REQUIRED_TOOLS <= exercised
-
-    # The agent produced a non-empty final answer for every question.
-    c["answers_nonempty"] = all(
-        isinstance(t.get("answer"), str) and t["answer"].strip() for t in transcripts
+    esc_h = _handler_output(api["escalate"])
+    checks.add(
+        "body_role_ignored",
+        api["escalate"].status_code == 200
+        and esc_h.get("role") == "qa"
+        and esc_h.get("blocked") is True,
+        f"a body role=admin must not change the qa token's decision; handler returned {esc_h}",
     )
 
-    return _finalize(score)
+    unknown_h = _handler_output(api["unknown"])
+    checks.add(
+        "unknown_role_blocked",
+        api["unknown"].status_code == 200 and unknown_h.get("blocked") is True,
+        f"token role {unknown_role!r} should be refused; handler returned {unknown_h}",
+    )
 
-
-def _finalize(score: dict) -> dict:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
-    return score
+    checks.add(
+        "subject_passthrough",
+        qa_short_h.get("user") == qa_subject,
+        f"handler user={qa_short_h.get('user')!r}; expected the verified token subject {qa_subject!r}",
+    )
+    checks.add(
+        "no_token_401",
+        api["no_token"].status_code == 401,
+        f"missing token returned {api['no_token'].status_code}; expected 401",
+    )
+    checks.add(
+        "forged_token_401",
+        api["forged"].status_code == 401,
+        f"forged token returned {api['forged'].status_code}; expected 401",
+    )
+    burst = api["burst"]
+    checks.add(
+        "rate_limit_429",
+        429 in burst,
+        f"burst statuses {burst}; the 6rpm/burst-2 limiter never answered 429",
+    )
+    checks.add(
+        "cors_allowed_echoed",
+        api["cors_ok"].headers.get("access-control-allow-origin") == ALLOWED_ORIGIN,
+        f"allow-origin for {ALLOWED_ORIGIN}: {api['cors_ok'].headers.get('access-control-allow-origin')!r}",
+    )
+    checks.add(
+        "cors_evil_not_echoed",
+        api["cors_evil"].headers.get("access-control-allow-origin") is None,
+        f"allow-origin for the evil origin: {api['cors_evil'].headers.get('access-control-allow-origin')!r}",
+    )
+    return finalize(checks, WEIGHT, seed, None, GATES)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("student", type=Path)
-    args = parser.parse_args()
-    result = grade(args.student)
-    print(json.dumps(result, indent=2))
-    sys.exit(0 if result["passed"] else 1)
+    main(grade)

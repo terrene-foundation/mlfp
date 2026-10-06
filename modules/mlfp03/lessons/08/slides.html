@@ -267,16 +267,18 @@ has_repay = p_new &lt;= q_hat  # both True -&gt; route to a human
 
 <section>
   <h2>Model Card template</h2>
-  <table style="font-size: 0.65em;">
-    <thead><tr><th>Section</th><th>Contents</th></tr></thead>
+  <table style="font-size: 0.6em;">
+    <thead><tr><th>Mitchell section</th><th>Contents</th></tr></thead>
     <tbody>
-      <tr><td>Model details</td><td>Name, version, type, date</td></tr>
-      <tr><td>Intended use</td><td>Primary use case, out-of-scope</td></tr>
-      <tr><td>Training data</td><td>Source, size, date range</td></tr>
-      <tr><td>Evaluation</td><td>AUC, AP, Brier, conformal coverage; threshold 0.130 = $c_{FP}/(c_{FP}+c_{FN})$</td></tr>
-      <tr><td>Fairness</td><td>DI, TPR/FPR per group — measured, not asserted (from 3.6)</td></tr>
-      <tr><td>Limitations</td><td>Known failure modes</td></tr>
-      <tr><td>Monitoring</td><td>Drift thresholds, retrain triggers</td></tr>
+      <tr><td>1. Model details</td><td>Name, version, type, date, owner</td></tr>
+      <tr><td>2. Intended use</td><td>Primary use case, out-of-scope uses</td></tr>
+      <tr><td>3. Factors</td><td>Groups evaluated: race, gender, age band</td></tr>
+      <tr><td>4. Metrics</td><td>AUC-ROC, AUC-PR, Brier; threshold $t^* = 0.130 = c_{FP}/(c_{FP}+c_{FN})$</td></tr>
+      <tr><td>5. Evaluation data</td><td>Held-out test split, size, default rate</td></tr>
+      <tr><td>6. Training data</td><td>Source, size, preprocessing, dropped leak columns</td></tr>
+      <tr><td>7. Quantitative analyses</td><td>Per-group DI, TPR/FPR, calibration — measured (from 3.6)</td></tr>
+      <tr><td>8. Ethical considerations</td><td>Who is harmed per error type; fairness sign-off</td></tr>
+      <tr><td>9. Caveats &amp; recommendations</td><td>Failure modes, drift thresholds, retrain triggers</td></tr>
     </tbody>
   </table>
   <p style="font-size: 0.68em; color: #64748B;">Exercises 8.4–8.5: rollback = <code>promote_model</code> archived → staging → production; readiness = 11 gates computed from evidence + a human sign-off.</p>

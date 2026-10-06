@@ -185,3 +185,129 @@ def calibration_bins(
             mean_obs.append(float(y[mask].mean()))
             counts.append(int(mask.sum()))
     return mean_pred, mean_obs, counts
+
+
+# ════════════════════════════════════════════════════════════════════════
+# MULTINOMIAL LOGIT — softmax generalisation of the binary model
+# ════════════════════════════════════════════════════════════════════════
+
+
+def softmax_rows(Z: np.ndarray) -> np.ndarray:
+    """Row-wise softmax with the max-subtraction stabiliser.
+
+    Z has shape (n, K); returns P of the same shape with rows summing to 1.
+    """
+    Zs = Z - Z.max(axis=1, keepdims=True)
+    e = np.exp(Zs)
+    return e / e.sum(axis=1, keepdims=True)
+
+
+def neg_log_likelihood_multinomial(
+    beta_flat: np.ndarray, X: np.ndarray, y_idx: np.ndarray, K: int
+) -> float:
+    """Negative multinomial log-likelihood with the reference-class
+    parameterisation: class 0's coefficient vector is fixed at zero, so
+    beta_flat holds (K-1) * n_features free parameters."""
+    n_feat = X.shape[1]
+    B = np.zeros((n_feat, K))
+    B[:, 1:] = beta_flat.reshape(n_feat, K - 1)
+    P = softmax_rows(X @ B)
+    ll = float(np.log(np.clip(P[np.arange(len(y_idx)), y_idx], 1e-15, 1.0)).sum())
+    return -ll
+
+
+def multinomial_gradient(
+    beta_flat: np.ndarray, X: np.ndarray, y_idx: np.ndarray, K: int
+) -> np.ndarray:
+    """Gradient of the multinomial NLL w.r.t. the free (non-reference)
+    coefficient block, flattened to match beta_flat."""
+    n_feat = X.shape[1]
+    B = np.zeros((n_feat, K))
+    B[:, 1:] = beta_flat.reshape(n_feat, K - 1)
+    P = softmax_rows(X @ B)
+    Y = np.zeros_like(P)
+    Y[np.arange(len(y_idx)), y_idx] = 1.0
+    grad_full = -X.T @ (Y - P)  # (n_feat, K); column 0 is the fixed class
+    return grad_full[:, 1:].ravel()
+
+
+FLAT_TYPE_CLASSES: list[str] = ["3 ROOM", "4 ROOM", "5 ROOM"]
+MULTINOMIAL_FEATURES: list[str] = [
+    "resale_price",
+    "storey_mid",
+    "remaining_lease",
+    "dist_to_cbd_km",
+]
+
+
+def load_flat_type_frame() -> pl.DataFrame:
+    """HDB 2020+ 3/4/5-room transactions with context features (NO floor
+    area — flat type is defined by area, so including it would be
+    tautological; the task is inferring type from market context)."""
+    from shared.mlfp02.ex_1 import load_hdb_all
+    from shared.mlfp02.ex_5 import add_geo_features
+
+    hdb = load_hdb_all()
+    hdb = hdb.filter(
+        (pl.col("resale_price") >= 100_000) & (pl.col("resale_price") <= 5_000_000)
+    )
+    frame = hdb.filter(pl.col("flat_type").is_in(FLAT_TYPE_CLASSES))
+    frame = frame.with_columns(
+        (
+            (
+                pl.col("storey_range").str.extract(r"(\d+)", 1).cast(pl.Float64)
+                + pl.col("storey_range").str.extract(r"TO (\d+)", 1).cast(pl.Float64)
+            )
+            / 2.0
+        ).alias("storey_mid"),
+        (
+            99
+            - (
+                pl.col("month").str.to_date("%Y-%m").dt.year()
+                - pl.col("lease_commence_date")
+            )
+        )
+        .cast(pl.Float64)
+        .alias("remaining_lease"),
+    )
+    frame = add_geo_features(frame)
+    return frame.drop_nulls(subset=[*MULTINOMIAL_FEATURES, "flat_type"])
+
+
+# ════════════════════════════════════════════════════════════════════════
+# EXPERIMENT TRACKING — kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+
+TRACKER_STORE_URL = (
+    f"sqlite:///{(OUTPUT_DIR / 'experiments.db').resolve().as_posix()}"
+)
+
+
+def track_train_run(
+    experiment: str,
+    run_name: str,
+    params: dict[str, str],
+    metrics: dict[str, float],
+) -> str:
+    """Log one Train-phase run to ExperimentTracker (sync wrapper).
+
+    Returns the run_id. The tracker is closed in a finally block — kailash-ml
+    holds the store connection open until close() is called.
+    """
+    import asyncio
+
+    async def _log() -> str:
+        from kailash_ml import ExperimentTracker
+
+        tracker = await ExperimentTracker.create(store_url=TRACKER_STORE_URL)
+        try:
+            async with tracker.track(
+                experiment=experiment, run_name=run_name
+            ) as run:
+                await run.log_params(params)
+                await run.log_metrics(metrics)
+                return run.run_id
+        finally:
+            await tracker.close()
+
+    return asyncio.run(_log())

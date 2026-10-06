@@ -286,6 +286,153 @@ def bic(k: int, loglik: float, n: int) -> float:
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TAXI TRIPS — count and duration data for Poisson / Exponential models
+# ════════════════════════════════════════════════════════════════════════
+#
+# The GDP series suits location-scale families (Normal, Student-t, Laplace).
+# Counts (trips per hour) and positive durations (seconds between pickups)
+# need the Poisson-process pair: Poisson for counts, Exponential (or Gamma,
+# Weibull) for waiting times. Data: Singapore taxi trips (mlfp01).
+
+TAXI_DATASET = ("mlfp01", "sg_taxi_trips.parquet")
+TAXI_WINDOW_YEAR: int = 2024
+TAXI_WINDOW_MONTH: int = 4  # April 2024 — a complete, busy month
+
+
+def load_taxi_trips() -> pl.DataFrame:
+    """Load Singapore taxi trips with parsed pickup timestamps."""
+    loader = MLFPDataLoader()
+    trips = loader.load(*TAXI_DATASET)
+    return trips.with_columns(
+        pl.col("pickup_datetime").str.to_datetime(strict=False).alias("pickup_ts")
+    ).drop_nulls("pickup_ts")
+
+
+def taxi_trips_per_hour(
+    trips: pl.DataFrame, year: int = TAXI_WINDOW_YEAR, month: int = TAXI_WINDOW_MONTH
+) -> np.ndarray:
+    """Trip counts per (date, hour) cell within one calendar month."""
+    window = trips.filter(
+        (pl.col("pickup_ts").dt.year() == year)
+        & (pl.col("pickup_ts").dt.month() == month)
+    )
+    counts = window.group_by(
+        pl.col("pickup_ts").dt.date().alias("date"),
+        pl.col("pickup_ts").dt.hour().alias("hour"),
+    ).len()
+    return counts["len"].to_numpy().astype(np.float64)
+
+
+def taxi_interarrival_seconds(
+    trips: pl.DataFrame, year: int = TAXI_WINDOW_YEAR, month: int = TAXI_WINDOW_MONTH
+) -> np.ndarray:
+    """Seconds between consecutive pickups within one calendar month."""
+    window = trips.filter(
+        (pl.col("pickup_ts").dt.year() == year)
+        & (pl.col("pickup_ts").dt.month() == month)
+    ).sort("pickup_ts")
+    ts = window["pickup_ts"].to_numpy()
+    gaps = np.diff(ts).astype("timedelta64[s]").astype(np.float64)
+    return gaps[gaps > 0]
+
+
+def taxi_fares(trips: pl.DataFrame) -> np.ndarray:
+    """Fare amounts (SGD) as a float64 array — the LLN demonstration series."""
+    return trips["fare_sgd"].drop_nulls().to_numpy().astype(np.float64)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# POISSON / EXPONENTIAL / GAMMA / WEIBULL MLE
+# ════════════════════════════════════════════════════════════════════════
+
+
+def poisson_mle(counts: np.ndarray) -> dict:
+    """Closed-form Poisson MLE: lambda_hat = sample mean; loglik at the MLE."""
+    lam = float(np.mean(counts))
+    loglik = float(np.sum(stats.poisson.logpmf(counts.astype(int), lam)))
+    return {"lambda": lam, "loglik": loglik, "n": len(counts), "k": 1}
+
+
+def exponential_mle(durations: np.ndarray) -> dict:
+    """Closed-form Exponential MLE: lambda_hat = 1 / sample mean."""
+    lam = 1.0 / float(np.mean(durations))
+    loglik = float(np.sum(stats.expon.logpdf(durations, scale=1.0 / lam)))
+    return {"lambda": lam, "loglik": loglik, "n": len(durations), "k": 1}
+
+
+def gamma_mle(durations: np.ndarray) -> dict:
+    """Gamma MLE via scipy with loc pinned at 0 (durations are positive)."""
+    shape, _, scale = stats.gamma.fit(durations, floc=0)
+    loglik = float(np.sum(stats.gamma.logpdf(durations, shape, loc=0, scale=scale)))
+    return {
+        "shape": float(shape),
+        "scale": float(scale),
+        "loglik": loglik,
+        "n": len(durations),
+        "k": 2,
+    }
+
+
+def weibull_mle(durations: np.ndarray) -> dict:
+    """Weibull MLE via scipy with loc pinned at 0."""
+    shape, _, scale = stats.weibull_min.fit(durations, floc=0)
+    loglik = float(
+        np.sum(stats.weibull_min.logpdf(durations, shape, loc=0, scale=scale))
+    )
+    return {
+        "shape": float(shape),
+        "scale": float(scale),
+        "loglik": loglik,
+        "n": len(durations),
+        "k": 2,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════
+# EXPERIMENT TRACKING — kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+#
+# Every technique logs its fitted model the moment it is trained — params
+# first, metrics second — so the run is auditable even if the session dies
+# before the report is written. DataFlow rewrites relative sqlite URLs, so
+# the store URL is pinned to an absolute path beside the exercise outputs.
+
+TRACKER_STORE_URL = (
+    f"sqlite:///{(OUTPUT_DIR / 'experiments.db').resolve().as_posix()}"
+)
+
+
+def track_train_run(
+    experiment: str,
+    run_name: str,
+    params: dict[str, str],
+    metrics: dict[str, float],
+) -> str:
+    """Log one Train-phase run to ExperimentTracker (sync wrapper).
+
+    Returns the run_id. The tracker is closed in a finally block — kailash-ml
+    holds the store connection open until close() is called.
+    """
+    import asyncio
+
+    async def _log() -> str:
+        from kailash_ml import ExperimentTracker
+
+        tracker = await ExperimentTracker.create(store_url=TRACKER_STORE_URL)
+        try:
+            async with tracker.track(
+                experiment=experiment, run_name=run_name
+            ) as run:
+                await run.log_params(params)
+                await run.log_metrics(metrics)
+                return run.run_id
+        finally:
+            await tracker.close()
+
+    return asyncio.run(_log())
+
+
+# ════════════════════════════════════════════════════════════════════════
 # DEFAULTS — SAMPLE SIZES, SEEDS, PRIOR VALUES
 # ════════════════════════════════════════════════════════════════════════
 #

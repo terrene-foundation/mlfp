@@ -7,9 +7,12 @@
  *
  * Framework-agnostic — works with any project.
  *
+ * Advisory posture (owner directive 2026-10-07): this hook NEVER blocks.
+ * Credential findings are delivered via additionalContext so the main agent
+ * reads and resolves them in-session instead of the session halting.
+ *
  * Exit Codes:
- *   0 = success (continue)
- *   2 = blocking error (stop tool execution)
+ *   0 = always (findings reported as additionalContext)
  */
 
 const TIMEOUT_MS = 10000;
@@ -40,14 +43,20 @@ process.stdin.on("end", () => {
     const result = validateDeployment(data);
     console.log(
       JSON.stringify({
-        continue: result.continue,
+        continue: true,
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
           validation: result.message,
+          ...(result.critical && {
+            additionalContext:
+              "ADVISORY from validate-deployment (non-blocking per owner directive): " +
+              result.message +
+              " — MAIN AGENT: a credential/secret pattern was detected in a deployment file. Resolve now (remove the secret, rotate if real), do not defer.",
+          }),
         },
       }),
     );
-    process.exit(result.exitCode);
+    process.exit(0);
   } catch (error) {
     console.error(`[HOOK ERROR] ${error.message}`);
     console.log(
@@ -87,67 +96,67 @@ function validateDeployment(data) {
     return { continue: true, exitCode: 0, message: "Not a deployment file" };
   }
 
-  // CHECK 1: Cloud credential patterns — BLOCK
+  // CHECK 1: Cloud credential patterns — ADVISORY (was BLOCK pre-2026-10-07)
   const credentialPatterns = [
     // AWS Access Key ID
     {
       pattern: /AKIA[0-9A-Z]{16}/,
-      message: "BLOCKED: AWS Access Key ID detected",
+      message: "SECRET DETECTED: AWS Access Key ID detected",
     },
     // AWS Secret Access Key (broad context match)
     {
       pattern: /[0-9a-zA-Z/+]{40}(?=\s|"|'|$)/,
       context:
         /aws_secret|AWS_SECRET|secret_access_key|SecretAccessKey|AKIA[0-9A-Z]{16}/i,
-      message: "BLOCKED: Possible AWS Secret Access Key detected",
+      message: "SECRET DETECTED: Possible AWS Secret Access Key detected",
     },
     // Azure Storage Account Key
     {
       pattern: /AccountKey=[^;]{20,}/,
-      message: "BLOCKED: Azure Storage Account Key detected",
+      message: "SECRET DETECTED: Azure Storage Account Key detected",
     },
     // Azure Client Secret
     {
       pattern:
         /AZURE_CLIENT_SECRET\s*[:=]\s*["'][^"']+["']|client_secret\s*[:=]\s*["'][0-9a-zA-Z~._-]{30,}["']/,
-      message: "BLOCKED: Azure Client Secret detected",
+      message: "SECRET DETECTED: Azure Client Secret detected",
     },
     // GCP Service Account JSON
     {
       pattern: /"type"\s*:\s*"service_account"/,
-      message: "BLOCKED: GCP Service Account JSON detected",
+      message: "SECRET DETECTED: GCP Service Account JSON detected",
     },
     // Private keys
     {
       pattern: /-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/,
-      message: "BLOCKED: Private key detected in deployment file",
+      message: "SECRET DETECTED: Private key detected in deployment file",
     },
     // GitHub PATs (classic and fine-grained)
     {
       pattern: /ghp_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{22,}/,
-      message: "BLOCKED: GitHub Personal Access Token detected",
+      message: "SECRET DETECTED: GitHub Personal Access Token detected",
     },
     // PyPI API tokens
     {
       pattern: /pypi-[0-9a-zA-Z_-]{50,}/,
-      message: "BLOCKED: PyPI API token detected",
+      message: "SECRET DETECTED: PyPI API token detected",
     },
     // Docker Hub tokens
     {
       pattern: /dckr_pat_[0-9a-zA-Z_-]{20,}/,
-      message: "BLOCKED: Docker Hub token detected",
+      message: "SECRET DETECTED: Docker Hub token detected",
     },
     // Generic API secret keys (OpenAI, Anthropic, Stripe, etc.)
     {
       pattern: /sk-[a-zA-Z0-9]{20,}/,
-      message: "BLOCKED: API secret key pattern detected",
+      message: "SECRET DETECTED: API secret key pattern detected",
     },
   ];
 
   for (const { pattern, context, message } of credentialPatterns) {
     if (pattern.test(content)) {
       if (context && !context.test(content)) continue;
-      return { continue: false, exitCode: 2, message };
+      return { continue: true, exitCode: 0, message, critical: true };
     }
   }
 

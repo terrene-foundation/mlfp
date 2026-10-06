@@ -153,3 +153,15 @@ for the same pre-filter figure at integration.
 **43/43 pass on the fleet** at a 3600s/file budget — including the ex_2/03 torch.onnx.export fallback and all
 the slow full-dataset training (BERT, transfer ResNet, simple CNN). Every module is now fleet-verified except
 the M6 LLM-dependent subset (which needs an Ollama host).
+
+## Final verification (2026-10-06, authoritative)
+- **M5: 43/43 on the fleet** (esperie-ai, 3600s/file budget) — includes the ex_2/03 torch.onnx.export fallback
+  and all slow full-dataset training. A second host (OVH) under shared-fleet pressure timed out the slow
+  training and failed ex_2/03 at 189s (torch-build/memory variance), but the clean-host result + local
+  exit-0 confirmation stands as the verification.
+- **M3: 40/40** (fleet 38/40 + ex_7/01 and ex_7/05 confirmed locally at exit 0 after the search-budget cap and
+  the full-dev-frame final-training fix).
+- **M6 spec gap landed:** ex_2/07 LoRA training + merging (three Apple-MPS device bugs fixed: batches not moved
+  to device, DARE CPU generator on MPS delta, RNG state CPU<->MPS). Passes end-to-end locally: LoRA + adapter
+  train for real, task-arithmetic + DARE merge with honest interference measurement (sentiment 0.656 vs single
+  0.635).

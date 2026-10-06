@@ -1,85 +1,76 @@
-# MLFP05 — Task 2: Tiny CNN for Image Classification (from scratch)
+# MLFP05 — Task 2: Triage a Ward of Failing Training Runs
 
-**Weight**: 25 marks · **Difficulty**: Hard · **No GPU required** (trains on CPU in < 25s)
+**Weight**: 25 marks · **Data**: none — the grader hands you live models
+· **Outcomes assessed**: diagnostic-driven iteration with the kailash-ml
+DLDiagnostics toolkit — gradient flow, dead neurons, loss trend
 
 ## Scenario
 
-A document-digitisation pipeline must read **handwritten digits** from scanned
-forms. You have a small bundled dataset of **8×8 grayscale digit images** and must
-build a **convolutional neural network from scratch** — `Conv2d → BatchNorm → ReLU →
-MaxPool` blocks feeding a small classifier head, exactly the architecture pattern
-from Exercise 2.1 — and train it to classify the ten digits.
+You are the on-call ML engineer. Colleagues hand you models from overnight
+training runs — each model arrives with its data loader, its loss function,
+and the loss history the run recorded. Some runs are fine. Some are not.
+Your job is an automated triage function that reads each patient and names
+what is wrong.
 
-### CPU adaptation (read this)
+You are given no list of which run has which problem. The grader builds the
+ward itself — fresh models, fresh data, fresh seeds, with pathologies planted
+by the grader — and checks your label for every patient against the planted
+truth. A function that always answers "healthy" passes only the healthy
+patients and fails the task.
 
-Exercise 2.1 trains on full CIFAR-10 (50K 32×32 colour photos) and Exercise 7
-fine-tunes a pretrained ResNet-18. **Neither is CPU-friendly, and downloading large
-backbones is forbidden here.** This task keeps the _same skill_ — design and train a
-CNN that learns real convolutional features — but on a tiny **bundled** 8×8 dataset
-that trains end-to-end on CPU in seconds. The "transfer learning" idea from Ex 7 is
-adapted to its small-from-scratch equivalent: you build the feature extractor
-yourself instead of downloading one. The architectural reasoning (local receptive
-fields, weight sharing, spatial hierarchy) is identical.
-
-## Dataset
-
-**`sklearn.datasets.load_digits`** — 1,797 bundled 8×8 grayscale handwritten digits
-(0–9), shipped inside scikit-learn (no download). `make_dataset()` in the starter
-returns a deterministic split:
-
-- `X_train` — `(n_train, 1, 8, 8)` float32, pixel values scaled to `[0, 1]`.
-- `y_train` — `(n_train,)` int labels 0–9.
-- `X_test`, `y_test` — held-out split (`test_size=0.30`, `random_state=42`,
-  stratified). **Use `y_test` only for the final accuracy score.**
-
-## Contract
+## Interface
 
 ```python
-def solve() -> dict:
-    ...
-    return {
-        "model":      <trained torch.nn.Module>,        # your CNN
-        "preds":      <np.ndarray (n_test,) int>,       # argmax predictions on X_test
-        "y_test":     <np.ndarray (n_test,) int>,       # labels, passed straight through
-        "n_conv":     <int>,                            # number of nn.Conv2d layers in model
-    }
+def diagnose_model(
+    model: torch.nn.Module,
+    loader,                       # yields (x_batch, y_batch)
+    loss_fn,                      # loss_fn(model, (x_batch, y_batch)) -> scalar
+    *,
+    train_losses: list[float] | None = None,
+    val_losses: list[float] | None = None,
+) -> str: ...
 ```
 
-Requirements baked into the grading:
+Return exactly one of:
 
-1. **It is genuinely convolutional** — the model must contain **at least one
-   `nn.Conv2d`** layer (`n_conv >= 1`, and the grader confirms by introspection).
-2. **`preds` come from your model** — the grader re-runs your returned `model` on
-   `X_test` and checks the predictions match what you submitted (no hand-tuned arrays).
-3. **Test accuracy** of `preds` vs `y_test` **>= 0.90**.
-4. **Generalisation, not memorisation** — the grader re-runs the model on a held-out
-   slice it carves from the test set; accuracy there must also clear **0.88**.
+| Label                   | Meaning                                                                                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"healthy"`             | Nothing is wrong: gradients flow, every layer activates, loss trended down.                                                                                           |
+| `"dead_neurons"`        | A layer's units never activate — its output is all zeros — while the rest of the network is alive.                                                                    |
+| `"vanishing_gradients"` | Gradients shrink by orders of magnitude from the output layers back to the input layers. The loss may have plateaued as a _symptom_; the disease is in the gradients. |
+| `"diverging_loss"`      | The recorded loss **increases** across the run (the model itself can be intact — the run went wrong, e.g. the learning rate).                                         |
 
-## Performance target
+## Constraints
 
-- Test accuracy **>= 0.90** (a correct 2-conv-block CNN reaches ~0.97 here).
+- Use the kailash-ml DLDiagnostics instruments
+  (`kailash_ml.diagnostics.run_diagnostic_checkpoint` or a `DLDiagnostics`
+  you drive yourself) to read each patient. Naming a pathology you did not
+  measure is not a diagnosis.
+- Return the label string only. Deterministic: the same patient twice must
+  get the same label.
+- Each call must finish in seconds — read a few batches, not the whole set.
 
-## Visible sanity check
+## Acceptance criteria (what the grader measures)
 
-`solution.py` prints, when run directly:
+The grader builds ten patients with a fresh secret seed — healthy runs,
+runs with a dead layer, runs with vanishing gradients, and runs whose
+recorded loss diverged — and calls your `diagnose_model` on each.
 
-```
-conv_layers=2  test_acc=0.9xx
-```
+| #   | Check                                                            |
+| --- | ---------------------------------------------------------------- |
+| 1   | Every returned label is one of the four valid labels             |
+| 2   | All healthy patients labelled `"healthy"`                        |
+| 3   | All dead-layer patients labelled `"dead_neurons"`                |
+| 4   | All vanishing-gradient patients labelled `"vanishing_gradients"` |
+| 5   | All diverging-loss patients labelled `"diverging_loss"`          |
+| 6   | Your labels across the ward use at least 3 distinct values       |
+| 7   | The same patient examined twice gets the same label              |
 
-## Grading (8 automated checks, all must pass → 25 marks)
-
-return type is a dict · required keys present · model is an `nn.Module` ·
-model has >= 1 `Conv2d` layer (declared `n_conv` matches introspection) ·
-`preds` shape matches `y_test` · test accuracy >= 0.90 · re-running the model
-reproduces the submitted `preds` (anti-faking) · held-out re-check accuracy >= 0.88.
+Marks = 25 × (checks passed / 7).
 
 ## Rules
 
-- **No GPU.** CPU only; the reference trains in well under 25 seconds.
-- Raw **PyTorch is allowed** — this is the deep-learning module and Exercise 2 builds
-  CNNs directly in `torch.nn`.
-- **No large pretrained backbones / downloads** — build the CNN from scratch.
-- Fix all seeds (`torch.manual_seed`) for reproducibility.
-- Do **not** train on `y_test`.
-- No hardcoded API keys or model names.
+- Raw PyTorch for reading the models; no training inside `diagnose_model`.
+- Do not mutate the handed model's parameters.
+- Self-check: `starter.py` builds one example patient per class so you can
+  watch your function work — those are _examples_, not the grader's ward.

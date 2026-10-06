@@ -1,151 +1,231 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Automated grader for MLFP05 Assessment Task 2 — Tiny CNN Image Classification.
+"""Grader for MLFP05 Assessment Task 2 — Triage a Ward of Failing Training Runs.
 
-Usage:
-    python grader.py starter.py     # grade your attempt
-    python grader.py solution.py    # verify the reference passes
+    python grader.py starter.py          # grade a submission
+    python grader.py solution.py         # verify the reference passes
+    python grader.py solution.py --seed 123   # replay a grading run
 
-The grader re-derives the exact same test split, re-runs the returned model on it
-(so a hand-tuned `preds` array fails the anti-faking check), and verifies the model
-is genuinely convolutional and generalises on a held-out slice.
+The grader builds the ward itself with a fresh secret seed: small MLPs on
+synthetic Gaussian-blob data, trained briefly, with the pathology planted
+by the grader (a zeroed layer / a deep tiny-init tanh stack / an increasing
+recorded loss history). The student's diagnose_model() labels each patient;
+labels are compared against the planted truth. A constant-label stub fails
+the pathology checks and the distinct-labels check.
 """
 from __future__ import annotations
 
-import argparse
-import importlib.util
-import json
 import sys
 from pathlib import Path
 
 import numpy as np
-import torch
-import torch.nn as nn
-from sklearn.datasets import load_digits
-from sklearn.model_selection import train_test_split
 
-N_CLASSES = 10
-SEED = 42
-ACC_FLOOR = 0.90
-HELDOUT_FLOOR = 0.88
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from grading_harness import Checks, finalize, load_student_module, main  # noqa: E402
+
+WEIGHT = 25
+VALID = ("healthy", "dead_neurons", "vanishing_gradients", "diverging_loss")
 
 
-def _reference_test_split() -> tuple[np.ndarray, np.ndarray]:
-    """Re-derive the exact (X_test, y_test) the student trained against."""
-    digits = load_digits()
-    X = (digits.images / 16.0).astype(np.float32)[:, None, :, :]
-    y = digits.target.astype(int)
-    _, X_test, _, y_test = train_test_split(
-        X, y, test_size=0.30, random_state=SEED, stratify=y
+def _blobs(rng: np.random.Generator, n: int = 256, d: int = 20, k: int = 4):
+    x = rng.normal(size=(n, d)).astype(np.float32)
+    w = rng.normal(size=(d, k)).astype(np.float32)
+    y = (x @ w + 0.5 * rng.normal(size=(n, k))).argmax(1).astype(np.int64)
+    return x, y
+
+
+def _loader(x: np.ndarray, y: np.ndarray):
+    import torch
+
+    return torch.utils.data.DataLoader(
+        torch.utils.data.TensorDataset(torch.tensor(x), torch.tensor(y)),
+        batch_size=64,
     )
-    return X_test, y_test
 
 
-def load_student_module(path: Path):
-    spec = importlib.util.spec_from_file_location("student_task2", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+def _ce(model, batch):
+    import torch.nn.functional as F
+
+    xb, yb = batch
+    return F.cross_entropy(model(xb), yb)
 
 
-def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
+def _train(model, loader, epochs: int, lr: float) -> list[float]:
+    import torch
+
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    losses = []
+    for _ in range(epochs):
+        for xb, yb in loader:
+            loss = _ce(model, (xb, yb))
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+        losses.append(float(loss))
+    return losses
+
+
+def _train_to_converge(model, loader, lr: float = 5e-3, max_epochs: int = 90,
+                       target: float = 0.02) -> list[float]:
+    """Train until the loss is genuinely small (or max_epochs).
+
+    A mid-training net keeps gradient RMS high enough for the flow
+    instrument to read "exploding"; a converged net reads HEALTHY. The
+    ward's healthy/dead/diverging patients must be converged so only the
+    planted pathology fires.
+    """
+    import torch
+
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    losses: list[float] = []
+    for _ in range(max_epochs):
+        total, n = 0.0, 0
+        for xb, yb in loader:
+            loss = _ce(model, (xb, yb))
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            total += float(loss)
+            n += 1
+        losses.append(total / n)
+        if losses[-1] < target:
+            break
+    return losses
+
+
+def _ward(seed: int):
+    """Build the ten patients. Returns a list of
+    (truth, model, loader, loss_fn, train_losses)."""
+    import torch
+    import torch.nn as nn
+
+    rng = np.random.default_rng(seed)
+    ward: list[tuple[str, nn.Module, object, object, list[float]]] = []
+
+    # 3 healthy: shallow ReLU MLPs on separable blobs, trained to
+    # convergence — the loss really falls and gradients settle small.
+    for _ in range(3):
+        x, y = _blobs(rng)
+        loader = _loader(x, y)
+        width = int(rng.choice([24, 32, 48]))
+        torch.manual_seed(int(rng.integers(1_000_000_000)))
+        m = nn.Sequential(nn.Linear(20, width), nn.ReLU(), nn.Linear(width, 4))
+        losses = _train_to_converge(m, loader)
+        ward.append(("healthy", m, loader, _ce, losses))
+
+    # 3 dead-layer: trained as above, then one hidden layer's weights and
+    # biases are zeroed (post-training damage) — its units output all zeros.
+    for _ in range(3):
+        x, y = _blobs(rng)
+        loader = _loader(x, y)
+        width = int(rng.choice([24, 32, 48]))
+        torch.manual_seed(int(rng.integers(1_000_000_000)))
+        m = nn.Sequential(nn.Linear(20, width), nn.ReLU(), nn.Linear(width, 4))
+        losses = _train_to_converge(m, loader)
+        with torch.no_grad():
+            m[0].weight.zero_()
+            m[0].bias.zero_()
+        ward.append(("dead_neurons", m, loader, _ce, losses))
+
+    # 2 vanishing-gradient: deep tanh stacks with tiny init, trained briefly —
+    # gradients collapse long before the input layer; the loss barely moves.
+    for _ in range(2):
+        x, y = _blobs(rng)
+        loader = _loader(x, y)
+        torch.manual_seed(int(rng.integers(1_000_000_000)))
+        layers: list[nn.Module] = []
+        for _ in range(6):
+            layers += [nn.Linear(20, 20), nn.Tanh()]
+        layers.append(nn.Linear(20, 4))
+        m = nn.Sequential(*layers)
+        with torch.no_grad():
+            for lyr in m:
+                if isinstance(lyr, nn.Linear):
+                    lyr.weight.mul_(0.01)
+                    lyr.bias.zero_()
+        losses = _train(m, loader, epochs=8, lr=1e-3)
+        ward.append(("vanishing_gradients", m, loader, _ce, losses))
+
+    # 2 diverging-loss: the model is fine (trained healthy MLP), but the
+    # recorded training log increases monotonically — the run went wrong.
+    for _ in range(2):
+        x, y = _blobs(rng)
+        loader = _loader(x, y)
+        torch.manual_seed(int(rng.integers(1_000_000_000)))
+        m = nn.Sequential(nn.Linear(20, 32), nn.ReLU(), nn.Linear(32, 4))
+        _train_to_converge(m, loader)
+        base = float(rng.uniform(0.5, 0.9))
+        growth = float(rng.uniform(1.4, 1.8))
+        losses = [
+            base * growth**e * (1.0 + 0.03 * float(rng.normal())) for e in range(12)
+        ]
+        ward.append(("diverging_loss", m, loader, _ce, losses))
+
+    return ward
+
+
+def grade(student_path: Path, seed: int) -> dict:
+    checks = Checks()
     try:
-        student = load_student_module(student_path)
+        st = load_student_module(student_path, "student_m5_task2")
     except Exception as e:
-        score["error"] = f"Failed to import: {type(e).__name__}: {e}"
-        return score
-    if not hasattr(student, "solve"):
-        score["error"] = "Module does not define a solve() function"
-        return score
-    try:
-        r = student.solve()
-    except Exception as e:
-        score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
-        return score
+        return finalize(checks, WEIGHT, seed, f"Failed to import: {type(e).__name__}: {e}")
+    fn = getattr(st, "diagnose_model", None)
+    if not callable(fn):
+        return finalize(checks, WEIGHT, seed, "Module does not define diagnose_model()")
 
-    c = score["checks"]
-    c["returns_dict"] = isinstance(r, dict)
-    if not c["returns_dict"]:
-        return _finalize(score)
+    import torch
 
-    required = {"model", "preds", "y_test", "n_conv"}
-    c["has_required_keys"] = required.issubset(r.keys())
-    if not c["has_required_keys"]:
-        return _finalize(score)
+    torch.set_num_threads(2)
+    ward = _ward(seed)
 
-    model = r["model"]
-    c["model_is_nn_module"] = isinstance(model, nn.Module)
-
-    # Genuine CNN: at least one Conv2d, and declared n_conv matches introspection.
-    if c["model_is_nn_module"]:
-        actual_conv = sum(1 for m in model.modules() if isinstance(m, nn.Conv2d))
+    labels: list[str] = []
+    errors: list[str] = []
+    for truth, model, loader, loss_fn, train_losses in ward:
         try:
-            declared = int(r["n_conv"])
-        except Exception:
-            declared = -1
-        c["is_convolutional"] = actual_conv >= 1 and declared == actual_conv
-    else:
-        c["is_convolutional"] = False
+            lab = fn(model, loader, loss_fn, train_losses=list(train_losses))
+        except Exception as e:
+            lab = f"__raised_{type(e).__name__}"
+            errors.append(f"{truth}: {type(e).__name__}: {e}")
+        labels.append(str(lab))
 
-    X_test_ref, y_test_ref = _reference_test_split()
+    checks.add(
+        "valid_labels",
+        all(l in VALID for l in labels),
+        f"returned labels {labels}; each must be one of {VALID}"
+        + (f"; first error: {errors[0]}" if errors else ""),
+    )
 
-    try:
-        preds = np.asarray(r["preds"]).ravel().astype(int)
-        y_test = np.asarray(r["y_test"]).ravel().astype(int)
-        c["preds_shape_matches"] = preds.shape == y_test.shape == y_test_ref.shape
-    except Exception:
-        c["preds_shape_matches"] = False
-        preds, y_test = np.array([]), np.array([])
+    def class_check(truth: str) -> tuple[bool, str]:
+        got = [l for l, (t, *_rest) in zip(labels, ward) if t == truth]
+        ok = bool(got) and all(l == truth for l in got)
+        return ok, f"{truth}: expected {truth} x{len(got)}, got {got}"
 
-    if c["preds_shape_matches"]:
-        c["test_accuracy_at_least_0p90"] = bool((preds == y_test).mean() >= ACC_FLOOR)
-    else:
-        c["test_accuracy_at_least_0p90"] = False
+    for truth in ("healthy", "dead_neurons", "vanishing_gradients", "diverging_loss"):
+        ok, note = class_check(truth)
+        checks.add(f"{truth}_correct", ok, note)
 
-    # Anti-faking: re-run the returned model on the re-derived test set and require
-    # the predictions to match what was submitted (within a tiny tolerance).
-    model_preds = None
-    if c["model_is_nn_module"] and c["preds_shape_matches"]:
-        try:
-            model.eval()
-            with torch.no_grad():
-                logits = model(torch.tensor(X_test_ref))
-                model_preds = logits.argmax(dim=1).cpu().numpy().astype(int)
-            agree = (model_preds == preds).mean()
-            c["preds_reproduced_by_model"] = bool(agree >= 0.99)
-        except Exception:
-            c["preds_reproduced_by_model"] = False
-    else:
-        c["preds_reproduced_by_model"] = False
+    checks.add(
+        "distinct_labels",
+        len(set(labels)) >= 3,
+        f"only {len(set(labels))} distinct label(s) across ten patients — a one-label stub cannot triage",
+    )
 
-    # Generalisation: accuracy of the model's OWN predictions on a held-out slice.
-    if model_preds is not None:
-        held = model_preds[::3]  # every third test row
-        held_y = y_test_ref[::3]
-        c["heldout_accuracy_at_least_0p88"] = bool(
-            (held == held_y).mean() >= HELDOUT_FLOOR
-        )
-    else:
-        c["heldout_accuracy_at_least_0p88"] = False
+    def repeat():
+        truth, model, loader, loss_fn, tl = ward[0]
+        a = fn(model, loader, loss_fn, train_losses=list(tl))
+        b = fn(model, loader, loss_fn, train_losses=list(tl))
+        return {
+            "consistent_repeat": (
+                str(a) == str(b),
+                f"same patient labelled {a!r} then {b!r} — the ward runs are deterministic; your function must be too",
+            )
+        }
 
-    return _finalize(score)
-
-
-def _finalize(score: dict) -> dict:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
-    return score
+    checks.guarded(["consistent_repeat"], repeat)
+    return finalize(checks, WEIGHT, seed)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("student", type=Path)
-    args = parser.parse_args()
-    result = grade(args.student)
-    print(json.dumps(result, indent=2))
-    sys.exit(0 if result["passed"] else 1)
+    main(grade)

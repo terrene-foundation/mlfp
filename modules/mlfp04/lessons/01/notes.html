@@ -36,7 +36,7 @@
 </h1>
 
 <p class="lead">
-  Total time: ~90 minutes &nbsp;·&nbsp; 20 slides &nbsp;·&nbsp; ~4 minutes per slide average
+  Total time: ~90 minutes &nbsp;·&nbsp; 22 slides &nbsp;·&nbsp; ~4 minutes per slide average
 </p>
 
 <p>
@@ -66,6 +66,7 @@
   <div class="transition">→ "Let us start with why we even need unsupervised learning."</div>
 </div>
 
+
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>M3 → M4 motivation</span></div>
   <h3>From M3 to M4: the no-label problem</h3>
@@ -79,6 +80,7 @@
   <div class="transition">→ "Clustering in one picture."</div>
 </div>
 
+
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Workflow diagram</span></div>
   <h3>Clustering in one picture</h3>
@@ -91,6 +93,7 @@
   </p>
   <div class="transition">→ "Let us start with the workhorse — K-means."</div>
 </div>
+
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>K-means algorithm</span></div>
@@ -111,6 +114,7 @@
   <div class="transition">→ "Here's what convergence looks like visually."</div>
 </div>
 
+
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Convergence snapshots</span></div>
   <h3>K-means convergence in three snapshots</h3>
@@ -124,6 +128,7 @@
   <div class="transition">→ "But you still have to pick K."</div>
 </div>
 
+
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Picking K</span></div>
   <h3>Picking K: elbow vs silhouette</h3>
@@ -136,6 +141,7 @@
   </p>
   <div class="transition">→ "And what exactly is the silhouette?"</div>
 </div>
+
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>Silhouette derivation</span></div>
@@ -155,6 +161,7 @@
   <div class="transition">→ "K-means is not the only game. Let us meet its cousin — the dendrogram."</div>
 </div>
 
+
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>Dendrogram</span></div>
   <h3>Hierarchical clustering: one tree, many cuts</h3>
@@ -168,6 +175,7 @@
   <div class="transition">→ "The choice that matters most is linkage."</div>
 </div>
 
+
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>Linkage table</span></div>
   <h3>Linkage: how do you measure cluster distance?</h3>
@@ -180,6 +188,7 @@
   </p>
   <div class="transition">→ "K-means and Ward both assume blobs. Real data has outliers."</div>
 </div>
+
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 10</span><span>~5 min</span><span>DBSCAN</span></div>
@@ -197,6 +206,7 @@
   <div class="transition">→ "One $\varepsilon$ does not fit clusters of different densities. Enter HDBSCAN."</div>
 </div>
 
+
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>HDBSCAN</span></div>
   <h3>HDBSCAN: DBSCAN at every density</h3>
@@ -210,6 +220,7 @@
   </p>
   <div class="transition">→ "One more algorithm for the topology-aware case."</div>
 </div>
+
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Spectral</span></div>
@@ -225,6 +236,7 @@
   <div class="transition">→ "How do we judge which clustering is best?"</div>
 </div>
 
+
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Three metrics</span></div>
   <h3>Three metrics, one decision</h3>
@@ -234,11 +246,35 @@
     disagree, something is off — usually the number of clusters or the
     feature set.
   </p>
-  <div class="transition">→ "And there is a deeper question — do the clusters even exist?"</div>
+  <div class="transition">→ "When you do have labels — or want a second opinion."</div>
 </div>
 
+
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~4 min</span><span>Gap statistic</span></div>
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>External metrics</span></div>
+  <h3>External metrics: ARI and NMI</h3>
+  <p>
+    Internal metrics (silhouette, DB, CH) only see the data and one labelling.
+    ARI and NMI compare TWO labellings: 1 = identical partitions, ≈ 0 = chance
+    agreement. ARI corrects the Rand index for chance, so random labellings score
+    near 0, and it is invariant to how clusters are numbered — label names do not
+    matter.
+  </p>
+  <p>
+    Two uses. Against ground truth when you have it (the two-moons demo: spectral
+    scores ARI 1.0 where K-means does not). And as a cross-check between methods:
+    "do K-means and GMM find the SAME segments?" In Exercise 1.5 students compute
+    an ARI/NMI agreement matrix across every pair of methods (noise points from
+    DBSCAN/HDBSCAN excluded) — high agreement between two very different
+    algorithms is evidence the segments are real, not an artefact of one method.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "NMI is normalised by entropy, so it handles clusters of very different sizes better than ARI; both drift toward fine-grained clusterings when you compare across K — use AMI in that case."
+  </div>
+  <div class="transition">→ "And the deeper question — does the structure even exist?"</div>
+</div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~4 min</span><span>Gap statistic</span></div>
   <h3>Gap statistic — does the structure even exist?</h3>
   <p>
     This is the most underused concept in clustering. All the other metrics
@@ -253,22 +289,56 @@
   <div class="transition">→ "The Kailash way to sweep all of this automatically."</div>
 </div>
 
+
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 15</span><span>~4 min</span><span>AutoMLEngine</span></div>
-  <h3>Kailash AutoMLEngine — clustering sweep with guardrails</h3>
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Kailash bridge</span></div>
+  <h3>Kailash ClusteringEngine — one surface, four algorithms</h3>
   <p>
-    Show the config. Emphasise two things: (1) the engine does the whole
-    sweep for you with <code>agent=False</code> — no LLM involvement, just
-    random search over K-means/GMM/HDBSCAN with silhouette scoring; and
-    (2) the double opt-in pattern. You must both set <code>agent=True</code>
-    AND install <code>kailash-ml[agents]</code>. This is deliberate — LLM
-    calls cost money and introduce non-determinism.
+    This is the bridge from the hand-rolled sklearn code to the engine students
+    use in Exercise 1.5 and the assessment. Walk the code: the seven behaviour
+    features (<code>churned</code> excluded — it is an outcome, not a feature),
+    drop nulls, 3,000-row sample, standardise. The engine selects numeric columns
+    only and does NOT scale for you — standardisation is on you.
+  </p>
+  <p>
+    <code>sweep_k</code> runs the K sweep you did by hand and reports
+    <code>optimal_k</code> for the criterion you choose (silhouette or
+    Calinski-Harabasz). <code>fit</code> returns a ClusterResult — labels,
+    n_clusters, silhouette_score, calinski_harabasz_score, inertia. Four
+    algorithms behind one call: kmeans | gmm | dbscan | spectral. Ward and
+    HDBSCAN stay with scipy / hdbscan.
+  </p>
+  <p>
+    Read the result honestly: on this sample it picks K = 3 with silhouette ≈
+    0.18 — real customers do not form crisp clusters, which is exactly why the
+    business profiling two slides from now matters more than the score.
+  </p>
+  <div class="transition">→ "One level up: governed search over algorithm and K."</div>
+</div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~4 min</span><span>AutoMLEngine</span></div>
+  <h3>Kailash AutoMLEngine — clustering search with guardrails</h3>
+  <p>
+    Show the config, then be precise about who does what: "AutoMLEngine is a
+    governed search loop, not a clustering library — it never picks algorithms
+    itself. YOU declare the search space (ParamSpec over algorithm × K) and a
+    trial function that trains one candidate and reports its metric. The engine
+    proposes trials, enforces the trial / time / cost budget, and keeps the audit
+    trail." In Exercise 1.5 each trial calls ClusteringEngine.fit on a 3,000-row
+    subsample — silhouette is O(n²), so the subsample is what keeps the sweep
+    fast.
+  </p>
+  <p>
+    The double opt-in pattern: <code>agent=False</code> is the default — no LLM
+    is ever called. LLM-proposed trials require BOTH <code>agent=True</code> AND
+    installing <code>kailash-ml[agents]</code>, with
+    <code>max_llm_cost_usd</code> capping spend. This is deliberate — LLM calls
+    cost money and introduce non-determinism.
   </p>
   <div class="transition">→ "One universal rule before we run anything."</div>
 </div>
-
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Standardisation</span></div>
+  <div class="meta"><span class="badge">Slide 18</span><span>~3 min</span><span>Standardisation</span></div>
   <h3>Standardise, always</h3>
   <p>
     Drill this hard. Every distance-based algorithm — K-means, hierarchical,
@@ -279,20 +349,22 @@
   <div class="transition">→ "Worked example: the e-commerce customers."</div>
 </div>
 
+
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 17</span><span>~5 min</span><span>Worked example</span></div>
+  <div class="meta"><span class="badge">Slide 19</span><span>~5 min</span><span>Worked example</span></div>
   <h3>Worked example: e-commerce customer segmentation</h3>
   <p>
     Walk the six-step pipeline. Point them at
-    <code>modules/mlfp04/solutions/ex_1.py</code> for the full script. The
+    <code>modules/mlfp04/solutions/ex_1/</code> for the full script. The
     key pedagogical moment is step 5: after the algorithm returns labels,
     the human profiles the clusters and gives them names.
   </p>
   <div class="transition">→ "What profiling looks like in practice."</div>
 </div>
 
+
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 18</span><span>~4 min</span><span>Profile table</span></div>
+  <div class="meta"><span class="badge">Slide 20</span><span>~4 min</span><span>Profile table</span></div>
   <h3>From cluster to business meaning</h3>
   <p>
     Walk the four rows. Cluster 0 has above-average frequency, above-average
@@ -306,8 +378,9 @@
   <div class="transition">→ "And here is what you must not do."</div>
 </div>
 
+
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 19</span><span>~3 min</span><span>Common mistakes</span></div>
+  <div class="meta"><span class="badge">Slide 21</span><span>~3 min</span><span>Common mistakes</span></div>
   <h3>Four rookie mistakes</h3>
   <p>
     Walk all four. Number 1 is the single biggest time-waster in clustering.
@@ -317,8 +390,9 @@
   <div class="transition">→ "Recap and what is next."</div>
 </div>
 
+
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 20</span><span>~2 min</span><span>Recap</span></div>
+  <div class="meta"><span class="badge">Slide 22</span><span>~2 min</span><span>Recap</span></div>
   <h3>What you can now do</h3>
   <p>
     Walk the checklist out loud. Ask for a show of hands on the last bullet
@@ -329,6 +403,8 @@
   </p>
   <div class="transition">→ End of lesson. Hand out Exercise 1.</div>
 </div>
+
+
 
 </main>
 </body>

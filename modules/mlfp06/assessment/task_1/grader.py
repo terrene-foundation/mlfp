@@ -1,197 +1,215 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Automated grader for MLFP06 Assessment Task 1 — Schema-Constrained Extraction.
+"""Grader for MLFP06 Assessment Task 1 — Operating Envelopes and Deny-Paths.
 
-Usage:
-    python grader.py starter.py     # grade your attempt
-    python grader.py solution.py    # verify the reference passes
+    python grader.py starter.py          # grade a submission
+    python grader.py solution.py         # verify the reference passes
+    python grader.py solution.py --seed 123   # replay a grading run
 
-The LLM runs at temperature 0 (deterministic greedy decoding), so extraction
-is stable across runs. Factual fields whose values are explicit in the text
-(the incident id) are graded exactly; the remaining LLM-extracted fields use a
-high pass FLOOR (5 of 6) to tolerate at most one occasional drift — see the
-inline notes. Schema and type checks are fully deterministic.
+Ground truth the student cannot influence: the grader probes the RETURNED
+engine itself, with grader-drawn costs (multipliers fresh per run) on actions
+chosen from the spec — inside, outside, and over budget — plus the installed
+fail-open defaults (unknown address, envelope-less role). The tightening
+checks feed grader-built ConstraintEnvelopeConfig pairs to the student's
+validate_child(). A submission returning canned verdict dicts fails: nothing
+student-reported is read.
 """
 from __future__ import annotations
 
-import argparse
-import importlib.util
-import json
-import re
 import sys
 from pathlib import Path
 
-REQUIRED_KEYS = {
-    "incident_id",
-    "severity",
-    "location",
-    "parcels_affected",
-    "claim_required",
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from grading_harness import Checks, finalize, load_student_module, main, quiet  # noqa: E402
+
+WEIGHT = 30
+GATES = ("returns_engine",)
+
+# The envelope table from problem.md (the grader's own copy).
+SPEC = {
+    "data_analyst": ("D1-R1-T1-R1", 20.0, ["read_data", "summarise_data", "generate_report"]),
+    "model_trainer": ("D1-R1-T2-R1", 100.0, ["train_model", "evaluate_model", "read_data"]),
+    "risk_assessor": ("D2-R1-T1-R1", 200.0, ["read_data", "audit_model", "generate_report", "access_audit_log"]),
+    "customer_agent": ("D3-R1-T1-R1", 5.0, ["answer_question", "search_faq"]),
 }
-SEVERITY_ENUM = {"low", "medium", "high"}
-
-# Independent ground truth, keyed by incident id.
-GROUND_TRUTH = {
-    "INC-3001": {
-        "severity": "high",
-        "location": "tuas checkpoint",
-        "parcels": 42,
-        "claim": True,
-    },
-    "INC-3002": {
-        "severity": "low",
-        "location": "changi airfreight centre",
-        "parcels": 3,
-        "claim": False,
-    },
-    "INC-3003": {
-        "severity": "medium",
-        "location": "jurong port",
-        "parcels": 17,
-        "claim": True,
-    },
-    "INC-3004": {
-        "severity": "high",
-        "location": "woodlands checkpoint",
-        "parcels": 58,
-        "claim": True,
-    },
-    "INC-3005": {
-        "severity": "low",
-        "location": "pasir panjang terminal",
-        "parcels": 1,
-        "claim": False,
-    },
-    "INC-3006": {
-        "severity": "medium",
-        "location": "tampines logistics hub",
-        "parcels": 9,
-        "claim": False,
-    },
+OUTSIDE_ACTION = {
+    "data_analyst": "deploy_model",
+    "model_trainer": "deploy_model",
+    "risk_assessor": "delete_all_records",
+    "customer_agent": "read_data",
 }
-N = len(GROUND_TRUTH)
-FLOOR = 5  # of 6 — tolerate at most one drift on LLM-extracted fields
+UNENVELOPED = [("D1-R1-T3-R1", "deploy_model"), ("D2-R1-T2-R1", "run_fairness_check")]
 
 
-def load_student_module(path: Path):
-    spec = importlib.util.spec_from_file_location("student_task1", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def _norm_id(v) -> str:
-    return re.sub(r"\s+", "", str(v)).upper()
-
-
-def _to_int(v):
-    try:
-        if isinstance(v, bool):
-            return None
-        return int(v)
-    except (TypeError, ValueError):
-        m = re.search(r"-?\d+", str(v))
-        return int(m.group(0)) if m else None
-
-
-def _to_bool(v):
-    if isinstance(v, bool):
-        return v
-    s = str(v).strip().lower()
-    if s in {"true", "yes", "required", "1"}:
-        return True
-    if s in {"false", "no", "not required", "0"}:
-        return False
-    return None
-
-
-def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
-    try:
-        student = load_student_module(student_path)
-    except Exception as e:
-        score["error"] = f"Failed to import: {type(e).__name__}: {e}"
-        return score
-    if not hasattr(student, "solve"):
-        score["error"] = "Module does not define a solve() function"
-        return score
-    try:
-        r = student.solve()
-    except Exception as e:
-        score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
-        return score
-
-    c = score["checks"]
-    c["returns_list"] = isinstance(r, list)
-    if not c["returns_list"]:
-        return _finalize(score)
-
-    c["correct_length"] = len(r) == N
-    c["all_items_dict"] = len(r) > 0 and all(isinstance(x, dict) for x in r)
-    if not (c["correct_length"] and c["all_items_dict"]):
-        return _finalize(score)
-
-    # Schema compliance: every required key present in every record.
-    c["schema_keys_present"] = all(REQUIRED_KEYS.issubset(x.keys()) for x in r)
-
-    # Type compliance: id is str-ish, parcels coerces to int, claim coerces to bool.
-    c["types_correct"] = all(
-        x.get("incident_id") is not None
-        and _to_int(x.get("parcels_affected")) is not None
-        and _to_bool(x.get("claim_required")) is not None
-        for x in r
+def _config(eid, clearance, cap, actions):
+    from pact import (
+        CommunicationConstraintConfig,
+        ConstraintEnvelopeConfig,
+        DataAccessConstraintConfig,
+        FinancialConstraintConfig,
+        OperationalConstraintConfig,
+        TemporalConstraintConfig,
     )
 
-    # Severity in the allowed enum (schema constraint), case-insensitive.
-    c["severity_in_enum"] = all(
-        str(x.get("severity", "")).strip().lower() in SEVERITY_ENUM for x in r
+    return ConstraintEnvelopeConfig(
+        id=eid,
+        description=eid,
+        confidentiality_clearance=clearance,
+        financial=FinancialConstraintConfig(max_spend_usd=cap),
+        operational=OperationalConstraintConfig(
+            allowed_actions=list(actions), blocked_actions=[]
+        ),
+        temporal=TemporalConstraintConfig(blackout_periods=[]),
+        data_access=DataAccessConstraintConfig(
+            read_paths=["/*"], write_paths=[], blocked_data_types=[]
+        ),
+        communication=CommunicationConstraintConfig(allowed_channels=["internal"]),
+        max_delegation_depth=3,
     )
 
-    # Index records by extracted id for value comparison.
-    by_id = {}
-    for x in r:
-        by_id[_norm_id(x.get("incident_id"))] = x
 
-    # incident_id: exact match for ALL six (values are explicit in the text).
-    c["incident_id_all_correct"] = all(gid in by_id for gid in GROUND_TRUTH)
+def grade(student_path: Path, seed: int) -> dict:
+    checks = Checks()
+    try:
+        st = load_student_module(student_path, "student_m6_task1")
+    except Exception as e:
+        return finalize(checks, WEIGHT, seed, f"Failed to import: {type(e).__name__}: {e}", GATES)
+    if not callable(getattr(st, "solve", None)) or not callable(getattr(st, "validate_child", None)):
+        return finalize(checks, WEIGHT, seed, "Module must define solve() and validate_child()", GATES)
+    try:
+        with quiet():
+            r = st.solve()
+    except Exception as e:
+        return finalize(checks, WEIGHT, seed, f"solve() raised {type(e).__name__}: {e}", GATES)
 
-    # The four LLM-extracted semantic fields — graded against a 5/6 floor.
-    sev_ok = loc_ok = parcels_ok = claim_ok = 0
-    for gid, gt in GROUND_TRUTH.items():
-        rec = by_id.get(gid)
-        if rec is None:
-            continue
-        if str(rec.get("severity", "")).strip().lower() == gt["severity"]:
-            sev_ok += 1
-        if gt["location"] in str(rec.get("location", "")).strip().lower():
-            loc_ok += 1
-        if _to_int(rec.get("parcels_affected")) == gt["parcels"]:
-            parcels_ok += 1
-        if _to_bool(rec.get("claim_required")) is gt["claim"]:
-            claim_ok += 1
+    rng = np.random.default_rng(seed)
+    engine = r.get("engine") if isinstance(r, dict) else None
+    try:
+        probe = engine.verify_action(
+            role_address="D1-R1-T1-R1", action="read_data", context={"cost": 0.01}
+        )
+        gate_ok = hasattr(probe, "allowed") and hasattr(probe, "level")
+    except Exception as e:
+        gate_ok = False
+        checks.add("returns_engine", False, f"engine.verify_action raised {type(e).__name__}: {e}")
+    if gate_ok:
+        checks.add("returns_engine", True)
+    if not checks.results.get("returns_engine"):
+        return finalize(checks, WEIGHT, seed, None, GATES)
 
-    c["severity_values_correct"] = sev_ok >= FLOOR
-    c["location_values_correct"] = loc_ok >= FLOOR
-    c["parcels_values_correct"] = parcels_ok >= FLOOR
-    c["claim_required_values_correct"] = claim_ok >= FLOOR
+    def verdict(addr, action, cost):
+        v = engine.verify_action(role_address=addr, action=action, context={"cost": cost})
+        return bool(v.allowed), str(v.level)
 
-    return _finalize(score)
+    def runtime_probes():
+        out: dict[str, tuple[bool, str]] = {}
+        # allow paths: each role's first action, cost well under the cap
+        bad = []
+        for role, (addr, cap, actions) in SPEC.items():
+            ok, lvl = verdict(addr, actions[0], round(cap * float(rng.uniform(0.01, 0.2)), 2))
+            if not ok:
+                bad.append(f"{role}:{actions[0]} -> {lvl}")
+        out["allow_paths"] = (not bad, f"within-envelope probes blocked: {bad}")
 
+        # deny by action
+        bad = []
+        for role, (addr, cap, _actions) in SPEC.items():
+            ok, lvl = verdict(addr, OUTSIDE_ACTION[role], round(cap * 0.05, 2))
+            if ok:
+                bad.append(f"{role}:{OUTSIDE_ACTION[role]} allowed ({lvl})")
+        out["deny_by_action"] = (not bad, f"outside-envelope actions allowed: {bad}")
 
-def _finalize(score: dict) -> dict:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
-    return score
+        # deny by budget (grader-drawn multipliers), allow at boundary
+        bad_d, bad_a = [], []
+        for role, (addr, cap, actions) in SPEC.items():
+            over = round(cap * float(rng.uniform(1.5, 3.0)), 2)
+            under = round(cap * float(rng.uniform(0.3, 0.8)), 2)
+            ok_over, lvl = verdict(addr, actions[0], over)
+            if ok_over:
+                bad_d.append(f"{role}:{actions[0]} ${over} (cap {cap}) allowed ({lvl})")
+            ok_under, lvl = verdict(addr, actions[0], under)
+            if not ok_under:
+                bad_a.append(f"{role}:{actions[0]} ${under} (cap {cap}) -> {lvl}")
+        out["deny_by_budget"] = (not bad_d, f"over-budget probes allowed: {bad_d}")
+        out["boundary_budget_allowed"] = (not bad_a, f"under-budget probes blocked: {bad_a}")
+
+        # installed fail-open defaults
+        ok, lvl = verdict("D99-R99-T99-R99", "read_data", 0.0)
+        out["failopen_unknown_role"] = (
+            ok and lvl == "auto_approved",
+            f"D99-R99-T99-R99 -> allowed={ok} level={lvl!r}; the installed default is auto_approved",
+        )
+        bad = []
+        for addr, action in UNENVELOPED:
+            ok, lvl = verdict(addr, action, 1.0)
+            if not (ok and lvl == "auto_approved"):
+                bad.append(f"{addr}:{action} -> allowed={ok} level={lvl!r}")
+        out["failopen_unenveloped_role"] = (
+            not bad,
+            f"envelope-less roles should auto-approve (envelopes attached wrongly?): {bad}",
+        )
+        return out
+
+    checks.guarded(
+        [
+            "allow_paths",
+            "deny_by_action",
+            "deny_by_budget",
+            "boundary_budget_allowed",
+            "failopen_unknown_role",
+            "failopen_unenveloped_role",
+        ],
+        runtime_probes,
+    )
+
+    def tightening():
+        from pact import ConfidentialityLevel as C
+
+        parent = _config("parent", C.CONFIDENTIAL, 50.0, ["read_data", "write_data"])
+        cases = {
+            "tightening_legal": _config("legal", C.CONFIDENTIAL, 25.0, ["read_data"]),
+            "tightening_clearance_escalation": _config("esc", C.SECRET, 50.0, ["read_data", "write_data"]),
+            "tightening_budget_widening": _config("bud", C.CONFIDENTIAL, 100.0, ["read_data", "write_data"]),
+            "tightening_action_widening": _config("act", C.CONFIDENTIAL, 50.0, ["read_data", "write_data", "deploy_model"]),
+            "tightening_restricted_child_legal": _config("rst", C.RESTRICTED, 50.0, ["read_data", "write_data"]),
+        }
+        expected = {
+            "tightening_legal": True,
+            "tightening_clearance_escalation": False,
+            "tightening_budget_widening": False,
+            "tightening_action_widening": False,
+            "tightening_restricted_child_legal": True,
+        }
+        out: dict[str, tuple[bool, str]] = {}
+        for name, child in cases.items():
+            try:
+                got = bool(st.validate_child(parent, child))
+            except Exception as e:
+                got = None
+                out[name] = (False, f"validate_child raised {type(e).__name__}: {e}")
+                continue
+            want = expected[name]
+            out[name] = (
+                got is want,
+                f"validate_child(parent=confidential/$50/[read,write], {name}) returned {got}; expected {want}",
+            )
+        return out
+
+    checks.guarded(
+        [
+            "tightening_legal",
+            "tightening_clearance_escalation",
+            "tightening_budget_widening",
+            "tightening_action_widening",
+            "tightening_restricted_child_legal",
+        ],
+        tightening,
+    )
+    return finalize(checks, WEIGHT, seed, None, GATES)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("student", type=Path)
-    args = parser.parse_args()
-    result = grade(args.student)
-    print(json.dumps(result, indent=2))
-    sys.exit(0 if result["passed"] else 1)
+    main(grade)

@@ -1,73 +1,97 @@
-# MLFP06 — Task 1: Schema-Constrained Extraction
+# MLFP06 — Task 1: Operating Envelopes and Deny-Paths for the FinTech Org
 
-**Weight**: 20 marks · **Difficulty**: Hard · **Framework**: Kaizen
-`Signature` + `BaseAgent` (Ollama, `llama3.2:3b`) · **Dataset**: 6 fixed SG
-logistics incident reports (given in the starter)
+**Weight**: 30 marks · **Framework**: PACT (`GovernanceEngine`,
+`RoleEnvelope`, `ConstraintEnvelopeConfig`) · **Outcomes assessed**:
+operating envelopes, deny-path testing, monotonic tightening (6.7)
 
 ## Scenario
 
-A Singapore last-mile logistics operator receives free-text incident reports
-from drivers and depot staff. The downstream insurance + ops pipeline is
-strongly typed — it needs one clean, validated record per report or the row
-insert fails. Free-form JSON prompting drifts (wrong key names, code fences,
-single quotes). The production fix is a **typed Kaizen Signature**: you declare
-the schema in Python, Kaizen renders it into the prompt and validates the
-response, and you get a typed dict back.
+The Singapore FinTech AI division from Exercise 7 (`shared.mlfp06.ex_7`) is
+going to production. Six agent roles run under three human department heads.
+Until now the org compiled with **no envelopes attached** — and in the
+installed kailash-pact, a role with no envelope is **auto-approved** for
+everything (`verify_action` returns `allowed=True`, `level="auto_approved"`).
+Deny-paths exist only where an envelope is attached.
 
-Drive the local Ollama LLM at **temperature 0** (deterministic) and extract a
-structured record from each of the six reports.
+Your job: attach least-privilege operating envelopes to the four agent roles
+in the table below, and implement the monotonic-tightening check the platform
+team uses to review envelope changes.
 
-Implement `solve() -> list[dict]`.
+The grader probes **your returned engine** directly — with actions and costs
+it chooses itself at grading time (some within the envelope, some outside,
+some over budget, some from addresses that do not exist). A submission that
+hard-codes verdicts, or one that never actually attaches the envelopes,
+fails.
 
-## Required schema (every record, exactly these five keys)
-
-| Field              | Type   | Meaning                                                |
-| ------------------ | ------ | ------------------------------------------------------ |
-| `incident_id`      | `str`  | The incident reference id (e.g. `INC-3001`)            |
-| `severity`         | `str`  | Exactly one of `low`, `medium`, `high`                 |
-| `location`         | `str`  | The facility/location named in the report              |
-| `parcels_affected` | `int`  | Number of parcels affected                             |
-| `claim_required`   | `bool` | `True` if an insurance claim is required, else `False` |
-
-## What to build
-
-1. **Define the Signature** — `IncidentExtraction(Signature)` with one
-   `InputField` (`report_text: str`) and five `OutputField`s matching the table
-   above. The `OutputField` descriptions steer the LLM — be precise.
-2. **Build the agent** — a `BaseAgent` subclass backed by your Signature, wired
-   to Ollama: `config={"model": DEFAULT_CHAT_MODEL, "llm_provider": "ollama",
-"base_url": OLLAMA_BASE_URL, "use_async_llm": True, "temperature": 0.0}`.
-3. **Extract** — run `await agent.run_async(report_text=report)` for each of the
-   six reports and collect the five fields per record.
-
-## Visible sanity check
-
-The first report (`INC-3001`, Tuas Checkpoint, 42 parcels, claim required)
-should extract to roughly:
+## Interfaces
 
 ```python
-{"incident_id": "INC-3001", "severity": "high", "location": "Tuas Checkpoint",
- "parcels_affected": 42, "claim_required": True}
+def solve() -> dict: ...
+def validate_child(parent, child) -> bool: ...
 ```
 
-(severity casing may vary — it is graded case-insensitively.)
+`solve()` returns `{"engine": engine}` — the canonical org compiled with
+`compile_governance(apply_specs=False)` from `shared.mlfp06.ex_7`, plus your
+four envelopes attached with `engine.set_role_envelope(...)`. Compiling with
+`apply_specs=False` keeps the YAML envelope block as inert metadata: the only
+governance in force on your engine must be the envelopes **you** attach.
+Each envelope is a full five-dimension `ConstraintEnvelopeConfig` (Financial,
+Operational, Temporal, Data Access, Communication) wrapped in a `RoleEnvelope`
+whose `defining_role_address` is the role's department head.
 
-## Grading (11 automated checks, all must pass)
+`validate_child(parent, child)` takes two `ConstraintEnvelopeConfig` objects
+and returns True iff `child` is a legal tightening of `parent` — equal or
+more restrictive on every dimension. Use the framework's structural check;
+do not hand-compare numbers.
 
-return type is list · 6 records · all items are dicts · all five schema keys
-present in every record · types correct (`incident_id` present, `parcels_affected`
-→ int, `claim_required` → bool) · `severity` in `{low,medium,high}` ·
-`incident_id` exact for all 6 · `severity` correct (≥5/6) · `location` correct
-(≥5/6) · `parcels_affected` correct (≥5/6) · `claim_required` correct (≥5/6).
+## The envelope table
 
-**Why the 5/6 floor?** The LLM runs at temperature 0 (greedy, deterministic), so
-extraction is stable. The semantic-field checks still use a 5-of-6 floor to
-tolerate at most one occasional drift; the explicit `incident_id` is graded
-exactly because it is copied verbatim from the text. Schema and type checks are
-fully deterministic.
+| Role             | Address       | Defined by | Clearance  | Cap (USD) | Allowed actions                                                   |
+| ---------------- | ------------- | ---------- | ---------- | --------- | ----------------------------------------------------------------- |
+| `data_analyst`   | `D1-R1-T1-R1` | `D1-R1`    | restricted | 20.00     | `read_data`, `summarise_data`, `generate_report`                  |
+| `model_trainer`  | `D1-R1-T2-R1` | `D1-R1`    | restricted | 100.00    | `train_model`, `evaluate_model`, `read_data`                      |
+| `risk_assessor`  | `D2-R1-T1-R1` | `D2-R1`    | restricted | 200.00    | `read_data`, `audit_model`, `generate_report`, `access_audit_log` |
+| `customer_agent` | `D3-R1-T1-R1` | `D3-R1`    | public     | 5.00      | `answer_question`, `search_faq`                                   |
+
+Leave `model_deployer` (`D1-R1-T3-R1`) and `bias_checker` (`D2-R1-T2-R1`)
+**without** envelopes — the fail-open default for envelope-less roles is part
+of what the grader pins.
+
+A probe carries a context `{"cost": dollars}`. An action outside the role's
+allowed set must be **blocked**; a cost above the cap must be **blocked**;
+within both, **allowed**.
+
+## PACT's clearance ladder (as installed)
+
+`public < restricted < confidential < secret < top_secret` — `restricted`
+is the **second-lowest** rung, just above public. A `restricted` child under
+a `confidential` parent is a legal tightening; a `secret` child under a
+`confidential` parent is an escalation and must be rejected.
+
+## Acceptance criteria (what the grader measures)
+
+| #   | Check                                                                          |
+| --- | ------------------------------------------------------------------------------ |
+| 1   | `solve()` returns a dict whose engine answers `verify_action` (gate)           |
+| 2   | Within-envelope probes on all four roles are **allowed**                       |
+| 3   | Action-outside-envelope probes are **blocked**                                 |
+| 4   | Over-budget probes (cost = cap × 1.5–3, grader-drawn) are **blocked**          |
+| 5   | Under-budget probes (cost = cap × 0.3–0.8, grader-drawn) are **allowed**       |
+| 6   | Unknown address `D99-R99-T99-R99` is **auto-approved** (the installed default) |
+| 7   | An envelope-less known role is **auto-approved** (fail-open pinned)            |
+| 8   | `validate_child`: a genuinely tighter child passes                             |
+| 9   | `validate_child`: `secret` child under a `confidential` parent is rejected     |
+| 10  | `validate_child`: a budget-widening child is rejected                          |
+| 11  | `validate_child`: an action-widening child is rejected                         |
+| 12  | `validate_child`: a `restricted` child under a `confidential` parent passes    |
+
+Marks = 30 × (non-gate checks passed / 11). If the gate fails, the task
+scores 0.
 
 ## Rules
 
-- **Kaizen Signature only** — no hand-rolled `json.loads` of free-form text.
-- **Local Ollama only** — no cloud models, no API keys. Temperature 0.
-- Do not mutate `INCIDENT_REPORTS`.
+- No LLM calls. Everything here is in-process governance.
+- Build envelopes with the PACT classes (`FinancialConstraintConfig`,
+  `OperationalConstraintConfig`, ...), one per dimension.
+- Deterministic: no randomness in your code — the grader owns the probes.
+- Self-check: run `starter.py`; it prints the verdicts for a fixed probe list.

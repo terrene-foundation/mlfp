@@ -1,105 +1,73 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP06 — Assessment Task 1: Schema-Constrained Extraction
+MLFP06 — Assessment Task 1: Operating Envelopes and Deny-Paths
 
-Complete the `solve()` function. Read problem.md for the full specification.
-Drive a local Ollama LLM with a Kaizen Signature (type-safe structured output)
-at temperature 0, and extract one structured record per incident report.
+Implement `solve()` and `validate_child()`. problem.md holds the envelope
+table, the ladder, and the acceptance criteria. The grader probes your
+RETURNED engine with its own actions and costs — hard-coded verdicts fail.
 
-Your submission is auto-graded on schema compliance + field accuracy.
+    python starter.py               # (you) attach envelopes + probe them
+    python grader.py starter.py     # (instructor) grade an attempt
+
+No LLM is involved in this task.
 """
 from __future__ import annotations
 
-import asyncio
-
-from kaizen import InputField, OutputField, Signature
-from kaizen.core.base_agent import BaseAgent
-
-from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
-
-# ════════════════════════════════════════════════════════════════════════
-# FIXED CORPUS — six SG last-mile logistics incident reports (given).
-# ════════════════════════════════════════════════════════════════════════
-INCIDENT_REPORTS: list[str] = [
-    (
-        "Incident Report INC-3001\n"
-        "Severity: HIGH. Location: Tuas Checkpoint.\n"
-        "A container truck overturned during transfer. 42 parcels affected. "
-        "An insurance claim is required for the damaged goods."
-    ),
-    (
-        "Incident Report INC-3002\n"
-        "Severity: LOW. Location: Changi Airfreight Centre.\n"
-        "A scanning belt jammed briefly. 3 parcels affected. "
-        "No insurance claim is needed."
-    ),
-    (
-        "Incident Report INC-3003\n"
-        "Severity: MEDIUM. Location: Jurong Port.\n"
-        "A forklift clipped a pallet stack. 17 parcels affected. "
-        "An insurance claim is required."
-    ),
-    (
-        "Incident Report INC-3004\n"
-        "Severity: HIGH. Location: Woodlands Checkpoint.\n"
-        "A refrigeration unit failed in transit. 58 parcels affected. "
-        "An insurance claim is required for the spoiled shipment."
-    ),
-    (
-        "Incident Report INC-3005\n"
-        "Severity: LOW. Location: Pasir Panjang Terminal.\n"
-        "A label printer ran out of ink. 1 parcel affected. "
-        "No insurance claim is needed."
-    ),
-    (
-        "Incident Report INC-3006\n"
-        "Severity: MEDIUM. Location: Tampines Logistics Hub.\n"
-        "A delivery rider was rerouted by road closures. 9 parcels affected. "
-        "No insurance claim is needed."
-    ),
-]
+# The envelope table from problem.md, as data.
+ROLE_ADDRESSES = {
+    "data_analyst": "D1-R1-T1-R1",
+    "model_trainer": "D1-R1-T2-R1",
+    "model_deployer": "D1-R1-T3-R1",  # no envelope — fail-open default
+    "risk_assessor": "D2-R1-T1-R1",
+    "bias_checker": "D2-R1-T2-R1",  # no envelope — fail-open default
+    "customer_agent": "D3-R1-T1-R1",
+}
+HEAD_ADDRESSES = {
+    "chief_ml_officer": "D1-R1",
+    "chief_risk_officer": "D2-R1",
+    "vp_customer": "D3-R1",
+}
+ROLE_TO_HEAD = {
+    "data_analyst": "chief_ml_officer",
+    "model_trainer": "chief_ml_officer",
+    "model_deployer": "chief_ml_officer",
+    "risk_assessor": "chief_risk_officer",
+    "bias_checker": "chief_risk_officer",
+    "customer_agent": "vp_customer",
+}
 
 
-# TODO 1: Define a Kaizen Signature `IncidentExtraction` with one InputField
-#         (report_text: str) and five OutputFields with these names and types:
-#           incident_id: str, severity: str (one of low/medium/high),
-#           location: str, parcels_affected: int, claim_required: bool
-#         The OutputField descriptions are what steer the LLM — write them well.
-class IncidentExtraction(Signature):
-    """Extract structured fields from a last-mile logistics incident report."""
+def solve() -> dict:
+    """Compile the canonical org and attach the four envelopes from
+    problem.md's table.
 
-    # report_text: str = InputField(description=...)
-    # incident_id: str = OutputField(description=...)
-    # ... (add the remaining four OutputFields)
-
-
-def _make_agent() -> BaseAgent:
-    # TODO 2: Build a BaseAgent subclass backed by IncidentExtraction(), wired
-    #         to Ollama: config={"model": DEFAULT_CHAT_MODEL,
-    #         "llm_provider": "ollama", "base_url": OLLAMA_BASE_URL,
-    #         "use_async_llm": True, "temperature": 0.0}.
-    raise NotImplementedError("Build and return the BaseAgent")
-
-
-async def _extract_all() -> list[dict]:
-    results: list[dict] = []
-    for report in INCIDENT_REPORTS:
-        # TODO 3: Run the agent on each report with `await agent.run_async(
-        #         report_text=report)` and collect the five fields into a dict.
-        pass
-    return results
-
-
-def solve() -> list[dict]:
-    """Return a list of six dicts, one structured record per incident report.
-
-    Each dict must have keys: incident_id, severity, location,
-    parcels_affected, claim_required.
+    Returns:
+        {"engine": GovernanceEngine} — the engine with the four envelopes
+        attached (model_deployer and bias_checker stay envelope-less).
     """
-    return asyncio.run(_extract_all())
+    raise NotImplementedError("Implement solve() — see problem.md")
+
+
+def validate_child(parent, child) -> bool:
+    """True iff `child` is a legal monotonic tightening of `parent`.
+
+    Both arguments are pact ConstraintEnvelopeConfig objects. Use the
+    framework's structural check (note: it takes keyword-only arguments).
+    """
+    raise NotImplementedError("Implement validate_child() — see problem.md")
 
 
 if __name__ == "__main__":
-    for rec in solve():
-        print(rec)
+    out = solve()
+    engine = out["engine"]
+    probes = [
+        ("data_analyst", "read_data", 0.10),
+        ("data_analyst", "deploy_model", 0.10),
+        ("customer_agent", "answer_question", 100.0),
+        ("D99-R99-T99-R99", "read_data", 0.0),  # unknown address
+    ]
+    for role, action, cost in probes:
+        addr = ROLE_ADDRESSES.get(role, role)
+        v = engine.verify_action(role_address=addr, action=action, context={"cost": cost})
+        print(f"{role:>16} {action:<18} ${cost:>7.2f} -> allowed={v.allowed} level={v.level}")

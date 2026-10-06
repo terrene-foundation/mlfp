@@ -57,6 +57,7 @@ from shared.mlfp02.ex_3 import (
     srm_check_multi,
     print_header,
 )
+from shared.mlfp002 import create_visualizer
 
 print_header("MLFP02 Exercise 3.1: Bootstrap CIs & Power Analysis")
 
@@ -315,7 +316,7 @@ print("\n>>> Checkpoint 4 passed -- power curves computed\n")
 
 from kailash_ml import ModelVisualizer
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # Plot 1: Bootstrap distribution of conversion rate difference
 fig1 = viz.histogram(

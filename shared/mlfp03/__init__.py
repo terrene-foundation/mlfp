@@ -27,3 +27,6 @@ _warnings.filterwarnings(
     message=r"X does not have valid feature names, but LGBM\w+ was fitted with feature names",
     category=UserWarning,
 )
+
+# Re-export the canonical factory (shared/kailash_helpers.py).
+from shared.kailash_helpers import create_visualizer

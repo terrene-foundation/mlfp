@@ -33,6 +33,7 @@ from kailash_ml import ModelVisualizer
 
 # Cross-exercise import: tracker helpers live in ex_1.shared.
 from shared.mlfp04.ex_1 import setup_engines, teardown_engines, track_run
+from shared.mlfp004 import create_visualizer
 from shared.mlfp04.ex_2 import (
     load_customers_scaled,
     out_path,
@@ -153,7 +154,7 @@ print("\n[ok] Checkpoint 1 passed — BIC/AIC sweep produced a usable ranking")
 # Show it to a marketing director: they can SEE why you picked K and
 # whether the choice was obvious or a coin-flip between neighbours.
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 comparison = {
     f"K={k}": {"BIC": v["bic"], "AIC": v["aic"], "silhouette": v["silhouette"]}
     for k, v in sweep.items()

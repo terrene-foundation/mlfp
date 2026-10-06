@@ -46,6 +46,7 @@ import polars as pl
 from kailash_ml import ModelVisualizer
 
 from shared import MLFPDataLoader
+from shared.mlfp001 import create_visualizer
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
@@ -66,7 +67,7 @@ print(f"\n  Data loaded: hdb_resale.parquet ({hdb.height:,} rows, {hdb.width} co
 print(f"  You're ready to start!\n")
 
 # Initialise the visualiser — one instance, many chart types
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # Create output directory for charts
 os.makedirs("charts", exist_ok=True)

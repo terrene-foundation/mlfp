@@ -43,6 +43,7 @@ from shared.mlfp04.ex_3 import (
     teardown_engines,
     track_run,
 )
+from shared.mlfp004 import create_visualizer
 
 # ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
 tracker, exp_name = setup_engines()
@@ -152,7 +153,7 @@ print(
 # TASK 4 — VISUALISE: silhouette across kernels
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig = viz.metric_comparison(
     {
         label: {

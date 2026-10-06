@@ -437,3 +437,21 @@ def split_then_preprocess(
         stratified=stratified,
         summary=result.summary.replace("Split first:", f"Split first ({split_line}):", 1),
     )
+
+
+def create_visualizer():
+    """Return a ModelVisualizer with the P2 experimental notice acknowledged.
+
+    kailash-ml 2.2.2 emits ExperimentalWarning (a UserWarning) at
+    ModelVisualizer construction; exercises run under warnings-as-errors,
+    so the notice is acknowledged narrowly here — the ONE construction site
+    every course file should use.
+    """
+    import warnings as _warnings
+
+    from kailash_ml import ModelVisualizer
+    from kailash_ml._decorators import ExperimentalWarning as _EW
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore", _EW)
+        return ModelVisualizer()

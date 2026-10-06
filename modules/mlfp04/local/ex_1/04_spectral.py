@@ -47,6 +47,7 @@ from shared.mlfp04.ex_1 import (
     teardown_engines,
     track_run,
 )
+from shared.mlfp004 import create_visualizer
 
 load_dotenv()
 
@@ -217,7 +218,7 @@ print("\n  [ok] Checkpoint 2 passed — spectral best-K selected\n")
 # TASK 4 — VISUALISE: silhouette vs K
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig = viz.training_history(
     {"Silhouette (spectral)": [spectral_results[k]["sil"] for k in K_CANDIDATES]},
     x_label="K",

@@ -34,6 +34,7 @@ from kailash_ml import ModelVisualizer
 # Cross-exercise import: tracker helpers live in ex_1.shared so every M4
 # unsupervised technique logs to the same `m4_clustering_zoo` experiment.
 from shared.mlfp04.ex_1 import setup_engines, teardown_engines, track_run
+from shared.mlfp004 import create_visualizer
 from shared.mlfp04.ex_2 import (
     count_gmm_params,
     load_customers_scaled,
@@ -146,7 +147,7 @@ print("\n[ok] Checkpoint 1 passed — all four cov types fitted and ranked by BI
 # TASK 4 — VISUALISE: BIC per covariance type
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 comparison = {
     f"cov={ct}": {"BIC": v["bic"], "silhouette": v["silhouette"]}
     for ct, v in cov_results.items()

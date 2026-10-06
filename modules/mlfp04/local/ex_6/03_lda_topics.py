@@ -40,6 +40,7 @@ from shared.mlfp04.ex_6 import (
     load_corpus,
     print_scenario,
 )
+from shared.mlfp004 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -192,7 +193,7 @@ coherences = ____
 mean_npmi = float(np.mean(coherences))
 print(f"\nLDA mean NPMI coherence: {mean_npmi:+.4f}")
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # Perplexity curve
 perp_data = {f"K={k}": {"perplexity": results[k]["perplexity"]} for k in k_grid}

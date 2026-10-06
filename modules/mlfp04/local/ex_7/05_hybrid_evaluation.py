@@ -39,6 +39,7 @@ from shared.mlfp04.ex_7 import (
     evaluate_method,
     save_html,
 )
+from shared.mlfp004 import create_visualizer
 
 K_LATENT = N_LATENT_TRUE
 LAMBDA_REG = 5.0
@@ -399,7 +400,7 @@ print("\n[ok] Checkpoint passed — all methods evaluated on RMSE, P@5, MAP\n")
 # RMSE on the pairs it covers can still have poor MAP if it cannot score
 # the cold-start SKUs at all.
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 comparison_metrics = {
     name: {"RMSE": r["RMSE"], "MAP": r["MAP"], "Coverage": r["Coverage"]}
     for name, r in eval_results.items()

@@ -56,6 +56,7 @@ import polars as pl
 from kailash_ml import AlertConfig, ModelVisualizer, PreprocessingPipeline
 
 from shared import MLFPDataLoader, run_compare, run_profile, run_report
+from shared.mlfp001 import create_visualizer
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
@@ -769,7 +770,7 @@ print("\n✓ Checkpoint 8 passed — PreprocessingPipeline complete\n")
 # for data, set the real x values and axis titles — a chart with the
 # wrong axis labels is a misleading chart.
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 os.makedirs("charts", exist_ok=True)
 viz_files: list[str] = []
 

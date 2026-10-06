@@ -42,6 +42,7 @@ from shared.mlfp04.ex_6 import (
     load_corpus,
     print_scenario,
 )
+from shared.mlfp004 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -143,7 +144,7 @@ for i, c in enumerate(coherences):
     bar = "#" * max(0, int((c + 0.3) * 30))
     print(f"  Topic {i}: {c:+.4f} {bar}")
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # Coherence bar chart
 coherence_data = {f"Topic_{i}": {"NPMI": float(c)} for i, c in enumerate(coherences)}

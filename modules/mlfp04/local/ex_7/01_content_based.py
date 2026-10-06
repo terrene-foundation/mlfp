@@ -38,6 +38,7 @@ from shared.mlfp04.ex_7 import (
     print_method_scores,
     save_html,
 )
+from shared.mlfp004 import create_visualizer
 
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Why content-based works
@@ -167,7 +168,7 @@ print(
 # biased (all predictions hug the mean?) or well-calibrated (points lie
 # along the y=x diagonal).
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 pairs = []
 for i in range(N_USERS):

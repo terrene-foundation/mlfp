@@ -47,6 +47,7 @@ from shared.mlfp04.ex_6 import (
     load_corpus,
     print_scenario,
 )
+from shared.mlfp004 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -228,7 +229,7 @@ for rank in range(5):
 print(f"\nTop-5 overlap: {len(overlap)}/5 documents")
 print("\nBest TF-IDF match:", documents[top_tfidf[0]][:110], "...")
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # (A) IDF identity scatter — every term's IDF, from scratch vs sklearn.
 # All points must sit on the diagonal; this is the verification made visible.

@@ -50,6 +50,7 @@ from shared.mlfp02.ex_1 import (
     percentile_ci,
     print_interval,
 )
+from shared.mlfp002 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -244,7 +245,7 @@ print("\n✓ Checkpoint 2 passed — bootstrap, expected value, sampling bias co
 # TASK 4 — VISUALISE: Interval Comparison + Flat-Type Posteriors
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # -- Plot 1: Bootstrap distribution histogram --
 fig1 = go.Figure()

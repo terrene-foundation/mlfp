@@ -50,6 +50,7 @@ from shared.mlfp04.ex_6 import (
     print_scenario,
     tokenize_review,
 )
+from shared.mlfp004 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -293,7 +294,7 @@ fig_map.update_layout(
 )
 fig_map.write_html(str(OUTPUT_DIR / "ex6_5_word_vector_map.html"))
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 acc_data = {
     "Majority class": {"test_accuracy": majority_acc},
     "Lexicon": {"test_accuracy": lex_acc},

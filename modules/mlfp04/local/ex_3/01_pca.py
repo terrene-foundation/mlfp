@@ -39,6 +39,7 @@ from shared.mlfp04.ex_3 import (
     teardown_engines,
     track_run,
 )
+from shared.mlfp004 import create_visualizer
 
 # ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
 tracker, exp_name = setup_engines()
@@ -156,7 +157,7 @@ print("[ok] Checkpoint 2 — variance thresholds + Kaiser + broken-stick\n")
 #   (b) loadings for the first 5 PCs
 #   (c) reconstruction error vs k
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # (a) Scree plot
 fig_scree = viz.training_history(

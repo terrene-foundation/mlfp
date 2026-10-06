@@ -42,6 +42,7 @@ from kailash_ml import ModelVisualizer
 # Cross-exercise import: tracker helpers live in ex_1.shared so every M4
 # unsupervised technique logs to the same `m4_clustering_zoo` experiment.
 from shared.mlfp04.ex_1 import setup_engines, teardown_engines, track_run
+from shared.mlfp004 import create_visualizer
 from shared.mlfp04.ex_2 import (
     N_SYNTH,
     TRUE_COVS,
@@ -323,7 +324,7 @@ print("[ok] Checkpoint 4 passed — from-scratch EM agrees with sklearn's GMM")
 # log-likelihood is a staircase that only goes up. A decrease would
 # signal a bug in the E-step or an ill-conditioned covariance.
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig = viz.training_history(
     {"Log-Likelihood": em["log_likelihoods"]},
     x_label="EM Iteration",

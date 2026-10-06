@@ -50,6 +50,7 @@ from shared.mlfp04.ex_1 import (
     teardown_engines,
     track_run,
 )
+from shared.mlfp004 import create_visualizer
 
 load_dotenv()
 
@@ -279,7 +280,7 @@ print("\n  [ok] Checkpoint 2 passed — initialisation comparison complete\n")
 # Per-sample silhouette reveals which points are mis-assigned — a negative
 # s(i) means point i is closer to a different cluster than its own.
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 history = {
     "Silhouette": sweep["silhouette"],
     "Inertia (scaled)": [i / max(sweep["inertia"]) for i in sweep["inertia"]],

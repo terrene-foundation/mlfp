@@ -30,6 +30,7 @@ from kailash_ml import ExperimentTracker
 from kailash_ml.interop import to_sklearn_input
 
 from shared.data_loader import MLFPDataLoader
+from shared.kailash_helpers import create_visualizer
 from shared.kailash_helpers import setup_environment
 
 # ════════════════════════════════════════════════════════════════════════
@@ -309,7 +310,7 @@ def write_comparison_chart(
     """Render a kailash-ml ModelVisualizer metric_comparison chart to HTML."""
     from kailash_ml import ModelVisualizer
 
-    viz = ModelVisualizer()
+    viz = create_visualizer()
     fig = viz.metric_comparison(comparison)
     fig.update_layout(title="Anomaly Detection Method Comparison")
     path = OUTPUT_DIR / filename
@@ -323,7 +324,7 @@ def write_roc_chart(
     """Render a ROC curve for a single detector."""
     from kailash_ml import ModelVisualizer
 
-    viz = ModelVisualizer()
+    viz = create_visualizer()
     fig = viz.roc_curve(y_true, scores)
     fig.update_layout(title=f"ROC — {name}")
     path = OUTPUT_DIR / filename
@@ -335,7 +336,7 @@ def write_monitoring_chart(anomaly_rates: list[float], filename: str) -> Path:
     """Render an anomaly-rate-over-time chart for production monitoring."""
     from kailash_ml import ModelVisualizer
 
-    viz = ModelVisualizer()
+    viz = create_visualizer()
     fig = viz.training_history(
         {"Anomaly Rate %": [r * 100 for r in anomaly_rates]},
         x_label="Time Window",

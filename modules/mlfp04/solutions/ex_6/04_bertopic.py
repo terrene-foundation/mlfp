@@ -46,6 +46,7 @@ from shared.mlfp04.ex_6 import (
     print_scenario,
     topic_embedding_model,
 )
+from shared.mlfp004 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -179,7 +180,7 @@ else:
         "     from meaning (paraphrases) are not guaranteed to score higher."
     )
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 coherence_data = {
     f"Topic_{i}": {"BERTopic NPMI": float(c), "NMF NPMI": float(n)}

@@ -194,3 +194,6 @@ try:  # pragma: no cover - environment shim
         _OllamaProvider._client = None
 except Exception:  # kaizen absent or provider API changed — nothing to patch
     pass
+
+# Re-export the canonical factory (shared/kailash_helpers.py).
+from shared.kailash_helpers import create_visualizer

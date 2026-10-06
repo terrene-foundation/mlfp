@@ -44,6 +44,7 @@ import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 from kailash_ml import ModelVisualizer
+from shared import create_visualizer
 
 from shared import MLFPDataLoader
 
@@ -66,8 +67,10 @@ print(f"\n  Data loaded: hdb_resale.parquet ({hdb.height:,} rows, {hdb.width} co
 print(f"  You're ready to start!\n")
 
 # Initialise the visualiser — one instance, many chart types
-# TODO: Initialise ModelVisualizer — assign to variable `viz`
-viz = ____  # Hint: ModelVisualizer()
+# TODO: Initialise the visualiser — assign to variable `viz`
+# (ModelVisualizer is constructed through the shared factory: the SDK marks
+# it experimental (P2) and the factory acknowledges that notice in one place)
+viz = ____  # Hint: create_visualizer()
 
 # Create output directory for charts
 os.makedirs("charts", exist_ok=True)

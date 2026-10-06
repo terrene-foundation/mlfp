@@ -43,6 +43,7 @@ from shared.mlfp04.ex_3 import (
     teardown_engines,
     track_run,
 )
+from shared.mlfp004 import create_visualizer
 
 # ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
 tracker, exp_name = setup_engines()
@@ -221,7 +222,7 @@ if best_2d != blobbiest_2d:
         " prettier picture, not the more faithful one."
     )
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig = viz.metric_comparison(
     {
         name: {

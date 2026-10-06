@@ -40,6 +40,7 @@ from shared.mlfp02.ex_2 import (
     load_singapore_econ,
     save_figure,
 )
+from shared.mlfp002 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -221,7 +222,7 @@ print("\n--- Checkpoint 3 passed --- misspecification and tail risk demonstrated
 # TASK 4 — VISUALISE: Bimodal Failure
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 bimodal_df = pl.DataFrame({"gdp_growth_pct": bimodal_data})
 fig = viz.histogram(

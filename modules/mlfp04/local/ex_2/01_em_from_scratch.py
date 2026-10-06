@@ -42,6 +42,7 @@ from kailash_ml import ModelVisualizer
 # Cross-exercise import: tracker helpers live in ex_1.shared so every M4
 # unsupervised technique logs to the same `m4_clustering_zoo` experiment.
 from shared.mlfp04.ex_1 import setup_engines, teardown_engines, track_run
+from shared.mlfp004 import create_visualizer
 from shared.mlfp04.ex_2 import (
     N_SYNTH,
     TRUE_COVS,
@@ -314,7 +315,7 @@ print("[ok] Checkpoint 4 passed — from-scratch EM agrees with sklearn's GMM")
 # The convergence plot is the VISUAL PROOF of the ELBO theorem: the
 # log-likelihood is a staircase that only goes up.
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 # TODO: call viz.training_history with {"Log-Likelihood": em["log_likelihoods"]}
 # and x_label="EM Iteration"
 fig = ____

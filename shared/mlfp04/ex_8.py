@@ -20,6 +20,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from kailash_ml import ModelVisualizer
 
 from shared import MLFPDataLoader
+from shared.kailash_helpers import create_visualizer
 from shared.kailash_helpers import get_device, setup_environment
 
 # ════════════════════════════════════════════════════════════════════════
@@ -43,7 +44,7 @@ N_CLASSES = 5
 BATCH_SIZE = 64
 
 # Kailash visualiser (used by every phase 4 block)
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # ════════════════════════════════════════════════════════════════════════
 # DATA — XOR toy problem (Tasks 1-3)

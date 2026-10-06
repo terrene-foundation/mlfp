@@ -42,6 +42,7 @@ from shared.mlfp04.ex_1 import (
     out_path,
     standardise,
 )
+from shared.mlfp004 import create_visualizer
 
 load_dotenv()
 
@@ -197,7 +198,7 @@ print("\n  [ok] Checkpoint 2 passed — HDBSCAN auto-discovers clusters\n")
 # TASK 4 — VISUALISE: the k-distance elbow that drove epsilon selection
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig = viz.training_history(
     {"k-distance (sorted)": k_dist.tolist()},
     x_label="Point index (sorted)",

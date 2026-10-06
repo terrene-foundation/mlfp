@@ -43,6 +43,7 @@ from shared.mlfp04.ex_7 import (
     print_warm_comparison,
     save_html,
 )
+from shared.mlfp004 import create_visualizer
 
 K_LATENT = N_LATENT_TRUE  # we search for as many factors as the data has
 LAMBDA_REG = 5.0
@@ -219,7 +220,7 @@ print(
 # The 5-dimensional learned factors can be projected to 2D via PCA. The
 # result is a scatter plot where geometric proximity = similar taste.
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 pca_users = PCA(n_components=2, random_state=42)
 U_2d = pca_users.fit_transform(U_learned)

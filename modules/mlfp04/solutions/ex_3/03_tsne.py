@@ -43,6 +43,7 @@ from shared.mlfp04.ex_3 import (
     teardown_engines,
     track_run,
 )
+from shared.mlfp004 import create_visualizer
 
 # ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
 tracker, exp_name = setup_engines()
@@ -149,7 +150,7 @@ print("\n[ok] Checkpoint 1 — 2D embeddings across 4 perplexity settings")
 # TASK 4 — VISUALISE: perplexity comparison
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # (a) The embeddings themselves — one panel per perplexity, coloured by
 # churn status. `churned` was NOT a reducer input, so any region where

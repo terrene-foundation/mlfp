@@ -56,6 +56,7 @@ from shared.mlfp02.ex_3 import (
     two_proportion_ztest,
     print_header,
 )
+from shared.mlfp002 import create_visualizer
 
 print_header("MLFP02 Exercise 3.4: Permutation Test")
 
@@ -239,7 +240,7 @@ print("\n>>> Checkpoint 4 passed -- comparison complete\n")
 
 from kailash_ml import ModelVisualizer
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # Conversion permutation null
 conv_df = pl.DataFrame({"permuted_difference": perm_conv_diffs})

@@ -56,6 +56,7 @@ from shared.mlfp04.ex_1 import (
     teardown_engines,
     track_run,
 )
+from shared.mlfp004 import create_visualizer
 
 load_dotenv()
 
@@ -260,7 +261,7 @@ print("\n  [ok] Checkpoint 2 passed — AutoMLEngine search ran with guardrails\
 # TASK 4 — VISUALISE: Metric bar chart + cluster profiles
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig = viz.metric_comparison(
     {
         k: {"silhouette": v["silhouette"], "calinski_harabasz": v["calinski_harabasz"]}

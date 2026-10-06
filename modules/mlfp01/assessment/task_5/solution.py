@@ -31,6 +31,7 @@ import polars as pl
 
 from kailash_ml import ModelVisualizer, PreprocessingPipeline
 from shared import MLFPDataLoader
+from shared.mlfp001 import create_visualizer
 
 FEATURES = [
     "pickup_zone",
@@ -71,7 +72,7 @@ def prepare_bookings(fitted: PreprocessingPipeline, bookings: pl.DataFrame) -> p
 # ── Part B ───────────────────────────────────────────────────────────────
 def make_charts(trips: pl.DataFrame) -> dict:
     """Answer four questions about the cleaned trips with one chart each."""
-    viz = ModelVisualizer()
+    viz = create_visualizer()
     known_zone = trips.filter(pl.col("pickup_zone") != "Unknown")
 
     zone_fares = (

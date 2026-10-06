@@ -36,6 +36,7 @@ from the integration branch tip; merged into `fix/m1-m6-audit`, then one PR per
 module. Phase A (S1–S5 correctness) for all modules, then Phase B (S5 redesign, S6).
 
 ## Verification status (2026-10-06) — what each PR carries
+
 - **#15 (base):** snippet checker 0 across all teaching files; redline-check 0 BLOCKING; all 594 slides pass
   the overflow check; all 400 notebooks parse clean (402).
 - **#16 (M1):** solutions 8/8 on the fleet; speaker notes regenerated (78 slides 1:1); notebooks regenerated.
@@ -49,3 +50,32 @@ module. Phase A (S1–S5 correctness) for all modules, then Phase B (S5 redesign
 - **#21 (M6):** 13/39 pass on the fleet = exactly the NON-LLM exercises (PACT/governance, drift, LoRA math).
   The other 26 call preflight_ollama and correctly fail loudly without an Ollama host (matches the exercise
   agent's "Need Ollama" list). Full M6 verification needs an Ollama host.
+
+## Verification status (2026-10-07) — spec-gap lanes + hooks posture
+
+- **Hooks advisory conversion (d8b3f006):** the three PostToolUse blockers (validate-workflow,
+  validate-deployment, enforce-framework-first) no longer halt the session; findings reach the main
+  agent via `additionalContext` with a resolve-now directive. Owner directive; destructive-command
+  PreToolUse denies (never session-halting) unchanged.
+- **lane-specgaps MERGED (dbc8e685), worktree reaped.** Nine M3 technique files closing the spec gaps:
+  ex_1/06 temporal (HDB panel, shift-before-roll, group_by_dynamic forward-window gotcha taught;
+  R² 0.681→0.701), ex_1/07 forward+backward SFS vs RFE (on credit — ICU frame is flat per P1;
+  fwd∩bwd=6/12), ex_1/08 correlation-threshold + FeatureEngineer generate/select (P2 experimental
+  warning acknowledged; importance-vs-CV disagreement taught); ex_4/05 from-scratch AdaBoost
+  (reproduces sklearn within noise), ex_4/06 CatBoost native categoricals (+0.0053 AUC-PR);
+  ex_5/06 log-loss taxonomy (agent), ex_5/07 regression metrics (R²/MAE/RMSE/MAPE, HDB;
+  naive-mean R²≈0), ex_5/08 EnsembleEngine stack/blend (honest cosmetic-gain read + engine
+  contribution-contamination gotcha taught); ex_6/06 KernelSHAP (probability-space additivity
+  1e-16) + ModelExplainer unit-mismatch investigation (P6 upstream finding). All fleet-verified
+  under `-W error::UserWarning`; 18 notebooks regenerated; deck exercise slides 3.1/3.4/3.5/3.6
+  aligned (81b4aea2); lesson-08 model-card slide now Mitchell's nine sections (d9a9d4a7).
+- **Shared-infra fixes riding the lane:** LGBM/sklearn-1.9 spurious feature-name warning filtered
+  centrally (shared/mlfp03/**init**.py — whole ex_5 family was latent); shap LightGBM-binary
+  output-shape notice filtered at the handled call site (shared/mlfp03/ex_6.py).
+- **Notebook parity restored course-wide:** M2 ex_5/05-07 + ex_6/05 (89e8d85a), M4 ex_6/06 (44d77c48),
+  M6 ex_2/07 (13cb2d65). Generator runs that write the tree must run LOCAL — fleet mirrors do not
+  sync generated files back.
+- **Deck parity baselines refreshed** (49a73888) — a7269663 + M5 diagnostics edits had red-drifted them.
+- **Lanes in flight:** lane-m5-specgaps (5.2 Mixup/label-smoothing/Kaiming, 5.3 indicators + char-LSTM,
+  5.5 DCGAN, 5.6 GIN/TUDataset landed; 5.8 DDPG/SAC/A2C in progress) and lane-assessments (M5+M6
+  full assessment rebuild, per-task commits, no LLM/no-Drive design).

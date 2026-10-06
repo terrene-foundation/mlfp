@@ -78,7 +78,7 @@
 <!-- Slide 2 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Motivation</span></div>
-  <h3>One idea powers four tools</h3>
+  <h3>One idea that powers four tools</h3>
   <p>
     Walk the four bullets. Each one is a separate industry — retail,
     real estate, finance, healthcare — all solved by the same base
@@ -99,13 +99,13 @@
 <!-- Slide 3 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Architecture diagram</span></div>
-  <h3>Encoder → bottleneck → decoder</h3>
+  <h3>Compression forces the network to learn structure</h3>
   <p>
-    Walk the diagram left to right. Point at the input block: "high
-    dimensional — an image, a vector, whatever". Point at the encoder
-    trapezoid: "getting narrower — that's the key shape". Point at the
-    latent: "this is where learning happens". Then the decoder trapezoid
-    widening back out, then the reconstruction.
+    Walk the bar diagram left to right: 784 inputs squeezed through 256 and
+    64 down to a bottleneck of 8, then mirrored back out through 64 and 256
+    to 784 outputs. Point at the gold bottleneck bar: "this is where
+    learning happens — squeeze 784 dimensions through 8 and the network has
+    no choice but to discover the structure that matters."
   </p>
   <p>
     Name the loss explicitly: "we train it by minimising
@@ -156,8 +156,8 @@
     an autoencoder."
   </p>
   <p>
-    Run it live if you have the time. 20 epochs on 2000 blobs takes
-    about 10 seconds on CPU. Show the loss going down.
+    Run it live if you have the time. 20 epochs on a Fashion-MNIST subset
+    takes seconds on CPU. Show the loss going down.
   </p>
   <div class="transition">→ "Now a tiny tweak gives us the denoising AE."</div>
 </div>
@@ -189,7 +189,7 @@
 <!-- Slide 7 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Why AE cannot generate</span></div>
-  <h3>Vanilla AE cannot generate new data</h3>
+  <h3>But vanilla AE cannot generate new data</h3>
   <p>
     Demo it: pass a random latent vector to the decoder and show the
     output is nonsense. Ask the class: "why?" Take one or two answers.
@@ -212,7 +212,7 @@
 <!-- Slide 8 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>VAE intuition</span></div>
-  <h3>Variational AE — make the latent a distribution</h3>
+  <h3>Variational AE: make the latent a distribution</h3>
   <p>
     The big idea: "instead of encoding x to a single point, encode it to
     a <em>distribution</em>. The encoder emits a mean and a variance.
@@ -336,9 +336,9 @@
     that are not in the training set.
   </p>
   <p>
-    Run the demo if you can. The blobs are not stunning — they are
-    blurry Gaussians — but they are <em>new</em> Gaussians, different
-    centres and widths from any you trained on. That's generation.
+    Run the demo if you can. The samples are not stunning — they are
+    blurry garments — but they are <em>new</em> garments, different from
+    any item in the training set. That's generation.
   </p>
   <div class="audience-cue expert">
     <strong>For experts:</strong> the blurriness is a known VAE problem
@@ -406,7 +406,7 @@
 <!-- Slide 17 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Common mistakes</span></div>
-  <h3>Four traps</h3>
+  <h3>Four traps for autoencoder builders</h3>
   <ol>
     <li><strong>log σ² is not σ.</strong> This is the single most
         common bug in VAE code. The symptom is NaN loss after a few

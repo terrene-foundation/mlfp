@@ -1,71 +1,80 @@
-# MLFP06 — Task 2: RAG Pipeline with Evaluation
+# MLFP06 — Task 2: A Governed Agent's Tools and Operating Config
 
-**Weight**: 25 marks · **Difficulty**: Hard · **Framework**: Kaizen Ollama
-embeddings + Delegate (`nomic-embed-text`, `llama3.2:3b`) · **Dataset**:
-`data/mlfp06/squad/squad_v2_300.parquet` (real SQuAD v2 contexts + Q&A)
+**Weight**: 20 marks · **Framework**: Kaizen (`ToolRegistry`) + kaizen-agents
+(`GovernedSupervisor`) · **Outcomes assessed**: tool registration with JSON
+schemas, per-agent budget and clearance config (6.5, 6.7)
 
 ## Scenario
 
-A knowledge-base assistant must answer staff questions using a fixed document
-corpus — and it must be **grounded**: every answer comes from a retrieved
-passage, not the model's memory. You will build the two-stage RAG pipeline
-(dense retrieval, then grounded generation) and it will be evaluated the way
-production RAG is evaluated: **retrieval recall@k** and **grounded-answer
-fact containment**.
+A back-office agent answers staff questions with three small tools. Before it
+can go near production, two things must exist and be right:
 
-The corpus and the six evaluation questions are built for you, deterministically,
-by `build_corpus_and_questions()` (first 30 unique SQuAD contexts; six questions
-whose gold answer is a short distinctive fact).
+1. a **tool registry** — the only way the model can call your functions is if
+   each is registered with a name, a description, a JSON-schema parameter
+   card, and an executor (handing the agent bare Python functions registers
+   nothing);
+2. a **governed agent config** — a per-agent dollar budget and a data
+   clearance, set at construction so the envelope is real from the first call.
 
-Implement `solve() -> dict`.
+No LLM is needed to verify either: the grader calls your registered executors
+with its own inputs, reads your agent's envelope, and runs one governed
+objective with a grader-supplied executor.
 
-## Pipeline to build
-
-1. **Embed** the corpus and the six questions with the Ollama embedder
-   (`make_embedder(model="nomic-embed-text")`, `await embedder.embed([...])`).
-   Vectors are 768-dim.
-2. **Retrieve** — for each question, rank the 30 corpus docs by cosine
-   similarity (`_cosine` is provided) and take the **top-3 indices** (most
-   similar first).
-3. **Generate** — for each question, build a context string from its top-3 docs
-   and generate a **grounded** answer with `make_delegate(temperature=0.0)` +
-   `run_delegate_text`. Instruct the model to answer using ONLY the context.
-
-## Return contract
+## Interfaces
 
 ```python
-def solve() -> dict:
-    return {
-        "retrieved": [[int, int, int], ...],  # 6 lists, top-3 doc indices each
-        "answers":   [str, ...],              # 6 grounded answer strings
-    }
+def build_tools() -> ToolRegistry: ...
+def build_agent(registry: ToolRegistry) -> GovernedSupervisor: ...
 ```
 
-## Visible sanity check
+### The three tools
 
-For a correct pipeline, every question's gold passage is retrieved at rank 1
-(recall@1 = 6/6 on this corpus), and each answer contains the gold fact — e.g.
-the "Pacific Ocean" question returns an answer containing `pacific`/`ocean`.
+Each executor is async, takes keyword arguments, and returns a **JSON
+string**. Behaviour contracts:
 
-## Grading (9 automated checks, all must pass)
+| Tool                 | Arguments                    | Returns (JSON string)                                                                                                       |
+| -------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `compute_statistics` | `numbers: list[float]`       | `{"count": int, "mean": float (4 dp), "min": float, "max": float}`                                                          |
+| `normalise_text`     | `text: str`                  | `{"normalised": str}` — lowercase, leading/trailing whitespace stripped, runs of internal whitespace collapsed to one space |
+| `convert_currency`   | `amount: float, rate: float` | `{"converted": float}` — `amount * rate`, rounded to 2 dp                                                                   |
 
-return type is dict · `retrieved` shape (6 lists) · `answers` shape (6 non-empty
-strings) · top-3 size · indices in range `[0,30)` · **recall@1 ≥ 5/6** ·
-**recall@3 = 6/6** · **answers grounded ≥ 5/6** (each answer contains a content
-token from the gold answer) · answers non-trivial length.
+Each tool's `parameters` card is a JSON schema object with a `"properties"`
+map covering exactly the arguments above (plus `"type": "object"`).
 
-**How this stays deterministic.** Retrieval is pure embedding cosine over a
-fixed corpus — the grader independently re-derives each query's gold passage
-index from the SQuAD parquet and checks recall@k. Generation is graded by
-**grounded fact containment** (does the answer contain a content token from the
-gold answer), never by exact text, because LLM phrasing is not bit-stable. At
-temperature 0 the grounded outcome is stable; the 5/6 floors absorb at most one
-drift.
+### The agent
+
+`build_agent` returns a `GovernedSupervisor` constructed with:
+
+- `budget_usd=0.25`;
+- `data_clearance="internal"` (the organisation's internal-data alias);
+- `tools=[...]` the three tool names;
+- `model=` the course default from `shared.mlfp06._ollama_bootstrap`
+  (`DEFAULT_CHAT_MODEL`) — no hardcoded model names. Construction makes no
+  network calls.
+
+## Acceptance criteria (what the grader measures)
+
+| #   | Check                                                                                |
+| --- | ------------------------------------------------------------------------------------ |
+| 1   | `build_tools()` returns a registry exposing `tool_names` (gate)                      |
+| 2   | Exactly the three required tool names are registered                                 |
+| 3   | `compute_statistics` correct on three grader-drawn inputs                            |
+| 4   | `normalise_text` correct on three grader-drawn strings                               |
+| 5   | `convert_currency` correct on three grader-drawn (amount, rate) pairs                |
+| 6   | Every tool carries a JSON-schema parameters card naming its arguments                |
+| 7   | Agent clearance is `RESTRICTED` (the `internal` alias maps to it)                    |
+| 8   | Agent envelope carries `budget_usd` 0.25                                             |
+| 9   | Agent's operational envelope lists exactly the three tools                           |
+| 10  | One governed run with a grader executor succeeds; the audit chain grows and verifies |
+
+Marks = 20 × (non-gate checks passed / 9). If the gate fails, the task
+scores 0.
 
 ## Rules
 
-- **Kaizen Ollama embeddings + Delegate** — no external vector DB, no cloud
-  embeddings/models. Temperature 0 for generation.
-- Retrieval must be real cosine similarity over your embeddings — no hardcoded
-  indices.
-- Do not modify the corpus/question builder.
+- No LLM calls anywhere in this task.
+- Executors must compute from their arguments — the grader draws fresh inputs
+  every run, so canned outputs fail.
+- Deterministic: same arguments, same JSON.
+- Self-check: run `starter.py`; it registers your tools, calls each once, and
+  prints your agent's envelope summary.

@@ -29,6 +29,8 @@ import pickle
 from pathlib import Path
 from typing import Any
 
+import warnings
+
 import numpy as np
 import polars as pl
 
@@ -236,7 +238,17 @@ def build_shap_explainer() -> dict[str, Any]:
 
     bundle = train_credit_model()
     explainer = shap.TreeExplainer(bundle["model"])
-    shap_values = explainer.shap_values(bundle["X_test"])
+    # shap emits a UserWarning announcing the binary-LightGBM output-shape
+    # change ("...has changed to a list of ndarray"). The isinstance branch
+    # below already handles both shapes, so the notice is informational only —
+    # filtered narrowly, by exact message prefix, at the one call site.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"LightGBM binary classifier with TreeExplainer shap values output has changed.*",
+            category=UserWarning,
+        )
+        shap_values = explainer.shap_values(bundle["X_test"])
 
     # TreeSHAP for binary classifiers may return [class_0, class_1]
     if isinstance(shap_values, list):

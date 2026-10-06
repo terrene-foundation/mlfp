@@ -499,7 +499,7 @@ snap = asyncio.run(as_of(icu, datetime(2023, 1, 1)))</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. The Kailash bridge shows how the theory maps to the SDK, on the same ICU data as Exercise 3.1 (one row per admission, features computed from the first 24 hours; long_stay = stay longer than the median). FeatureEngineer has two calls. generate() builds candidate columns from the fields in a FeatureSchema (strategies: interactions, polynomial, binning, temporal); select() ranks originals plus candidates against the target and keeps top_k (default method: tree-based importance, so it is an embedded-style ranking). Fit it on training rows only: ranking features on all rows lets the test set vote on which features you keep, which is leakage. The engine does not replace the filter, wrapper and embedded comparisons: the exercise runs mutual information and chi-squared, RFE, and Lasso by hand so students see why they disagree. FeatureStore persists features through DataFlow; get_features(schema, timestamp=T) returns only rows stamped at or before T, which is point-in-time correctness. Note the two schema classes: the top-level kailash_ml.FeatureSchema (features=[...]) is what FeatureEngineer takes; the store needs kailash_ml.features.FeatureSchema (fields=(...)). The timestamp filter only protects you if the timestamps are honest: a feature computed later but stamped earlier still leaks.</aside>
+  <aside class="notes">Timing: 2 min. The Kailash bridge shows how the theory maps to the SDK, on the same ICU data as Exercise 3.1 (one row per admission, features computed from the first 24 hours; long_stay = stay longer than the median). FeatureEngineer has two calls. generate() builds candidate columns from the fields in a FeatureSchema (strategies: interactions, polynomial, binning); select() ranks originals plus candidates against the target and keeps top_k (default method: tree-based importance, so it is an embedded-style ranking). Fit it on training rows only: ranking features on all rows lets the test set vote on which features you keep, which is leakage. The engine does not replace the filter, wrapper and embedded comparisons: the exercise runs mutual information and chi-squared, RFE, and Lasso by hand so students see why they disagree. FeatureStore persists features through DataFlow; get_features(schema, timestamp=T) returns only rows stamped at or before T, which is point-in-time correctness. Note the two schema classes: the top-level kailash_ml.FeatureSchema (features=[...]) is what FeatureEngineer takes; the store needs kailash_ml.features.FeatureSchema (fields=(...)). The timestamp filter only protects you if the timestamps are honest: a feature computed later but stamped earlier still leaks.</aside>
 </section>
 
 <!-- SLIDE 14 — Lesson 3.1 Summary -->
@@ -515,7 +515,7 @@ snap = asyncio.run(as_of(icu, datetime(2023, 1, 1)))</code></pre>
     <li><strong>Engines:</strong> <code>FeatureEngineer</code>, <code>FeatureStore</code></li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.1:</strong> Predict a long ICU stay from the first 24 hours. Join five ICU tables point-in-time, engineer vital, lab and clinical interaction features, then compare filter (MI, chi-squared), wrapper (RFE) and embedded (L1) selection and log a leakage-audited consensus set.
+    <strong>Exercise 3.1:</strong> Predict a long ICU stay from the first 24 hours. Join five ICU tables point-in-time, engineer vital, lab and clinical interaction features, then compare filter (MI, chi-squared), wrapper (RFE) and embedded (L1) selection and log a leakage-audited consensus set. Then the extended toolkit: temporal features on the HDB town-month panel (shift-before-roll leakage discipline), forward/backward sequential selection vs RFE, a correlation-threshold redundancy filter, and automated generate-then-select with <code>FeatureEngineer</code>.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -1305,7 +1305,7 @@ asyncio.run(compare())</code></pre>
     <li><strong>In practice:</strong> Try all three; differences are marginal on most datasets</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.4:</strong> Boosting from scratch, then XGBoost, LightGBM and CatBoost on Singapore credit data after a leak screen. Compare AUC-PR, log loss and train time; sweep learning rate &times; depth; early-stop on a validation split, never the test set.
+    <strong>Exercise 3.4:</strong> Boosting from scratch, then XGBoost, LightGBM and CatBoost on Singapore credit data after a leak screen. Compare AUC-PR, log loss and train time; sweep learning rate &times; depth; early-stop on a validation split, never the test set. Plus the genealogy warm-up (from-scratch AdaBoost vs sklearn, staged-AUC bend) and CatBoost on native categoricals — same split, same budget, no invented ordinal order.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -1590,7 +1590,7 @@ for c in stacked.component_contributions:
     <li><strong>Combining models:</strong> blending and stacking (<code>EnsembleEngine</code>)</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.5:</strong> Imbalanced credit data (~13% default): metrics taxonomy vs an all-negative baseline; SMOTE vs cost-sensitive weights; real focal loss as a LightGBM objective; cost threshold tuned out-of-fold; Platt and isotonic via <code>TrainingPipeline.calibrate</code> on a 20% holdout.
+    <strong>Exercise 3.5:</strong> Imbalanced credit data (~13% default): metrics taxonomy vs an all-negative baseline; SMOTE vs cost-sensitive weights; real focal loss as a LightGBM objective; cost threshold tuned out-of-fold; Platt and isotonic via <code>TrainingPipeline.calibrate</code> on a 20% holdout; log loss as the proper scoring rule (hand-computed, matched to sklearn); the regression side of the taxonomy (MAE/RMSE/MAPE/R²) on HDB resale; and stacking vs blending through <code>EnsembleEngine</code> — measured, cosmetic gain and all.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -1799,7 +1799,7 @@ for c in stacked.component_contributions:
     <li><strong>Impossibility:</strong> Cannot satisfy all fairness criteria simultaneously</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.6:</strong> On a <code>TrainingPipeline</code> LightGBM credit model: TreeSHAP with additivity checked in log-odds, permutation importance + ALE, LIME vs SHAP reason codes, SHAP interactions, and a fairness audit on race, gender and age.
+    <strong>Exercise 3.6:</strong> On a <code>TrainingPipeline</code> LightGBM credit model: TreeSHAP with additivity checked in log-odds, permutation importance + ALE, LIME vs SHAP reason codes, SHAP interactions, a fairness audit on race, gender and age, then model-agnostic explanation — KernelSHAP on sampled coalitions (additivity in probability space) and a ModelExplainer additivity investigation that takes the engine's failure down to the unit level.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>

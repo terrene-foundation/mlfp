@@ -1,96 +1,126 @@
-# MLFP03 — Task 4: Production Pipeline — Registry, Drift, Deploy
+# MLFP03 — Task 4: The Release Review
 
-**Weight**: 30 marks · **Difficulty**: Hard · **Dataset**: `data/mlfp03/ecommerce_customers.parquet` (50,000 rows, 16 columns)
+**Weight**: 30 marks · **Dataset**: `mlfp02/sg_credit_scoring.parquet` (100,000 labelled loan applications, 36 columns, 12.9% default)
+**Outcomes assessed**: per-applicant explanations that satisfy the Shapley properties (3.6), fairness measurement — disparate impact and equalised odds (3.6), production drift monitoring with sound statistical discipline (3.8)
 
 ## Scenario
 
-The premium-upsell model is ready to ship. Production ML is not "the pickle on
-S3" — it needs a **versioned registry** with an audit-grade promotion trail and
-**drift monitoring** so you find out the week the world changes, not at the
-quarterly review. Build the full lifecycle: train -> register -> promote ->
-monitor.
+Your decision model is up for release, and the credit committee's review has
+three standing items. None of them is optional.
 
-Implement `solve() -> dict`.
+**Explanations.** Every scored applicant can ask _why_. The committee needs a
+per-applicant breakdown of the score into one number per field, and it will
+only accept a breakdown with three properties:
 
-## Data contract (deterministic — given to you)
+1. the numbers for an applicant add up to that applicant's score **minus the
+   average score over the background book**;
+2. a field the scoring function never reads gets **exactly zero**;
+3. credit is divided among the fields by **Shapley's rule** — each field's
+   share is its average marginal contribution, where a field that is "left
+   out" of a coalition is replaced by values drawn from the background
+   applicants (independently of the applicant's other fields).
 
-- First **10,000** rows; derived target `premium_response` (~25% positive).
-  Code given in `_model_frame()`; keep it intact.
-- 8 base features (same as Task 3).
-- **Reference distribution** = first 7,500 feature rows. **Incoming batches** =
-  the remaining 2,500 rows, evaluated twice:
-  - `clean` — the raw 2,500 rows (same distribution as reference)
-  - `shifted` — an economic-downturn shift built by `_shift_slice()` (spend
-    x0.6, recency x1.5 + 60 days, satisfaction − 1). Keep it intact.
+The breakdown is in the score's own units (probability of default), per
+applicant.
 
-## Required pipeline (framework-first)
+**Fairness.** Before any scorecard ships, the desk audits its **decisions**
+across groups of applicants. For each group you report the approval share,
+how it compares to the best-treated group (the _four-fifths rule_), and the
+approval shares separately among applicants who repaid and among those who
+defaulted (the two halves of _equalised odds_). Some applicants have no
+recorded group; they are a group of their own and are never silently dropped.
+The reviewer chooses which column to audit at review time — your report must
+work for whichever column is named.
 
-1. **Train** a LightGBM model via `TrainingPipeline.train()` —
-   `model_class="lightgbm.LGBMClassifier"`, framework `lightgbm`,
-   `{n_estimators:200, random_state:42, verbose:-1}`; EvalSpec metrics
-   `["accuracy","f1","auc"]`, holdout, `test_size=0.25`. Training registers the
-   model at **staging**.
-2. **Promote** the registered version `staging -> production` with an audit
-   reason, then `get_model(name, stage="production")` to confirm.
-3. **Monitor**: arm a `DriftMonitor` (`psi_threshold=0.2`, `ks_threshold=0.05`),
-   `set_reference_data(name, reference, BASE_FEATURES)`, then `check_drift` on
-   the `clean` batch and on the `shifted` batch.
-4. **Return** the dict below.
+**Drift.** Once live, every incoming batch of applications is screened
+against the reference book on **all of its numeric fields at once**, and the
+monitor names the fields whose distribution has moved. A monitor that cries
+wolf on stable batches gets switched off; one that misses a real shift gets
+the desk into trouble. Testing dozens of fields on every batch will raise
+spurious alarms unless your significance discipline accounts for how many
+tests you are running — choose one that keeps a stable batch quiet while
+still catching every genuinely shifted field.
 
-### Two databases (MUST)
-
-Give the `ModelRegistry` and the `DriftMonitor` **separate SQLite files** — the
-realistic production posture, since a model registry and a monitoring store are
-distinct systems with independent lifecycles. Using fresh, separate files per
-store also avoids reusing a stale database whose schema predates your installed
-kailash-ml version.
-
-## Exact return contract
+## Interface
 
 ```python
-{
-  "registered_version":       int,    # >= 1
-  "production_stage":         "production",
-  "reference_auc":            float,  # held-out ROC-AUC of the registered model
-  "clean_drift_detected":     bool,   # False — same distribution, no alarm
-  "shift_drift_detected":     bool,   # True  — downturn trips the monitor
-  "n_drifted_features_clean": int,    # 0
-  "n_drifted_features_shift": int,    # >= 3
-  "shift_severity":           str,    # not "none"
-}
+def explain(predict_proba, background: pl.DataFrame, applications: pl.DataFrame) -> pl.DataFrame: ...
+def fairness_report(audit: pl.DataFrame, group_column: str) -> pl.DataFrame: ...
+def drift_alerts(reference: pl.DataFrame, batch: pl.DataFrame, features: list[str]) -> list[str]: ...
 ```
 
-## Visible sanity checks
+**`explain`** — `predict_proba` is the scoring function under review: it
+takes a polars DataFrame with the same columns as `background` (minus the
+`customer_id` identifier) and returns one probability per row. `background`
+is the book the committee compares applicants against; `applications` are the
+applicants to explain. Return a polars DataFrame with exactly one row per
+application: the `customer_id` column plus one column per field, holding that
+field's attribution for that applicant.
 
-After a correct implementation:
+**`fairness_report`** — `audit` is a table of decided applications: the
+`approved` decision (boolean), the realised `default` outcome (0/1), and the
+column named by `group_column` (which may contain missing values). Return a
+polars DataFrame with one row per group and exactly these columns:
 
-- `registered_version == 1`, `production_stage == "production"`
-- `reference_auc ≈ 0.90`
-- `clean_drift_detected is False` and `n_drifted_features_clean == 0`
-  (no false alarm on a same-distribution batch)
-- `shift_drift_detected is True`, `n_drifted_features_shift == 4`,
-  `shift_severity == "severe"`
+| Column                  | Meaning                                                           |
+| ----------------------- | ----------------------------------------------------------------- |
+| `group`                 | the group label; missing membership is reported as `"unrecorded"` |
+| `applicants`            | number of applicants in the group                                 |
+| `approval_rate`         | share approved                                                    |
+| `approval_ratio`        | `approval_rate` divided by the highest group's `approval_rate`    |
+| `good_approval_rate`    | approval share among applicants who did **not** default           |
+| `default_approval_rate` | approval share among applicants who defaulted                     |
+| `passes_four_fifths`    | boolean: `approval_ratio >= 0.8`                                  |
 
-## Performance target
+**`drift_alerts`** — `reference` is the book the monitor was armed on,
+`batch` is the latest incoming batch, and `features` lists every numeric
+field to watch. Return the names of the fields whose distribution has moved,
+as a list of strings (empty when nothing has moved).
 
-Registered model **ROC-AUC ≥ 0.85**; drift monitor flags the shifted batch
-(≥ 3 features) while staying silent on the clean batch (0 features).
+## Acceptance criteria
 
-## Grading (11 automated checks, all must pass)
+- The explanations satisfy all three committee properties on scoring
+  functions you have never seen — including ones with interactions,
+  thresholds, and fields they ignore.
+- The fairness report reproduces the desk's own arithmetic exactly, for
+  whatever group column is named, with unrecorded membership surfaced as its
+  own group.
+- The drift monitor stays silent on batches drawn from the same population
+  as the reference, and names exactly the shifted fields on a batch where
+  some fields have moved.
+- All three functions are deterministic and load no files themselves.
 
-returns dict with all keys · registered_version ≥ 1 · promoted to production ·
-reference_auc ≥ 0.85 · clean batch → no drift · shifted batch → drift detected ·
-clean drifted-feature count == 0 · shifted drifted-feature count ≥ 3 · shift
-severity signals drift · **reference_auc matches an independent re-train**
-(within 0.02) · **clean/shift drift outcomes + shifted feature count match an
-independent re-run** (defeats hardcoded dicts).
+## How you are graded (11 automated checks)
+
+The grader supplies everything your functions see, and none of it is the
+development file:
+
+- **`explain`** is handed two of the grader's **own** scoring functions
+  (secret coefficients, an interaction, a step, and one field the function
+  ignores) together with fresh background books and applicants. The grader
+  computes the exact Shapley values itself and checks: your attributions add
+  up; the ignored field gets nothing; your values match the exact ones for
+  both functions.
+- **`fairness_report`** is handed an audit table built from fresh
+  applications — decisions and outcomes the grader made itself — once on a
+  known column and once on an age band whose **column name changes every
+  run** and whose membership is sometimes unrecorded. The grader recomputes
+  every rate itself and compares groups, counts, rates, ratios, and flags.
+- **`drift_alerts`** is handed a fresh reference and several fresh batches
+  from the same population (you must raise nothing), then one batch in which
+  **three secretly chosen fields** have been shifted (you must name exactly
+  those three).
+
+Marks = 30 × checks passed / 11.
 
 ## Rules
 
-- **Framework-first**: training via `TrainingPipeline`, versioning via
-  `ModelRegistry`, monitoring via `DriftMonitor`. Raw SQL, manual pickling to
-  disk, and hand-rolled PSI/KS are BLOCKED.
-- **Polars only.** Load via `shared.MLFPDataLoader`. Deterministic (seeds fixed).
-- `solve()` wraps the async work in `asyncio.run` and returns a plain dict.
-- Use separate SQLite files for the registry and the drift monitor; clean them
-  up before returning.
+- Polars for data handling (no pandas). Monitor drift through the kailash-ml
+  `DriftMonitor`. Anything you compute yourself must be computed from the
+  arguments you are given — never from the development file, which the
+  grader's inputs do not come from.
+- Develop against the real file via `shared.MLFPDataLoader` (see
+  `starter.py`); the grader's scoring functions, audit tables, references and
+  batches are all drawn fresh and unseen.
+- Each function must finish in seconds on a laptop for a few thousand
+  applications.

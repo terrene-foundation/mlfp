@@ -123,3 +123,14 @@ for the same pre-filter figure at integration.
 - M5 confirmed locally: ex_1/01 autoencoder, ex_7/05 ONNX export → registry → InferenceServer serving all pass.
 - Repeated fleet mirror resets (other repos' concurrent trestle runs reset the shared mlfp mirror) killed several
   re-runs; the per-module local + fleet results above stand as the verification.
+
+## Verification round 2 (2026-10-06)
+- M3 40/40 confirmed: fleet 38/40 + ex_7/01 and ex_7/05 confirmed finishing locally after the search-budget cap.
+  Follow-up: the final model now trains on the FULL 80k dev frame (my earlier cap mistakenly subsampled the
+  TrainFinalNode too); only the BayesianSearchNode subsamples to 8k. The credit dev frame is 80,000 rows, not
+  the ~4,240 the docstring implied (corrected).
+- M5 fleet best 40/43: failures are slow full-dataset training under thread caps (ex_4 BERT ×2, ex_7 transfer ×3,
+  ex_2/01 CNN) plus ex_2/03 (torch-2.12 strict FX-decomposer rejecting bare nn.ReLU — FIXED with an honest
+  torch.onnx.export fallback using dynamic batch; passes end-to-end locally: export → validate → serve → benchmark).
+  ex_0/00 transient (passes locally). A final 3600s/file run is queued.
+- M2 spec gaps merged (multinomial logit verified 0.852 acc / 100% label agreement vs a matched oracle).

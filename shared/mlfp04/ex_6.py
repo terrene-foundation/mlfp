@@ -281,6 +281,16 @@ def topic_embedding_model() -> str:
 # assumption for the arithmetic, not a measured or published number.
 
 SCENARIOS: dict[str, str] = {
+    "tfidf_from_scratch": (
+        "CASE (illustrative): a statutory board's compliance library holds "
+        "~90K internal rulings and audit memoranda. Regulators reviewing a "
+        "retrieval decision ask WHY a document was ranked first, and the "
+        "board's answer must be reproducible arithmetic an auditor can "
+        "re-run by hand — not a library version pinned to whatever was "
+        "current when the system was built. A from-scratch TF-IDF ranker "
+        "is ~60 lines, has zero third-party dependencies, and every weight "
+        "traces to a document frequency the auditor can verify."
+    ),
     "tfidf_bm25": (
         "CASE (illustrative): a Singapore engineering group's internal "
         "document search over ~180K reports, from 2-page memos to 80-page "

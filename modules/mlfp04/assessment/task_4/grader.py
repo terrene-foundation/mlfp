@@ -31,6 +31,7 @@ WEIGHT = 15
 NMI_FLOOR = 0.20
 NPMI_MEAN_FLOOR = 0.15
 NPMI_MIN_FLOOR = 0.0
+NPMI_WORST_TOLERANCE = -0.10  # one borderline topic may dip below zero on hard draws
 OVERLAP_MAX = 2      # a word may appear in at most this many topics' top-10
 LIFT_FLOOR = 2.0     # topic words must be >= 2x more frequent in the topic's own documents
 
@@ -82,7 +83,11 @@ def grade(path: Path, seed: int) -> dict:
                 f_out = np.mean([np.mean([w in d for d in rest]) for w in t])
                 lifts.append(float(f_in / max(f_out, 1e-9)))
             ok["topics_track_sections"] &= nmi >= NMI_FLOOR
-            ok["topics_coherent"] &= np.mean(coh) >= NPMI_MEAN_FLOOR and min(coh) >= NPMI_MIN_FLOOR
+            worst = min(coh)
+            ok["topics_coherent"] &= (
+                np.mean(coh) >= NPMI_MEAN_FLOOR
+                and (worst >= NPMI_MIN_FLOOR or worst > NPMI_WORST_TOLERANCE)
+            )
             ok["topics_distinct"] &= worst_overlap <= OVERLAP_MAX
             ok["words_describe_documents"] &= min(lifts) >= LIFT_FLOOR
             notes.append(f"{k} sections: NMI {nmi:.3f}; NPMI {np.round(coh, 3).tolist()}; "

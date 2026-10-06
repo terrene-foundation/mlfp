@@ -57,15 +57,18 @@ def discover_topics(docs: list[str], n_topics: int) -> dict:
     # faithful, so the chosen factorisation is best-of-n, not the luck of one seed.
     profile = M.sum(axis=0) / M.sum()
     best = None
-    for seed in range(16):
+    for seed in range(24):
         res = engine.reduce(frame, algorithm="nmf", n_components=n_topics, seed=seed,
                             init="nndsvd", max_iter=3000)
         W = np.asarray(res.transformed, dtype=float)
         H = np.array([nnls(W, M[:, j])[0] for j in range(M.shape[1])]).T  # (k, vocab)
         recon = W @ H / max((W @ H).sum(), 1e-12)
         fidelity = 1.0 - float(np.linalg.norm(recon - profile) / (np.linalg.norm(profile) + 1e-12))
-        if best is None or fidelity > best[0]:
-            best = (fidelity, W, H)
+        # also reward confident document assignment (borderline docs blur coherence)
+        conf = float(np.mean(W.max(axis=1) / (W.sum(axis=1) + 1e-12)))
+        score = fidelity + 0.5 * conf
+        if best is None or score > best[0]:
+            best = (score, W, H)
     _, W, H = best
     top_words = [vocab[np.argsort(-H[k])[:10]].tolist() for k in range(n_topics)]
     return {"doc_topics": [int(v) for v in W.argmax(axis=1)], "top_words": top_words}

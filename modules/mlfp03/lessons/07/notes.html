@@ -18,6 +18,7 @@
   </style>
 </head>
 <body>
+
 <nav class="top-nav">
   <span class="brand">MLFP — Module 3 — Speaker Notes</span>
   <span>
@@ -34,64 +35,254 @@
   Workflow Orchestration, Model Registry, and Hyperparameter Search
 </h1>
 
-<p class="lead">Total time: ~55 minutes &nbsp;·&nbsp; 13 slides &nbsp;·&nbsp; ~4 min per slide average</p>
+<p class="lead">
+  Total time: ~55 minutes &nbsp;·&nbsp; 12 slides &nbsp;·&nbsp; ~4.5 min per slide average
+</p>
 
 <p>
-  This is the ML engineering lesson. The shift from "data scientist who
-  writes scripts" to "ML engineer who builds systems" happens here.
-  WorkflowBuilder may feel like over-engineering to learners who have been
-  writing scripts for 20 lessons — show them the error handling and
-  conditional branching to demonstrate the value.
+  The engineering lesson: scripts become pipelines, and models get a
+  lifecycle. Three systems to land — WorkflowBuilder (explicit node
+  graphs that fail loudly), HyperparameterSearch (Bayesian, via
+  Optuna's TPE), and ModelRegistry (staging → shadow → production →
+  archived, with promote_model recording a reason). The thread tying
+  them together: nothing is silent — failures raise, gates are
+  explicit, promotions are justified.
 </p>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 1-2</span><span>~4 min</span><span>Motivation</span></div>
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
+  <h3>Workflow Orchestration, Model Registry, and Hyperparameter Search</h3>
+  <p>
+    Open: "Every lesson so far ended with a trained model in a
+    notebook cell. Today it becomes infrastructure: an automated
+    pipeline with versioning. Outcome: automated ML pipeline with
+    model versioning."
+  </p>
+  <div class="transition">→ "Why scripts break."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Scripts to workflows</span></div>
   <h3>From scripts to workflows</h3>
-  <p>"Your script from Lesson 1.8 works. But what happens when train() fails? evaluate() never runs. You get a traceback and nothing else. WorkflowBuilder handles errors, retries, logs, and conditional branching."</p>
-  <div class="transition">→ "The node graph."</div>
+  <p>
+    Walk the two panels. Left — the sequential script: load,
+    preprocess, train... and train dies with an OOM. Everything below
+    — evaluate, register — never runs, and worse, nobody <em>knows</em>
+    it never ran until someone asks where the model is.
+  </p>
+  <p>
+    Right — the WorkflowBuilder DAG: explicit nodes with declared
+    dependencies, a Train node that <em>fails loudly</em> —
+    <code>execute()</code> raises — and a metric gate that branches:
+    pass goes to Promote, fail holds in staging. Read the bottom bar:
+    "Explicit dependencies, branch on metrics, failures raise —
+    nothing silently lost."
+  </p>
+  <div class="transition">→ "The graph itself."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 3-4</span><span>~8 min</span><span>WorkflowBuilder</span></div>
-  <h3>WorkflowBuilder</h3>
-  <p><strong>Slide 3:</strong> Walk the diagram. "Five nodes, three types: PythonCodeNode for computation, ConditionalNode for branching, and the connections between them. The runtime executes in dependency order."</p>
-  <p><strong>Slide 4:</strong> Walk the code. "Create the builder, create nodes, connect them, execute. The conditional gate checks if AUC exceeds 0.85 before promoting."</p>
-  <div class="audience-cue beginner">
-    <strong>For beginners:</strong> "Think of it as Lego blocks. Each block does one thing. You snap them together in the order you want. If one block fails, the system tells you which one and why."
-  </div>
-  <div class="transition">→ "How to find the best hyperparameters."</div>
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Node graph</span></div>
+  <h3>Workflow as a node graph</h3>
+  <p>
+    Walk the linear spine: Load → Preprocess → Train → Evaluate, then
+    the gate diamond, then Promote. "Each arrow is a declared
+    data dependency — output name to input name. The runtime
+    topologically sorts the graph; you declare <em>what</em> connects,
+    not <em>when</em> things run."
+  </p>
+  <div class="transition">→ "In code."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 5-8</span><span>~12 min</span><span>HyperparameterSearch</span></div>
-  <h3>Bayesian hyperparameter search</h3>
-  <p><strong>Slide 5:</strong> Walk the Bayesian optimisation diagram. "The surrogate model (green line) approximates the true objective (dashed). The uncertainty band shows where the model is least confident. The next point is chosen where expected improvement is highest."</p>
-  <p><strong>Slide 6:</strong> Walk the code. Point out the log scale for learning_rate: "Learning rate varies over orders of magnitude, so we search in log space."</p>
-  <p><strong>Slide 7:</strong> Walk the comparison table. "Grid search: exponential in the number of hyperparameters. Random: uninformed but covers the space. Bayesian: informed, uses 50 evaluations instead of 3000."</p>
+  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>WorkflowBuilder code</span></div>
+  <h3>WorkflowBuilder code</h3>
+  <p>
+    Walk the code. Custom node classes — registered with
+    <code>@register_node()</code> — wrap load, preprocess, train, and
+    evaluate. The gate is two stock nodes: a
+    <code>PythonCodeNode</code> computing the promote flag, and a
+    <code>SwitchNode</code> routing on it. Read the footer rule:
+    "GATE_CODE: promote only if test AUC ≥ 0.75 <em>and</em> AP ≥ 2×
+    the default rate. Two metrics, both from 3.5 — ranking quality
+    <em>and</em> precision on the minority class."
+  </p>
+  <p>
+    Then the runtime: <code>LocalRuntime(conditional_execution=
+    "skip_branches")</code> — the untaken branch is skipped, not
+    executed-and-discarded. "And the failure contract: a failing node
+    makes <code>execute()</code> raise. Errors are not swallowed and
+    logged; they stop the pipeline with a stack trace."
+  </p>
   <div class="audience-cue expert">
-    <strong>For experts:</strong> "The acquisition function (expected improvement, UCB, or probability of improvement) controls the explore-exploit tradeoff. Expected improvement is the default and works well in practice."
+    <strong>For experts:</strong> the <code>PythonCodeNode</code>
+    sandbox is deliberately restricted — it refuses third-party
+    imports like polars or lightgbm (and the course's own shared
+    helpers). Heavy lifting belongs in custom registered nodes; the
+    inline gate is for plain-Python threshold logic only.
   </div>
-  <div class="transition">→ "What to do with the best model."</div>
+  <div class="transition">→ "Now tune the model inside the pipeline."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 9-10</span><span>~8 min</span><span>ModelRegistry</span></div>
-  <h3>ModelRegistry and lifecycle</h3>
-  <p><strong>Slide 9:</strong> Walk the code. "Register with metrics, signature, and tags. The signature validates inputs in production — a model without a signature is a model that will break silently."</p>
-  <p><strong>Slide 10:</strong> Walk the lifecycle diagram. "Experiment → staging → production → retired. Each transition is gated. Never auto-promote."</p>
-  <div class="transition">→ "Mistakes."</div>
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Bayesian search</span></div>
+  <h3>Bayesian hyperparameter search</h3>
+  <p>
+    Walk the figure: the dashed grey is the true response surface,
+    the teal curve is the surrogate model's current belief with its
+    uncertainty band, and the amber point is where the acquisition
+    function says to try next — high predicted value <em>or</em> high
+    uncertainty.
+  </p>
+  <p>
+    "Bayesian optimisation = surrogate model + acquisition function.
+    kailash-ml's <code>strategy="bayesian"</code> runs Optuna's TPE
+    sampler — good hyperparameters in tens of trials, not the
+    thousands a grid would need."
+  </p>
+  <div class="transition">→ "The code."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 11-12</span><span>~5 min</span><span>Mistakes + reflection</span></div>
-  <h3>Wrap-up</h3>
-  <p>Walk the three mistakes. Bridge to 3.8: "You can build the pipeline, tune the model, and register it. Tomorrow we deploy it: DataFlow for persistence, DriftMonitor for ongoing surveillance, Model Cards for documentation, and conformal prediction for uncertainty."</p>
-  <div class="transition">→ End. Break.</div>
+  <div class="meta"><span class="badge">Slide 6</span><span>~5 min</span><span>Search code</span></div>
+  <h3>HyperparameterSearch code</h3>
+  <p>
+    Walk the code top to bottom. The <code>SearchSpace</code> declares
+    three distributions: n_estimators 100–800 uniform-int, max_depth
+    3–10, learning_rate <em>log</em>-uniform 0.01–0.3 — "log for lr,
+    because the difference between 0.01 and 0.03 matters as much as
+    between 0.1 and 0.3." The <code>SearchConfig</code> picks the
+    bayesian strategy, 20 trials, maximising AUC.
+  </p>
+  <p>
+    Then the call: <code>search.search(data=dev, ...)</code> with an
+    <code>EvalSpec</code> — note the comment: trials score a
+    <em>dev holdout</em>, not the test set. "3.2's discipline inside
+    the engine: the search never sees test data, so the final
+    evaluation stays honest."
+  </p>
+  <div class="transition">→ "Why Bayesian wins, visually."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Search comparison</span></div>
+  <h3>Bayesian search focuses where it matters</h3>
+  <p>
+    Walk the three panels. Grid: 25 evaluations in a rigid lattice —
+    23 wasted, two lucky hits on the optimum region. Random: 15
+    scattered evaluations, 2 near the optimum — better odds per eval
+    than grid, still uninformed. Bayesian: a few grey exploratory
+    points, then the mass concentrates green around the optimum — 8
+    of 15 near it, with one amber exploration point still checking
+    the unknown.
+  </p>
+  <p>
+    Read the bottom bar: "Bayesian uses a surrogate model to predict
+    where good hyperparameters are, then samples there. Explore where
+    uncertain, exploit where promising."
+  </p>
+  <div class="transition">→ "The summary table."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Method table</span></div>
+  <h3>Grid vs Random vs Bayesian</h3>
+  <p>
+    Walk the table. Grid: $k^d$ evaluations — exponential, uninformed
+    — fine for one or two hyperparameters. Random: fixed budget,
+    uninformed, surprisingly hard to beat in high dimensions with
+    cheap evaluations. Bayesian: fixed budget, <em>informed</em> by
+    the surrogate — worth its overhead when evaluations are expensive
+    or the space is complex.
+  </p>
+  <p>
+    "Our three-parameter LightGBM space with a minute per fit:
+    Bayesian, twenty trials. That's the default answer for this
+    course's problems."
+  </p>
+  <div class="transition">→ "Version the winner."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~5 min</span><span>ModelRegistry</span></div>
+  <h3>ModelRegistry</h3>
+  <p>
+    Walk the code. <code>register_model</code> stores the artifact
+    bytes with metrics — a <code>MetricSpec</code> naming the value
+    <em>and the split</em> it was measured on — and a
+    <code>ModelSignature</code>: input schema, output columns,
+    dtypes, model type. "The signature is the contract: what columns
+    does this model eat, what does it emit. Serving and drift checks
+    both read it."
+  </p>
+  <p>
+    Then the promotion: "New versions land in <em>staging</em>. The
+    <code>if gate["promote"]</code> is computed from test metrics,
+    never assumed — and <code>promote_model</code> takes a
+    <code>reason</code>: 'AUC/AP gate passed on test'. Every
+    transition in the registry is justified in writing."
+  </p>
+  <div class="transition">→ "The full lifecycle."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Lifecycle</span></div>
+  <h3>Model lifecycle</h3>
+  <p>
+    Walk the four states. Staging — where
+    <code>register_model()</code> lands. Shadow — scores live traffic
+    but isn't served; the gate labelled "shadow OK + sign-off" guards
+    the move to Production. Production — serving live requests.
+    Archived — kept for audit and rollback, when a model is replaced
+    or drifted out.
+  </p>
+  <p>
+    Point at the dashed blue arrow: "Re-stage is the rollback path —
+    an archived version comes back through staging. You don't
+    un-promote; you re-stage and re-gate. And the centre label:
+    <code>promote_model()</code> records a reason at every
+    transition."
+  </p>
+  <div class="transition">→ "Three mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~2 min</span><span>Mistakes</span></div>
+  <h3>Three mistakes to avoid</h3>
+  <p>
+    Walk the three red boxes. One: grid search with 5+
+    hyperparameters — exponential blowup; that's what Bayesian is
+    for. Two: promoting models without a signature — serving has no
+    contract to validate against; the first schema drift becomes a
+    silent production bug. Three: no conditional gate on promotion —
+    an ungated pipeline promotes the model that <em>just finished
+    training</em>, not the model that <em>earned it</em>.
+  </p>
+  <div class="transition">→ "Recap and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the bullets: build workflows as node graphs, run Bayesian
+    hyperparameter search, register and promote models through the
+    lifecycle, and gate promotion on metrics. Tease 3.8 — the M3
+    capstone: "Production Pipeline. DataFlow, DriftMonitor, model
+    cards, and conformal prediction — the model leaves the building."
+  </p>
+  <div class="transition">→ End of Lesson 3.7. Ten-minute break.</div>
 </div>
 
 <nav class="lesson-nav">
-  <a href="../06/notes.html" class="prev"><span class="label">← Previous</span>3.6 Speaker Notes</a>
-  <a href="../08/notes.html" class="next"><span class="label">Next →</span>3.8 Speaker Notes</a>
+  <a href="../06/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    3.6 Speaker Notes
+  </a>
+  <a href="../08/notes.html" class="next">
+    <span class="label">Next →</span>
+    3.8 Speaker Notes
+  </a>
 </nav>
 
 </main>

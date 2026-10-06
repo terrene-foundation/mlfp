@@ -40,369 +40,319 @@
 </p>
 
 <p>
-  This is the first lesson of the ML engine room. Most learners finished
-  Module 2 comfortable with linear regression and statistics but nervous
-  about moving to "real" ML. Your job is to signal that the transition is
-  mostly a shift in objective and a new discipline around features — not a
-  mountain of new algorithms. Model algorithms start in Lesson 3.2.
+  The first lesson of M3 sets the tone for the whole module: features
+  beat algorithms, and leakage is the enemy. The running case is an ICU
+  cohort — 5,000 patients, 8,000 admissions — with the target
+  <code>long_stay</code> (length of stay above the cohort median),
+  predicted 24 hours after admission. Two things to land hard: the
+  point-in-time discipline, and the honest window-audit finding that on
+  this extract almost no vitals fall inside the first 24 hours.
 </p>
 
-<!-- Slide 1 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
-  <h3>Welcome to the ML engine room</h3>
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
+  <h3>Feature Engineering, ML Pipeline, and Feature Selection</h3>
   <p>
-    Open with the framing sentence: "Module 2 gave you one model. Module 3
-    gives you the whole zoo — but today we do not train a single model. Today
-    we build the raw material every model in the zoo needs: features." That
-    framing lowers the anxiety of learners who feared Module 3 would throw
-    twenty algorithms at them on day one.
+    Welcome the class to M3: "M2 gave you statistics. M3 turns it into
+    machine learning — and the first lesson is the least glamorous and
+    most valuable: features." Set the 75-minute expectation and the
+    outcome: engineer and select features for ICU long-stay prediction.
   </p>
-  <div class="audience-cue beginner">
-    <strong>For nervous beginners:</strong> "If you finished Module 2 you
-    already know 80% of what happens in Module 3. We just swap the loss from
-    MSE to log-loss and add more model families. The rest is the discipline
-    we learn today."
-  </div>
-  <div class="transition">→ "Before the zoo, the single most important principle."</div>
+  <div class="transition">→ "The claim that orders everything."</div>
 </div>
 
-<!-- Slide 2 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Data &gt; Models</span></div>
+  <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Data &gt; models</span></div>
   <h3>Data &gt; Models &gt; Hyperparameters</h3>
   <p>
-    Drive the headline home. "I will say this at least three times in Module
-    3 and I will keep meaning it: data beats models, and features beat data."
-    Give a real example from your own experience — a project where a
-    carefully engineered feature made a 0.05 AUC jump that no amount of
-    XGBoost tuning could match.
+    Read the quote with weight: "XGBoost on the wrong features loses to
+    logistic regression on the right ones — every time." Then the
+    senior-engineer line: the skill is not knowing more algorithms; it
+    is turning a real problem into a feature matrix.
   </p>
   <p>
-    Tell them today's dataset is a real Singapore ICU cohort. The target is
-    in-hospital mortality. The prediction is made 24 hours after admission —
-    that 24-hour deadline is what makes the feature-engineering discipline
-    non-trivial.
+    Read the amber box to introduce the case: "Today's dataset is an
+    ICU cohort — 5,000 patients, 8,000 admissions. The target is
+    <code>long_stay</code>: length of stay above the cohort median.
+    The prediction is made 24 hours after admission — that deadline is
+    what makes the feature-engineering discipline real."
   </p>
-  <div class="transition">→ "Where does feature engineering sit in the full pipeline?"</div>
+  <div class="transition">→ "Where today sits in the pipeline."</div>
 </div>
 
-<!-- Slide 3 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>The seven-stage pipeline</span></div>
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>Pipeline</span></div>
   <h3>The seven-stage ML pipeline</h3>
   <p>
-    Walk the diagram left to right, naming each stage and saying who owns it.
-    "Ingest — your data engineer or you. Preprocess — cleaning, imputation,
-    encoding. Feature engineering — today's lesson, stage three. Feature
-    selection — today's lesson, stage four. Training — lessons 3.2 through
-    3.4. Evaluation — lesson 3.5. Deploy — lessons 3.7 and 3.8."
+    Walk the seven stages left to right. Ingest (5,000 × 12, messy —
+    NaNs, question marks). Clean (4,312 rows — rows dropped). Engineer
+    (columns added: shock index, hr_std, spo2_min, trends). Select
+    (down to 5 columns). Train (XGBoost, 400 trees, depth 6). Eval
+    (AUC 0.89, F1 0.74, Brier 0.11). Deploy (POST /predict, 12 ms).
+    Note the numbers are marked illustrative.
   </p>
   <p>
-    Emphasise the arrows. "Every single arrow is a potential leakage site. The
-    most common place a leakage bug hides is in the arrow between feature
-    engineering and training — a feature that was computed on the whole
-    dataset before you split."
+    Point at the dimension bar: "Rows shrink through cleaning; columns
+    grow through engineering, then shrink through selection. Today is
+    stages 3 and 4 — the two stages where judgment lives. The rest are
+    machinery M3 will fill in."
   </p>
-  <div class="audience-cue expert">
-    <strong>For experienced folks:</strong> "Yes, stages 3 and 4 can overlap
-    — embedded feature selection does both in a single fit. We'll come back
-    to that on slide 7."
-  </div>
-  <div class="transition">→ "First, the objective function that justifies everything."</div>
+  <div class="transition">→ "Why ML lets us do what statistics forbade."</div>
 </div>
 
-<!-- Slide 4 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>Stats vs ML</span></div>
-  <h3>Statistics vs ML — two different objective functions</h3>
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Stats vs ML</span></div>
+  <h3>Statistics vs ML</h3>
   <p>
-    Read the equation aloud: "minimise the expected loss over the true data
-    distribution". Point out that we never see $\mathcal{D}$ directly —
-    that's what makes ML hard. We see a sample from $\mathcal{D}$, fit on
-    that sample, and hope to generalise.
+    Draw the contrast from the slide: statistics explains the past —
+    it cares about the coefficients. Machine learning predicts the
+    future — it cares about expected loss on fresh draws from the same
+    distribution. Walk the minimisation formula.
   </p>
   <p>
-    The contrast: "In Module 2 we reported coefficients — a statistical
-    exercise. In Module 3 we do not care what the coefficients say; we care
-    what the model does on next week's applicants. Same math, different
-    goal, different feature-engineering rules."
+    "The shift in objective justifies everything today: features can be
+    ugly, redundant, non-interpretable — as long as they reduce
+    out-of-sample loss. Nobody reads the coefficient on
+    <code>hr_std</code>; everyone reads the AUC."
   </p>
-  <div class="audience-cue beginner">
-    <strong>If the expectation notation is scary:</strong> "Read the big E as
-    'average over all possible new customers we haven't seen yet'. Our job
-    is to make that average loss small. We can't compute it exactly, so we
-    estimate it with cross-validation."
-  </div>
-  <div class="transition">→ "So what kinds of features should we engineer?"</div>
+  <div class="transition">→ "The four families every feature belongs to."</div>
 </div>
 
-<!-- Slide 5 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Four families</span></div>
-  <h3>Four feature families that cover most of the work</h3>
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Feature families</span></div>
+  <h3>Four feature families</h3>
   <p>
-    Walk each row. For aggregation, use the ICU example: "we have 200
-    heart-rate readings in the first 24 hours; the model wants one row per
-    admission; so we compute mean, std, max and forget the raw series." For
-    lag, use Module 1's rainfall example: "yesterday's rain predicts today's
-    rain, seven days ago predicts today." For interaction, use the medical
-    cliché age × systolic_bp.
+    Walk the table with one sentence each. Aggregation — mean heart
+    rate over the first 24h — gives a fixed shape from an irregular
+    time-series. Lag/temporal — rainfall 1 and 7 days ago — exposes
+    autoregressive structure. Interaction — age × systolic BP — puts
+    non-linear effects into linear models. Domain-derived — shock
+    index, price per sqm — encodes expert knowledge the model cannot
+    discover on its own.
   </p>
   <p>
-    The most important row is domain-derived. "The shock index — heart rate
-    divided by systolic blood pressure — is a feature you would never
-    discover from 5000 rows of data, but every ICU clinician knows it. Your
-    job as an ML engineer is to talk to those clinicians."
+    "When you're stuck, run down this list. Ninety percent of useful
+    features are one of these four."
   </p>
-  <div class="transition">→ "Now the most expensive mistake in ML."</div>
+  <div class="transition">→ "And the rule that decides which features are legal."</div>
 </div>
 
-<!-- Slide 6 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 6</span><span>~5 min</span><span>Leakage timeline</span></div>
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Point-in-time</span></div>
   <h3>Point-in-time correctness</h3>
   <p>
-    Slow down here. Leakage is the single biggest mistake in applied ML, and
-    if learners leave today understanding how to spot it you have justified
-    the whole lesson.
+    Walk the timeline: admission on the left, the 24-hour prediction
+    point in the middle, discharge on the right. Green box — allowed:
+    age, sex, comorbidities, first-24h vitals and labs. Red box —
+    leaky: <code>los_days</code> and <code>discharge_time</code> (they
+    <em>are</em> the label's source), plus vitals, meds, and labs
+    recorded after hour 24.
   </p>
   <p>
-    Walk the timeline. "The prediction is made at t = 24 hours. Everything to
-    the left of that line — age, sex, comorbidities, first-24h vitals — is
-    legal. Everything to the right — length of stay, total medications
-    administered over the whole admission, the final ICD-10 code — is a
-    crime scene. If your model uses it, your CV score will be beautiful and
-    your deployment will fail."
-  </p>
-  <p>
-    Give a war story: "I once worked on a model that predicted hospital
-    mortality with 99.2% AUC. Best model I ever trained. Turned out one of
-    the features was 'was the patient admitted to palliative care' — which
-    is only set in the discharge record. The model had memorised death.
-    That's leakage."
+    Read the caption as the test: "A feature is legal only if its value
+    would be known at the moment the prediction is made. Same
+    point-in-time rule as M2's FeatureStore — now enforced by hand."
   </p>
   <div class="audience-cue beginner">
-    <strong>For confused beginners:</strong> "Think of it as a rule: if the
-    feature uses a number from <em>after</em> the moment you are predicting,
-    it is cheating. Draw the timeline, put a vertical line at the prediction
-    moment, and everything to the right is illegal."
+    <strong>The classic trap:</strong> "Leakage never looks like
+    cheating. It looks like a really good AUC. If your model is
+    suspiciously excellent, check the timeline before you celebrate."
   </div>
-  <div class="transition">→ "Now — how do we pick the best subset of the features we did engineer?"</div>
+  <div class="transition">→ "Three ways to pick among the legal features."</div>
 </div>
 
-<!-- Slide 7 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>Three selection families</span></div>
-  <h3>Filter / wrapper / embedded</h3>
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Selection families</span></div>
+  <h3>Three selection families</h3>
   <p>
-    Walk the three definitions. Emphasise the tradeoff: filter methods are
-    milliseconds per feature but ignore interactions; wrapper methods catch
-    interactions but retrain the model every time you add or drop a feature;
-    embedded methods are one fit but tied to a specific model family.
+    Walk the three. Filter — model-free ranking against the target
+    (mutual information, chi², ANOVA): fast, but ignores interactions.
+    Wrapper — re-train on candidate subsets (forward, backward, RFE):
+    accurate but slow, $O(d^2)$ fits. Embedded — selection falls out of
+    training itself (L1 penalties, tree importance): one fit,
+    family-specific.
   </p>
   <p>
-    The punchline is the intersection trick: run all three, keep features
-    that survive all three rankings as your robust core, and use the union
-    of the three as your candidate pool for hyperparameter tuning. This is
-    a real practitioner pattern, not a textbook cliché.
+    Read the blue box: "Use the <em>intersection</em> of the three
+    rankings as your robust core, the <em>union</em> as your candidate
+    pool for tuning. A feature all three methods agree on survives
+    almost any modelling choice."
   </p>
-  <div class="audience-cue expert">
-    <strong>For experts who ask about SHAP-based selection:</strong> "Yes,
-    SHAP-based selection is an advanced embedded method. We'll see it in
-    Lesson 3.6 alongside interpretability. For today stick with L1 sparsity
-    and tree importance."
-  </div>
-  <div class="transition">→ "The go-to filter statistic is mutual information."</div>
+  <div class="transition">→ "The default filter."</div>
 </div>
 
-<!-- Slide 8 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>Mutual information</span></div>
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Mutual information</span></div>
   <h3>Mutual information — the default filter</h3>
   <p>
-    Read the equation. "$H(Y)$ is the entropy of $Y$ — how uncertain we are
-    about the label. $H(Y \mid X)$ is the entropy of $Y$ after we learn $X$.
-    If $X$ is perfectly predictive, $H(Y \mid X) = 0$ and $I(X; Y) = H(Y)$.
-    If $X$ is useless, $H(Y \mid X) = H(Y)$ and $I(X; Y) = 0$."
+    Walk the formula: $I(X;Y) = H(Y) - H(Y \mid X)$ — how much the
+    entropy of the target drops once you know the feature. Zero if and
+    only if independent; captures non-linear dependencies that
+    correlation misses; and invariant to monotonic reparameterisation,
+    so it's unit-free.
   </p>
   <p>
-    Then the two wins over Pearson correlation. "First, MI captures non-linear
-    dependencies — Pearson is zero for $Y = X^2$ when $X$ is symmetric; MI
-    is not. Second, MI is invariant to monotonic transforms — scaling or
-    log-transforming a feature doesn't change its MI, which is exactly what
-    you want in a pre-model scoring step."
+    "Correlation asked 'is there a straight-line relationship?'
+    Mutual information asks 'is there <em>any</em> relationship?' —
+    that's why it's the default filter."
   </p>
-  <div class="transition">→ "And for categorical targets with categorical features, chi-squared."</div>
+  <div class="transition">→ "And for categorical targets, the classical choice."</div>
 </div>
 
-<!-- Slide 9 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Chi-squared</span></div>
-  <h3>Chi-squared — when the target is categorical</h3>
+  <h3>Chi-squared — for categorical targets</h3>
   <p>
-    Explain the contingency-table intuition. "Count how often each feature
-    value co-occurs with each target value. Compare those counts to what
-    you'd expect if they were independent. Sum the squared differences,
-    normalised by the expected counts. Big number = feature and target are
-    not independent = the feature is predictive."
+    Walk the formula: observed counts against expected counts under
+    independence. "Large $\chi^2$ means the feature's distribution
+    differs from what independence predicts — it carries information."
+    Point back to 2.4: "Same chi-squared you used for SRM. There it
+    tested allocation; here it tests association. One statistic, many
+    jobs."
   </p>
-  <p>
-    Don't get into the chi-squared distribution. They'll see it again in
-    statistics courses. For today it is just a scoring function.
-  </p>
-  <div class="transition">→ "Enough theory — let's meet the Kailash engines."</div>
+  <div class="transition">→ "The Kailash engines that do the work."</div>
 </div>
 
-<!-- Slide 10 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Kailash engines</span></div>
-  <h3>FeatureEngineer, PreprocessingPipeline, FeatureStore</h3>
+  <div class="meta"><span class="badge">Slide 10</span><span>~5 min</span><span>Kailash engines</span></div>
+  <h3>Kailash engines: three verbs</h3>
   <p>
-    Introduce the three verbs. "<code>FeatureEngineer</code> generates
-    columns. <code>PreprocessingPipeline</code> chains transforms with
-    train-only fitting enforced. <code>FeatureStore</code> registers a
-    schema so inference time can validate incoming batches before they hit
-    the model."
+    Walk the three bullets. <code>FeatureSchema</code> declares the
+    feature contract — names, dtypes, entity id.
+    <code>FeatureEngineer</code> <code>generate()</code>s candidates
+    (interactions, squares, bins) and <code>select()</code>s the top-k.
+    <code>PreprocessingPipeline</code> imputes, encodes, scales —
+    polars-native — and is <strong>fit on training rows only</strong>.
   </p>
   <p>
-    Walk the code block. Point out the declarative style:
-    <code>.aggregate(...).then_join(...).then_derive(...)</code>. That is
-    the Kailash polars-native pipeline idiom you will see all module.
+    Walk the code: build the schema for the ICU vitals, generate
+    interaction candidates on the training frame, then
+    <code>select(..., target="long_stay", method="mutual_info")</code>
+    — again on train rows only. Then read the footer:
+    "Ratios like the shock index are not generated for you — you write
+    those in polars, next slides. The engine generates; the domain
+    expert directs."
   </p>
-  <div class="transition">→ "Now the worked example on real ICU data."</div>
+  <div class="transition">→ "Worked example, step one: enforce the timeline."</div>
 </div>
 
-<!-- Slide 11 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 11</span><span>~5 min</span><span>Clip to 24h</span></div>
-  <h3>Load and clip vitals to the first 24 hours</h3>
+  <h3>Load and clip to the first 24h</h3>
   <p>
-    Walk the code. "Join vitals onto admissions so every vital row knows
-    its admission's start time. Compute hours since admission. Filter to
-    keep only readings within the first 24 hours."
+    Walk the code: join vitals to admission times, compute
+    <code>hours_since_admit</code>, filter to the [0, 24] window.
+    "This filter is where point-in-time correctness is enforced. A
+    vital at hour 48 cannot be a feature for an hour-24 prediction."
   </p>
   <p>
-    Emphasise again: "This filter is where point-in-time correctness is
-    enforced. If I forget it, my hr_mean feature would include readings from
-    hour 48 — information the real model will never have."
+    Now the honest finding — teach it plainly: "When we run this clip
+    on the course extract, the result is alarming: of 69,421
+    vital-sign rows, only 38 survive — 4 of 8,000 admissions. Counted
+    per individual reading (six vitals per row, unpivoted), that's
+    <strong>198 of 416,526 readings</strong> inside the first 24
+    hours; meds and labs are just as sparse. The event tables in this
+    extract are simply not time-aligned with admissions, so first-24h
+    features are nearly empty. Exercise 3.1 runs this <em>window
+    audit</em> as a data-quality finding — catching it before modelling
+    is the whole point. In a real project you'd go back and fix the
+    data feed."
   </p>
-  <div class="audience-cue beginner">
-    <strong>For beginners worried about dates:</strong> "We already cast
-    both columns to datetime at the top of the script. Polars subtracts
-    datetimes and gives you a duration; <code>.dt.total_hours()</code>
-    converts it to a number."
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> this is why "predict at 24h" is a
+    data contract, not just a modelling choice. A prediction time with
+    no usable measurements forces either a different cutoff, better
+    instrumentation, or static-only features.
   </div>
-  <div class="transition">→ "Now collapse the time series into a fixed row."</div>
+  <div class="transition">→ "Step two: collapse the series."</div>
 </div>
 
-<!-- Slide 12 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~5 min</span><span>Aggregate</span></div>
-  <h3>Aggregate into a fixed-shape row per admission</h3>
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>Aggregation</span></div>
+  <h3>Aggregate irregular time-series</h3>
   <p>
-    Walk the agg list. Mean, std, max of heart rate; mean and min of systolic
-    BP; min of SpO₂; count of readings. "Each of these is a legitimate,
-    clinically meaningful summary. And that last one — <code>n_vital_readings</code>
-    — is the informative-missingness trick."
+    Walk the aggregation: group by admission, take mean, std, max of
+    heart rate; mean and min of systolic BP; min of SpO₂; and the count
+    of readings. "An irregular time-series becomes one fixed-shape row
+    — that's what a model can eat."
   </p>
   <p>
-    Tell them: "In clinical data, how <em>often</em> a patient is measured
-    is itself a signal. Sicker patients get monitored every 15 minutes.
-    Stable patients get measured once an hour. A tree-based model will
-    happily split on this count and pick up on it as a sickness proxy. This
-    is one of those features you wouldn't invent if you weren't paying
-    attention to your domain."
+    Pause on the footer — it's a lovely subtlety:
+    "<code>n_vital_readings</code> is <em>informative missingness</em>:
+    sicker patients get monitored more. The count itself carries
+    signal. Never drop it thinking it's just metadata."
   </p>
-  <div class="transition">→ "And now the domain-derived feature."</div>
+  <div class="transition">→ "Step three: domain knowledge."</div>
 </div>
 
-<!-- Slide 13 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Shock index</span></div>
-  <h3>Shock index — a clinical ratio</h3>
+  <h3>Domain feature: shock index</h3>
   <p>
-    "The shock index is heart rate divided by systolic BP. Clinicians have
-    used it since the 1960s as an early warning for circulatory collapse.
-    A normal patient sits around 0.5–0.7. A patient above 1.0 is in trouble.
-    This ratio is a better predictor of ICU mortality than either of its
-    inputs on their own — because a tachycardia of 110 is worrying if the
-    BP is 90, but benign if the BP is 140."
+    Walk the formula: shock index = heart rate / systolic BP.
+    "Clinically, a value above 1 is a red flag for early sepsis. This
+    single derived feature often outperforms the two raw inputs — a
+    tree can split on it in one cut instead of needing two."
   </p>
   <p>
-    "Could a random forest learn this split on its own? Maybe, with enough
-    data. In our 5000-row dataset, encoding the ratio directly is the
-    difference between 0.78 AUC and 0.81 AUC. Domain knowledge is a
-    shortcut through statistical learning."
+    Walk the one-liner: it's plain polars, <code>hr_mean /
+    sbp_mean</code>. "FeatureEngineer doesn't invent ratios for you —
+    this is the domain-derived family from slide 5, written by hand.
+    Three lines of expert knowledge can beat a hundred generated
+    interactions."
   </p>
-  <div class="transition">→ "Now the three selection methods, side by side."</div>
+  <div class="transition">→ "Now select — all three families at once."</div>
 </div>
 
-<!-- Slide 14 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~5 min</span><span>Three selections</span></div>
-  <h3>Filter / wrapper / embedded — run them all</h3>
+  <div class="meta"><span class="badge">Slide 14</span><span>~4 min</span><span>Three selectors</span></div>
+  <h3>Run all three selection methods</h3>
   <p>
-    Walk the three code blocks. For each one say what it does in plain
-    English: "Mutual information ranks every column against the target.
-    RFE starts with all columns, fits logistic regression, drops the least
-    important one, refits, and repeats until only ten are left. Random
-    forest fits once and returns an importance score per feature."
+    Walk the code. Filter: <code>mutual_info_classif</code> on the
+    training split. Wrapper: <code>RFE</code> wrapping logistic
+    regression — note the comment: scale first, LR needs comparable
+    units. Embedded: a random forest's feature importances. Every
+    selector fit on the <em>training split only</em>.
   </p>
   <p>
-    Then the punchline: "They will disagree. That is not a bug, that is a
-    feature. The filter ranks <code>age</code> high because it has strong MI
-    with death. The wrapper ranks <code>shock_index</code> high because
-    logistic regression loves it. The embedded RF ranks <code>hr_std</code>
-    high because it captures instability. Different lenses, different
-    rankings. Take the intersection as your robust core."
+    Read the footer: "The three rankings will disagree — that is the
+    point. Each family has a blind spot; the intersection is your
+    robust core."
   </p>
-  <div class="transition">→ "Three mistakes to not make."</div>
+  <div class="transition">→ "Three ways this all goes wrong."</div>
 </div>
 
-<!-- Slide 15 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 15</span><span>~4 min</span><span>Common mistakes</span></div>
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Mistakes</span></div>
   <h3>Three expensive mistakes</h3>
   <p>
-    Walk each one. Mistake 1 (scaler leakage) catches everyone. "If you
-    fit <code>StandardScaler</code> on the full dataset before you split,
-    the mean and std were computed using test data. You have leaked. Always
-    fit on train only."
+    Walk the three red boxes — all three are leakage wearing different
+    clothes. One: fitting the scaler on the full dataset before
+    splitting — test-set statistics leak into training. Two:
+    future-looking features — discharge time, anything derived from
+    length of stay (it defines the label), meds or labs after hour 24.
+    Three: selecting features on the full data, then splitting —
+    selection has already seen the test set.
   </p>
   <p>
-    Mistake 2 (future features) is what the timeline slide was about.
-    Repeat the war story if you didn't already: "99.2% AUC because one
-    feature was set in the discharge record. Leakage."
+    "Notice the pattern: every mistake is 'something fitted before the
+    split'. Split first. Fit everything second. In that order."
   </p>
-  <p>
-    Mistake 3 (selection on full data) is the subtle one. "If you rank
-    features on the full data and then split, your selection already saw
-    the test labels. The right order is: split, then fit the selector on
-    the train split, then apply the same selector to the test split."
-  </p>
-  <div class="transition">→ "Reflection and bridge to 3.2."</div>
+  <div class="transition">→ "Recap and bridge."</div>
 </div>
 
-<!-- Slide 16 -->
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Reflection + bridge</span></div>
+  <div class="meta"><span class="badge">Slide 16</span><span>~2 min</span><span>Recap</span></div>
   <h3>What you can now do</h3>
   <p>
-    Run the bullet list. Pause after each one — let learners silently tick
-    them off. The psychological payoff is important: Module 3 feels huge,
-    and they just mastered a meaningful chunk of it in 75 minutes.
+    Walk the bullets: why features beat algorithms, spotting leaky
+    features on a timeline, aggregating irregular time-series, the
+    three selection families, and the intersection as a robust subset.
+    Tease 3.2: "You can now build and choose features. Next: how hard
+    should the model fit them? Bias-variance, L1/L2 regularisation,
+    and cross-validation."
   </p>
-  <p>
-    Then tease Lesson 3.2: "Today we engineered features. Tomorrow we ask:
-    given a feature set, why does a model with more parameters not always
-    win? The answer is the bias-variance decomposition, and once you see
-    it you will understand why every ML training loop looks the way it
-    does. We will also derive L1 and L2 regularisation geometrically — the
-    diamond and the circle — and you will see where all the sparsity
-    properties of Lasso come from."
-  </p>
-  <div class="transition">→ End of Lesson 3.1. Take a 10-minute break.</div>
+  <div class="transition">→ End of Lesson 3.1. Ten-minute break.</div>
 </div>
 
 <nav class="lesson-nav">

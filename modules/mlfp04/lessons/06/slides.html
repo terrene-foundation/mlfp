@@ -34,7 +34,7 @@
   <h1>NLP — From Text to Topics</h1>
   <p style="font-size: 0.7em; color: #64748B;">TF-IDF · BM25 · Word2Vec · LDA · BERTopic · NPMI coherence</p>
   <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
-    <strong>⏱ 75 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> extract and evaluate topics from Singapore news
+    <strong>⏱ 75 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> extract and evaluate topics from a real news corpus
   </div>
 </section>
 
@@ -159,7 +159,7 @@
   <ul style="font-size: 0.85em;">
     <li>TF-IDF is linear in term frequency — 10 repeats = 10x weight. BM25 saturates.</li>
     <li>Longer documents penalised via length normalisation ($b \approx 0.75$).</li>
-    <li>Powers Elasticsearch, Lucene, and every search engine you have used.</li>
+    <li>The default ranking function in Lucene and Elasticsearch.</li>
   </ul>
 </section>
 
@@ -213,6 +213,7 @@
   <div class="callout-slide foundations">
     <strong>🟢 Foundations:</strong> LDA is soft clustering for documents. Each document belongs to <em>multiple</em> topics, like GMM's soft assignments.
   </div>
+  <p style="font-size: 0.8em; color: #64748B;">The story draws whole word <em>tokens</em> — so LDA is fitted on raw <strong>counts</strong>, never TF-IDF weights.</p>
 </section>
 
 <!-- ═══ Slide 8: LDA plate diagram ══════════════════════════ -->
@@ -377,6 +378,26 @@
 
 <!-- ═══ Slide 9: NMF ════════════════════════════════════════ -->
 <section>
+  <h2>LDA in practice: counts in, held-out perplexity out</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.decomposition import LatentDirichletAllocation
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.model_selection import train_test_split
+
+train_docs, test_docs = train_test_split(docs, test_size=0.2, random_state=42)
+vec = CountVectorizer(stop_words="english", min_df=3, max_df=0.95)  # COUNTS
+X_train = vec.fit_transform(train_docs)
+X_test = vec.transform(test_docs)
+
+for k in (5, 10, 20):
+    lda = LatentDirichletAllocation(n_components=k, random_state=42).fit(X_train)
+    print(k, lda.perplexity(X_test))   # held-out: lower is better
+  </code></pre>
+  <p style="font-size: 0.8em; color: #64748B;">Training-set perplexity always improves with more topics — only held-out documents tell you when $K$ starts to overfit. sklearn fits LDA by variational Bayes.</p>
+  <aside class="notes">Mirrors Exercise 6.3: bag-of-words counts, a train/held-out split, and a perplexity sweep across K. LDA's likelihood is defined over word tokens, so TF-IDF weights violate its assumptions. Collapsed Gibbs sampling integrates out theta and phi and samples z; sklearn instead uses variational inference with factorised approximate posteriors.</aside>
+</section>
+
+<section>
   <h2>NMF — topics via matrix factorisation</h2>
   <p>Decompose the TF-IDF matrix $X \approx W H$ with non-negative entries.</p>
   <ul style="font-size: 0.85em;">
@@ -397,7 +418,7 @@
       <!-- Step 1: BERT embeddings (points in high-D, shown as random scatter) -->
       <rect x="10" y="15" width="165" height="170" rx="6" fill="#EFF6FF" stroke="#3B82F6"/>
       <text x="92" y="32" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#3B82F6">1. BERT embed</text>
-      <text x="92" y="44" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">384 dimensions</text>
+      <text x="92" y="44" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">e.g. 384 dimensions</text>
       <!-- Random scatter — no visible clusters in high-D projection -->
       <g fill="#94A3B8" opacity="0.6">
         <circle cx="45" cy="80" r="2.5"/><circle cx="78" cy="65" r="2.5"/><circle cx="120" cy="95" r="2.5"/>
@@ -413,10 +434,10 @@
       <line x1="180" y1="100" x2="198" y2="100" stroke="#0D9488" stroke-width="2"/>
       <polygon points="198,100 192,96 192,104" fill="#0D9488"/>
 
-      <!-- Step 2: UMAP projection (clusters become visible in 2D) -->
+      <!-- Step 2: UMAP projection (~5-D; drawn in 2-D) -->
       <rect x="203" y="15" width="165" height="170" rx="6" fill="#F5F3FF" stroke="#8B5CF6"/>
       <text x="285" y="32" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#8B5CF6">2. UMAP</text>
-      <text x="285" y="44" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">2 dimensions</text>
+      <text x="285" y="44" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">~5 dimensions</text>
       <!-- Visible clusters emerging -->
       <g fill="#94A3B8" opacity="0.7">
         <!-- Cluster top-left -->
@@ -429,7 +450,7 @@
         <circle cx="330" cy="95" r="2.5"/><circle cx="340" cy="105" r="2.5"/><circle cx="345" cy="90" r="2.5"/>
         <circle cx="335" cy="115" r="2.5"/><circle cx="350" cy="100" r="2.5"/><circle cx="325" cy="108" r="2.5"/>
       </g>
-      <text x="285" y="175" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Clusters visible in 2D</text>
+      <text x="285" y="175" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">(2-D only for plotting)</text>
 
       <!-- Arrow -->
       <line x1="373" y1="100" x2="391" y2="100" stroke="#0D9488" stroke-width="2"/>
@@ -481,7 +502,7 @@
       <text x="614" y="170" font-family="JetBrains Mono" font-size="7" fill="#475569">policy, govt</text>
 
       <!-- Bottom annotation -->
-      <text x="380" y="205" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Each step produces a concrete intermediate: embeddings --> 2D projection --> labels --> topic words</text>
+      <text x="380" y="205" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Each step produces a concrete intermediate: embeddings --&gt; ~5-D projection --&gt; labels --&gt; topic words</text>
     </svg>
   </figure>
 </section>
@@ -490,52 +511,76 @@
 <section>
   <h2>BERTopic in practice</h2>
   <pre><code class="language-python" data-trim>
+import os
 from bertopic import BERTopic
 from sentence_transformers import SentenceTransformer
+from umap import UMAP
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
-topic_model = BERTopic(embedding_model=model, min_topic_size=15)
-topics, probs = topic_model.fit_transform(sg_news_articles)
+embedder = SentenceTransformer(os.environ["TOPIC_EMBED_MODEL"])  # from .env
+umap_model = UMAP(n_neighbors=15, n_components=5, min_dist=0.0,
+                  metric="cosine", random_state=42)
+topic_model = BERTopic(embedding_model=embedder, umap_model=umap_model,
+                       min_topic_size=15)
+topics, probs = topic_model.fit_transform(docs)
 
 print(topic_model.get_topic_info().head(10))
+fig = topic_model.visualize_heatmap()   # BERTopic's own topic-similarity plot
   </code></pre>
   <div class="callout-slide kailash">
-    <strong>⚙ Kailash:</strong> <code>ModelVisualizer.topic_heatmap()</code> wraps BERTopic's visualisation API for stakeholder reports.
+    <strong>⚙ Kailash:</strong> no Kailash wrapper here — BERTopic and its plots are used directly. The embedding model is configuration, read from <code>TOPIC_EMBED_MODEL</code>, never hardcoded.
   </div>
 </section>
 
 <!-- ═══ Slide 12: NPMI coherence ════════════════════════════ -->
 <section>
-  <h2>NPMI — evaluating topic quality</h2>
+  <h2>Coherence — NPMI and UMass</h2>
   \[ \text{NPMI}(w_i, w_j) \;=\; \frac{\log P(w_i, w_j) - \log\bigl(P(w_i)\,P(w_j)\bigr)}{-\log P(w_i, w_j)} \]
-  <ul style="font-size: 0.85em;">
-    <li>Range $[-1, 1]$: positive for words that co-occur more than chance.</li>
-    <li>Average over top-10 words per topic, then across all topics.</li>
-    <li>Higher is better. The standard metric in modern topic modelling papers.</li>
+  \[ \text{UMass}(w_i, w_j) \;=\; \log \frac{D(w_i, w_j) + 1}{D(w_j)} \]
+  <ul style="font-size: 0.8em;">
+    <li>NPMI ∈ $[-1, 1]$: 0 = independent (chance), &gt; 0 = co-occur more than chance. Usually on a reference corpus with a sliding window.</li>
+    <li>UMass: document co-occurrence counts $D(\cdot)$ in the <em>training</em> corpus, ordered pairs of top words; ≤ 0, closer to 0 is better.</li>
+    <li>Average over pairs of each topic's top-10 words, then across topics.</li>
   </ul>
   <div class="callout-slide warning">
-    <strong>⚠ Warning:</strong> LDA perplexity does NOT correlate with human topic quality. Use NPMI instead.
+    <strong>⚠ Warning:</strong> perplexity measures fit, not human-judged topic quality. Choose $K$ with <em>held-out</em> perplexity; judge topics with coherence and a human read.
   </div>
 </section>
 
 <!-- ═══ Slide 13: Worked example ════════════════════════════ -->
 <section>
-  <h2>TF-IDF + NMF on Singapore news</h2>
+  <h2>TF-IDF + NMF on AG News</h2>
   <pre><code class="language-python" data-trim>
+from sklearn.decomposition import NMF
+from sklearn.feature_extraction.text import TfidfVectorizer
+from shared.mlfp04.ex_6 import load_corpus
+
+docs = load_corpus()["text"].to_list()    # 4,967 deduplicated AG News stories
 vec = TfidfVectorizer(max_features=5000, stop_words="english",
                       min_df=5, max_df=0.7)
-X = vec.fit_transform(corpus)
-nmf = NMF(n_components=10, random_state=42).fit(X)
+X = vec.fit_transform(docs)
+nmf = NMF(n_components=10, init="nndsvd", random_state=42, max_iter=400).fit(X)
 
+vocab = vec.get_feature_names_out()
 for k, topic in enumerate(nmf.components_):
-    words = [vec.get_feature_names_out()[i]
-             for i in topic.argsort()[-10:][::-1]]
-    print(f"Topic {k}: {', '.join(words)}")
+    print(f"Topic {k}: {', '.join(vocab[i] for i in topic.argsort()[-6:][::-1])}")
   </code></pre>
-  <p style="font-size: 0.85em;">Typical output: "transport MRT", "HDB property", "Budget policy", "hawker food".</p>
+  <p style="font-size: 0.8em;">Actual output includes: "oil, prices, stocks, crude", "athens, gold, olympic, phelps", "najaf, iraq, sadr, cleric", "microsoft, windows, xp, update". Kailash equivalent: <code>DimReductionEngine().reduce(tfidf_df, algorithm="nmf", n_components=10)</code> on a dense polars frame.</p>
 </section>
 
 <!-- ═══ Slide 14: Comparing three methods ═══════════════════ -->
+<section>
+  <h2>Sentiment analysis — text classification</h2>
+  <ul style="font-size: 0.85em;">
+    <li>Supervised: text → TF-IDF or embedding features → classifier (M3). Targets: positive / negative, 1–5 stars.</li>
+    <li><strong>USML connection:</strong> word vectors learned from <em>unlabelled</em> text (co-occurrence → PPMI → SVD, the factorisation Word2Vec implicitly performs) are averaged into document features.</li>
+    <li>Labels must come from <em>people</em> — a lexicon applied to the same text just teaches the classifier the lexicon.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>🟢 Exercise 6.5:</strong> learn PPMI + SVD word vectors, train on human-labelled SST-2 movie-review sentences, test on unseen sentences against a lexicon and a TF-IDF baseline.
+  </div>
+  <aside class="notes">Spec 4.6 asks for a brief sentiment section. The design point is evaluation honesty: the training labels are human (SST-2), the test sentences are unseen, and the baselines (word-list lexicon, TF-IDF + logistic regression) are run on the same split. Topic proportions can serve as features in the same way.</aside>
+</section>
+
 <section>
   <h2>Three methods compared</h2>
   <table style="font-size: 0.65em;">
@@ -557,7 +602,7 @@ for k, topic in enumerate(nmf.components_):
   <ol style="font-size: 0.85em;">
     <li><strong>Skipping stopword removal</strong> — top words: "the", "and", "to". Useless.</li>
     <li><strong>Wrong K</strong> — start 10–20, tune with coherence.</li>
-    <li><strong>Evaluating on perplexity</strong> — does NOT reflect human quality judgments.</li>
+    <li><strong>Judging topics by perplexity alone</strong> — it measures fit, not human-judged quality; and training-set perplexity always prefers more topics.</li>
     <li><strong>BERTopic on tiny corpora</strong> — needs hundreds of docs. Fall back to NMF.</li>
   </ol>
 </section>
@@ -579,8 +624,8 @@ for k, topic in enumerate(nmf.components_):
   <ul>
     <li>✓ Derive TF-IDF and explain why it works.</li>
     <li>✓ Explain BM25's improvements: saturation + length normalisation.</li>
-    <li>✓ Apply LDA and BERTopic for topic extraction.</li>
-    <li>✓ Evaluate topic quality with NPMI coherence.</li>
+    <li>✓ Apply NMF, LDA (on counts) and BERTopic for topic extraction.</li>
+    <li>✓ Choose $K$ by held-out perplexity; evaluate topics with NPMI / UMass coherence.</li>
     <li>✓ Use word embeddings as features (training explained in 4.8).</li>
   </ul>
   <div class="callout-slide foundations">

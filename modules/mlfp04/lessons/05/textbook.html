@@ -50,10 +50,9 @@
   Thirty years ago, a researcher at a supermarket chain found that
   customers who bought nappies on Thursday evenings also tended to buy
   beer. The story is probably apocryphal but the technique it inspired
-  — market basket analysis — is very real. Today it powers "frequently
-  bought together" widgets on every major e-commerce site, menu
-  recommendations in restaurant apps, and cross-sell engines in
-  telecoms. It is one of the oldest unsupervised techniques in the
+  — market basket analysis — is very real. It is a standard way to build
+  "frequently bought together" suggestions, bundle promotions and
+  cross-sell lists. It is one of the oldest unsupervised techniques in the
   book and still one of the most useful.
 </p>
 
@@ -157,8 +156,11 @@
     Lift is the ratio of the joint probability to the product of the
     marginals: $\text{lift}(X \to Y) = P(X \cap Y) / (P(X) P(Y))$.
     For independent events this is exactly 1. For perfectly correlated
-    events (both present iff both present) it is $1 / P(X)$. This
-    matches the mutual-information view of dependency.
+    events ($X$ present exactly when $Y$ is) it is $1 / P(X)$. Its
+    logarithm, $\log \text{lift}$, is the <em>pointwise mutual
+    information</em> of $X$ and $Y$ — the same quantity Lesson 4.6 uses
+    (normalised) to score topic coherence. Lift is symmetric:
+    $\text{lift}(X \to Y) = \text{lift}(Y \to X)$; confidence is not.
   </p>
 </div>
 
@@ -234,12 +236,15 @@
 <p>
   Apriori has one big drawback: it scans the transaction database once
   per level. For long itemsets that is many scans. <strong>FP-Growth</strong>
-  (Frequent Pattern Growth) avoids the candidate-generation step entirely
-  by building a compressed data structure called an FP-tree on a single
-  pass, then mining frequent itemsets by recursively walking the tree.
-  FP-Growth is typically 2 – 10× faster than Apriori on dense data and
-  is the default in modern libraries (<code>mlxtend</code>, SparkML,
-  polars' own extensions).
+  (Frequent Pattern Growth) avoids the candidate-generation step entirely.
+  It makes <em>two</em> passes over the data to build a compressed
+  structure called an FP-tree — one to count single items, one to insert
+  each transaction with its items in frequency order — and then mines
+  frequent itemsets by recursively walking the tree. On large, dense
+  transaction logs with low support thresholds it is typically much faster
+  than Apriori, and it is available in <code>mlxtend</code> and Spark MLlib.
+  On small problems the difference disappears and can even reverse: on
+  Exercise 5's 2,500 baskets Apriori is the faster of the two.
 </p>
 
 <p>
@@ -289,58 +294,121 @@
   Conviction measures how much the rule improves over a model where
   $X$ and $Y$ are independent: conviction of 1 means the rule is no
   better than random, higher values mean stronger implication.
-  Conviction is asymmetric (unlike lift) and is the metric of choice
-  when direction matters — e.g., "does buying A cause buying B?"
+  Conviction is asymmetric (unlike lift) and is useful when direction
+  matters — how reliably $X$ implies $Y$ rather than merely co-occurring
+  with it. A rule with confidence 1 has infinite conviction. Like every
+  metric here it measures association, not causation.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Kailash integration: rules as feature columns</h2>
+<h2>The Kailash Engine: none — rules become features</h2>
 
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    Kailash does not ship a dedicated association-rule engine — you use
-    <code>mlxtend.frequent_patterns.apriori</code> and
-    <code>association_rules</code> as the computational core. What
-    Kailash provides is the <code>FeatureEngineer</code> engine to
-    materialise discovered rules as binary feature columns in a polars
-    DataFrame, which then flows into the training pipeline. This is
-    how you turn an offline rule-mining exercise into a production
-    feature.
+    kailash-ml has no association-rule engine, and you should not go
+    looking for one. The mining itself is a few lines of Python (the
+    Apriori principle above); for larger problems the open-source
+    <code>mlxtend</code> library provides Apriori and FP-Growth. The Kailash
+    value enters <em>after</em> mining: discovered rules become ordinary
+    feature columns (built in polars) for the supervised pipeline you
+    built in Module 3, and Exercise 5 logs every mining run to the
+    <code>ExperimentTracker</code> so you can compare thresholds and
+    algorithms.
   </p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Singapore Retail Baskets</h2>
-
-<pre><code class="language-python">import polars as pl
-from mlxtend.frequent_patterns import apriori, association_rules, fpgrowth
-
-from shared import MLFPDataLoader
-
-loader = MLFPDataLoader()
-baskets = loader.load("mlfp04", "sg_retail_baskets.parquet")
-# Each row: one transaction. Columns: item codes as booleans.
-
-# Run both algorithms with the same threshold
-freq_apriori = apriori(baskets.to_pandas(), min_support=0.01, use_colnames=True)
-freq_fp = fpgrowth(baskets.to_pandas(), min_support=0.01, use_colnames=True)
-print(f"Apriori found {len(freq_apriori)} frequent itemsets")
-print(f"FP-Growth found {len(freq_fp)} frequent itemsets")  # should agree
-
-# Generate rules with lift >= 2
-rules = association_rules(freq_fp, metric="lift", min_threshold=2.0)
-rules = rules.sort_values("lift", ascending=False).head(20)
-print(rules[["antecedents", "consequents", "support", "confidence", "lift"]])</code></pre>
+<h2>Worked Example: Singapore Mini-Mart Baskets</h2>
 
 <p>
-  Interpretation walk-through: look at the top rule. If the
-  antecedent is <code>{instant_noodles, canned_tuna}</code> and the
-  consequent is <code>{rice}</code> with lift 3.5, the business reading
-  is "customers buying instant noodles and canned tuna are 3.5× more
-  likely to also buy rice than a random customer". That suggests a
-  three-item promotion, a shelf placement decision, or a recommendation
-  widget.
+  The baskets here are <strong>synthetic</strong>. Exercise 5's generator
+  (<code>shared.mlfp04.ex_5.generate_transactions</code>) simulates 2,500
+  transactions at a neighbourhood mini-mart with 25 products. Twelve
+  "bundles" — kaya-toast breakfast (bread, butter, eggs), kopi (coffee,
+  condensed milk, sugar), beer and chips, toiletries, household cleaning
+  and so on — fire with known probabilities, each item in a firing bundle
+  is dropped 15% of the time, and a few random impulse items are added.
+  Because we know the bundles, we can check whether mining recovers them.
+</p>
+
+<pre><code class="language-python">import numpy as np
+import polars as pl
+from shared.mlfp04.ex_5 import generate_transactions, transactions_to_onehot
+
+transactions = generate_transactions(n=2500, seed=42)   # list of sets of product names
+basket = transactions_to_onehot(transactions)           # polars: one boolean column per product
+
+# Pair rules from first principles: one matrix product counts every pair
+B = basket.to_numpy().astype(np.float64)                # 2,500 x 25 indicator matrix
+items, n = basket.columns, B.shape[0]
+support_1 = B.mean(axis=0)                              # supp(X) for every item
+support_2 = (B.T @ B) / n                               # supp(X and Y) for every pair
+
+pair_rules = pl.DataFrame(
+    [
+        (items[i], items[j], support_2[i, j],
+         support_2[i, j] / support_1[i],                          # confidence
+         support_2[i, j] / (support_1[i] * support_1[j]))         # lift
+        for i in range(len(items)) for j in range(len(items))
+        if i != j and support_2[i, j] &gt;= 0.02
+    ],
+    schema=["antecedent", "consequent", "support", "confidence", "lift"],
+    orient="row",
+).sort("lift", descending=True)
+print(pair_rules.head(6))</code></pre>
+
+<p>
+  The top pairs are shampoo ↔ toothpaste (lift 3.02), cooking oil ↔ fish
+  (2.93), coffee ↔ condensed milk (2.92) and detergent ↔ tissue (2.91) —
+  all pairs from bundles in the generator. Each pair appears in both
+  directions with the same lift but different confidence (coffee →
+  condensed milk 0.52, condensed milk → coffee 0.54).
+</p>
+
+<p>
+  For itemsets larger than pairs we use <code>mlxtend</code>. It accepts only a
+  pandas DataFrame, so we convert <strong>at the call boundary only</strong>
+  and bring the result straight back into polars; all filtering and sorting
+  stays in polars, as in Exercise 5.2.
+</p>
+
+<pre><code class="language-python">from mlxtend.frequent_patterns import association_rules, fpgrowth
+
+freq_items = fpgrowth(basket.to_pandas(), min_support=0.02, use_colnames=True)
+rules_raw = association_rules(freq_items, metric="lift", min_threshold=1.2)
+
+rules = pl.DataFrame({
+    "antecedent": [", ".join(sorted(a)) for a in rules_raw["antecedents"]],
+    "consequent": [", ".join(sorted(c)) for c in rules_raw["consequents"]],
+    "support": rules_raw["support"].to_numpy(),
+    "confidence": rules_raw["confidence"].to_numpy(),
+    "lift": rules_raw["lift"].to_numpy(),
+}).sort("lift", descending=True)
+print(f"Frequent itemsets: {len(freq_items)}   rules with lift &gt;= 1.2: {rules.height}")
+print(rules.head(6))</code></pre>
+
+<p>
+  At a minimum support of 2%, FP-Growth finds 336 frequent itemsets (25
+  single items, 226 pairs, 77 triples, 8 four-item sets) and 494 rules with
+  lift of at least 1.2. The strongest are three-item bundles:
+  {soap, tissue} → {detergent} with confidence 0.76 and lift 6.0,
+  {soap, toothpaste} → {shampoo} (0.75, 5.6) and {detergent, soap} →
+  {tissue} (0.72, 5.6).
+</p>
+
+<p>
+  Read {soap, tissue} → {detergent} as: 3.8% of all baskets contain all
+  three items (support); 76% of baskets with soap and tissue also contain
+  detergent (confidence); and that is 6.0 times the rate at which detergent
+  appears in baskets in general (lift). For a mini-mart this suggests
+  shelving household cleaning together or a "household restock" bundle.
+  The reverse rule {detergent} → {soap, tissue} has the same lift but a
+  confidence of only 0.30 — most detergent buyers do not buy the other two
+  — so the promotion should be triggered by soap and tissue, not by
+  detergent. And because the baskets are synthetic, we can confirm the
+  method works: every top rule is a fragment of one of the generator's
+  bundles.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -357,14 +425,23 @@ print(rules[["antecedents", "consequents", "support", "confidence", "lift"]])</c
 <h2>Try It Yourself</h2>
 
 <div class="try-it">
-  <p><strong>Exercise 5.</strong></p>
+  <p><strong>Exercise 5</strong> (<code>modules/mlfp04/solutions/ex_5/</code>, four
+  scripts on the synthetic mini-mart baskets from the worked example):</p>
   <ol>
-    <li>Load the Singapore retail basket dataset.</li>
-    <li>Run Apriori and FP-Growth at <code>min_support=0.01</code>; verify they agree.</li>
-    <li>Generate rules with <code>min_threshold=2.0</code> on lift.</li>
-    <li>Pick the top 5 rules and write a business interpretation for each.</li>
-    <li>Materialise a <code>has_pattern</code> binary feature from the top rule and add it to a customer feature table.</li>
-    <li>Train a logistic regression to predict high-value baskets with and without the new feature — does it improve performance?</li>
+    <li><code>01_apriori_from_scratch.py</code> — implement Apriori: candidate
+      generation from frequent $(k-1)$-itemsets, anti-monotone pruning, one
+      counting pass per level.</li>
+    <li><code>02_fp_growth.py</code> — mlxtend's FP-Growth behind a
+      polars-in/polars-out wrapper; check that it finds exactly the same
+      itemsets as your Apriori, and compare their speed.</li>
+    <li><code>03_rule_evaluation.py</code> — generate directional rules, compute
+      support, confidence, lift and conviction, apply a three-threshold
+      filter, and rank cross-category rules for a business audience.</li>
+    <li><code>04_rule_features.py</code> — turn the actionable rules into feature
+      columns and predict a next-trip purchase that is <em>not</em> a function
+      of the input features: a product-presence baseline (AUC about 0.69)
+      against the rule-enhanced model. Does the explicit rule add signal the
+      raw one-hot columns did not?</li>
   </ol>
 </div>
 

@@ -51,12 +51,24 @@ RANDOM_STATE: int = 42
 # ════════════════════════════════════════════════════════════════════════
 
 
+# Columns that are NOT behavioural features. ``churned`` is an OUTCOME label:
+# feeding it into the clustering would make the "behavioural" segments
+# partly a split on the answer, and a standardised binary column dominates
+# Euclidean distance. It stays in the DataFrame for post-hoc profiling only
+# (e.g. "what is the churn rate of each segment?").
+NON_FEATURE_COLS: tuple[str, ...] = ("customer_id", "churned")
+
+
 def load_customers() -> tuple[pl.DataFrame, list[str]]:
     """Load the e-commerce customer dataset and return (df, numeric_feature_cols).
 
-    The dataset (from MLFP03) is ~6K rows of Singapore e-commerce customers
-    with recency, frequency, monetary, basket-size, and channel features.
-    Clustering is unsupervised segmentation: no labels, just behaviour.
+    The dataset (from MLFP03) is 50,000 Singapore e-commerce customers. The
+    7 numeric behavioural features are revenue, order count, average order
+    value, recency, tenure, satisfaction (a 1-5 survey score) and number of
+    returns (a 0-6 count). The last two are discrete — after standardising
+    they form a few stacked "bands", which is worth remembering when you
+    read cluster shapes. ``churned`` is returned in the DataFrame but is
+    deliberately excluded from the features (see NON_FEATURE_COLS).
     """
     loader = MLFPDataLoader()
     customers = loader.load("mlfp03", "ecommerce_customers.parquet")
@@ -64,7 +76,7 @@ def load_customers() -> tuple[pl.DataFrame, list[str]]:
     feature_cols = [
         c
         for c, d in zip(customers.columns, customers.dtypes)
-        if d in numeric_types and c not in ("customer_id",)
+        if d in numeric_types and c not in NON_FEATURE_COLS
     ]
     return customers.drop_nulls(subset=feature_cols), feature_cols
 
@@ -167,7 +179,7 @@ EXPERIMENT_NAME = "m4_clustering_zoo"
 
 
 async def _setup_engines_async() -> tuple[ExperimentTracker, str]:
-    """Open the clustering ExperimentTracker (kailash-ml 1.5.1)."""
+    """Open the clustering ExperimentTracker (kailash-ml)."""
     tracker = await ExperimentTracker.create(store_url=CLUSTERING_DB)
     return tracker, EXPERIMENT_NAME
 
@@ -200,10 +212,18 @@ async def _track_run_async(
     scalar_metrics: dict[str, float],
     series_metrics: dict[str, list[float]] | None = None,
 ) -> None:
-    """Log one lesson's run: scalar metrics + optional per-step series."""
+    """Log one lesson's run: scalar metrics + optional per-step series.
+
+    The tracker rejects NaN/inf metric values, and an undefined metric (e.g.
+    the silhouette of a 1-cluster DBSCAN result) is a legitimate outcome, so
+    non-finite scalars are skipped with an explicit message, not hidden.
+    """
     async with tracker.track(experiment=exp_name, run_name=run_name) as run:
         await run.log_params({k: str(v) for k, v in params.items()})
         for name, value in scalar_metrics.items():
+            if not np.isfinite(float(value)):
+                print(f"  [tracker] not logging {name}={value} (undefined metric)")
+                continue
             await run.log_metric(name, float(value))
         if series_metrics:
             for name, values in series_metrics.items():

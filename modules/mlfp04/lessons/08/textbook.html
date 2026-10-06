@@ -181,8 +181,14 @@
   <p>
     Linear regression with zero hidden layers IS a neural network:
     $\hat{y} = W \mathbf{x} + b$. Adding hidden layers lets the model
-    "write its own parametric function". Two or more hidden layers can
-    approximate any continuous function (universal approximation theorem).
+    "write its own parametric function". The universal approximation
+    theorem (Cybenko, 1989; Hornik, 1991) says that <em>one</em> hidden layer
+    with a non-polynomial activation and enough units can approximate any
+    continuous function on a compact domain to any desired accuracy. It
+    guarantees that a good approximation exists, not that training will
+    find it or how many units it needs; extra depth buys parameter
+    efficiency — many functions need far fewer units when spread over
+    several layers.
   </p>
 </div>
 
@@ -196,6 +202,9 @@
   <tbody>
     <tr><td>ReLU</td><td>$\max(0, z)$</td><td>Default for hidden layers</td></tr>
     <tr><td>Leaky ReLU</td><td>$\max(0.01z, z)$</td><td>Avoids dead neurons</td></tr>
+    <tr><td>PReLU</td><td>$\max(az, z)$, $a$ learned</td><td>Leaky ReLU whose negative slope is trained</td></tr>
+    <tr><td>ELU</td><td>$z$ if $z&gt;0$, else $\alpha(e^z - 1)$</td><td>Smooth; negative outputs push mean activation towards 0</td></tr>
+    <tr><td>Swish / SiLU</td><td>$z \cdot \sigma(z)$</td><td>Smooth, non-monotonic hidden activation; close cousin of GELU</td></tr>
     <tr><td>GELU</td><td>$z \cdot \Phi(z)$</td><td>Transformers (M5.4)</td></tr>
     <tr><td>Sigmoid</td><td>$1/(1+e^{-z})$</td><td>Binary output</td></tr>
     <tr><td>Softmax</td><td>$e^{z_i}/\sum e^{z_j}$</td><td>Multi-class output</td></tr>
@@ -203,13 +212,54 @@
   </tbody>
 </table>
 
+<p>
+  A ReLU unit whose input is negative for every example outputs 0 and
+  receives zero gradient, so it never recovers — a "dead neuron". Leaky
+  ReLU, PReLU and ELU keep a small gradient for negative inputs.
+</p>
+
+<h3>Loss functions</h3>
+
+<table>
+  <thead><tr><th>Loss</th><th>Formula</th><th>Use</th></tr></thead>
+  <tbody>
+    <tr><td>MSE</td><td>$\frac{1}{n}\sum(y - \hat{y})^2$</td><td>Regression</td></tr>
+    <tr><td>MAE</td><td>$\frac{1}{n}\sum|y - \hat{y}|$</td><td>Regression robust to outliers</td></tr>
+    <tr><td>Huber</td><td>quadratic for small errors, linear for large</td><td>Regression; a compromise of the two</td></tr>
+    <tr><td>Cross-entropy</td><td>$-\sum_c y_c \log \hat{y}_c$</td><td>Multi-class classification (with softmax)</td></tr>
+    <tr><td>Binary CE</td><td>$-[y\log\hat{y} + (1-y)\log(1-\hat{y})]$</td><td>Binary classification (with sigmoid)</td></tr>
+    <tr><td>Focal</td><td>$-\alpha_t(1-p_t)^\gamma \log p_t$</td><td>Imbalanced classification: down-weights easy examples</td></tr>
+    <tr><td>KL divergence</td><td>$\sum p \log(p/q)$</td><td>Matching distributions (VAEs, distillation)</td></tr>
+    <tr><td>Reconstruction</td><td>$\lVert \mathbf{x} - \hat{\mathbf{x}} \rVert^2$</td><td>Autoencoders (Lesson 5.1)</td></tr>
+    <tr><td>Contrastive</td><td>$y\,d^2 + (1-y)\max(0, m - d)^2$</td><td>Similarity learning: pull matching pairs together, push others at least $m$ apart</td></tr>
+    <tr><td>Triplet</td><td>$\max(0,\ d(a, p) - d(a, n) + m)$</td><td>Metric learning: an anchor closer to a positive than to a negative by margin $m$</td></tr>
+  </tbody>
+</table>
+
+<h3>Weight initialisation</h3>
+
+<p>
+  If all weights start at zero, every neuron in a layer computes the same
+  output and receives the same gradient, so symmetry is never broken.
+  Random initialisation fixes that, but the scale matters:
+  <strong>Xavier/Glorot</strong> ($\mathcal{N}(0, 2/(n_{\text{in}} + n_{\text{out}}))$)
+  suits sigmoid and tanh; <strong>Kaiming/He</strong>
+  ($\mathcal{N}(0, 2/n_{\text{in}})$) suits ReLU, doubling the variance
+  because ReLU zeroes about half the activations.
+</p>
+
 <h3>Dropout</h3>
 
 <p>
-  Randomly zero out neurons during training with probability $p$
-  (typically 0.1–0.5). Forces the network to learn redundant
-  representations — no single neuron can be critical. Turn off
-  during inference.
+  Randomly zero out a fraction $p$ of the hidden activations during
+  training (typically 0.1–0.5). This forces the network to learn
+  redundant representations — no single neuron can be critical — and acts
+  like training an ensemble of thinned networks. Modern implementations
+  (including PyTorch's <code>nn.Dropout</code>) use <strong>inverted
+  dropout</strong>: during training the surviving activations are scaled up
+  by $1/(1-p)$ so their expected value is unchanged, and at inference
+  dropout is simply switched off — no rescaling. Remember to put the model
+  in evaluation mode before predicting.
 </p>
 
 <h3>Batch normalisation</h3>
@@ -238,11 +288,21 @@
 
 <h3>Learning rate schedules</h3>
 
+<ul>
+  <li><strong>Step decay:</strong> multiply the learning rate by a factor (e.g. 0.1) every $N$ epochs.</li>
+  <li><strong>Cosine annealing:</strong> $\eta_t = \eta_{\min} + \tfrac{1}{2}(\eta_{\max} - \eta_{\min})(1 + \cos(\pi t / T))$.</li>
+  <li><strong>Warmup + cosine:</strong> start small, ramp up linearly over the first steps, then follow cosine decay — common in transformer training.</li>
+  <li><strong>One-cycle:</strong> rise from a low rate to a high peak over the first part of training, then anneal to well below the start; often allows fast training.</li>
+  <li><strong>ReduceLROnPlateau:</strong> cut the rate when validation loss stops improving.</li>
+</ul>
+
+<h3>Gradient clipping</h3>
+
 <p>
-  <strong>Warmup + cosine:</strong> start with a small learning rate,
-  ramp up over the first few epochs (warmup), then decay following a
-  cosine curve. This is the standard schedule for transformer training
-  and works well for most architectures.
+  If the gradient norm exceeds a threshold, rescale it to that norm:
+  $\nabla \leftarrow \text{max\_norm} \cdot \nabla / \lVert\nabla\rVert$. This prevents a
+  single huge gradient from wrecking the weights, and is standard for
+  RNNs and transformers (Module 5), where gradients can explode.
 </p>
 
 <h3>Early stopping</h3>
@@ -264,82 +324,194 @@
     images, word associations in text). Deeper layers compose these into
     complex features (shapes, phrases). The output layer performs supervised
     prediction on these learned features. This is <strong>representation
-    learning</strong>: the network simultaneously discovers features
-    (unsupervised, in the hidden layers) and uses them for prediction
-    (supervised, in the output layer). The hidden node values are
+    learning</strong>: the network simultaneously discovers features (in
+    the hidden layers) and uses them for prediction (in the output layer),
+    and the <em>same</em> supervised loss, through backpropagation, shapes
+    both — the hidden features are whatever helps reduce that loss. The hidden node values are
     <strong>embeddings</strong> — exactly like the matrix factorisation
     embeddings in 4.7, but non-linear.
   </p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: HDB Price Prediction</h2>
+<h2>Worked Example: HDB Price Prediction from Scratch</h2>
 
 <div class="worked-example">
   <h3>Goal</h3>
   <p>
-    Build a 3-layer neural network from scratch for HDB resale price
-    prediction. Implement forward pass, backpropagation, gradient
-    descent. Then add dropout, batch norm, Adam optimiser, and learning
-    rate scheduling. Compare training curves with and without each
-    technique.
+    Build a 3-layer neural network from scratch with NumPy on the course's
+    HDB resale dataset (<code>mlfp01/hdb_resale.parquet</code>, about 50,000
+    transactions from 2015–2024), compare it honestly with a linear model,
+    and export it with Kailash's <code>OnnxBridge</code>. The Lesson 4.8 slides
+    train a one-hidden-layer version on two features; this is the fuller
+    version. Exercise 8 then applies the training toolkit — activations,
+    initialisation, optimisers, schedules, dropout and batch normalisation
+    — in PyTorch.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1.</span>
-    <p>Forward pass from scratch.</p>
+    <p>Clean the data, build features, and split <em>before</em> standardising.</p>
     <pre><code class="language-python">import numpy as np
+import polars as pl
+from shared import MLFPDataLoader
+
+hdb = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+clean = (
+    hdb.filter(pl.col("resale_price").is_between(100_000, 2_000_000))   # drop impossible prices
+    .with_columns(
+        # some storey ranges were typed with the letter O instead of zero ("O4 TO 06")
+        storey_mid=pl.col("storey_range").str.replace_all("O", "0")
+        .str.extract(r"^(\d+)", 1).cast(pl.Float64) + 1,
+        sale_year=pl.col("month").str.slice(0, 4).cast(pl.Float64),
+    )
+    .with_columns(flat_age=pl.col("sale_year") - pl.col("lease_commence_date"))
+)
+NUMERIC = ["floor_area_sqm", "storey_mid", "flat_age", "sale_year"]
+town_onehot = clean.select("town").to_dummies()                  # towns -> indicator columns
+X = np.hstack([clean.select(NUMERIC).to_numpy(), town_onehot.to_numpy()]).astype(np.float64)
+y = clean["resale_price"].to_numpy().astype(np.float64).reshape(-1, 1) / 1e5   # S$100k units
+
+rng = np.random.default_rng(42)
+perm = rng.permutation(len(X))
+X, y = X[perm], y[perm]
+n_train = int(0.8 * len(X))
+
+# Standardise with TRAINING statistics only (no test-set leakage)
+X_mean, X_std = X[:n_train].mean(axis=0), X[:n_train].std(axis=0)
+y_mean, y_std = y[:n_train].mean(), y[:n_train].std()
+X_norm, y_norm = (X - X_mean) / X_std, (y - y_mean) / y_std
+X_train, X_test = X_norm[:n_train], X_norm[n_train:]
+y_train, y_test = y_norm[:n_train], y_norm[n_train:]
+n_in = X_train.shape[1]
+print(f"{hdb.height:,} rows -&gt; {clean.height:,} clean; {n_in} inputs")
+
+# Linear baseline first: always fit the simplest reasonable model
+A_train = np.c_[X_train, np.ones(n_train)]
+w_lin, *_ = np.linalg.lstsq(A_train, y_train, rcond=None)
+pred_lin = np.c_[X_test, np.ones(len(X_test))] @ w_lin
+r2_lin = 1 - np.mean((y_test - pred_lin) ** 2) / np.var(y_test)
+print(f"Linear regression: test R^2 = {r2_lin:.3f}")</code></pre>
+    <p>
+      Removing prices below S$100,000 or above S$2,000,000 drops about 0.5%
+      of rows that cannot be real HDB resale prices (one is S$10); storey
+      becomes the midpoint of its range after repairing letter-O typos. The
+      linear model is already strong — test $R^2 = 0.860$ — so any network
+      has to beat that to be worth its complexity.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Forward pass, backpropagation and mini-batch gradient descent, by hand.</p>
+    <pre><code class="language-python"># Architecture n_in -&gt; 64 -&gt; 32 -&gt; 1, Kaiming (He) initialisation for ReLU
+W1 = rng.standard_normal((n_in, 64)) * np.sqrt(2.0 / n_in); b1 = np.zeros((1, 64))
+W2 = rng.standard_normal((64, 32)) * np.sqrt(2.0 / 64);   b2 = np.zeros((1, 32))
+W3 = rng.standard_normal((32, 1)) * np.sqrt(2.0 / 32);    b3 = np.zeros((1, 1))
 
 def relu(z):
     return np.maximum(0, z)
 
 def relu_grad(z):
-    return (z > 0).astype(float)
+    return (z &gt; 0).astype(float)
 
-def forward(X, W1, b1, W2, b2, W3, b3):
-    z1 = X @ W1 + b1;    a1 = relu(z1)
-    z2 = a1 @ W2 + b2;   a2 = relu(z2)
-    z3 = a2 @ W3 + b3;   y_hat = z3  # linear output for regression
-    return z1, a1, z2, a2, z3, y_hat</code></pre>
-  </div>
+def predict(X):
+    return relu(relu(X @ W1 + b1) @ W2 + b2) @ W3 + b3
 
-  <div class="step">
-    <span class="step-label">Step 2.</span>
-    <p>Backpropagation and weight update.</p>
-    <pre><code class="language-python">def backward(X, y, z1, a1, z2, a2, z3, y_hat,
-             W1, b1, W2, b2, W3, b3, lr=0.001):
-    m = X.shape[0]
-    # Output layer gradient
-    dz3 = (y_hat - y) / m
-    dW3 = a2.T @ dz3;    db3 = dz3.sum(axis=0)
-    # Hidden layer 2
-    da2 = dz3 @ W3.T
-    dz2 = da2 * relu_grad(z2)
-    dW2 = a1.T @ dz2;    db2 = dz2.sum(axis=0)
-    # Hidden layer 1
-    da1 = dz2 @ W2.T
-    dz1 = da1 * relu_grad(z1)
-    dW1 = X.T @ dz1;     db1 = dz1.sum(axis=0)
-    # Update
-    W3 -= lr * dW3; b3 -= lr * db3
-    W2 -= lr * dW2; b2 -= lr * db2
-    W1 -= lr * dW1; b1 -= lr * db1
-    return W1, b1, W2, b2, W3, b3</code></pre>
+lr, batch_size, epochs = 0.01, 64, 30
+for epoch in range(epochs):
+    perm = rng.permutation(n_train)
+    X_shuffled, y_shuffled = X_train[perm], y_train[perm]
+    epoch_loss = 0.0
+    for start in range(0, n_train, batch_size):
+        X_batch = X_shuffled[start:start + batch_size]
+        y_batch = y_shuffled[start:start + batch_size]
+        m = len(X_batch)
+
+        # Forward pass
+        z1 = X_batch @ W1 + b1;  a1 = relu(z1)
+        z2 = a1 @ W2 + b2;       a2 = relu(z2)
+        y_hat = a2 @ W3 + b3                     # linear output for regression
+        epoch_loss += np.mean((y_batch - y_hat) ** 2) * m
+
+        # Backward pass: the chain rule, layer by layer
+        dz3 = -2 * (y_batch - y_hat) / m         # dL/dy_hat for MSE
+        dW3 = a2.T @ dz3;  db3 = dz3.sum(axis=0, keepdims=True)
+        dz2 = (dz3 @ W3.T) * relu_grad(z2)
+        dW2 = a1.T @ dz2;  db2 = dz2.sum(axis=0, keepdims=True)
+        dz1 = (dz2 @ W2.T) * relu_grad(z1)
+        dW1 = X_batch.T @ dz1;  db1 = dz1.sum(axis=0, keepdims=True)
+
+        # Gradient-descent update
+        W3 -= lr * dW3; b3 -= lr * db3
+        W2 -= lr * dW2; b2 -= lr * db2
+        W1 -= lr * dW1; b1 -= lr * db1
+
+    if epoch % 5 == 0 or epoch == epochs - 1:
+        test_loss = np.mean((y_test - predict(X_test)) ** 2)
+        print(f"Epoch {epoch:&gt;2}: train_loss={epoch_loss / n_train:.4f}, test_loss={test_loss:.4f}")
+
+r2_nn = 1 - np.mean((y_test - predict(X_test)) ** 2) / np.var(y_test)
+print(f"Network R^2 = {r2_nn:.3f}   vs linear R^2 = {r2_lin:.3f}")</code></pre>
+    <p>
+      Every line of the backward pass is one application of the chain rule:
+      <code>dz3</code> is $\partial\mathcal{L}/\partial\hat{y}$ for the mean
+      squared error, each step back multiplies by a weight matrix transposed
+      and gates by the ReLU derivative. Training and test loss fall in the
+      first epochs and level off together — no overfitting, because 40,000
+      rows is a lot of data for about 4,200 weights. After 30 epochs the
+      network reaches test $R^2 = 0.860$: <em>exactly</em> where the linear
+      model is. That non-result is the honest lesson. On tabular data whose
+      main driver is close to linear — price grows with floor area, shifted
+      by town — a network has little to discover that a linear model with
+      sensible features has not already captured (gradient-boosted trees are
+      usually stronger than either). Networks earn their cost on images,
+      sequences, text and graphs (Module 5), where hand-designing the
+      features is the hard part. What this example shows is the machinery
+      all of those architectures share.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3.</span>
-    <p>Training loop with loss tracking.</p>
-    <pre><code class="language-python">losses = []
-for epoch in range(500):
-    z1, a1, z2, a2, z3, y_hat = forward(X_train, W1, b1, W2, b2, W3, b3)
-    loss = np.mean((y_hat - y_train) ** 2)
-    losses.append(loss)
-    W1, b1, W2, b2, W3, b3 = backward(
-        X_train, y_train, z1, a1, z2, a2, z3, y_hat,
-        W1, b1, W2, b2, W3, b3, lr=0.001)
-    if epoch % 50 == 0:
-        print(f"Epoch {epoch}: MSE = {loss:.4f}")</code></pre>
+    <p>Export with <code>OnnxBridge</code> and check the exported graph.</p>
+    <pre><code class="language-python">from pathlib import Path
+import onnxruntime as ort
+import torch
+from torch import nn
+from kailash_ml import OnnxBridge
+
+# Copy the NumPy weights into an equivalent torch network (Linear stores W transposed)
+model = nn.Sequential(nn.Linear(n_in, 64), nn.ReLU(), nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 1))
+with torch.no_grad():
+    for layer, W, b in [(model[0], W1, b1), (model[2], W2, b2), (model[4], W3, b3)]:
+        layer.weight.copy_(torch.from_numpy(W.T).float())
+        layer.bias.copy_(torch.from_numpy(b.ravel()).float())
+model.eval()
+
+bridge = OnnxBridge()
+print("compatible:", bridge.check_compatibility(model, framework="torch").compatible)
+export = bridge.export(model, framework="torch", output_path=Path("hdb_price_net.onnx"),
+                       sample_input=torch.randn(1, n_in))   # traces the forward pass
+print("exported:", export.success, export.onnx_status)
+
+batch = X_test[:100].astype(np.float32)
+session = ort.InferenceSession("hdb_price_net.onnx")
+onnx_out = session.run(None, {session.get_inputs()[0].name: batch})[0]
+print(f"max |ONNX - NumPy| = {np.abs(onnx_out - predict(X_test[:100])).max():.2e}")</code></pre>
+    <p>
+      <code>OnnxBridge</code> checks whether a model can be exported, exports
+      it, and reports the outcome as a result object instead of raising. It
+      exports PyTorch models (as here and in Exercise 8.5) as well as
+      scikit-learn-style ones. The ONNX graph reproduces the NumPy network to
+      within float32 rounding. <code>OnnxBridge</code> does not train or serve:
+      training was your loop; serving is ONNX Runtime here or
+      <code>InferenceServer</code> in Module 5. The deployed graph expects
+      inputs standardised with the <em>training</em> statistics — ship
+      <code>X_mean</code>, <code>X_std</code>, <code>y_mean</code> and
+      <code>y_std</code> with it. The exporter may print warnings during torch
+      export; they are harmless here.
+    </p>
   </div>
 </div>
 
@@ -348,7 +520,7 @@ for epoch in range(500):
 
 <ol>
   <li><strong>Zero-initialising all weights.</strong> Every neuron computes the same gradient — symmetry is never broken. Use He initialisation for ReLU layers.</li>
-  <li><strong>Forgetting to turn off dropout at inference.</strong> Predictions become noisy and non-deterministic.</li>
+  <li><strong>Forgetting to turn off dropout at inference.</strong> Predictions become noisy and non-deterministic. In PyTorch, call <code>model.eval()</code> before predicting (it also switches batch norm to its running statistics).</li>
   <li><strong>Learning rate too high.</strong> Loss oscillates wildly or diverges. Start with $10^{-3}$ and use a schedule.</li>
   <li><strong>No early stopping.</strong> The model overfits for 1000 epochs when it should have stopped at 200.</li>
 </ol>
@@ -357,23 +529,36 @@ for epoch in range(500):
 <h2>Try It Yourself</h2>
 
 <div class="try-it">
-  <p><strong>Exercise 8.</strong></p>
+  <p><strong>Exercise 8</strong> (<code>modules/mlfp04/solutions/ex_8/</code>, five
+  PyTorch scripts). The from-scratch HDB network is the worked example above;
+  the exercise applies the training toolkit on synthetic data whose labels
+  are learnable — XOR points and 64×64 "chest-film-style" images in which
+  each finding is a drawn shape:</p>
   <ol>
-    <li>Build a 3-layer neural network from scratch for HDB price prediction.</li>
-    <li>Implement forward pass, backpropagation, and gradient descent.</li>
-    <li>Add dropout (p=0.2) and plot training curves with and without.</li>
-    <li>Add batch normalisation and compare convergence speed.</li>
-    <li>Replace SGD with Adam and compare.</li>
-    <li>Add cosine learning rate scheduling and early stopping.</li>
-    <li>Write one paragraph explaining: how are hidden layers automated feature engineering?</li>
+    <li><code>01_xor_proof.py</code> — a linear model is stuck near 50% on XOR;
+      one hidden layer with ReLU solves it.</li>
+    <li><code>02_activations_init.py</code> — ReLU, GELU, Tanh and SiLU on the
+      same task; zero versus Xavier versus Kaiming initialisation and the
+      fraction of dead units.</li>
+    <li><code>03_cnn_residual.py</code> — a small CNN with batch normalisation
+      and a residual block on the synthetic images.</li>
+    <li><code>04_optimisers_schedulers.py</code> — SGD, momentum, Adam and AdamW,
+      then warmup + cosine annealing.</li>
+    <li><code>05_regularisation_training.py</code> — dropout, batch norm, both,
+      gradient clipping and early stopping; then export the CNN with
+      <code>OnnxBridge(framework="torch")</code>.</li>
   </ol>
+  <p>Stretch: add inverted dropout ($p = 0.2$) to the worked example's NumPy
+  network. Where must the mask be reused in the backward pass? Then write one
+  paragraph explaining how hidden layers are automated feature
+  engineering.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Cross-References</h2>
 
 <ul>
-  <li><strong>Back to 4.7 PIVOT:</strong> matrix factorisation learns linear embeddings. Neural networks learn non-linear ones. Same core idea.</li>
+  <li><strong>Back to 4.7 PIVOT:</strong> matrix factorisation scores a user–item pair with the bilinear product $\mathbf{u}_u^\top\mathbf{v}_i$. A network that feeds the concatenation $[\mathbf{u};\mathbf{v}]$ through a <em>linear</em> layer is weaker than that — a linear map of the concatenation cannot express the product — so it needs a non-linear hidden layer to match and then go beyond MF. Same core idea: embeddings learned by minimising a loss.</li>
   <li><strong>Back to M2 regression:</strong> linear regression is a neural network with zero hidden layers. Adding layers extends the expressiveness.</li>
   <li><strong>Forward to M5:</strong> every architecture (CNN, RNN, Transformer, GAN) is a specialised neural network with different connectivity patterns and the same training toolkit.</li>
 </ul>

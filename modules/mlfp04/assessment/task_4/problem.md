@@ -1,70 +1,55 @@
-# MLFP04 — Task 4: Neural Network Foundations
+# MLFP04 — Task 4: Topics from News Text
 
-**Weight**: 25 marks · **Difficulty**: Hard · **Dataset**: deterministic synthetic
-concentric circles (fixed seed `20260404`, 800 points, 2 features — generated
-inside the task, no file needed)
+**Weight**: 15 marks · **Outcomes**: 4.6 (text cleaning, TF-IDF, topic models by matrix factorisation, coherence, human-readable topics)
+**Data**: `mlfp05/ag_news.parquet` (real news articles, title + lead), loaded with `shared.MLFPDataLoader`. The grader draws its own secret corpora from the AG News files.
 
 ## Scenario
 
-This is the canonical "why hidden layers matter" problem. Two classes form
-concentric rings: class 0 is a small inner ring, class 1 a larger outer ring.
-Both rings are centred on the origin, so they share the same centroid — **no
-straight line can separate them**. A linear model (logistic regression, a
-single-layer perceptron) is stuck near 50% accuracy. A neural network with a
-**hidden layer** carves a curved boundary and solves it.
+A media-monitoring team receives batches of wire articles and wants each
+batch organised into topics automatically, so analysts can skim a topic's
+keywords and read only the articles that matter. The articles arrive as raw
+text: they contain wire-service bylines such as "(Reuters) Reuters -",
+HTML-entity debris such as `#39;` and `quot;`, and the usual function words.
 
-You must train the network through a **kailash-ml Trainable adapter**, not a raw
-PyTorch training loop. The reference uses
-`SklearnTrainable(estimator=MLPClassifier(hidden_layer_sizes=(32, 16), ...))` —
-a multi-layer perceptron driven by the kailash-ml engine. A linear model will
-not pass: the grader independently confirms a linear classifier cannot clear the
-accuracy floor on this data.
+Analysts judge topics in two ways. A topic's keywords must belong together
+(they tend to appear in the same articles), and must say something about the
+articles filed under that topic and not about the rest. The team also knows
+roughly how many broad news sections each batch covers, and expects the
+topics to line up with those sections more than with chance.
 
-Implement `solve() -> dict`.
+## What to submit
 
-## Required pipeline
+`discover_topics(docs, n_topics)` in `starter.py` (signature fixed). `docs`
+is a list of raw article strings; `n_topics` is the number of topics wanted.
+It returns a dict:
 
-1. **Generate** the concentric-circles dataset (helper given in starter).
-2. **Split** deterministically: the first 600 rows are train, the last 200 are
-   test (the helpers `df.head(600)` / `df.tail(200)`).
-3. **Train** a multi-layer perceptron through `SklearnTrainable` — at least one
-   hidden layer, `random_state=SEED`. Call `.fit(train_df)`.
-4. **Predict** on the held-out test rows. The kailash-ml prediction object
-   exposes `.to_polars()` and `.column`; pull the predicted-label column out as
-   integers.
-5. **Score** test accuracy and train accuracy against the true labels.
+| Key          | Meaning                                                                                       |
+| ------------ | --------------------------------------------------------------------------------------------- |
+| `doc_topics` | one int topic id in `[0, n_topics)` per document, in input order                             |
+| `top_words`  | `n_topics` lists of 10 distinct lowercase keywords each, the best description of each topic |
 
-## Output contract — `solve()` returns a `dict` with exactly these keys
+## Acceptance criteria
 
-| Key                | Type        | Meaning                                             |
-| ------------------ | ----------- | --------------------------------------------------- |
-| `test_predictions` | `list[int]` | predicted label (0/1) for each of the 200 test rows |
-| `test_accuracy`    | `float`     | accuracy on the test rows                           |
-| `train_accuracy`   | `float`     | accuracy on the training rows                       |
+The grader draws two secret corpora: a random 3 or 4 of the four AG News
+sections (world, sports, business, science/technology), about 350 raw articles
+each, shuffled, with `n_topics` set to the number of sections. It never passes
+the section labels. On **both** corpora:
 
-`len(test_predictions)` must equal 200, in test-row order.
+- normalised mutual information between `doc_topics` and the hidden sections
+  is at least 0.20;
+- NPMI coherence of every topic's keywords is at least 0.0, and their mean is
+  at least 0.15. NPMI is computed by the grader over the same documents, with
+  document-level co-occurrence of lowercase alphabetic tokens; a keyword pair
+  that never co-occurs scores −1;
+- no keyword appears in the top-10 lists of more than two topics;
+- for every topic, its keywords occur on average at least twice as often in
+  the documents assigned to it as in the other documents.
 
-## Visible sanity checks
-
-- a linear model scores ≈ 0.5–0.6 on this data; your network should reach
-  **≥ 0.90** test accuracy
-- `test_predictions` contains both classes (not all one label)
-- the grader recomputes your accuracy from `test_predictions` — self-reporting a
-  number you did not actually achieve will fail the honesty check
-
-## Grading (10 automated checks, all must pass)
-
-returns a dict · required keys present · `test_predictions` length 200 ·
-predictions are binary 0/1 · predictions use both classes · **grader-recomputed
-test accuracy ≥ 0.90** · self-reported `test_accuracy` matches the grader
-(±0.03) · `train_accuracy` in `[0.90, 1.0]` · problem is certified non-linear
-(class centroids coincide) · **an independent linear classifier scores < 0.70**
-while your model clears 0.90 (proves you built a non-linear model).
+Format, distinctness and keyword checks earn marks only when the section or
+coherence checks pass.
 
 ## Rules
 
-- **kailash-ml Trainable only** — no raw `torch` training loop. The MLP must run
-  through `SklearnTrainable` (or another kailash-ml Trainable).
-- **Polars only** — no pandas.
-- Deterministic — keep the given seed, sizes, split, and `random_state`.
-- The placeholder in `starter.py` fails grading by design.
+- The topic factorisation runs through kailash-ml `DimReductionEngine`.
+  Vectorising text with scikit-learn's feature-extraction tools is allowed.
+- Polars for data handling (no pandas).

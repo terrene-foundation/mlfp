@@ -323,6 +323,11 @@
         <li>Merge two closest clusters</li>
         <li>Repeat until one cluster remains</li>
       </ol>
+      <h3>Divisive (top-down)</h3>
+      <ol style="font-size: 0.85em;">
+        <li>All points = one cluster</li>
+        <li>Split it recursively (e.g., bisecting K-means)</li>
+      </ol>
     </div>
     <div class="col">
       <h3>Linkage Methods</h3>
@@ -342,7 +347,7 @@
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Explain each linkage method with a visual analogy. Ward's is usually the best default. Dendrograms are unique to hierarchical clustering &mdash; they let you see the full merge history and decide k after the fact.
+    Timing: 3 min. Two directions: agglomerative merges bottom-up (the common one, and what scipy's linkage computes); divisive starts with everything in one cluster and splits top-down. Exhaustive divisive splitting is exponential, so in practice each split is heuristic &mdash; bisecting K-means is the usual choice. Explain each linkage method with a visual analogy. Ward's is usually the best default. Dendrograms are unique to hierarchical clustering &mdash; they let you see the full merge history and decide k after the fact.
   </aside>
 </section>
 
@@ -469,12 +474,12 @@
   <h2>Application: Customer Segmentation</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="case-study">
-    <h3 style="color: var(--mlfp-alert);">Singapore Retail Case</h3>
+    <h3 style="color: var(--mlfp-alert);">Singapore E-commerce Case (illustrative)</h3>
     <ul style="font-size: 0.85em;">
-      <li>RFM features: Recency, Frequency, Monetary value</li>
-      <li>K-means identifies 4 segments: loyal, at-risk, new, churned</li>
-      <li>HDBSCAN discovers a 5th micro-segment: seasonal bulk buyers</li>
-      <li>Cluster membership becomes a <strong>feature</strong> for churn prediction (M3 pipeline)</li>
+      <li>RFM-style features: recency, frequency, monetary value (+ tenure, satisfaction, returns)</li>
+      <li><code>churned</code> is an <strong>outcome</strong> &mdash; kept OUT of the clustering features</li>
+      <li>Segments get business names from their profiles, e.g. loyal, lapsing, new</li>
+      <li>Cluster membership then becomes a <strong>feature</strong> for churn prediction (M3 pipeline)</li>
     </ul>
   </div>
   <div class="callout callout-kailash" style="margin-top: 8px;">
@@ -484,42 +489,75 @@
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. This is the key pedagogical link: clustering is not an end in itself. The cluster labels become features for downstream supervised models. This connects back to M3 and forward to the USML spectrum.
+    Timing: 2 min. This is the key pedagogical link: clustering is not an end in itself. The cluster labels become features for downstream supervised models. This connects back to M3 and forward to the USML spectrum. The segment names are illustrative &mdash; the exercise derives its own from cluster profiles. Stress the leakage trap: if the churn label goes into the clustering, the clusters partly encode the answer and the downstream churn model looks better than it is.
   </aside>
 </section>
 
 <section>
-  <h2>Kailash Bridge: AutoMLEngine for Clustering</h2>
+  <h2>Kailash Bridge: ClusteringEngine</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>Theory &rarr; Engine</h3>
     <div class="theory-to-engine">
-      <span>K-means, GMM, HDBSCAN, Spectral, Hierarchical</span>
+      <span>K-means, GMM, DBSCAN, Spectral + choosing K</span>
       <span class="arrow">&rarr;</span>
-      <span><code>AutoMLEngine</code></span>
+      <span><code>ClusteringEngine</code></span>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import AutoMLEngine, AutoMLConfig
+  <pre style="font-size: 0.55em; line-height: 1.3"><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+from kailash_ml.engines.clustering import ClusteringEngine
 
-config = AutoMLConfig(
-    task="clustering",
-    algorithms=["kmeans", "gmm", "hdbscan", "spectral"],
-    metric="silhouette",
-    n_trials=50
-)
+FEATURES = ["total_revenue", "order_count", "avg_order_value",
+            "days_since_last_order", "customer_tenure_days",
+            "satisfaction_score", "num_returns"]  # churned = outcome, excluded
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X = customers.select(FEATURES).drop_nulls().sample(3000, seed=42)
+X = X.select((pl.all() - pl.all().mean()) / pl.all().std())  # standardise
 
-engine = AutoMLEngine(config)
-results = engine.fit(df)
-
-best = results.best_model
-print(f"Best: {best.algorithm}, Silhouette: {best.score:.3f}")
-labels = best.labels           # Hard assignments
-probabilities = best.probas    # Soft assignments (if available)</code></pre>
+engine = ClusteringEngine()  # algorithms: kmeans | gmm | dbscan | spectral
+sweep = engine.sweep_k(X, k_range=range(2, 9), criterion="silhouette")
+fit = engine.fit(X, algorithm="kmeans", n_clusters=sweep.optimal_k)
+print(f"K={fit.n_clusters}  silhouette={fit.silhouette_score:.3f}")</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "AutoMLEngine compares clustering algorithms for you. It runs each one, computes validation metrics, and reports the best. No manual tuning needed."
+    Timing: 2 min. "ClusteringEngine puts four of today's algorithms &mdash; kmeans, gmm, dbscan, spectral &mdash; behind one .fit() call that returns labels, silhouette, Calinski-Harabasz and inertia. sweep_k runs the K sweep you did by hand and reports the optimal K for the criterion you choose." Be honest about scope: Ward/agglomerative and HDBSCAN are not in the engine &mdash; the exercise uses scipy and hdbscan for those. On a 3,000-customer sample this picks K=3 with silhouette about 0.18: real customer data does not form crisp clusters, which is why business profiling matters more than the score. This is the engine the module assessment's clustering task uses.
+  </aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge: AutoMLEngine Search</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre style="font-size: 0.55em; line-height: 1.3"><code class="language-python">import asyncio
+from kailash_ml import AutoMLEngine
+from kailash_ml.automl import AutoMLConfig, ParamSpec, Trial, TrialOutcome
+
+config = AutoMLConfig(task_type="clustering", metric_name="silhouette",
+                      direction="maximize", search_strategy="grid",
+                      max_trials=12, agent=False, max_llm_cost_usd=1.0)
+space = [ParamSpec(name="algorithm", kind="categorical", choices=("kmeans", "gmm")),
+         ParamSpec(name="n_clusters", kind="int", low=3, high=8)]
+
+async def trial_fn(trial: Trial) -> TrialOutcome:  # YOU own the trainer
+    r = engine.fit(X, algorithm=trial.params["algorithm"],
+                   n_clusters=int(trial.params["n_clusters"]))
+    return TrialOutcome(trial_number=trial.trial_number, params=trial.params,
+                        metric=float(r.silhouette_score),
+                        metric_name="silhouette", direction="maximize")
+
+automl = AutoMLEngine(config=config, tenant_id="mlfp04", actor_id="student")
+result = asyncio.run(automl.run(space=space, trial_fn=trial_fn))
+print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
+  <div class="callout callout-kailash" style="margin-top: 4px; font-size: 0.75em;">
+    AutoMLEngine proposes trials, enforces the trial / time / cost budget and keeps the audit record. <code>agent=False</code>: no LLM is called.
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Timing: 2 min. Continues from the previous slide (same engine and X). "AutoMLEngine does not know what clustering is &mdash; you declare the search space and a trial function that trains one candidate and reports its metric. The engine runs the search, enforces budgets and records every trial." agent=True would let an LLM propose trials; that costs money and is non-deterministic, so it needs a double opt-in (the flag plus a cost cap). Without a governance engine or database attached, the engine logs that admission checks are skipped and keeps trials in memory &mdash; fine for class, not for production. This is exactly the search in Exercise 1.5.
   </aside>
 </section>
 
@@ -527,19 +565,20 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
   <h2>Exercise 4.1: Customer Segmentation</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Segment retail customers using RFM features.
+    <strong>Task:</strong> Segment Singapore e-commerce customers (behaviour features; <code>churned</code> excluded).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Apply K-means, hierarchical (with dendrogram), and HDBSCAN</li>
-      <li>Evaluate with silhouette score and Davies-Bouldin index</li>
+      <li>1.1 K-means++: choose K with elbow, silhouette and the gap statistic (1-SE rule)</li>
+      <li>1.2 Hierarchical with four linkages + Ward dendrogram; 1.3 DBSCAN + HDBSCAN</li>
+      <li>1.4 Spectral on two moons: spectral recovers them (ARI 1.0) while silhouette prefers K-means</li>
+      <li>1.5 Silhouette, DB, CH + ARI/NMI agreement; AutoMLEngine search over algorithm &times; K</li>
       <li>Interpret clusters with business meaning (not just "cluster 0, cluster 1")</li>
-      <li>Use AutoMLEngine to compare all algorithms programmatically</li>
     </ul>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Point students to the exercise notebook. Emphasise: the assessment criteria require business interpretation &mdash; not just running the code.
+    Timing: 1 min. Exercise 1 is a directory of five files (solutions/ex_1/01_kmeans.py &hellip; 05_evaluation_profiling.py). Point out the 1.4 lesson: silhouette is a Euclidean, convexity-loving score, so it can rank the WRONG answer higher on non-convex shapes &mdash; always look at the clusters too. Emphasise: the assessment criteria require business interpretation &mdash; not just running the code.
   </aside>
 </section>
 
@@ -664,13 +703,13 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
     <li>Soft assignments = posterior responsibilities $r_{nk}$</li>
   </ul>
   <div class="callout callout-advanced" style="margin-top: 12px;">
-    <strong>EM as a general template:</strong> EM works for ANY latent variable model, not just Gaussians. It is the backbone of LDA (4.6), matrix factorisation (4.7), and the training of neural networks (4.8).
+    <strong>EM as a general template:</strong> EM applies to latent-variable models beyond Gaussians &mdash; e.g. LDA (4.6, via variational EM). ALS in 4.7 shares the <em>alternating</em> structure but is not EM; neural networks (4.8) are trained by gradient descent.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. This is the big picture: EM is not specific to GMMs. It is a universal optimisation algorithm for models with hidden variables. We will see it again in LDA and implicitly in backpropagation.
+    Timing: 2 min. This is the big picture: EM is not specific to GMMs. It is a template for maximum-likelihood fitting when some variables are hidden: guess the hidden variables (E), refit the parameters (M), repeat. We will see a variational version in LDA. Be careful with the analogies: ALS (4.7) also alternates between two easy sub-problems, but it is block-coordinate least squares, not EM; and backpropagation is gradient descent, not EM.
   </aside>
 </section>
 
@@ -682,7 +721,7 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
     <ul style="font-size: 0.85em;">
       <li>GMM: each component is a Gaussian &rarr; soft assignment</li>
       <li>MoE: each component is a <strong>neural network expert</strong> &rarr; gating network selects which expert processes which input</li>
-      <li>Modern LLM architectures (e.g., GPT-4 class) use Sparse MoE</li>
+      <li>Sparse MoE in LLMs: e.g. the open-weight Mixtral 8x7B routes each token to 2 of 8 experts per layer</li>
     </ul>
   </div>
   <div class="callout callout-advanced" style="margin-top: 8px;">
@@ -692,7 +731,7 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Advanced layer only. The connection: GMMs assign each point to components probabilistically. MoE assigns each token to expert networks probabilistically. Same math, different scale.
+    Timing: 2 min. Advanced layer only. The connection: GMMs assign each point to components probabilistically. MoE assigns each token to expert networks probabilistically. Same math, different scale. Use an open model with a published architecture as the example (Mixtral 8x7B: 8 experts, top-2 routing, so only part of the weights is active per token); the architectures of closed models are not disclosed, so do not state them as fact.
   </aside>
 </section>
 
@@ -703,9 +742,9 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
     <strong>Task:</strong> Implement the EM algorithm in ~20 lines on 2D synthetic data (3 Gaussians).
     <ul style="font-size: 0.85em; margin-top: 8px;">
       <li>Implement E-step and M-step from the formulas</li>
-      <li>Verify: responsibilities sum to 1 for each point</li>
-      <li>Compare your implementation with GMM on real e-commerce data</li>
-      <li>Visualise soft assignments (colour by max responsibility, opacity by confidence)</li>
+      <li>Verify: responsibilities sum to 1; log-likelihood never decreases; matches sklearn's GMM on the same data</li>
+      <li>On real e-commerce customers: choose K by BIC/AIC, compare covariance types</li>
+      <li>Read soft assignments: boundary customers, confidence, Mixture-of-Experts gating</li>
     </ul>
   </div>
   <div class="slide-footer">
@@ -800,8 +839,8 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
   <h2>Reconstruction Error</h2>
   <span class="marker marker-theory">Theory</span>
   <div class="equation-box">
-    $$\|\mathbf{X} - \hat{\mathbf{X}}\|^2 = \sum_{i=k+1}^{p} \lambda_i$$
-    <div class="annotation">Information lost = sum of discarded eigenvalues</div>
+    $$\|\mathbf{X} - \hat{\mathbf{X}}\|_F^2 = \sum_{i=k+1}^{p} \sigma_i^2 = (n-1)\sum_{i=k+1}^{p} \lambda_i$$
+    <div class="annotation">Centred $\mathbf{X}$ ($n$ rows): $\sigma_i$ = singular values, $\lambda_i$ = covariance eigenvalues. Information lost = the discarded variance.</div>
   </div>
   <div class="callout callout-foundations" style="margin-top: 12px;">
     <strong>Trade-off:</strong> fewer components = more compression but more information loss. Choose $k$ to retain (e.g.) 95% of total variance.
@@ -824,7 +863,7 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
     <li>Captures nonlinear structure that PCA misses</li>
   </ul>
   <div class="callout callout-theory" style="margin-top: 12px;">
-    <strong>Limitation:</strong> No explicit loadings &mdash; harder to interpret. No inverse transform. Use when visualisation or downstream accuracy matters more than interpretability.
+    <strong>Limitation:</strong> No explicit loadings &mdash; harder to interpret. Only an approximate, learned inverse (pre-image; sklearn <code>fit_inverse_transform=True</code>). Kernel matrix is $O(n^2)$ memory. Use when visualisation or downstream accuracy matters more than interpretability.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
@@ -853,7 +892,7 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
         <li>Preserves local structure well</li>
         <li>Distorts global structure</li>
         <li>Non-deterministic</li>
-        <li><strong>NOT for feature extraction</strong> (no inverse transform)</li>
+        <li><strong>NOT for feature extraction</strong> (cannot embed new points)</li>
       </ul>
     </div>
   </div>
@@ -870,10 +909,10 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <table>
     <tr><th></th><th>t-SNE</th><th>UMAP</th></tr>
-    <tr><td>Speed</td><td>Slow ($O(n^2)$)</td><td>Fast ($O(n \log n)$)</td></tr>
-    <tr><td>Global structure</td><td>Distorted</td><td>Better preserved</td></tr>
-    <tr><td>Deterministic</td><td>No</td><td>Yes (with seed)</td></tr>
-    <tr><td>Feature extraction</td><td>No inverse</td><td>Has inverse &mdash; can be used as features</td></tr>
+    <tr><td>Speed</td><td>Slow (Barnes-Hut $O(n \log n)$, large constant)</td><td>Fast (approx. $O(n \log n)$)</td></tr>
+    <tr><td>Global structure</td><td>Distorted</td><td>Better layout &mdash; but sizes / gaps still not metric</td></tr>
+    <tr><td>Deterministic</td><td>Only with a fixed seed</td><td>Only with a fixed seed</td></tr>
+    <tr><td>Feature extraction</td><td>No transform for new points</td><td><code>.transform()</code> embeds new points &mdash; usable as features</td></tr>
     <tr><td>Scalability</td><td>~10k points</td><td>~1M+ points</td></tr>
   </table>
   <div class="callout callout-kailash" style="margin-top: 8px;">
@@ -883,7 +922,7 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. UMAP is the clear winner in practice. It is faster, more scalable, and preserves more global structure. It also appears in BERTopic (4.6) as a preprocessing step.
+    Timing: 2 min. UMAP is the usual default in practice. It is faster, more scalable, gives a more faithful global layout than t-SNE, and can embed new rows with .transform(). But warn students: in a UMAP plot, cluster sizes and the distances BETWEEN clusters are still not quantitatively meaningful &mdash; read neighbourhoods, not gaps. Exact t-SNE is O(n&sup2;); sklearn's default Barnes-Hut is O(n log n) but still much slower than UMAP. Both are stochastic; fix random_state to reproduce a plot. UMAP also appears in BERTopic (4.6) as a preprocessing step.
   </aside>
 </section>
 
@@ -917,7 +956,7 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
     <li>Methods: scree plot (variance threshold), correlation dimension, MLE estimators</li>
   </ul>
   <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Practical heuristic:</strong> Choose $k$ components that explain $\geq$ 95% cumulative variance. This gives a good estimate of intrinsic dimensionality.
+    <strong>Practical heuristic:</strong> Choose $k$ components that explain $\geq$ 95% cumulative variance. This is a <em>linear</em> estimate &mdash; a curved manifold may need fewer dimensions (nearest-neighbour MLE estimators catch this).
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
@@ -928,22 +967,54 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
 </section>
 
 <section>
+  <h2>Kailash Bridge: DimReductionEngine</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>PCA, NMF, t-SNE, UMAP</span>
+      <span class="arrow">&rarr;</span>
+      <span><code>DimReductionEngine</code></span>
+    </div>
+  </div>
+  <pre style="font-size: 0.55em; line-height: 1.3"><code class="language-python">from kailash_ml.engines.dim_reduction import DimReductionEngine
+
+# X: the standardised customer features from the 4.1 bridge slide
+reducer = DimReductionEngine()  # algorithms: pca | nmf | tsne | umap
+pca = reducer.reduce(X, algorithm="pca", n_components=5)
+print(pca.explained_variance_ratio)   # the scree plot's numbers
+print(pca.reconstruction_error)       # what the dropped components cost
+
+emb = reducer.reduce(X, algorithm="umap", n_components=2, seed=42)
+xy = emb.transformed                  # 2-D coordinates to plot</code></pre>
+  <div class="callout callout-warning" style="margin-top: 4px; font-size: 0.75em;">
+    Kernel PCA, Isomap and LLE are not in the engine &mdash; use scikit-learn for those (Exercise 3.2 / 3.5).
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Timing: 2 min. "One reduce() call, four algorithms. The result object carries the embedding, the explained-variance ratio and the reconstruction error you computed by hand from the SVD." On the 3,000-customer sample the first five PCs explain about 26%, 23%, 15%, 14% and 14% of the variance &mdash; there is no single dominant axis, so do not expect a sharp scree elbow. The same engine with algorithm="nmf" does topic extraction in 4.6. The assessment's dimensionality-reduction and topic tasks use this engine.
+  </aside>
+</section>
+
+<section>
   <h2>Exercise 4.3: PCA, t-SNE &amp; UMAP</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Apply PCA to e-commerce data. Compare t-SNE vs UMAP.
+    <strong>Task:</strong> Reduce Singapore e-commerce customer features (<code>churned</code> excluded).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Compute PCA, interpret first 3 components via loadings</li>
-      <li>Plot scree curve; choose $k$ for 95% variance</li>
-      <li>Compare t-SNE (perplexity 5, 30, 50) vs UMAP (n_neighbours 5, 15, 50)</li>
-      <li>Demonstrate reconstruction error trade-off</li>
+      <li>3.1 PCA via SVD: scree, loadings for the first components, reconstruction trade-off</li>
+      <li>3.2 Kernel PCA: linear vs RBF vs polynomial, sweep RBF gamma</li>
+      <li>3.3 t-SNE at perplexity 5, 15, 30, 50; 3.4 UMAP at four (n_neighbors, min_dist) settings + <code>.transform()</code> on held-out rows</li>
+      <li>3.5 Rank every reducer by <strong>trustworthiness</strong> (neighbourhood preservation) and estimate intrinsic dimension</li>
     </ul>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Assessment: scree plot shows variance explained; loadings interpreted with domain meaning; hyperparameter sensitivity explored.
+    Timing: 1 min. Assessment: scree plot shows variance explained; loadings interpreted with domain meaning; hyperparameter sensitivity explored. Why trustworthiness and not silhouette? Clustering an embedding and scoring the clusters rewards methods that tear the data into blobs (t-SNE does this by design); trustworthiness asks the right question &mdash; are a point's neighbours in the embedding also its neighbours in the original space? The intrinsic-dimension estimator (Levina&ndash;Bickel nearest-neighbour MLE) returns about 8 on 8-dimensional synthetic data, a useful sanity check before using it on the customers.
   </aside>
 </section>
 
@@ -1023,12 +1094,13 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
     <li>Density-based: compares a point's density to its neighbours'</li>
     <li>Detects anomalies in <strong>varying-density</strong> data where Isolation Forest may struggle</li>
     <li>More expensive: $O(n^2)$ for naive implementation</li>
+    <li><strong>Blind spot (masking):</strong> a tight, dense group of anomalies with $\geq k$ members looks <em>normal</em> to LOF &mdash; pick $k$ larger than the biggest group you must catch</li>
   </ul>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. LOF is the density-based complement to Isolation Forest. Use LOF when the data has regions of very different density.
+    Timing: 2 min. LOF is the density-based complement to Isolation Forest. Use LOF when the data has regions of very different density. The trap students must remember: LOF compares a point with its k nearest neighbours. If a fraud ring submits many near-identical applications, and the ring has at least k members, each one's k neighbours are other ring members &mdash; equally dense &mdash; so its density ratio is about 1 (or below) and LOF scores it as normal. k is therefore a domain decision: it must exceed the largest coordinated group you want to catch. Exercise 4.3 sweeps n_neighbors on a 40-member injected application ring and settles on k=50 from that ring-size assumption.
   </aside>
 </section>
 
@@ -1038,8 +1110,8 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
   <ul>
     <li>No single detector is best everywhere</li>
     <li>Normalise scores to [0, 1] across detectors</li>
-    <li>Combine: simple average, weighted average, or max-vote</li>
-    <li>Blended scores are more robust than any individual method</li>
+    <li>Combine: simple average, weighted average, rank average, or max-vote</li>
+    <li>Blends are often more robust &mdash; but not guaranteed: a weak detector can drag the blend below its best member</li>
   </ul>
   <div class="callout callout-kailash" style="margin-top: 12px;">
     <strong>Pattern:</strong> Z-score catches distributional outliers. Isolation Forest catches multivariate anomalies. LOF catches density anomalies. Together: comprehensive coverage.
@@ -1048,36 +1120,39 @@ probabilities = best.probas    # Soft assignments (if available)</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "This is ensemble thinking applied to anomaly detection. The same principle from M3's ensemble methods, but for unsupervised outlier detection."
+    Timing: 2 min. "This is ensemble thinking applied to anomaly detection. The same principle from M3's ensemble methods, but for unsupervised outlier detection." A blend helps when detectors make DIFFERENT mistakes and each is better than chance on what it sees; averaging in a detector that is blind to an anomaly type dilutes the ones that catch it. Always compare the blend with its best single member on a labelled review sample.
   </aside>
 </section>
 
 <section>
-  <h2>Kailash Bridge: EnsembleEngine for Anomaly Detection</h2>
+  <h2>Kailash Bridge: AnomalyDetectionEngine</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>Theory &rarr; Engine</h3>
     <div class="theory-to-engine">
-      <span>Score blending, stacking, bagging, boosting</span>
+      <span>Isolation Forest, LOF, score blending</span>
       <span class="arrow">&rarr;</span>
-      <span><code>EnsembleEngine</code></span>
+      <span><code>AnomalyDetectionEngine</code></span>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import EnsembleEngine
+  <pre style="font-size: 0.55em; line-height: 1.3"><code class="language-python">from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
 
-ensemble = EnsembleEngine()
-ensemble.add("iforest", IsolationForest(contamination=0.05))
-ensemble.add("lof", LocalOutlierFactor(n_neighbors=20))
-ensemble.add("zscore", ZScoreDetector(threshold=3.0))
+# X: a polars frame of numeric features (e.g. the 4.1 customer features)
+detector = AnomalyDetectionEngine()  # isolation_forest | lof | one_class_svm
+iso = detector.detect(X, algorithm="isolation_forest", contamination=0.01)
+print(iso.n_anomalies)               # iso.scores: [0, 1], higher = more anomalous
 
-# Blend scores with automatic normalisation
-blended = ensemble.blend(df, method="weighted_average")
-anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
+blend = detector.ensemble_detect(X, algorithms=["isolation_forest", "lof"],
+                                 contamination=0.01, voting="score_average")
+top = blend.combined_scores          # normalised scores, averaged</code></pre>
+  <div class="callout callout-warning" style="margin-top: 4px; font-size: 0.75em;">
+    <code>EnsembleEngine.blend()</code> / <code>.stack()</code> are <strong>supervised</strong> classifier ensembles (they need a target). Use them only once analysts have labelled a review sample &mdash; as a second stage over the detector scores (Exercise 4.4).
+  </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "EnsembleEngine handles normalisation and blending. You focus on choosing the detectors and interpreting the results."
+    Timing: 2 min. "AnomalyDetectionEngine fits the detector, flips sklearn's sign convention so that higher always means more anomalous, normalises the scores to [0, 1] and applies the contamination threshold." ensemble_detect runs several detectors and combines them: voting="score_average" averages the normalised scores (the blend from the previous slide); the default "majority" votes on labels. Contamination only moves the cut-off &mdash; it does not change the ranking. Do NOT reach for EnsembleEngine.blend to blend anomaly scores: blend() soft- or hard-votes fitted CLASSIFIERS against a target column and does its own train/test split. It becomes useful once a labelled review sample exists; Exercise 4.4 trains a logistic regression and a random forest on the detector scores and blends / stacks them that way. This engine is the one the assessment's anomaly task uses.
   </aside>
 </section>
 
@@ -1108,27 +1183,27 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Connect to M3 drift monitoring: "Anomaly detection on model inputs is how you detect data drift in production."
+    Timing: 2 min. Connect to M3 drift monitoring: anomaly detection flags individual unusual rows, while drift monitoring compares whole distributions &mdash; kailash-ml's DriftMonitor (M3.8) uses PSI and KS tests against a reference set, not an anomaly detector. A rising anomaly rate on live inputs is a useful early warning that complements it.
   </aside>
 </section>
 
 <section>
-  <h2>Exercise 4.4: Financial Anomaly Detection</h2>
+  <h2>Exercise 4.4: Credit-Application Anomaly Detection</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Detect anomalies in financial transaction data.
+    <strong>Task:</strong> Screen 20,000 real Singapore credit applications with 200 injected, labelled anomalies (global, "synthetic identity", application ring).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Apply Z-score, Isolation Forest, and LOF separately</li>
-      <li>Blend scores using EnsembleEngine</li>
-      <li>Compare: which transactions are flagged by all three vs only one?</li>
-      <li>Business interpretation: true anomalies vs false positives?</li>
+      <li>4.1 Z-score and IQR (+ winsorisation); 4.2 Isolation Forest with a contamination sweep</li>
+      <li>4.3 LOF: sweep <code>n_neighbors</code>, see the masking trap on the ring</li>
+      <li>4.4 Blend: equal, AUC-weighted, rank, <code>ensemble_detect</code>; then <code>EnsembleEngine.blend</code>/<code>.stack</code> on a labelled review sample</li>
+      <li>Which anomaly type does each detector catch? True anomalies vs false positives?</li>
     </ul>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Assessment: multiple methods applied and compared; blended score improves over individual methods; business interpretation provided.
+    Timing: 1 min. The normal rows are real records from the course's credit-scoring dataset; the anomalies are injected with known types so detectors can be scored honestly (AUC-ROC / AUC-PR per type). Assessment: multiple methods applied and compared; blends compared against the best single detector (a blend does not win automatically); business interpretation provided. Remind students that "statistically unusual" and "will default" are different questions.
   </aside>
 </section>
 
@@ -1170,7 +1245,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
   <table>
     <tr><th></th><th>Apriori</th><th>FP-Growth</th></tr>
     <tr><td>Strategy</td><td>Generate candidates, prune by min support</td><td>Compress into FP-tree, mine directly</td></tr>
-    <tr><td>Passes</td><td>Multiple passes over data</td><td>Two passes (build tree, mine)</td></tr>
+    <tr><td>Passes</td><td>One pass over data per itemset size</td><td>Two passes (count items, build tree); then mine the tree</td></tr>
     <tr><td>Speed</td><td>Slow for large itemsets</td><td>Much faster &mdash; no candidate generation</td></tr>
     <tr><td>Memory</td><td>Many candidates in memory</td><td>Compact tree representation</td></tr>
   </table>
@@ -1234,9 +1309,9 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
   <h2>Exercise 4.5: Market Basket Analysis</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Analyse Singapore retail transaction data.
+    <strong>Task:</strong> Analyse 2,500 synthetic Singapore retail baskets (planted product bundles + impulse buys).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Implement Apriori and FP-Growth; find top association rules</li>
+      <li>Implement Apriori from scratch; run FP-Growth (mlxtend) and check both find the same itemsets</li>
       <li>Compute support, confidence, and lift for each rule</li>
       <li>Interpret business meaning: which rules are actionable?</li>
       <li>Create binary features from top rules; test if they improve a classification model</li>
@@ -1246,7 +1321,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Assessment: rules discovered with appropriate support threshold; business interpretation provided; rules used as features improve supervised model.
+    Timing: 1 min. Assessment: rules discovered with appropriate support threshold; business interpretation provided; rule features tested against a product-presence baseline. In 5.4 the prediction target is a shopper's NEXT trip, so it is not a function of the baseline features (the baseline reaches an AUC of about 0.69, not a trivial 1.0) &mdash; whether rule features add signal on top is a genuine empirical question, and "no lift" is a valid finding.
   </aside>
 </section>
 
@@ -1352,12 +1427,13 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <li>Generative model: assumes documents were produced by sampling topics, then words</li>
     <li>Inference: reverse the process to discover topics</li>
     <li>Output: per-document topic proportions &mdash; these are <strong>features</strong></li>
+    <li>Fit on raw word <strong>counts</strong> (not TF-IDF); choose $K$ by <strong>held-out</strong> perplexity</li>
   </ul>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. "LDA is like a probabilistic clustering of documents. Each document belongs to multiple topics with probabilities &mdash; exactly like GMM's soft assignments."
+    Timing: 3 min. "LDA is like a probabilistic clustering of documents. Each document belongs to multiple topics with probabilities &mdash; exactly like GMM's soft assignments." LDA's generative story draws whole word tokens, so it expects integer counts; feeding it TF-IDF weights breaks that assumption. Perplexity measured on the training documents always improves with more topics &mdash; measure it on held-out documents. Inference: collapsed Gibbs sampling integrates out the topic and word distributions and samples each word's topic; variational inference instead fits factorised approximate posteriors (sklearn uses variational Bayes).
   </aside>
 </section>
 
@@ -1376,9 +1452,9 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <div class="col">
       <h3>BERTopic</h3>
       <ul style="font-size: 0.85em;">
-        <li>Transformer embeddings + UMAP + HDBSCAN + c-TF-IDF</li>
+        <li>Transformer embeddings + UMAP (~5-D) + HDBSCAN + c-TF-IDF</li>
         <li>Captures semantic meaning, not just word counts</li>
-        <li>State of the art for topic modelling</li>
+        <li>Strong modern default; one topic per document</li>
       </ul>
     </div>
   </div>
@@ -1389,7 +1465,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. NMF is matrix factorisation applied to text &mdash; same idea as PCA and collaborative filtering. BERTopic combines everything from this module into one pipeline.
+    Timing: 3 min. NMF is matrix factorisation applied to text &mdash; same idea as PCA and collaborative filtering. BERTopic combines everything from this module into one pipeline. BERTopic's UMAP step reduces to about 5 dimensions by default (2-D is only for plotting), and HDBSCAN assigns each document to one topic (or to noise) &mdash; unlike LDA's mixed membership. The sentence-embedding model is a configuration choice; the exercise reads it from the TOPIC_EMBED_MODEL environment variable.
   </aside>
 </section>
 
@@ -1422,13 +1498,13 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <li>Common targets: positive/negative/neutral, 1-5 star ratings</li>
   </ul>
   <div class="callout callout-kailash" style="margin-top: 12px;">
-    <strong>USML connection:</strong> Topic proportions from LDA/BERTopic become <em>features</em> for sentiment classification. Unsupervised topic discovery feeds supervised prediction.
+    <strong>USML connection:</strong> word vectors learned from <em>unlabelled</em> text (co-occurrence &rarr; PPMI &rarr; SVD) are averaged into document <em>features</em> for a supervised sentiment classifier. Unsupervised discovery feeds supervised prediction.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Quick overview. Sentiment analysis is the supervised side of NLP. The USML topics become input features for the classifier.
+    Timing: 2 min. Quick overview. Sentiment analysis is the supervised side of NLP. In Exercise 6.5 the unsupervised part learns word vectors from the training sentences' text alone, ignoring their labels (PPMI + SVD &mdash; the factorisation Word2Vec implicitly performs); the supervised part then trains on the human labels of those movie-review sentences (SST-2) and is tested on unseen sentences against a word-list lexicon and a TF-IDF baseline. Labels must come from people, not from a lexicon applied to the same text &mdash; otherwise the classifier just relearns the lexicon. Topic proportions can play the same role as features.
   </aside>
 </section>
 
@@ -1436,12 +1512,12 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
   <h2>Exercise 4.6: Topic Modelling &amp; Sentiment</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Extract topics from Singapore news articles.
+    <strong>Task:</strong> Extract topics from a deduplicated AG News corpus (world, sports, business, sci/tech).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Apply TF-IDF + NMF, LDA, and BERTopic</li>
-      <li>Compare topic quality using NPMI coherence</li>
+      <li>6.1 TF-IDF and BM25 retrieval; 6.2 NMF on TF-IDF; 6.3 LDA on counts (held-out perplexity); 6.4 BERTopic</li>
+      <li>Compare topic quality with NPMI coherence and against the human section labels</li>
       <li>Assign human-readable labels to discovered topics</li>
-      <li>Classify customer review sentiment using topic features</li>
+      <li>6.5 Sentiment: PPMI + SVD word vectors, trained on human-labelled SST-2 sentences</li>
     </ul>
   </div>
   <div class="slide-footer">
@@ -1476,7 +1552,8 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
       <ul style="font-size: 0.85em;">
         <li>Recommend items similar to what user liked</li>
         <li>Uses item features (genre, price, description)</li>
-        <li>No cold-start for items (if features exist)</li>
+        <li>No cold-start for new items (if features exist)</li>
+        <li>Still cold for brand-new <em>users</em> (no profile yet)</li>
       </ul>
     </div>
     <div class="col">
@@ -1503,7 +1580,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <tr><th></th><th>User-Based CF</th><th>Item-Based CF</th></tr>
     <tr><td>Find similar...</td><td>Users</td><td>Items</td></tr>
     <tr><td>Recommend...</td><td>What similar users liked</td><td>Items similar to what user liked</td></tr>
-    <tr><td>Cold start</td><td>Hard for new users</td><td>Hard for new items</td></tr>
+    <tr><td>Cold start</td><td colspan="2">Both fail for brand-new users AND brand-new items (no ratings to compare)</td></tr>
     <tr><td>Stability</td><td>Changes as user base grows</td><td>More stable over time</td></tr>
     <tr><td>Scale</td><td>Expensive with many users</td><td>Expensive with many items</td></tr>
   </table>
@@ -1511,7 +1588,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. In practice, item-based CF is more common because item relationships are more stable than user relationships.
+    Timing: 2 min. In practice, item-based CF is more common because item relationships are more stable than user relationships. Cold start hits both: a new user has no ratings to find neighbours or to score items against, and a new item has no co-raters, so neither similarity can be computed. Content features fix the new-item case; new users need onboarding questions or popularity fallbacks.
   </aside>
 </section>
 
@@ -1544,10 +1621,11 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
   <div class="derivation-step">
     <div class="step-label">Alternating optimisation</div>
     <ol style="font-size: 0.9em;">
-      <li>Fix $V$, solve for $U$: $\;\mathbf{U} = (\mathbf{V}^T\mathbf{V} + \lambda \mathbf{I})^{-1} \mathbf{V}^T \mathbf{R}^T$</li>
-      <li>Fix $U$, solve for $V$: $\;\mathbf{V} = (\mathbf{U}^T\mathbf{U} + \lambda \mathbf{I})^{-1} \mathbf{U}^T \mathbf{R}$</li>
+      <li>Fix $V$; for each user $u$: $\;\mathbf{u}_u = (\mathbf{V}_{\Omega_u}^T\mathbf{V}_{\Omega_u} + \lambda \mathbf{I})^{-1} \mathbf{V}_{\Omega_u}^T \mathbf{r}_{u,\Omega_u}$</li>
+      <li>Fix $U$; for each item $i$: $\;\mathbf{v}_i = (\mathbf{U}_{\Omega_i}^T\mathbf{U}_{\Omega_i} + \lambda \mathbf{I})^{-1} \mathbf{U}_{\Omega_i}^T \mathbf{r}_{\Omega_i,i}$</li>
       <li>Repeat until convergence</li>
     </ol>
+    <p class="small muted" style="margin: 4px 0 0;">$\Omega_u$ = items user $u$ rated; $\mathbf{V}_{\Omega_u}$ = their rows of $V$. Only observed ratings enter &mdash; missing ones are not zeros.</p>
   </div>
   <div class="callout callout-foundations" style="margin-top: 12px;">
     <strong>Why ALS?</strong> The joint problem $\min_{U,V}$ is non-convex. But fixing one and solving the other is a least-squares problem (convex, closed-form). Alternating makes progress each step.
@@ -1556,7 +1634,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. ALS is to matrix factorisation what EM is to GMMs &mdash; alternate between two steps, each of which is easy, until convergence.
+    Timing: 3 min. ALS has the same rhythm as EM for GMMs &mdash; alternate between two steps, each of which is easy, until convergence &mdash; but it is block-coordinate least squares, not EM. Point at the subscripts: each user's vector is a small ridge regression on just the items that user rated. Writing it densely as (V&#7488;V + &lambda;I)&#8315;&sup1;V&#7488;R&#7488; would treat every missing rating as a zero rating, which is a different (and wrong) objective for explicit ratings. Exercise 7.4 also adds global, user and item biases.
   </aside>
 </section>
 
@@ -1577,9 +1655,9 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
       <h3>Hybrid Systems</h3>
       <ul style="font-size: 0.85em;">
         <li>Combine content-based + collaborative</li>
-        <li>Content features solve cold-start</li>
+        <li>Content features solve <em>item</em> cold-start</li>
         <li>CF captures latent preferences</li>
-        <li>Most production systems are hybrid</li>
+        <li>Tune blend weights on a validation split, never on the test set</li>
       </ul>
     </div>
   </div>
@@ -1625,7 +1703,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
   <h2>Visualising Learned Embeddings</h2>
   <span class="marker marker-foundations">Foundations</span>
   <ul>
-    <li>Project user/item embeddings to 2D using UMAP (4.3)</li>
+    <li>Project user/item embeddings to 2D with PCA (as in Exercise 7.4) or UMAP (4.3)</li>
     <li>Similar items cluster together in embedding space</li>
     <li>Similar users cluster together in embedding space</li>
     <li>The latent dimensions often correspond to interpretable concepts (genre, price range, quality)</li>
@@ -1637,7 +1715,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show a UMAP projection of item embeddings. "Look: comedy movies cluster together, action movies cluster together. Nobody told the algorithm about genres &mdash; it discovered them from ratings."
+    Timing: 2 min. Show the 2D projection of item embeddings from Exercise 7.4. On real catalogues this is where, say, comedy films cluster together and action films together &mdash; nobody told the algorithm about genres; it discovered them from ratings. The exercise data is synthetic with known true taste factors, so students can check how well ALS recovered them.
   </aside>
 </section>
 
@@ -1645,11 +1723,11 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
   <h2>Exercise 4.7: Recommender Systems</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Build recommender system on Singapore retail data.
+    <strong>Task:</strong> Recommend on a synthetic e-commerce rating matrix (300 users &times; 120 items; 10 brand-new items held out).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Implement user-based CF, item-based CF, and matrix factorisation (ALS)</li>
-      <li>Compare recommendation quality across approaches</li>
-      <li>Visualise learned embeddings using UMAP</li>
+      <li>Content-based, user-based CF, item-based CF, and biased matrix factorisation (ALS)</li>
+      <li>Hybrid with weights tuned on validation; compare RMSE, precision@k, MAP against no-skill baselines</li>
+      <li>Visualise learned embeddings (2D PCA projection)</li>
       <li>Articulate THE PIVOT: how does optimisation discover features?</li>
     </ul>
   </div>
@@ -1657,7 +1735,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Assessment: all three approaches implemented; embeddings visualised (2D projection shows meaningful clusters); the pivot concept articulated in writing.
+    Timing: 1 min. Assessment: all approaches implemented; embeddings visualised (2D projection shows meaningful clusters); the pivot concept articulated in writing. Insist on the baselines (global mean and item mean): a recommender that cannot beat them has learned nothing. Only content-based filtering can score the brand-new items; none of the methods can serve a brand-new user.
   </aside>
 </section>
 
@@ -1762,13 +1840,13 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <li>Add more hidden layers &rarr; model "writes its own parametric function"</li>
   </ul>
   <div class="callout callout-theory" style="margin-top: 12px;">
-    <strong>Universal approximation theorem:</strong> A network with 2+ hidden layers and nonlinear activations can represent ANY continuous function (given enough neurons).
+    <strong>Universal approximation theorem:</strong> ONE hidden layer with a non-polynomial activation and enough units can <em>approximate</em> any continuous function on a bounded (compact) domain to any accuracy. Depth buys parameter efficiency, not extra expressive power.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "Linear regression is a neural network with no hidden layers. Everything you learned in M3 is a special case. Adding hidden layers adds automatic feature engineering."
+    Timing: 2 min. "Linear regression is a neural network with no hidden layers. Everything you learned in M3 is a special case. Adding hidden layers adds automatic feature engineering." On the theorem (Cybenko 1989, Hornik 1991): one hidden layer is enough in principle, but it may need an impractically large number of units, and the theorem says nothing about whether gradient descent will find those weights or how well they generalise. Deeper networks can represent many functions with far fewer parameters &mdash; that is why we stack layers. Exercise 8.1 shows the smallest case: XOR, which no linear model can fit, is solved by a single hidden layer.
   </aside>
 </section>
 
@@ -1836,11 +1914,14 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
 <section>
   <h2>Activation Functions</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <table style="font-size: 0.68em;">
+  <table style="font-size: 0.58em;">
     <tr><th>Function</th><th>Formula</th><th>Use</th><th>Notes</th></tr>
     <tr><td>ReLU</td><td>$\max(0, z)$</td><td>Hidden layers (default)</td><td>Can "die" if $z < 0$ always</td></tr>
     <tr><td>Leaky ReLU</td><td>$\max(0.01z, z)$</td><td>Hidden layers</td><td>Prevents dying ReLU</td></tr>
+    <tr><td>PReLU</td><td>$\max(az, z)$, $a$ learned</td><td>Hidden layers</td><td>Leaky ReLU with a learned slope</td></tr>
+    <tr><td>ELU</td><td>$z$ if $z&gt;0$, else $\alpha(e^z - 1)$</td><td>Hidden layers</td><td>Smooth, negative outputs push mean toward 0</td></tr>
     <tr><td>GELU</td><td>$z \cdot \Phi(z)$</td><td>Transformers</td><td>Smooth approximation of ReLU</td></tr>
+    <tr><td>Swish / SiLU</td><td>$z \cdot \sigma(z)$</td><td>Hidden layers, modern CNNs / LLMs</td><td>Smooth, non-monotonic near 0</td></tr>
     <tr><td>Sigmoid</td><td>$\frac{1}{1+e^{-z}}$</td><td>Binary output</td><td>Saturates &rarr; vanishing gradients</td></tr>
     <tr><td>Tanh</td><td>$\frac{e^z - e^{-z}}{e^z + e^{-z}}$</td><td>RNNs</td><td>Zero-centred but still saturates</td></tr>
     <tr><td>Softmax</td><td>$\frac{e^{z_i}}{\sum_j e^{z_j}}$</td><td>Multi-class output</td><td>Outputs sum to 1</td></tr>
@@ -1849,7 +1930,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "ReLU for hidden layers, sigmoid for binary output, softmax for multi-class. That covers 90% of use cases. GELU is the modern choice for transformers."
+    Timing: 2 min. "ReLU for hidden layers, sigmoid for binary output, softmax for multi-class. That covers 90% of use cases. GELU is the modern choice for transformers." The ReLU variants (Leaky, PReLU, ELU) all exist to keep a non-zero gradient for negative inputs, which is the fix for dead units that Exercise 8.2 measures. Swish (PyTorch calls it SiLU) and GELU are the smooth modern defaults; Exercise 8.2 compares ReLU, GELU, Tanh and SiLU on the same task.
   </aside>
 </section>
 
@@ -1931,7 +2012,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
 <section>
   <h2>Loss Functions Taxonomy</h2>
   <span class="marker marker-theory">Theory</span>
-  <table style="font-size: 0.65em;">
+  <table style="font-size: 0.6em;">
     <tr><th>Loss</th><th>Task</th><th>Formula</th></tr>
     <tr><td>MSE</td><td>Regression</td><td>$\frac{1}{n}\sum(y - \hat{y})^2$</td></tr>
     <tr><td>MAE</td><td>Robust regression</td><td>$\frac{1}{n}\sum|y - \hat{y}|$</td></tr>
@@ -1939,6 +2020,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <tr><td>Binary CE</td><td>Binary classification</td><td>$-[y\log\hat{y} + (1-y)\log(1-\hat{y})]$</td></tr>
     <tr><td>Focal Loss</td><td>Imbalanced classes</td><td>$-(1-\hat{y})^\gamma y \log\hat{y}$</td></tr>
     <tr><td>Contrastive</td><td>Similarity learning</td><td>Pull similar, push dissimilar</td></tr>
+    <tr><td>Triplet</td><td>Metric learning</td><td>$\max(0,\; d(a,p) - d(a,n) + m)$</td></tr>
     <tr><td>KL Divergence</td><td>Distribution matching</td><td>$\sum P(x)\log\frac{P(x)}{Q(x)}$</td></tr>
     <tr><td>Reconstruction</td><td>Autoencoders</td><td>$\|x - \hat{x}\|^2$</td></tr>
   </table>
@@ -1946,7 +2028,7 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Reference slide. "The loss function defines what the network optimises. Choose the wrong loss and the network solves the wrong problem."
+    Timing: 2 min. Reference slide. "The loss function defines what the network optimises. Choose the wrong loss and the network solves the wrong problem." Note the SSE on the gradient-descent slide is (1/2)&Sigma;(y &minus; &#375;)&sup2;; MSE divides by n instead &mdash; same minimiser, different scale. Triplet loss takes an anchor a, a positive p and a negative n and asks d(a,p) to be at least a margin m smaller than d(a,n) &mdash; the basis of face-matching and embedding search.
   </aside>
 </section>
 
@@ -2001,63 +2083,65 @@ anomalies = blended[blended["anomaly_score"] > 0.8]</code></pre>
   </aside>
 </section>
 
-<section class="code-dense">
+<section>
   <h2>Kailash Bridge: OnnxBridge for Neural Networks</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>Theory &rarr; Engine</h3>
     <div class="theory-to-engine">
-      <span>Neural network training, export, inference</span>
+      <span>Trained network &rarr; portable inference graph</span>
       <span class="arrow">&rarr;</span>
       <span><code>OnnxBridge</code></span>
     </div>
   </div>
-  <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from kailash_ml import OnnxBridge, TrainingPipeline
+  <pre style="font-size: 0.5em; line-height: 1.3"><code class="language-python">from pathlib import Path
+import numpy as np
+import onnxruntime as ort
+import torch
+from torch import nn
+from kailash_ml import OnnxBridge
 
-# Train with Kailash
-pipeline = TrainingPipeline(
-    model="neural_network",
-    hidden_layers=[128, 64, 32],
-    activation="relu",
-    optimizer="adamw",
-    epochs=100,
-    early_stopping=True
-)
-pipeline.fit(X_train, y_train)
+model = nn.Sequential(nn.Linear(7, 32), nn.ReLU(), nn.Linear(32, 1))
+# ... train it in torch: AdamW, LR schedule, early stopping (Exercise 8.4-8.5) ...
+model.eval()
 
-# Export to ONNX for cross-platform inference
 bridge = OnnxBridge()
-bridge.export(pipeline.model, "model.onnx")
+print(bridge.check_compatibility(model, framework="torch").compatible)
+export = bridge.export(model, framework="torch", output_path=Path("model.onnx"),
+                       sample_input=torch.randn(1, 7))  # traces the forward pass
+print(export.success, export.onnx_status)
 
-# Load and run anywhere
-loaded = bridge.load("model.onnx")
-predictions = loaded.predict(X_test)</code></pre>
+batch = np.random.randn(10, 7).astype(np.float32)   # check: ONNX == torch
+session = ort.InferenceSession("model.onnx")
+onnx_out = session.run(None, {session.get_inputs()[0].name: batch})[0]
+with torch.no_grad():
+    print(np.abs(onnx_out - model(torch.from_numpy(batch)).numpy()).max())</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "OnnxBridge lets you train in Python and deploy anywhere: web, mobile, edge. ONNX is the universal format for neural network models."
+    Timing: 2 min. "You train the network in PyTorch; OnnxBridge checks whether the model can be exported, exports it to ONNX and reports the outcome as a result object instead of raising, so a pipeline can decide what to do when export fails." It does not train, checkpoint or serve the model &mdash; training is your torch loop, serving is ONNX Runtime (or InferenceServer in M5). Torch export needs a sample input because it traces the forward pass. Always compare ONNX and torch outputs on the same batch; on this toy model the maximum difference is around 1e-7. OnnxBridge.validate() does this comparison for scikit-learn-style models (it calls .predict), which is why the torch check here uses onnxruntime directly, exactly as Exercise 8.5 does. The installed exporter prints some warnings during torch export; they are harmless here.
   </aside>
 </section>
 
 <section>
-  <h2>Exercise 4.8: Neural Network from Scratch</h2>
+  <h2>Exercise 4.8: The Deep-Learning Training Toolkit</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Build a 3-layer neural network for HDB price prediction.
+    <strong>Task:</strong> Five PyTorch files, each isolating one part of the toolkit.
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Implement forward pass, loss (SSE), backpropagation, gradient descent</li>
-      <li>Add dropout, batch norm, Adam optimiser, LR schedule</li>
-      <li>Compare training curves with/without each technique</li>
-      <li>Export trained model with OnnxBridge</li>
-      <li>Articulate: "hidden layers are USML with error feedback"</li>
+      <li>8.1 XOR: a linear model is stuck near 50%; one hidden layer solves it</li>
+      <li>8.2 ReLU / GELU / Tanh / SiLU; zero vs Xavier vs Kaiming init, dead units</li>
+      <li>8.3 Small CNN with batch norm and a residual block on synthetic shape images</li>
+      <li>8.4 SGD, momentum, Adam, AdamW; warmup + cosine LR schedule</li>
+      <li>8.5 Dropout vs batch norm, gradient clipping, early stopping; export with OnnxBridge</li>
     </ul>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. The most important exercise in the module. Assessment: from-scratch implementation works (loss decreases); each training technique improves convergence (demonstrated with plots); the "unsupervised meets supervised" concept articulated.
+    Timing: 1 min. The most important exercise in the module (solutions/ex_8/01_xor_proof.py &hellip; 05_regularisation_training.py). Every comparison uses the same data and budget, so curves are comparable; the images in 8.3&ndash;8.5 are synthetic shapes the network can actually learn, so the differences between variants mean something. The from-scratch forward/backward pass is the one on the backpropagation and gradient-descent slides &mdash; work it through on the board with a small HDB price example. Assessment: training curves with and without each technique, and the "unsupervised meets supervised" idea articulated: hidden layers are USML with error feedback.
   </aside>
 </section>
 
@@ -2088,59 +2172,42 @@ predictions = loaded.predict(X_test)</code></pre>
   </div>
   <table style="font-size: 0.68em; margin-top: 12px;">
     <tr><th>Lesson</th><th>Method</th><th>Feature Output</th><th>Kailash Engine</th></tr>
-    <tr><td>4.1</td><td>Clustering</td><td>Cluster labels (n &rarr; 1)</td><td>AutoMLEngine</td></tr>
-    <tr><td>4.2</td><td>EM / GMM</td><td>Soft probabilities (n &rarr; k)</td><td>AutoMLEngine</td></tr>
-    <tr><td>4.3</td><td>PCA / t-SNE / UMAP</td><td>Components (n &rarr; k)</td><td>ModelVisualizer</td></tr>
-    <tr><td>4.4</td><td>Anomaly Detection</td><td>Anomaly scores (n &rarr; 1)</td><td>EnsembleEngine</td></tr>
+    <tr><td>4.1</td><td>Clustering</td><td>Cluster labels (n &rarr; 1)</td><td>ClusteringEngine, AutoMLEngine</td></tr>
+    <tr><td>4.2</td><td>EM / GMM</td><td>Soft probabilities (n &rarr; k)</td><td>ClusteringEngine (gmm)</td></tr>
+    <tr><td>4.3</td><td>PCA / t-SNE / UMAP</td><td>Components (n &rarr; k)</td><td>DimReductionEngine</td></tr>
+    <tr><td>4.4</td><td>Anomaly Detection</td><td>Anomaly scores (n &rarr; 1)</td><td>AnomalyDetectionEngine, EnsembleEngine</td></tr>
     <tr><td>4.5</td><td>Association Rules</td><td>Rule features (n &rarr; binary)</td><td>&mdash;</td></tr>
-    <tr><td>4.6</td><td>NLP / Topics</td><td>Topic proportions (n &rarr; k)</td><td>AutoMLEngine</td></tr>
+    <tr><td>4.6</td><td>NLP / Topics</td><td>Topic proportions (n &rarr; k)</td><td>DimReductionEngine (nmf)</td></tr>
     <tr><td>4.7</td><td>Recommenders</td><td>Embeddings (n &rarr; k) &mdash; THE PIVOT</td><td>&mdash;</td></tr>
-    <tr><td>4.8</td><td>Neural Networks</td><td>Hidden activations (n &rarr; m)</td><td>OnnxBridge</td></tr>
+    <tr><td>4.8</td><td>Neural Networks</td><td>Hidden activations (n &rarr; m)</td><td>OnnxBridge, SklearnTrainable</td></tr>
   </table>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Walk through the full arc. "Every row produces features. The module is one continuous story from simple group discovery to neural feature learning."
+    Timing: 2 min. Walk through the full arc. "Every row produces features. The module is one continuous story from simple group discovery to neural feature learning." The engine column lists the kailash-ml surface for each lesson; ModelVisualizer draws the plots throughout. SklearnTrainable wraps a scikit-learn estimator (e.g. an MLP) so it trains through kailash-ml's train / register path &mdash; the assessment's neural-network task uses it.
   </aside>
 </section>
 
 <section>
   <h2>Module 4 Assessment</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <div class="columns">
-    <div class="col">
-      <h3>Quiz</h3>
-      <ul style="font-size: 0.85em;">
-        <li>Clustering algorithm selection</li>
-        <li>EM convergence properties</li>
-        <li>PCA vs t-SNE vs UMAP</li>
-        <li>Anomaly detection methods</li>
-        <li>Association rule metrics</li>
-        <li>Topic coherence evaluation</li>
-        <li>Matrix factorisation &amp; the pivot</li>
-        <li>Neural network training toolkit</li>
-      </ul>
-    </div>
-    <div class="col">
-      <h3>Project</h3>
-      <div class="callout callout-kailash">
-        <strong>End-to-end pipeline:</strong>
-        <ol style="font-size: 0.85em;">
-          <li>Cluster data (4.1)</li>
-          <li>Reduce dimensions (4.3)</li>
-          <li>Detect anomalies (4.4)</li>
-          <li>Build neural network on discovered features (4.8)</li>
-          <li>Compare: does USML preprocessing improve DL?</li>
-        </ol>
-      </div>
-    </div>
+  <p style="font-size: 0.85em;">Four auto-graded tasks, 25 marks each &mdash; open-book, no AI assistants. The ML step runs through a kailash-ml engine.</p>
+  <table style="font-size: 0.68em;">
+    <tr><th>Task</th><th>Topic</th><th>Engine</th></tr>
+    <tr><td>1</td><td>Customer segmentation by clustering</td><td>ClusteringEngine</td></tr>
+    <tr><td>2</td><td>Dimensionality reduction &amp; anomaly detection</td><td>DimReductionEngine + AnomalyDetectionEngine</td></tr>
+    <tr><td>3</td><td>NLP topic discovery with NMF</td><td>DimReductionEngine (nmf)</td></tr>
+    <tr><td>4</td><td>Neural network foundations</td><td>SklearnTrainable (MLP)</td></tr>
+  </table>
+  <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.8em;">
+    Graders check <strong>recovered structure</strong> against hidden ground truth (e.g. ARI vs planted segments, ROC-AUC vs hidden anomaly flags) &mdash; not surface code. Details: <code>assessment/README.md</code>.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. The project ties together the entire module. Students must demonstrate that unsupervised features improve a downstream neural network.
+    Timing: 2 min. Walk through the four tasks and point students to assessment/README.md and each task's problem.md. Each task is a starter file with a solve() function, graded by automated checks against ground truth the brief does not reveal &mdash; so the only way to score is to genuinely recover the structure. Polars only, keep the given seeds, no hardcoded secrets or model names. The engines on this slide are the ones from the bridge slides in 4.1, 4.3, 4.4 and 4.8.
   </aside>
 </section>
 
@@ -2148,23 +2215,23 @@ predictions = loaded.predict(X_test)</code></pre>
   <h2>Looking Ahead: Module 5</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="bridge-box">
-    <p style="text-align: center; font-size: 1.05em;"><strong>M5: LLMs, AI Agents &amp; RAG Systems</strong></p>
+    <p style="text-align: center; font-size: 1.05em;"><strong>M5: Deep Learning &mdash; Vision &amp; Transfer Learning</strong></p>
     <ul style="font-size: 0.85em; margin-top: 12px;">
-      <li>The neural networks from 4.8 scaled to billions of parameters</li>
-      <li>Transformers: attention mechanism, positional encoding</li>
-      <li>Large Language Models: GPT architecture, fine-tuning</li>
-      <li>AI Agents: autonomous systems that use LLMs as reasoning engines</li>
-      <li>RAG: retrieval-augmented generation for grounded responses</li>
+      <li>Autoencoders: reconstruction loss as unsupervised feature learning</li>
+      <li>CNNs for vision; RNNs for sequences</li>
+      <li>Transformers: attention, positional encoding</li>
+      <li>GANs, diffusion and graph neural networks</li>
+      <li>Transfer learning and reinforcement learning</li>
     </ul>
   </div>
   <div class="callout callout-advanced" style="margin-top: 12px;">
-    <strong>The thread continues:</strong> 4.8's hidden layers &rarr; M5's transformer layers &rarr; attention IS a soft clustering of tokens &rarr; the spectrum never ends.
+    <strong>The thread continues:</strong> 4.8's hidden layers &rarr; M5's specialised architectures &rarr; M6: LLMs, agents and RAG.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "You now understand embeddings, optimisation-driven features, and the training toolkit. M5 scales all of this to the models that power ChatGPT, Claude, and every modern AI system."
+    Timing: 2 min. "You now understand embeddings, optimisation-driven features, and the training toolkit. M5 applies the same toolkit to specialised architectures &mdash; autoencoders, CNNs, RNNs, transformers, GANs, diffusion, graph networks &mdash; plus transfer learning and reinforcement learning." Large language models, agents and retrieval-augmented generation come in Module 6, built on the transformer from M5. Attention can be read as a soft, input-dependent weighting over tokens &mdash; the same idea as the GMM responsibilities and Mixture-of-Experts gating from 4.2.
   </aside>
 </section>
 
@@ -2178,7 +2245,7 @@ predictions = loaded.predict(X_test)</code></pre>
     <span>Terrene Foundation &bull; Kailash Python SDK</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Thank the class. Remind them of the exercise schedule and the end-of-module project. "You just crossed the bridge from manual feature engineering to neural feature learning. Well done."
+    Timing: 1 min. Thank the class. Remind them of the exercise schedule and the four-task end-of-module assessment. "You just crossed the bridge from manual feature engineering to neural feature learning. Well done."
   </aside>
 </section>
 

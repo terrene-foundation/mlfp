@@ -20,10 +20,12 @@
 #   2. Build — compute Z-scores and IQR bounds from standardised features
 #   3. Train — score every row (unsupervised — no parameter fitting)
 #   4. Visualise — distribution of flagged rows vs true anomalies
-#   5. Apply — Singapore NETS chargeback review queue prioritisation
+#   5. Apply — credit-application review queue at a Singapore lender
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
+
+from pathlib import Path
 
 import numpy as np
 from scipy.stats import skew
@@ -31,6 +33,7 @@ from scipy.stats import skew
 from shared.mlfp04.ex_4 import (
     _finite,
     load_dataset,
+    print_auc_by_type,
     print_metrics,
     score_metrics,
     setup_engines,
@@ -45,16 +48,38 @@ tracker, exp_name = setup_engines()
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Why Statistical Outlier Rules Still Matter
 # ════════════════════════════════════════════════════════════════════════
-# Z-score: flag if |x - mean| / std > 3. Assumes ~normal features.
-# IQR:     flag if x < Q1-1.5*IQR or x > Q3+1.5*IQR. Distribution-free.
-# Winsorise: clip extremes to IQR bounds (keeps sample size).
+# Z-score and IQR are the cheapest anomaly detectors on the planet. They
+# run in a single pass, need zero training, and produce a score that a
+# non-technical analyst can explain ("this applicant's declared savings
+# balance is 6.1 standard deviations above the average"). That explainability is worth
+# more than +2% AUC-ROC in regulated industries — the model's answer is
+# trivially defensible in a compliance audit.
+#
+# Z-score:  flag if |x - mean| / std  > 3
+#           Assumes roughly-normal features. Fails on skewed or
+#           multi-modal distributions (the mean and std get pulled by
+#           the very tails you're trying to detect).
+#
+# IQR:      flag if x < Q1 - 1.5*IQR  or  x > Q3 + 1.5*IQR
+#           Distribution-free. Works on skewed data because quartiles
+#           are robust to the extreme tails.
+#
+# Winsorisation: instead of dropping outliers, CLIP them to the IQR
+# bounds. Preserves sample size (no data loss) while pulling the mean
+# and variance closer to the bulk of the distribution. This is the
+# right move when you suspect a minority of rows is genuinely extreme
+# but you still need to model the majority cleanly.
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 2 — BUILD the Z-score and IQR detectors
 # ════════════════════════════════════════════════════════════════════════
 
-X, y, feature_cols, _frame = load_dataset()
+# The dataset: 20,000 real Singapore credit applications plus 200 injected
+# anomalies of three known types (global / dependency / clustered) — see
+# shared/mlfp04/ex_4.py. The label comes from the injection, NOT from a
+# feature threshold, so the AUCs below are not circular.
+X, y, feature_cols, frame = load_dataset()
 n_samples, n_features = X.shape
 print("\n" + "=" * 70)
 print("  Statistical Outlier Detection — Z-score and IQR")
@@ -66,15 +91,22 @@ print(
 
 
 def zscore_anomaly_scores(X_scaled: np.ndarray) -> np.ndarray:
-    """Return the per-row maximum |Z-score| across features."""
+    """Return the per-row maximum absolute Z-score across features.
+
+    X is already standardised (mean=0, std=1) by `build_features`, so
+    |X| IS the Z-score. The max across features is the "worst" Z-score
+    per row — the one that would trigger the 3-sigma rule first.
+    """
     # TODO: X_scaled is already standardised, so |X_scaled| IS the Z-score.
     # Return the per-row maximum (hint: np.abs then .max(axis=1))
     z = ____
     return ____
 
 
-def iqr_outlier_counts(X_scaled: np.ndarray):
-    """Return (outlier count per row, lower bound, upper bound)."""
+def iqr_outlier_counts(
+    X_scaled: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return (outlier count per row, lower bound, upper bound) using 1.5*IQR."""
     # TODO: Compute Q1 and Q3 per feature via np.percentile(X_scaled, q, axis=0)
     Q1 = ____
     Q3 = ____
@@ -97,7 +129,8 @@ def iqr_outlier_counts(X_scaled: np.ndarray):
 z_scores = zscore_anomaly_scores(X)
 iqr_scores, lower_bound, upper_bound = iqr_outlier_counts(X)
 
-print("\nZ-score threshold sweep:")
+# Sweep Z-score thresholds so the student sees the precision/coverage trade-off
+print("\nZ-score threshold sweep (how many rows each threshold flags):")
 for threshold in [2.0, 2.5, 3.0, 3.5]:
     flagged = z_scores > threshold
     n_flagged = int(flagged.sum())
@@ -107,23 +140,33 @@ for threshold in [2.0, 2.5, 3.0, 3.5]:
         f"({n_flagged / n_samples:.1%})  precision={precision:.3f}"
     )
 
+# Headline metrics
 print("\nPer-method scores:")
 z_metrics = print_metrics("Z-score (max)", y, z_scores)
 iqr_metrics = print_metrics("IQR (outlier count)", y, iqr_scores)
 
-# Winsorisation — clip to IQR bounds
-X_winsorised = np.clip(X, lower_bound, upper_bound)
+# WHICH anomalies does each rule find? AUC per injected anomaly type.
+print("\nPer anomaly type (1.0 = perfect, 0.5 = chance):")
+z_by_type = print_auc_by_type("Z-score (max)", frame, z_scores)
+iqr_by_type = print_auc_by_type("IQR (outlier count)", frame, iqr_scores)
+
+# Winsorisation — clip to IQR bounds and measure skewness reduction
+# TODO: clip every value of X into [lower_bound, upper_bound] (hint: np.clip)
+X_winsorised = ____
 n_clipped = int((X != X_winsorised).sum())
 skew_before = float(np.mean(np.abs(skew(X, axis=0))))
 skew_after = float(np.mean(np.abs(skew(X_winsorised, axis=0))))
-print(f"\nWinsorisation: clipped {n_clipped:,} values ({n_clipped / X.size:.2%})")
+print(
+    f"\nWinsorisation: clipped {n_clipped:,} values "
+    f"({n_clipped / X.size:.2%} of the matrix)"
+)
 print(f"  Mean |skewness| before: {skew_before:.4f}")
 print(f"  Mean |skewness| after:  {skew_after:.4f}")
 
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
-assert z_metrics["auc_roc"] > 0.4, "Z-score AUC should beat random floor"
-assert iqr_metrics["auc_roc"] > 0.4, "IQR AUC should beat random floor"
+assert z_metrics["auc_roc"] > 0.5, "Z-score AUC should beat random (0.5)"
+assert iqr_metrics["auc_roc"] > 0.5, "IQR AUC should beat random (0.5)"
 assert z_scores.min() >= 0, "Max |Z| scores must be non-negative"
 assert skew_after <= skew_before + 1e-2, "Winsorisation should not increase skew"
 print("\n[ok] Checkpoint passed — Z-score and IQR detectors scored\n")
@@ -132,39 +175,165 @@ print("\n[ok] Checkpoint passed — Z-score and IQR detectors scored\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — VISUALISE
 # ════════════════════════════════════════════════════════════════════════
-print("Interpretation:")
-print("  Z-score finds rows that are extreme on at least ONE feature.")
-print("  IQR counts HOW MANY features are extreme.")
-print("  AUC-PR is the honest metric for <2% anomaly datasets.")
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# ── (A) Z-score distribution with threshold lines ──────────────────────
+fig_z = go.Figure()
+fig_z.add_trace(
+    go.Histogram(
+        x=z_scores[y == 0],
+        name="Normal",
+        opacity=0.7,
+        nbinsx=60,
+        marker_color="#636EFA",
+    )
+)
+fig_z.add_trace(
+    go.Histogram(
+        x=z_scores[y == 1],
+        name="Anomaly",
+        opacity=0.7,
+        nbinsx=60,
+        marker_color="#EF553B",
+    )
+)
+for thresh in [2.0, 3.0]:
+    fig_z.add_vline(
+        x=thresh,
+        line_dash="dash",
+        line_color="black",
+        annotation_text=f"|z|={thresh}",
+        annotation_position="top right",
+    )
+fig_z.update_layout(
+    title="Z-Score Distribution: Normal vs Anomaly",
+    xaxis_title="Max |Z-score| Across Features",
+    yaxis_title="Count",
+    barmode="overlay",
+)
+z_path = Path("outputs") / "ex4_anomaly" / "01_zscore_distribution.html"
+z_path.parent.mkdir(parents=True, exist_ok=True)
+fig_z.write_html(str(z_path))
+print(f"[viz] Z-score distribution: {z_path}")
+
+# ── (B) IQR box plots per feature (first 6 features) ──────────────────
+n_show = min(6, X.shape[1])
+fig_box = make_subplots(
+    rows=1, cols=n_show, subplot_titles=feature_cols[:n_show]
+)
+for i in range(n_show):
+    fig_box.add_trace(
+        go.Box(
+            y=X[y == 0, i], name="Normal", marker_color="#636EFA", showlegend=(i == 0)
+        ),
+        row=1,
+        col=i + 1,
+    )
+    fig_box.add_trace(
+        go.Box(
+            y=X[y == 1, i], name="Anomaly", marker_color="#EF553B", showlegend=(i == 0)
+        ),
+        row=1,
+        col=i + 1,
+    )
+    fig_box.add_hline(
+        y=float(upper_bound[i]), line_dash="dot", line_color="orange", row=1, col=i + 1
+    )
+    fig_box.add_hline(
+        y=float(lower_bound[i]), line_dash="dot", line_color="orange", row=1, col=i + 1
+    )
+fig_box.update_layout(
+    title="IQR Box Plots per Feature (orange = 1.5*IQR bounds)",
+    height=400,
+    width=250 * n_show,
+)
+box_path = Path("outputs") / "ex4_anomaly" / "01_iqr_boxplots.html"
+fig_box.write_html(str(box_path))
+print(f"[viz] IQR box plots: {box_path}")
+
+print("\nInterpretation (computed from the numbers above):")
+z_best = max(z_by_type, key=z_by_type.get)
+z_worst = min(z_by_type, key=z_by_type.get)
+print(
+    f"  Z-score is strongest on '{z_best}' anomalies "
+    f"(AUC={z_by_type[z_best]:.3f}) and weakest on '{z_worst}' "
+    f"(AUC={z_by_type[z_worst]:.3f})."
+)
+print(
+    "  Z-score only sees rows that are extreme on at least ONE feature;"
+    " IQR counts HOW MANY features are outside the box."
+)
+if z_by_type["dependency"] < 0.6 and iqr_by_type["dependency"] < 0.6:
+    print(
+        "  Neither rule finds the 'dependency' anomalies: every field of a"
+        " stitched-together application is individually normal, so no"
+        " per-feature rule can see it."
+    )
+print(
+    f"  AUC-ROC={z_metrics['auc_roc']:.3f} but AP={z_metrics['avg_precision']:.3f}"
+    f" at a {y.mean():.1%} anomaly rate: for rare events AUC-PR is the honest"
+    " metric — AUC-ROC can look healthy while most flags are false alarms."
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: NETS Chargeback Review Queue Prioritisation
+# TASK 5 — APPLY: Credit-Application Review Queue at a Singapore Lender
 # ════════════════════════════════════════════════════════════════════════
-# NETS processes ~12M e-payments/day in Singapore. Reviewers can look at
-# ~400 flagged cases per day. A blended Z-score + IQR pre-filter catches
-# an extra ~30 chargebacks/day = ~S$6,600/day (~S$1.6M/year) in recovery,
-# against effectively zero compute cost.
+# SCENARIO (illustrative): a Singapore consumer lender receives several
+# thousand online credit applications a day. Its review team can examine
+# about 400 before fatigue and false-positive blindness set in. Some
+# applications contain fat-finger or inflated values (a S$5M savings
+# balance on a S$40K income), some are stitched together from other
+# people's details, and some arrive as near-identical batches.
 #
-# Statistical rules are the CHEAPEST, MOST EXPLAINABLE detectors — use
-# them as the first stage of a production anomaly pipeline.
+# Why statistical outliers are the right tool FIRST:
+#   - Explainable to compliance ("this applicant's declared balance is
+#     6 standard deviations above normal") — no "the model said so"
+#   - Zero training data required — the rule runs against live features
+#   - Sub-millisecond scoring — fits inside any online decision SLA
+#
+# BUSINESS IMPACT: computed below from the queue this file builds, using
+# an ILLUSTRATIVE assumption of S$2,000 average loss avoided per bad
+# application caught before approval (replace with your own loss data).
+#
+# LIMITATIONS: per-feature rules cannot see DEPENDENCY anomalies — rows
+# whose individual values are all normal but whose combination is
+# impossible. Exercise 4.2 (Isolation Forest) and 4.3 (LOF) look at the
+# joint feature space; Exercise 4.4 blends all four detectors.
 
+# Simple queue-prioritisation demo
 reviewer_budget = 400
 blended = (z_scores - z_scores.min()) + (iqr_scores - iqr_scores.min())
-queue_order = np.argsort(-blended)[:reviewer_budget]
+# TODO: take the indices of the reviewer_budget HIGHEST blended scores
+# (hint: np.argsort sorts ascending — sort the negated scores, then slice)
+queue_order = ____
 queue_precision = float(y[queue_order].mean())
 queue_recall = float(y[queue_order].sum() / max(y.sum(), 1))
-print(f"\nQueue-prioritisation demo (reviewer budget = {reviewer_budget}):")
-print(f"  Precision in top-{reviewer_budget}: {queue_precision:.3f}")
-print(f"  Recall in top-{reviewer_budget}:    {queue_recall:.3f}")
+print(f"\nQueue-prioritisation demo " f"(reviewer budget = {reviewer_budget}):")
+print(
+    f"  Precision in top-{reviewer_budget}: {queue_precision:.3f}  "
+    f"(fraction of reviewed cases that are true anomalies)"
+)
+print(
+    f"  Recall in top-{reviewer_budget}:    {queue_recall:.3f}  "
+    f"(fraction of ALL anomalies the reviewer sees)"
+)
+loss_per_case_sgd = 2_000  # ILLUSTRATIVE assumption, not a measured figure
+caught = int(y[queue_order].sum())
+print(
+    f"  Illustrative value: {caught} anomalies caught x S${loss_per_case_sgd:,}"
+    f" = S${caught * loss_per_case_sgd:,} per {n_samples:,} applications"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
 # ════════════════════════════════════════════════════════════════════════
-# Method names (zscore_*, iqr_*, queue_*) are simple snake_case so they
-# match the tracker key regex directly. AUC-ROC/AP can be NaN on a
-# single-class slice; wrap each emit in _finite().
+# Method names (zscore_max / iqr_count / queue) are simple snake_case so
+# they match the tracker key regex [a-zA-Z_][a-zA-Z0-9_.\-]* directly —
+# no _slug() needed. AUC-ROC/AP can be NaN if the sweep ever produces a
+# single-class slice; _finite() guards every emit.
 
 # TODO: call track_run with run_name="statistical_zscore_iqr". Headline
 # scalars are zscore_auc_roc + zscore_avg_precision (from z_metrics),
@@ -192,23 +361,28 @@ track_run(
         "skew_after": _finite(skew_after),
     },
 )
-print(f"\n  [tracked] zscore + IQR + queue logged to {exp_name}\n")
+print(
+    f"\n  [tracked] zscore + IQR + queue prioritisation logged to "
+    f"{exp_name} run='statistical_zscore_iqr'\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — AnomalyDetectionEngine.detect()
 # ════════════════════════════════════════════════════════════════════════
-# AnomalyDetectionEngine.detect() does NOT support zscore/IQR — those
-# are pure statistical primitives. The engine's algorithms start at
-# isolation_forest (next lesson). This close shows the engine surface
-# you'll use from here on.
+# kailash-ml's AnomalyDetectionEngine.detect() does NOT support
+# zscore/IQR (those are pure statistical primitives — too simple to
+# merit an engine). It does support isolation_forest / lof / one_class_svm.
+# This close shows where the engine path begins — Lesson 02 onwards uses
+# the same engine surface for the harder algorithms this lesson's
+# statistical rules cannot catch (coordinated outliers, density-based
+# anomalies in feature subspaces).
 
 import polars as pl
 
 from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
 
 anomaly_df = pl.from_numpy(X, schema=feature_cols)
-
 # TODO: Instantiate AnomalyDetectionEngine and call .detect on anomaly_df
 # with algorithm='isolation_forest' and contamination=0.01.
 det = ____
@@ -221,7 +395,8 @@ print(
     f"n_anomalies={preview.n_anomalies}"
 )
 print(
-    "  Statistical is the cheap-and-explainable primitive layer; the engine"
+    f"  Hand-rolled Z-score AUC-ROC (Task 3): {z_metrics['auc_roc']:.4f}  "
+    f"— statistical is the cheap-and-explainable primitive layer; the engine"
     " path begins next lesson with isolation_forest.\n"
 )
 
@@ -234,14 +409,20 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Z-score outlier detection on standardised features
-  [x] IQR outlier detection without assuming normality
-  [x] Winsorisation as a non-destructive alternative to dropping
-  [x] AUC-ROC vs AUC-PR on rare-event datasets
-  [x] Framed a NETS Singapore scenario with concrete dollar impact
+  [x] Z-score outlier detection (the 3-sigma rule) on standardised features
+  [x] IQR outlier detection (the 1.5*IQR rule) without assuming normality
+  [x] Winsorisation as a non-destructive alternative to dropping outliers
+  [x] AUC-ROC vs AUC-PR on a <2% anomaly rate dataset
+  [x] Read per-type AUC: which kinds of anomaly each rule can and cannot see
+  [x] Framed a lender's review-queue scenario with an illustrative dollar impact
 
-  Next: 02_isolation_forest.py — catches multi-feature anomalies that
-  Z-score and IQR cannot.
+  KEY INSIGHT: Statistical rules are the CHEAPEST and MOST EXPLAINABLE
+  anomaly detectors, but they only see one feature at a time. Use them
+  as a first filter, then layer Isolation Forest / LOF / ensembles on
+  top for anomalies that live in feature COMBINATIONS.
+
+  Next: 02_isolation_forest.py — random-split isolation, which works on
+  all features jointly instead of one at a time.
 """
 )
 

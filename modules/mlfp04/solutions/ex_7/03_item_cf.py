@@ -9,7 +9,7 @@
 #   - Flip CF from user-similarity to item-similarity
 #   - Understand why item similarity is more stable than user similarity
 #   - Implement item-item cosine similarity with mean-centring per item
-#   - See why Amazon/Netflix/Spotify all converged on item-CF at scale
+#   - See why item-to-item CF is the classic choice for large catalogues
 #
 # PREREQUISITES: Exercise 7.2 (user-based CF)
 #
@@ -33,7 +33,9 @@ from shared.mlfp04.ex_7 import (
     N_ITEMS,
     build_rating_dataset,
     holdout_rmse,
+    print_baselines,
     print_method_scores,
+    print_warm_comparison,
     save_html,
 )
 
@@ -47,18 +49,21 @@ K_NEIGHBOURS = 20
 # tastes, new users have no history, and the N-user set grows with every
 # signup (often into the millions).
 #
-# Item-based CF asks: "which items were rated the same way?" The item set
-# is much smaller and far more stable — Amazon has ~500M products but the
-# top-selling 50K account for 95% of impressions. Item-item relationships
-# ("people who bought A also bought B") change slowly, so the precompute
-# can run nightly and still be accurate.
+# Item-based CF asks: "which items were rated the same way?" When the
+# actively-sold catalogue is smaller than the user base, the item-item
+# matrix is the cheaper one to compute. More importantly, item-item
+# relationships ("people who bought A also bought B") change slowly, so the
+# precompute can run nightly and still be accurate, while an individual
+# user's neighbourhood shifts every time they rate something.
 #
 # Key trick: mean-centre PER ITEM (not per user). This removes the
 # "everyone loves this item" bias and compares how items RANK in each
 # user's preference order.
 #
-# This is the algorithm Amazon published in 2003 and it still runs under
-# "Customers who bought this also bought..." today.
+# Item-to-item CF was popularised by Amazon's 2003 paper (Linden, Smith &
+# York, "Amazon.com Recommendations: Item-to-Item Collaborative
+# Filtering", IEEE Internet Computing) behind the "Customers who bought
+# this also bought..." feature.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -104,12 +109,21 @@ def item_based_cf_predict(
     item_sim: np.ndarray,
     k: int = K_NEIGHBOURS,
 ) -> np.ndarray:
-    """Weighted-sum predictor over the top-k most similar items.
+    """Weighted-deviation predictor over the top-k most similar items.
 
     For user u and target item j:
-      prediction = sum(sim(j, i) * r(u, i)) / sum(|sim(j, i)|)
-    where i ranges over the top-k items user u already rated.
+      prediction = mean_j + sum(sim(j, i) * (r(u, i) - mean_i))
+                            / sum(|sim(j, i)|)
+    where i ranges over the top-k positively-similar items user u already
+    rated. Working in deviations from each item's mean mirrors the centring
+    used to compute the similarities.
     """
+    item_means = np.array(
+        [
+            float(np.nanmean(R[obs_mask[:, j], j])) if obs_mask[:, j].any() else 0.0
+            for j in range(R.shape[1])
+        ]
+    )
     n_users, n_items = R.shape
     predictions = np.full((n_users, n_items), np.nan)
 
@@ -130,7 +144,8 @@ def item_based_cf_predict(
             denom = np.abs(weights).sum()
             if denom < 1e-10:
                 continue
-            predictions[u, j] = weights @ R[u, rated_items[pos_idx]] / denom
+            deviations = R[u, rated_items[pos_idx]] - item_means[rated_items[pos_idx]]
+            predictions[u, j] = item_means[j] + weights @ deviations / denom
 
     return np.clip(predictions, 1.0, 5.0)
 
@@ -194,32 +209,37 @@ print("Top-5 most similar items ('customers also bought'):")
 for j in top5:
     print(f"  {item_ids[j]}  sim={item_sim[anchor, j]:+.3f}")
 
+print_baselines(R_train, train_mask, R_observed, holdout_mask)
 print_method_scores("Item-CF", ibcf_predictions, R_observed, holdout_mask)
+print_warm_comparison(
+    "Item-CF", ibcf_predictions, R_train, train_mask, R_observed, holdout_mask,
+    data["cold_items"],
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Amazon-Style "Customers Who Bought This Also Bought..."
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Singapore cross-border e-commerce platform (think Qoo10 /
-# Shopee SG) serves 1.8M active users and a 12M-item catalogue. The "you
-# may also like" carousel on every product page is the platform's
-# highest-converting surface — it drives ~22% of gross merchandise value.
+# SCENARIO: A regional cross-border e-commerce platform serves 1.8M
+# active users. Its long-tail catalogue lists millions of SKUs, but the
+# "you may also like" carousel only needs neighbours for the ~60K SKUs
+# that are actively sold in a given month.
 #
-# Why item-CF is the industry default:
-#   - The similarity matrix is O(M^2) not O(N^2). For Shopee, M (items)
-#     grows ~10% per year while N (users) grows ~35% — item-CF scales
-#     with the smaller dimension
+# Why item-CF fits this setting:
+#   - The similarity matrix is O(M^2) in items, not O(N^2) in users. With
+#     ~60K active SKUs vs 1.8M users, the item side is the smaller one.
+#     (If you had to cover every one of millions of listed SKUs, that size
+#     advantage would disappear — item-CF wins on SIZE only when M < N.)
 #   - Item relationships are stable: "phone + phone case" stays true for
 #     years, while user taste shifts monthly
-#   - Precompute once, cache forever: the sparse top-50 neighbours per
-#     item fits in a single Redis key of ~2KB, enabling <5ms lookups at
-#     page-load time
+#   - Precompute nightly, cache: the sparse top-50 neighbours per item is
+#     a small record per SKU, so a page load is a cache lookup
 #
-# BUSINESS IMPACT: A 1% lift in cross-sell conversion on a S$4.2B annual
-# GMV platform = S$42M in incremental revenue. Even a conservative 0.3%
-# lift from tuning the item-CF model is S$12.6M/year — vs roughly
-# S$250K/year in engineering + infra cost. 50x ROI, reason Amazon has run
-# this algorithm for 20+ years.
+# BUSINESS IMPACT (illustrative assumptions, not measured figures): on a
+# platform with S$4.2B annual GMV, better cross-sell that adds just 0.1%
+# to GMV is worth ~S$4.2M/year. A tuning effort costing ~S$250K/year in
+# engineering + infrastructure pays back if it adds ~0.006% of GMV
+# (S$250K / S$4.2B) — which is why carousel ranking is tested so heavily.
 #
 # LIMITATIONS:
 #   - Niche items (long tail) have sparse similarity rows
@@ -241,12 +261,13 @@ print(
     """
   [x] Flipped CF from user-similarity to item-similarity
   [x] Understood why items are more stable than users at scale
-  [x] Built the Amazon "customers also bought" predictor
+  [x] Built the item-to-item "customers also bought" predictor
   [x] Inspected top-5 neighbours for the most-rated item
-  [x] Identified a S$12-42M/year impact scenario for SG e-commerce
+  [x] Sized an (illustrative) cross-sell scenario for SG e-commerce
 
-  KEY INSIGHT: Amazon, Netflix, Spotify all converged on item-CF because
-  the item catalogue is smaller, more stable, and precomputable.
+  KEY INSIGHT: Item-CF pays off when item relationships are more stable
+  than user tastes and the active catalogue is smaller than the user base
+  — then the item-item matrix is cheap to precompute and cache.
 
   Next: 04_matrix_factorisation.py — abandon similarity entirely and
   learn dense embeddings by optimisation. This is the bridge from

@@ -21,14 +21,14 @@
 #   3. Train — short runs for each optimiser, then one full run with
 #              the scheduler
 #   4. Visualise — optimiser curves + schedule trajectory
-#   5. Apply — Sea Group fraud model: AdamW + warmup saved a production rollout
+#   5. Apply — payments fraud model: why warmup prevents divergent retrains
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import math
 
-import torch
+import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 
@@ -91,8 +91,10 @@ optimiser_builders: dict[str, callable] = {
 def make_warmup_cosine(
     optimiser: optim.Optimizer, warmup_epochs: int, total_epochs: int
 ) -> optim.lr_scheduler.LambdaLR:
-    """Linear warmup for ``warmup_epochs`` then cosine decay to zero."""
-    base_lrs = [g["lr"] for g in optimiser.param_groups]
+    """Linear warmup for ``warmup_epochs`` then cosine decay towards zero.
+
+    LambdaLR multiplies each param group's base LR by ``lr_lambda(epoch)``.
+    """
 
     def lr_lambda(epoch: int) -> float:
         if epoch < warmup_epochs:
@@ -100,8 +102,6 @@ def make_warmup_cosine(
         progress = (epoch - warmup_epochs) / max(total_epochs - warmup_epochs, 1)
         return 0.5 * (1.0 + math.cos(math.pi * progress))
 
-    # Store base_lrs so LambdaLR's internal bookkeeping is consistent.
-    _ = base_lrs
     return optim.lr_scheduler.LambdaLR(optimiser, lr_lambda=lr_lambda)
 
 
@@ -181,7 +181,6 @@ print(f"[viz] Schedule trajectory: {sched_path}")
 
 # ── (C) Learning rate schedule curve (standalone) ─────────────────────
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 fig_lr = go.Figure()
 epochs_lr = list(range(1, total_epochs + 1))
@@ -256,31 +255,51 @@ bar_path = OUTPUT_DIR / "04_optimiser_bar.html"
 fig_bar.write_html(str(bar_path))
 print(f"[viz] Optimiser bar chart: {bar_path}")
 
-# INTERPRETATION: Adam and AdamW converge within the first two epochs
-# while pure SGD is still ramping. Momentum closes most of the gap.
-# The schedule plot shows LR climbing linearly for two epochs, peaking,
-# then following the smooth cosine decay — the shape that almost every
-# modern LLM and vision model uses.
+# INTERPRETATION (computed from this run):
+ranked = sorted(optimiser_histories, key=lambda n: optimiser_histories[n][-1])
+print("\nOptimisers ranked by epoch-5 training loss:")
+for name in ranked:
+    h = optimiser_histories[name]
+    print(f"  {name:<18} {h[0]:.4f} -> {h[-1]:.4f}  (drop {h[0] - h[-1]:.4f})")
+sgd_final = optimiser_histories["SGD lr=0.01"][-1]
+adaptive_best = min(
+    optimiser_histories["Adam lr=1e-3"][-1], optimiser_histories["AdamW lr=1e-3"][-1]
+)
+if adaptive_best < sgd_final:
+    print(
+        "  -> The adaptive optimisers (Adam/AdamW) reached a lower loss than "
+        "plain SGD on the same 5-epoch budget."
+    )
+else:
+    print(
+        "  -> Plain SGD kept pace with Adam/AdamW on this run — on an easy "
+        "problem with a well-chosen LR, the gap can be small."
+    )
+peak_epoch = int(np.argmax(schedule_history["lr"])) + 1
+print(
+    f"  Schedule: LR peaked at epoch {peak_epoch} "
+    f"({max(schedule_history['lr']):.1e}) and decayed to "
+    f"{schedule_history['lr'][-1]:.1e} by epoch {total_epochs}."
+)
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Sea Group (Shopee) Fraud Scoring
+# TASK 5 — APPLY: Payments Fraud Scoring (Southeast Asia)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Sea Group's Shopee Pay fraud team trains a transaction-risk
-# scorer nightly over ~18M events. Their 2023 v1 used plain SGD at lr=0.1
-# and had sporadic divergence — roughly one night in ten, the loss
-# would explode during hour 3 and the rollout would be aborted.
-# Retraining cost was ~S$1,200 per aborted run (wasted GPU-hours plus
-# the on-call engineer paged at 4am).
+# SCENARIO (hypothetical): a regional e-wallet's fraud team retrains a
+# transaction-risk scorer nightly over ~18M events. Version 1 uses plain
+# SGD at a high learning rate and diverges sporadically — say one night
+# in ten the loss explodes mid-run and the rollout is aborted, at ~S$1,200
+# per aborted run (wasted GPU-hours plus an on-call page).
 #
-# v2 switched to AdamW lr=5e-4 with a 500-step linear warmup and cosine
-# decay across the 18M steps. The warmup eliminated the epoch-1 blow-ups
-# entirely — 0 aborted runs over 180 training nights in the following
-# six months.
+# Version 2 switches to AdamW with a short linear warmup and cosine
+# decay. Warmup keeps the first updates small while Adam's moment
+# estimates are still noisy, which is the usual cause of early blow-ups.
 #
-# BUSINESS IMPACT:
-#   - Prevented ~S$18,000/month in aborted training cost
-#   - Recovered ~60 engineering-hours/month of on-call pages
-#   - Enabled safe deployment of a S$140M/year fraud model
+# BUSINESS IMPACT (illustrative assumptions, not measured figures):
+#   - 1 abort in 10 nights = ~3 aborts/month x S$1,200 = ~S$3,600/month
+#     (~S$43K/year) of wasted retraining, if warmup removes them all
+#   - Fewer 4am pages for the on-call engineer
+#   - More importantly, a model that refreshes every night on schedule
 #
 # LIMITATION: Cosine + warmup is a solid default, but it is not the
 # best schedule for every task. Contrastive learning loves OneCycle;
@@ -300,8 +319,8 @@ print(
   [x] Built a linear-warmup + cosine-annealing scheduler from LambdaLR
   [x] Trained a CNN for 10 epochs tracking train/val loss and LR together
   [x] Plotted the optimiser grid and the schedule trajectory
-  [x] Reviewed Sea Group's real production rollout where warmup removed
-      stochastic training divergence
+  [x] Costed an (illustrative) fraud-model retraining scenario where
+      warmup removes early training divergence
 
   KEY INSIGHT: AdamW + warmup + cosine is the modern default because it
   is the safest thing you can pick without per-task tuning. Start there,

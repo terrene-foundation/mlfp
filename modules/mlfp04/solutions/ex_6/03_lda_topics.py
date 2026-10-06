@@ -8,9 +8,9 @@
 # WHAT YOU'LL LEARN:
 #   - Explain LDA as a generative model: Dirichlet -> topic -> word
 #   - Fit LDA and read topic-word and document-topic distributions
-#   - Measure perplexity across K (topic counts) and pick an elbow
+#   - Fit LDA on word COUNTS and measure HELD-OUT perplexity across K
 #   - Read a document's mixed-membership topic distribution
-#   - Apply LDA to MAS complaint-routing (mixed-membership matters)
+#   - Apply LDA to news routing where stories span sections
 #
 # PREREQUISITES: Exercise 6.2 (NMF), basic probability (Dirichlet).
 #
@@ -18,21 +18,22 @@
 #
 # TASKS:
 #   1. Theory — generative story, Dirichlet prior, mixed membership
-#   2. Build — LDA over the document corpus
-#   3. Train — perplexity sweep across K
+#   2. Build — bag-of-words counts + train/held-out split
+#   3. Train — held-out perplexity sweep across K
 #   4. Visualise — per-topic top words, mixed-membership example
-#   5. Apply — MAS enforcement complaint routing
+#   5. Apply — media-monitoring story routing
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
 from sklearn.decomposition import LatentDirichletAllocation
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 
 from kailash_ml import ModelVisualizer
 
 from shared.mlfp04.ex_6 import (
+    NEWS_STOP_WORDS,
     OUTPUT_DIR,
     compute_npmi,
     corpus_as_lists,
@@ -60,14 +61,23 @@ from shared.mlfp04.ex_6 import (
 #
 # KEY DIFFERENCE FROM NMF: LDA is PROBABILISTIC. theta_d is a real
 # probability distribution that sums to 1, not just a weight vector.
-# This means "document 17 is 62% housing, 23% monetary policy,
-# 15% technology" is a meaningful statement.
+# This means "document 17 is 62% markets, 23% technology, 15% world
+# politics" is a meaningful statement.
 #
-# MIXED MEMBERSHIP is why LDA matters for some use cases: a single
-# complaint about cross-border SGD withdrawals during a crypto rug pull
-# genuinely belongs to TWO topics at once. NMF also allows soft
-# assignments, but LDA's probabilistic semantics make the overlap
-# directly interpretable.
+# MIXED MEMBERSHIP is why LDA matters for some use cases: a story about
+# a tech company's earnings genuinely belongs to TWO topics at once.
+# NMF's W also has several non-zero weights per document, but they are
+# unnormalised reconstruction weights, so LDA's proportions are the
+# directly interpretable version of the overlap.
+#
+# INPUT MUST BE COUNTS. LDA's generative story draws whole WORDS, so it
+# is fitted on a bag-of-words count matrix (CountVectorizer), not on
+# TF-IDF weights — TF-IDF values are not word counts.
+#
+# PERPLEXITY MUST BE HELD OUT. Perplexity on the documents the model was
+# trained on always flatters bigger K. We hold out 20% of documents and
+# measure perplexity on them: lower = the model predicts unseen text
+# better.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -78,14 +88,25 @@ corpus_df = load_corpus()
 documents, categories = corpus_as_lists(corpus_df)
 print(f"Corpus: {len(documents):,} documents")
 
-vectorizer = TfidfVectorizer(
+vectorizer = CountVectorizer(
     max_features=3000,
-    stop_words="english",
+    stop_words=NEWS_STOP_WORDS,
     max_df=0.95,
     min_df=3,
 )
 X = vectorizer.fit_transform(documents)
 vocab = vectorizer.get_feature_names_out()
+
+# 80/20 document split — the held-out 20% is only used to score perplexity
+rng = np.random.default_rng(42)
+perm = rng.permutation(X.shape[0])
+n_train = int(0.8 * X.shape[0])
+train_idx, heldout_idx = perm[:n_train], perm[n_train:]
+X_train, X_heldout = X[train_idx], X[heldout_idx]
+print(
+    f"Count matrix: {X.shape}; train docs {X_train.shape[0]}, "
+    f"held-out docs {X_heldout.shape[0]}"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -95,7 +116,8 @@ vocab = vectorizer.get_feature_names_out()
 print("\n" + "=" * 70)
 print("  LDA Perplexity Sweep")
 print("=" * 70)
-print("Lower perplexity = better held-out fit (but diminishing returns)")
+print("Perplexity on the 20% HELD-OUT documents — lower = better prediction")
+print("of unseen text")
 print()
 
 k_grid = [5, 8, 10, 12, 15]
@@ -104,19 +126,22 @@ for k in k_grid:
     lda = LatentDirichletAllocation(
         n_components=k,
         random_state=42,
-        max_iter=30,
+        max_iter=20,
         learning_method="online",
         batch_size=128,
     )
-    lda.fit(X)
-    perp = lda.perplexity(X)
+    lda.fit(X_train)
+    perp = lda.perplexity(X_heldout)
     results[k] = {"model": lda, "perplexity": float(perp)}
-    print(f"  K={k:>2}: perplexity = {perp:,.0f}")
+    print(f"  K={k:>2}: held-out perplexity = {perp:,.0f}")
+
+best_k = min(k_grid, key=lambda k: results[k]["perplexity"])
+print(f"\n  Lowest held-out perplexity at K={best_k}")
 
 # Use K=10 for detailed analysis
 K = 10
 lda_model = results[K]["model"]
-doc_topics = lda_model.transform(X)
+doc_topics = lda_model.transform(X)  # topic proportions for EVERY document
 dominant = doc_topics.argmax(axis=1)
 
 topic_words: list[list[str]] = []
@@ -163,7 +188,7 @@ if mixed_idx >= 0:
         bar = "#" * int(prob * 40)
         print(f"  Topic {t} ({prob:5.1%}) {bar} — {', '.join(topic_words[t][:5])}")
 
-coherences = compute_npmi(documents, topic_words)
+coherences = compute_npmi(documents, topic_words, analyzer=vectorizer.build_analyzer())
 mean_npmi = float(np.mean(coherences))
 print(f"\nLDA mean NPMI coherence: {mean_npmi:+.4f}")
 
@@ -172,7 +197,7 @@ viz = ModelVisualizer()
 # Perplexity curve
 perp_data = {f"K={k}": {"perplexity": results[k]["perplexity"]} for k in k_grid}
 fig_perp = viz.metric_comparison(perp_data)
-fig_perp.update_layout(title="LDA Perplexity vs Number of Topics")
+fig_perp.update_layout(title="LDA Held-Out Perplexity vs Number of Topics")
 fig_perp.write_html(str(OUTPUT_DIR / "ex6_3_lda_perplexity.html"))
 
 # Coherence bars
@@ -194,32 +219,31 @@ print("\n[ok] Checkpoint 2 passed — mixed-membership example and visualisation
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: MAS Enforcement Complaint Routing
+# TASK 5 — APPLY: Media-Monitoring Story Routing
 # ════════════════════════════════════════════════════════════════════════
 
 print_scenario("lda_topics")
 print(
     """
-WHY LDA FOR MAS:
-  - A crypto rug-pull complaint that mentions SGD withdrawals and
-    cross-border transfers is GENUINELY a mixed case. NMF would
-    hard-assign it to whichever topic has the highest weight; LDA's
-    probabilistic distribution says "67% digital-asset-fraud,
-    28% cross-border-payments" and the routing system can send a copy
-    to BOTH enforcement desks.
+WHY LDA FOR STORY ROUTING:
+  - A story about a tech company's quarterly earnings is GENUINELY a
+    mixed case. Routing on any single "top topic" (LDA's argmax or
+    NMF's largest weight) sends it to one desk only; LDA's proportions
+    say e.g. "60% markets, 30% technology", so the routing system can
+    send a copy to BOTH desks above a threshold.
   - LDA's sparsity prior (alpha) can be tuned: low alpha forces
     documents to concentrate on 1-2 topics (good for clean routing);
     high alpha produces smoother distributions (good for analytics).
-  - Perplexity sweep gives the enforcement director a defensible
-    answer to "why 10 topics and not 15" — the elbow in the curve.
+  - The held-out perplexity sweep gives a defensible answer to "why
+    this many topics" — pair it with NPMI and a human read of the
+    topics, because the lowest perplexity is not always the most
+    readable set.
 
-NUMBERS TO REMEMBER:
-  - ~60K complaint emails/year at MAS enforcement
-  - Median resolution time drops from 18 days to 11 when complaints
-    are dual-routed (MAS 2024 operational review)
-  - One prevented fraud escalation is worth ~S$2.4M (avoided payouts +
-    reputational damage)
-  - LDA fits in ~90 seconds/nightly batch, well within the window
+ILLUSTRATIVE ARITHMETIC (assumptions, not measured figures):
+  - Assume ~60K stories/year, 15% of them relevant to two desks, and
+    that a missed copy costs an analyst 20 minutes to recover later:
+    dual routing avoids ~3,000 analyst-hours a year
+    (60K x 15% x 20 min).
 """
 )
 
@@ -233,18 +257,19 @@ print("=" * 70)
 print(
     """
   [x] Explained LDA's generative story (Dirichlet -> topic -> word)
-  [x] Fit LDA across multiple K and read a perplexity curve
+  [x] Fit LDA on word counts across multiple K and read a HELD-OUT
+      perplexity curve
   [x] Found a document with mixed membership across 2+ topics
   [x] Measured NPMI coherence for LDA topics
-  [x] Mapped the technique to MAS enforcement complaint routing
+  [x] Mapped the technique to media-monitoring story routing
 
   LDA vs NMF — WHEN TO PICK WHICH:
-    NMF:  you need speed, determinism, and hard topic assignments
+    NMF:  you need speed, determinism, and a simple dominant-topic tag
     LDA:  you need probabilistic semantics, mixed membership, and
           the ability to say "this doc is 62% topic A, 28% topic B"
           in a defensible way
 
-  Next: 04_bertopic.py — replace TF-IDF with neural sentence
-  embeddings and discover topics that span languages.
+  Next: 04_bertopic.py — replace word counts with neural sentence
+  embeddings so paraphrases that share few words can cluster together.
 """
 )

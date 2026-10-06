@@ -23,7 +23,7 @@
 #   2. Build — implement `apriori()` and `_generate_candidates()`
 #   3. Train — run it on 2,500 Singapore retail transactions
 #   4. Visualise — L1 -> L2 -> L3 ladder and top frequent itemsets
-#   5. Apply — FairPrice/Sheng Siong shelf layout optimisation
+#   5. Apply — supermarket shelf layout optimisation
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -214,6 +214,62 @@ top_df = pl.DataFrame(
 top_df.write_csv(OUTPUT_DIR / "apriori_top_itemsets.csv")
 print(f"\n  Saved: {OUTPUT_DIR / 'apriori_top_itemsets.csv'}")
 
+# ── Visualisation ─────────────────────────────────────────────────────
+import plotly.graph_objects as go  # noqa: E402
+from plotly.subplots import make_subplots  # noqa: E402
+
+# (A) The Apriori ladder: how many itemsets survive at each level k, and
+# (B) the top 15 itemsets coloured by size so the L2/L3 co-purchase
+# structure stands out from the single-item staples.
+level_counts: defaultdict[int, int] = defaultdict(int)
+for itemset in frequent_itemsets:
+    level_counts[len(itemset)] += 1
+levels = sorted(level_counts)
+size_colours = {1: "#636EFA", 2: "#EF553B", 3: "#00CC96", 4: "#AB63FA"}
+
+fig_apriori = make_subplots(
+    rows=1,
+    cols=2,
+    column_widths=[0.35, 0.65],
+    subplot_titles=[
+        "Frequent itemsets per level (L1 -> Lk)",
+        "Top 15 itemsets by support (colour = itemset size)",
+    ],
+)
+fig_apriori.add_trace(
+    go.Bar(
+        x=[f"L{k}" for k in levels],
+        y=[level_counts[k] for k in levels],
+        marker_color=[size_colours.get(k, "#7F7F7F") for k in levels],
+        text=[level_counts[k] for k in levels],
+        textposition="outside",
+        showlegend=False,
+    ),
+    row=1,
+    col=1,
+)
+top15 = sorted_itemsets[:15]
+fig_apriori.add_trace(
+    go.Bar(
+        x=[float(v) for _, v in top15],
+        y=[format_itemset(s) for s, _ in top15],
+        orientation="h",
+        marker_color=[size_colours.get(len(s), "#7F7F7F") for s, _ in top15],
+        showlegend=False,
+    ),
+    row=1,
+    col=2,
+)
+fig_apriori.update_yaxes(autorange="reversed", row=1, col=2)
+fig_apriori.update_layout(
+    title=f"Apriori at min_support={MIN_SUPPORT}: the pruned ladder",
+    height=500,
+    width=1100,
+)
+apriori_path = OUTPUT_DIR / "01_apriori_ladder.html"
+fig_apriori.write_html(str(apriori_path))
+print(f"[viz] Apriori ladder + top itemsets: {apriori_path}")
+
 # INTERPRETATION: The L1 level is dense (most of the 25 products appear in
 # >= 3% of baskets) because Singapore mini-marts stock fast-moving staples.
 # The interesting content is at L2 and L3 — that's where co-purchase
@@ -222,7 +278,7 @@ print(f"\n  Saved: {OUTPUT_DIR / 'apriori_top_itemsets.csv'}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: FairPrice/Sheng Siong shelf layout optimisation
+# TASK 5 — APPLY: supermarket shelf layout optimisation
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: A Singapore supermarket chain operates ~200 neighbourhood
 # outlets, each stocking roughly 8,000 SKUs in 1,200 sqft of HDB floor
@@ -240,12 +296,12 @@ print(f"\n  Saved: {OUTPUT_DIR / 'apriori_top_itemsets.csv'}")
 #   - The anti-monotone pruning removes ~99.9% of candidate itemsets
 #   - Output is directly interpretable — each row is a physical product set
 #
-# BUSINESS IMPACT: An internal study at a tier-1 Singapore grocer found
-# that re-locating the top 50 cross-category frequent pairs into adjacent
-# shelving lifted basket size 4-7% without any price change. On annual
-# GMV of S$250M, that's a S$10-17M uplift — for zero marginal inventory
-# cost. The Apriori run takes seconds; the merchandising re-plan takes a
-# weekend.
+# BUSINESS IMPACT (illustrative assumptions, not measured figures): if
+# co-locating the top 50 cross-category frequent pairs lifted basket
+# size by 2%, a chain with S$250M annual GMV would gain ~S$5M of sales
+# for zero marginal inventory cost. Validate the lift with a store-level
+# A/B test before re-planning every outlet. The Apriori run takes
+# seconds; the merchandising re-plan takes a weekend.
 #
 # LIMITATIONS:
 #   - Apriori re-scans the transaction log at every level; for 100K+ txns
@@ -306,7 +362,8 @@ print(f"  [tracked] Apriori ladder + headline counts logged to {exp_name}\n")
 # the anti-monotone pruner — ~75 lines of structure to internalise WHY
 # Apriori scales beyond brute force. The production destination is one
 # function call. ``mlxtend.frequent_patterns.apriori`` runs the same
-# algorithm on a one-hot DataFrame and returns a polars-friendly table.
+# algorithm on a one-hot pandas DataFrame and returns a pandas table
+# (mlxtend needs pandas, so we convert only at this call site).
 # Lesson 02 (FP-Growth) then swaps the algorithm without changing the
 # call shape — both speak the same itemset-table contract.
 
@@ -342,6 +399,7 @@ print(
   [x] Implemented the Apriori algorithm from scratch
   [x] Applied the anti-monotone pruning principle in _generate_candidates()
   [x] Counted support with one pass per level against 2,500 baskets
+  [x] Visualised the pruned L1 -> Lk ladder and the top itemsets
   [x] Identified a production scenario (SG grocery shelf layout) where
       Apriori is the economically optimal choice
   [x] Compared the hand-rolled implementation against mlxtend.apriori —

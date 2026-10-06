@@ -1,75 +1,74 @@
-# MLFP04 — Task 3: NLP Topic Discovery with NMF
+# MLFP04 — Task 3: Baskets and Recommendations
 
-**Weight**: 25 marks · **Difficulty**: Hard · **Dataset**:
-`data/mlfp04/sg_domain_qa.parquet` — **real** Singapore-domain question/answer
-text (loaded via `shared.MLFPDataLoader`). This task uses the four most
-lexically distinct domains: **finance, food, geography, transport** (616
-documents).
+**Weight**: 20 marks · **Outcomes**: 4.5 (frequent itemsets, support / confidence / lift, association rules), 4.7 (collaborative filtering, matrix factorisation, cold start)
+**Data**: till exports and rating histories in the formats below. `dev_baskets.parquet` and `dev_ratings.parquet` (shipped with the task) are one of each for development; the grader uses its own.
 
 ## Scenario
 
-A Singapore civic-information portal has a large pile of unlabelled
-question/answer pairs and wants to auto-organise them into topics for its help
-centre. The portal does **not** know which document belongs to which domain —
-the domain labels exist only in the grader, which uses them to score how well
-your topics match the real structure. Your job is unsupervised **topic
-modelling**: turn each document into a TF-IDF vector and factor the
-document-term matrix with **Non-negative Matrix Factorisation (NMF)** so each
-document lands in one of four topics.
+**Market baskets.** A chain of neighbourhood mini-marts wants the product
+associations behind its baskets so it can plan shelf adjacency and bundles.
+A till export has one row per scanned line:
 
-Use the kailash-ml **`DimReductionEngine`** with `algorithm="nmf"`
-(`from kailash_ml.engines.dim_reduction import DimReductionEngine`). NMF
-produces a non-negative `documents × topics` weight matrix; the topic with the
-largest weight is the document's dominant topic. Raw sklearn is not permitted —
-the engine is the framework-first surface.
+| Column      | Meaning                          |
+| ----------- | -------------------------------- |
+| `basket_id` | one checkout                     |
+| `item`      | product name as keyed at the till |
 
-Implement `solve() -> dict`.
+Some tills key names by hand: the same product appears with different
+capitalisation and stray spaces, and a product scanned twice appears twice
+in the same basket. Report products by their canonical name — lowercase,
+with surrounding spaces removed.
 
-## Required pipeline
+The category manager wants **every** rule `A → C` (A and C non-empty,
+disjoint sets of products, at most `max_len` products in A ∪ C) whose
+itemset A ∪ C is in at least `min_support` of baskets and whose confidence
+is at least `min_confidence`, with its support (share of baskets containing
+A ∪ C), confidence and lift. Thresholds change from export to export.
 
-1. **Load + select**: load `sg_domain_qa.parquet`, filter to the four domains,
-   and sort by `["category", "instruction"]`. This fixed order is the canonical
-   document order the grader aligns against — do **not** reorder.
-2. **Vectorise**: build the TF-IDF document-term matrix. The helper
-   `build_tfidf(...)` is **provided** in the starter (sublinear TF, L2-normalised
-   rows, stopword removal, document-frequency vocabulary pruning) — use it as
-   given so the matrix is deterministic.
-3. **Factor**: wrap the matrix in a Polars DataFrame and call
-   `DimReductionEngine().reduce(matrix_df, algorithm="nmf", n_components=4,
-seed=42)`. Read the `transformed` field — the `documents × 4` topic-weight
-   matrix.
-4. **Assign**: each document's dominant topic is the `argmax` over its 4 topic
-   weights.
+**Recommendations.** The same chain's app lets members rate products from 1
+to 5 in half steps. A rating history has `user_id`, `item_id`, `rating` and
+`rated_at`. Members sometimes re-rate a product; only their latest rating
+reflects their opinion. The app team wants a model that predicts how a member
+would rate products they have not rated, and that ranks those products by
+the member's own taste, not just by overall popularity. Some members joined
+after the history was exported and have no ratings at all; the app still has
+to show them something sensible.
 
-## Output contract — `solve()` returns a `dict` with exactly these keys
+## What to submit
 
-| Key            | Type        | Meaning                                                |
-| -------------- | ----------- | ------------------------------------------------------ |
-| `doc_topics`   | `list[int]` | dominant topic id per document, in the canonical order |
-| `n_topics`     | `int`       | number of topics (4)                                   |
-| `topic_purity` | `float`     | cluster purity of `doc_topics` vs the true domains     |
+`starter.py` with two functions (signatures fixed):
 
-`len(doc_topics)` must equal the number of selected documents (616).
+| Function                                                      | Returns                                                                                                                                                            |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mine_rules(baskets, min_support, min_confidence, max_len=3)` | polars DataFrame, one row per rule, sorted by `lift` descending: `antecedent` (list of str), `consequent` (list of str), `support`, `confidence`, `lift`            |
+| `fit_recommender(history)`                                    | a function `predict(pairs)` taking a polars DataFrame with `user_id`, `item_id` and returning a numpy array with one predicted rating per row, in row order |
 
-## Visible sanity checks
+## Acceptance criteria
 
-- `result["n_topics"] == 4`
-- all four topics are non-empty and no single topic swallows > 65% of documents
-- the topics line up with the real domains: the grader checks **purity ≥ 0.65**,
-  **adjusted Rand index ≥ 0.45**, and **normalised mutual information ≥ 0.55**
-  (random assignment scores purity ≈ 0.25, ARI ≈ 0)
-
-## Grading (10 automated checks, all must pass)
-
-returns a dict · required keys present · `doc_topics` length 616 · `n_topics == 4`
-· exactly 4 non-empty topics · no topic > 65% of documents · **purity ≥ 0.65** ·
-**adjusted Rand index ≥ 0.45** · **NMI ≥ 0.55** · self-reported `topic_purity`
-matches the grader (±0.05).
+- Rules are checked on two secret till exports with secret thresholds
+  (support 0.02–0.05, confidence 0.35–0.60, `max_len` 3) against the complete
+  rule set computed by brute force: no rule missing, no extra rule, every
+  support / confidence / lift exact (relative tolerance 1e-6), strongest rule
+  first.
+- The recommender is checked on two secret histories. The grader has held
+  back a quarter of every member's latest ratings and all ratings of about a
+  dozen new members, and asks your `predict` for those pairs (in shuffled
+  order):
+  - for existing members, RMSE must be at most 85% of that of a
+    bias-only model (overall mean + member offset + product offset) fitted by
+    the grader on the same history;
+  - ranking each member's held-back products by your prediction must beat the
+    bias-only model's ranking by at least 0.08 in mean NDCG@5;
+  - for new members, predictions must be finite and no worse (RMSE) than
+    predicting the overall mean rating.
+- The no-extra-rules check earns marks only when the rule set is complete or
+  its metrics are exact; the new-member check only when an existing-member
+  check passes.
 
 ## Rules
 
-- **kailash-ml `DimReductionEngine` (NMF) only** — raw sklearn is blocked.
-- **Polars only** — no pandas. Load via `shared.MLFPDataLoader`.
-- Deterministic — use the provided `build_tfidf` helper, keep `seed=42`, and the
-  given sort order.
-- The placeholder in `starter.py` fails grading by design.
+- kailash-ml has no rule-mining or recommender engine; use polars and numpy
+  (no pandas). Library rule miners are allowed if their output meets the
+  acceptance criteria.
+- Your functions must work from their arguments alone: the grader never
+  passes the same data twice.

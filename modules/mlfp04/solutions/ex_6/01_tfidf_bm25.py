@@ -12,7 +12,7 @@
 #     document length normalisation (b)
 #   - Compare TF-IDF and BM25 ranking on the same corpus
 #   - Read a TF-IDF/BM25 score as a retrieval signal, not a probability
-#   - Apply the technique to ST Engineering internal document search
+#   - Apply the technique to an engineering group's internal document search
 #
 # PREREQUISITES: Linear algebra (sparse matrices), basic probability.
 #
@@ -23,13 +23,12 @@
 #   2. Build — CountVectorizer -> TfidfVectorizer -> manual BM25
 #   3. Train — score terms across the corpus (no gradient descent)
 #   4. Visualise — top-term rankings, BM25 saturation curve
-#   5. Apply — ST Engineering internal search scenario
+#   5. Apply — internal engineering-document search scenario
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
-import polars as pl
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 from kailash_ml import ModelVisualizer
@@ -43,12 +42,19 @@ from shared.mlfp04.ex_6 import OUTPUT_DIR, TOY_CORPUS, print_scenario
 # A bag-of-words vector counts every term equally, so "the" dominates
 # "monetary" even though "the" carries no meaning. IDF fixes this:
 #
-#   TF(t, d) = count(t in d) / length(d)
-#   IDF(t)   = log(N / df(t))
-#   TF-IDF   = TF * IDF
+#   Textbook form:
+#     TF(t, d) = count(t in d) / length(d)
+#     IDF(t)   = log(N / df(t))
+#     TF-IDF   = TF * IDF
 #
-# Rare terms get high IDF and dominate the score; common terms ("the",
-# "singapore" in a Singapore corpus) get shrunk toward zero.
+#   What sklearn's TfidfVectorizer (defaults) actually computes:
+#     TF(t, d) = count(t in d)                      (raw count)
+#     IDF(t)   = ln((1 + N) / (1 + df(t))) + 1      (smooth_idf=True)
+#     row      = TF * IDF, then each document row is L2-normalised
+#   The +1 terms avoid division by zero and keep every IDF >= 1, so a
+#   word in every document is down-weighted but never zeroed. The idea is
+#   identical: rare terms get high IDF and dominate the score; common
+#   terms ("the", "singapore" in a Singapore corpus) are shrunk.
 #
 # BM25 is the next refinement, used by Elasticsearch and every modern
 # search engine:
@@ -104,13 +110,24 @@ for term, idf, t0, t1 in sorted(
 )[:12]:
     print(f"  {term:<20} {t0:>14.4f} {t1:>14.4f} {idf:>10.4f}")
 
+# Interpretation computed from the corpus — df(t) = number of documents
+# containing t, and sklearn's smoothed IDF formula from the theory block.
+idf_dict = dict(zip(tfidf_vocab, idf_values))
+n_toy = len(TOY_CORPUS)
 print("\nInterpretation:")
-print("  'singapore' appears in 4/8 docs -> low IDF -> penalised")
-print("  'monetary'  appears in 1/8 docs -> high IDF -> rewarded")
+for term in ("singapore", "monetary"):
+    df_t = int((X_bow[:, list(bow_vocab).index(term)] > 0).sum())
+    idf_formula = float(np.log((1 + n_toy) / (1 + df_t)) + 1)
+    print(
+        f"  '{term}' appears in {df_t}/{n_toy} docs -> "
+        f"IDF = ln((1+{n_toy})/(1+{df_t})) + 1 = {idf_formula:.4f} "
+        f"(sklearn: {idf_dict[term]:.4f})"
+    )
+    assert abs(idf_formula - idf_dict[term]) < 1e-9, "IDF should match the formula"
+print("  Common term -> low IDF -> penalised; rare term -> high IDF -> rewarded")
 
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-idf_dict = dict(zip(tfidf_vocab, idf_values))
 assert (
     idf_dict["singapore"] < idf_dict["monetary"]
 ), "Task 2: 'singapore' (common) should have lower IDF than 'monetary' (rare)"
@@ -226,29 +243,29 @@ print("\n[ok] Checkpoint 3 passed — visualisations written\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: ST Engineering Internal Search
+# TASK 5 — APPLY: Internal Engineering-Document Search
 # ════════════════════════════════════════════════════════════════════════
 
 print_scenario("tfidf_bm25")
 print(
     """
 WHY BM25 WINS HERE:
-  - ST Engineering reports vary from 2-page memos to 80-page aerospace
-    manuals. Pure TF-IDF rewards the longer manuals even when the memo
-    is more relevant (longer doc = more accumulated weight).
+  - The reports vary from 2-page memos to 80-page aerospace manuals.
+    Raw term counts reward the longer manuals even when the memo is
+    more relevant (longer doc = more accumulated weight).
   - BM25's b=0.75 normalises for document length, so a 2-page memo with
     three mentions of "turbine blade fatigue" outranks an 80-page manual
     with 12 mentions buried in supply-chain minutiae.
   - TF saturation (k1=1.2) prevents the aerospace manual from dominating
     just because "turbine" appears 90 times in its table of contents.
 
-NUMBERS TO REMEMBER:
-  - BM25 is ~14% more accurate at first-hit retrieval than TF-IDF on the
-    Lemur/TREC test collection.
-  - Every missed relevant document costs ST Engineering ~S$450K in
-    duplicated R&D (industry benchmark).
-  - For 180K reports, the 14% improvement is ~900 fewer misses/year =
-    ~S$400M in avoided duplicated R&D cost.
+ILLUSTRATIVE ARITHMETIC (assumptions, not measured figures):
+  - Assume a missed relevant report triggers duplicated R&D costing
+    ~S$450K.
+  - If better ranking prevents 10 such misses a year, that is ~S$4.5M
+    of avoided duplicated work (10 x S$450K).
+  - Before trusting any such figure, measure first-hit accuracy of
+    TF-IDF vs BM25 on YOUR queries with relevance judgements.
 """
 )
 
@@ -265,7 +282,8 @@ print(
   [x] Explained why rare terms get higher IDF (discriminative power)
   [x] Implemented BM25 with k1 (saturation) and b (length normalisation)
   [x] Observed BM25's sub-linear growth in TF empirically
-  [x] Mapped the technique to ST Engineering's document-search problem
+  [x] Checked sklearn's IDF against its formula on real document counts
+  [x] Mapped the technique to an internal document-search problem
 
   KEY INSIGHT: TF-IDF and BM25 require NO training. They are statistical
   summaries of the corpus, computed once, reused at every query. This

@@ -9,8 +9,9 @@
 #   - Factorise a TF-IDF matrix X ≈ W @ H with NMF
 #   - Read W as document-topic weights and H as topic-word weights
 #   - Explain why non-negativity makes topics interpretable
-#   - Measure NPMI topic coherence on a real corpus
-#   - Apply NMF to SPH newsroom content tagging at scale
+#   - Measure NPMI topic coherence on a real news corpus
+#   - Check discovered topics against human section labels
+#   - Apply NMF to a newsroom's content tagging at scale
 #
 # PREREQUISITES: Exercise 6.1 (TF-IDF), linear algebra (matrix factorisation).
 #
@@ -20,19 +21,21 @@
 #   1. Theory — non-negativity and additive parts
 #   2. Build — NMF on a TF-IDF matrix
 #   3. Train — fit NMF and inspect reconstruction quality
-#   4. Visualise — topic keyword bars, NPMI coherence per topic
-#   5. Apply — SPH newsroom auto-tagging scenario
+#   4. Visualise — NPMI coherence per topic, topic-vs-section heatmap
+#   5. Apply — newsroom auto-tagging scenario
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
+import plotly.graph_objects as go
 from sklearn.decomposition import NMF
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from kailash_ml import ModelVisualizer
 
 from shared.mlfp04.ex_6 import (
+    NEWS_STOP_WORDS,
     OUTPUT_DIR,
     compute_npmi,
     corpus_as_lists,
@@ -57,9 +60,13 @@ from shared.mlfp04.ex_6 import (
 # literal sum of topic contributions. This is called "parts-based
 # representation" and it's the reason NMF topics read like human topics.
 #
-# Algorithm: alternating non-negative least squares. No probabilistic
-# interpretation, no Dirichlet priors — just convex optimisation with
-# non-negativity constraints.
+# Algorithm: alternating updates (coordinate descent in sklearn) — fix
+# H and solve for W, fix W and solve for H. Each half-step is a convex
+# problem, but the JOINT problem in (W, H) is NON-convex: different
+# starts can land in different local optima. init="nndsvd" gives a
+# deterministic SVD-based start, so reruns produce the same topics. No
+# probabilistic interpretation and no Dirichlet priors — just
+# least-squares reconstruction under non-negativity constraints.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -72,7 +79,7 @@ print(f"Corpus: {len(documents):,} documents across {len(set(categories))} categ
 
 vectorizer = TfidfVectorizer(
     max_features=3000,
-    stop_words="english",
+    stop_words=NEWS_STOP_WORDS,
     max_df=0.95,
     min_df=3,
 )
@@ -127,10 +134,11 @@ print("\n[ok] Checkpoint 1 passed — NMF factorisation valid and non-negative\n
 # TASK 4 — VISUALISE: topic coherence via NPMI
 # ════════════════════════════════════════════════════════════════════════
 
-coherences = compute_npmi(documents, topic_words)
+coherences = compute_npmi(documents, topic_words, analyzer=vectorizer.build_analyzer())
 mean_npmi = float(np.mean(coherences))
 print(f"NPMI coherence — mean: {mean_npmi:+.4f}")
-print("(Higher is better. NPMI > 0.1 = topics cohere above chance.)")
+print("(Range -1..1. 0 = top words co-occur exactly as often as chance;")
+print(" > 0 = above chance; -1 = they never appear in the same document.)")
 for i, c in enumerate(coherences):
     bar = "#" * max(0, int((c + 0.3) * 30))
     print(f"  Topic {i}: {c:+.4f} {bar}")
@@ -151,41 +159,80 @@ fig_size = viz.metric_comparison(size_data)
 fig_size.update_layout(title="NMF Topic Size Distribution")
 fig_size.write_html(str(OUTPUT_DIR / "ex6_2_nmf_topic_sizes.html"))
 
+# Topic-vs-section heatmap: the human section labels were NEVER used to
+# fit NMF. If a topic's documents fall mostly in one section, NMF has
+# rediscovered that section from word co-occurrence alone.
+sections = sorted(set(categories))
+category_arr = np.asarray(categories)
+crosstab = np.array(
+    [
+        [int(((doc_topic == t) & (category_arr == sec)).sum()) for sec in sections]
+        for t in range(n_topics)
+    ]
+)
+topic_labels = [f"T{t}: {', '.join(topic_words[t][:3])}" for t in range(n_topics)]
+fig_heat = go.Figure(
+    go.Heatmap(
+        z=crosstab,
+        x=sections,
+        y=topic_labels,
+        colorscale="Blues",
+        text=crosstab,
+        texttemplate="%{text}",
+    )
+)
+fig_heat.update_layout(
+    title="NMF topics vs human news sections (documents per cell)",
+    xaxis_title="Human section label (not used in fitting)",
+    yaxis_title="NMF topic (top 3 words)",
+    height=550,
+)
+fig_heat.write_html(str(OUTPUT_DIR / "ex6_2_nmf_topic_vs_section.html"))
+
+purity = crosstab.max(axis=1) / np.maximum(crosstab.sum(axis=1), 1)
+print("\nTopic purity (share of a topic's docs in its most common section):")
+for t in range(n_topics):
+    print(f"  Topic {t}: {purity[t]:.0%} {sections[int(crosstab[t].argmax())]}")
+
 print(f"\nSaved: {OUTPUT_DIR}/ex6_2_nmf_coherence.html")
 print(f"Saved: {OUTPUT_DIR}/ex6_2_nmf_topic_sizes.html")
+print(f"Saved: {OUTPUT_DIR}/ex6_2_nmf_topic_vs_section.html")
 
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert len(coherences) == n_topics, "Task 4: one NPMI per topic"
 assert mean_npmi > -0.5, f"Task 4: mean NPMI should be > -0.5, got {mean_npmi:.4f}"
+assert crosstab.sum() == len(documents), "Task 4: every document lands in one cell"
 print("\n[ok] Checkpoint 2 passed — NPMI computed and visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: SPH Newsroom Content Tagging
+# TASK 5 — APPLY: Newsroom Content Tagging
 # ════════════════════════════════════════════════════════════════════════
 
 print_scenario("nmf_topics")
 print(
     """
-WHY NMF IS THE RIGHT TOOL FOR SPH:
+WHY NMF IS THE RIGHT TOOL FOR A NEWSROOM:
   - The editorial desk needs INTERPRETABLE topics, not black-box
-    embeddings. A journalist must be able to read "Topic 3: housing,
-    HDB, BTO, resale, Orchard" and immediately understand it means
-    the Singapore property beat.
-  - NMF is deterministic and fast (seconds on 24 hours of articles),
-    so the nightly tagging job fits in the production pipeline window.
+    embeddings. A journalist must be able to read a topic such as
+    "oil, prices, crude, barrel" and immediately name the beat.
+  - NMF with a fixed init is deterministic and fast (this run fitted
+    ~5,000 articles in seconds on a laptop), so a nightly tagging job
+    fits easily in the pipeline window.
   - Non-negativity makes the topic-keyword report AUDITABLE. The
     editorial standards team can review the top-20 words per topic
     and flag any that mix semantically unrelated terms.
 
-NUMBERS TO REMEMBER:
-  - ~2,400 articles/day at SPH across ST, BT, zaobao.com
-  - NMF with K=20 fits in ~6 seconds on a modern laptop
-  - Ad yield on auto-tagged articles is +11% vs untagged (more
-    relevant programmatic matches) = ~S$4.2M/year uplift
-  - Compare to BERTopic (next exercise) which is ~8x slower but
-    produces more fine-grained topics — worth it for some use cases
+ILLUSTRATIVE ARITHMETIC (assumptions, not measured figures):
+  - Assume ~2,400 articles/day and that manual tagging takes an editor
+    ~1 minute per article: auto-suggested tags that are accepted 70% of
+    the time save ~28 editor-hours a day (2,400 x 70% x 1 min).
+  - Check acceptance on a sample before relying on such a number — the
+    topic-vs-section heatmap above shows how clean the topics are.
+  - Compare with BERTopic (04_bertopic.py), which embeds every document
+    with a neural network: slower, but groups paraphrases that share
+    few words.
 """
 )
 
@@ -202,12 +249,13 @@ print(
   [x] Read W as document-topic weights, H as topic-word weights
   [x] Explained why non-negativity makes topics interpretable
   [x] Measured NPMI topic coherence without human annotation
-  [x] Mapped the technique to SPH newsroom auto-tagging
+  [x] Checked topics against human section labels held out of fitting
+  [x] Mapped the technique to newsroom auto-tagging
 
-  KEY INSIGHT: NMF is the Pareto-optimal choice when you need
-  interpretable topics FAST. It is not the most accurate, it is not
-  the most semantic, but every topic it finds is readable, every
-  run is deterministic, and every fit finishes before your coffee.
+  KEY INSIGHT: NMF is a strong default when you need interpretable
+  topics FAST. It is not the most semantic method, but its topics are
+  readable, a fixed init makes runs repeatable, and fits finish in
+  seconds.
 
   Next: 03_lda_topics.py — probabilistic topic modelling with
   mixed-membership via Latent Dirichlet Allocation.

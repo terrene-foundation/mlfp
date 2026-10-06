@@ -3,9 +3,9 @@
 """
 Shared infrastructure for MLFP04 Exercise 8 — Deep Learning Foundations.
 
-Contains: synthetic XOR data, synthetic Singapore-medical image data,
-reusable training loops, gradient monitoring helpers, ModelVisualizer
-output paths. Technique-specific code (model classes, per-file training
+Contains: synthetic XOR data, synthetic chest-film-style triage images
+(labels caused by drawn shapes), reusable training loops, gradient
+monitoring and AUC helpers, ModelVisualizer output paths. Technique-specific code (model classes, per-file training
 loops, scenario narratives) does NOT belong here — it lives per file.
 """
 from __future__ import annotations
@@ -13,7 +13,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-import polars as pl
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -68,12 +67,22 @@ def make_xor_data(
 
 
 # ════════════════════════════════════════════════════════════════════════
-# DATA — Synthetic Singapore Hospital imaging tensors (Tasks 4-10)
+# DATA — Synthetic chest-film-style triage images (Tasks 4-10)
 # ════════════════════════════════════════════════════════════════════════
-# Scenario: NUH (National University Hospital) chest-film triage. The real
-# pipeline uses anonymised 512x512 DICOMs; this exercise uses 64x64 random
-# tensors with the same multi-label structure so training completes in
-# minutes on a laptop CPU / Colab T4.
+# Scenario: chest-film triage at a Singapore public hospital. Real films
+# are 512x512 DICOMs that cannot be shipped with a course, so this exercise
+# draws SYNTHETIC 64x64 images in which each "finding" is a simple shape
+# placed on a noisy background. The labels are caused by what is drawn, so
+# a CNN can genuinely learn them — but these are NOT medical images, and
+# nothing learned here says anything about real radiology.
+#
+#   pneumonia   -> a large, diffuse bright blob ("opacity")
+#   effusion    -> a bright horizontal band across the base of the image
+#   atelectasis -> a thin vertical bright streak
+#   nodule      -> a small, sharp, very bright dot
+#   normal      -> none of the four findings drawn
+#
+# Findings are independent (multi-label), each present in ~25% of images.
 
 SG_HOSPITAL_CLASSES = [
     "pneumonia",
@@ -82,6 +91,7 @@ SG_HOSPITAL_CLASSES = [
     "nodule",
     "normal",
 ]
+FINDING_PREVALENCE = 0.25
 
 
 def make_sg_imaging_data(
@@ -89,15 +99,40 @@ def make_sg_imaging_data(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return (X_images, y_labels) as float32 numpy arrays.
 
-    X: (N, 1, 64, 64) — simulated single-channel chest film tensors.
-    y: (N, 5) — multi-label (~15% positive per class).
+    X: (N, 1, 64, 64) — synthetic single-channel images: Gaussian background
+       noise, a random per-image brightness offset, plus the drawn findings.
+    y: (N, 5) — multi-label targets; columns follow SG_HOSPITAL_CLASSES and
+       each finding column is 1 exactly when that shape was drawn.
     """
     rng = np.random.default_rng(seed)
-    X = rng.standard_normal((n_samples, N_CHANNELS, IMG_SIZE, IMG_SIZE)).astype(
-        np.float32
-    )
-    y = (rng.random((n_samples, N_CLASSES)) > 0.85).astype(np.float32)
-    return X, y
+    yy, xx = np.mgrid[0:IMG_SIZE, 0:IMG_SIZE]
+    X = rng.normal(0.0, 0.5, size=(n_samples, N_CHANNELS, IMG_SIZE, IMG_SIZE))
+    X += rng.normal(0.0, 0.3, size=(n_samples, 1, 1, 1))  # exposure jitter
+    present = rng.random((n_samples, 4)) < FINDING_PREVALENCE
+
+    for i in range(n_samples):
+        img = X[i, 0]
+        if present[i, 0]:  # pneumonia: diffuse blob
+            cy, cx = rng.uniform(16, 48, size=2)
+            radius = rng.uniform(6, 10)
+            img += 1.2 * np.exp(-((yy - cy) ** 2 + (xx - cx) ** 2) / (2 * radius**2))
+        if present[i, 1]:  # effusion: bright band at the base
+            top = int(rng.integers(46, 56))
+            img[top:, :] += 1.0
+        if present[i, 2]:  # atelectasis: thin vertical streak
+            col = int(rng.integers(8, 56))
+            row0 = int(rng.integers(4, 24))
+            length = int(rng.integers(20, 36))
+            img[row0 : row0 + length, col : col + 2] += 1.5
+        if present[i, 3]:  # nodule: small, sharp, bright dot
+            cy, cx = rng.uniform(8, 56, size=2)
+            radius = rng.uniform(2.0, 3.5)
+            img += 2.5 * (((yy - cy) ** 2 + (xx - cx) ** 2) <= radius**2)
+
+    y = np.zeros((n_samples, N_CLASSES), dtype=np.float32)
+    y[:, :4] = present
+    y[:, 4] = ~present.any(axis=1)
+    return X.astype(np.float32), y
 
 
 def build_sg_loaders(
@@ -165,7 +200,7 @@ def train_cnn_one_epoch(
     criterion: nn.Module,
     clip_value: float | None = None,
 ) -> tuple[float, float]:
-    """Train for one epoch on the Singapore imaging loader.
+    """Train for one epoch on the synthetic triage-image loader.
 
     Returns (mean_loss, mean_grad_norm). If ``clip_value`` is set, the grad
     norm is measured pre-clipping and ``clip_grad_norm_`` is applied.
@@ -195,6 +230,32 @@ def eval_cnn(model: nn.Module, loader: DataLoader, criterion: nn.Module) -> floa
             X_b, y_b = X_b.to(device), y_b.to(device)
             losses.append(criterion(model(X_b), y_b).item())
     return float(np.mean(losses))
+
+
+def eval_cnn_auc(
+    model: nn.Module, X: np.ndarray, y: np.ndarray, batch_size: int = 256
+) -> dict[str, float]:
+    """Per-class ROC AUC on held-out images, plus their macro average.
+
+    Loss values are hard to interpret on their own; AUC answers "does the
+    model rank images WITH a finding above images WITHOUT it?" (0.5 =
+    chance, 1.0 = perfect).
+    """
+    from sklearn.metrics import roc_auc_score
+
+    model.eval()
+    scores: list[np.ndarray] = []
+    with torch.no_grad():
+        for start in range(0, len(X), batch_size):
+            batch = torch.from_numpy(X[start : start + batch_size]).to(device)
+            scores.append(torch.sigmoid(model(batch)).cpu().numpy())
+    probs = np.concatenate(scores)
+    aucs = {
+        name: float(roc_auc_score(y[:, k], probs[:, k]))
+        for k, name in enumerate(SG_HOSPITAL_CLASSES)
+    }
+    aucs["macro"] = float(np.mean(list(aucs.values())))
+    return aucs
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -265,6 +326,6 @@ def count_params(model: nn.Module) -> tuple[int, int]:
 # DATA LOADER ENTRY POINT
 # ════════════════════════════════════════════════════════════════════════
 # We expose an MLFPDataLoader handle so student files have a single import
-# path even though the tensors are generated on the fly. Real datasets for
-# CNN fine-tuning live in Module 5.
+# path even though the images are generated on the fly. Real image datasets
+# for CNN training and fine-tuning live in Module 5.
 loader = MLFPDataLoader()

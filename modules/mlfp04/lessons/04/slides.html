@@ -32,9 +32,9 @@
 <section>
   <p class="lesson-meta">Module 4 · Lesson 4.4</p>
   <h1>Anomaly Detection and Ensembles</h1>
-  <p style="font-size: 0.7em; color: #64748B;">Z-score · IQR · Isolation Forest · LOF · EnsembleEngine</p>
+  <p style="font-size: 0.7em; color: #64748B;">Z-score · IQR · Isolation Forest · LOF · Blending · AnomalyDetectionEngine</p>
   <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
-    <strong>⏱ 75 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> detect fraud without labels
+    <strong>⏱ 75 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> screen credit applications for anomalies without labels
   </div>
 </section>
 
@@ -143,6 +143,7 @@
     <li>LOF ≈ 1: same density → normal.</li>
     <li>LOF > 1.5: anomalous relative to local context.</li>
     <li>Right choice when clusters have different densities.</li>
+    <li><strong>Blind spot (masking):</strong> a tight group of $\ge k$ anomalies are each other's neighbours, so each looks normal (LOF ≈ 1). Pick $k$ larger than the biggest group you must catch.</li>
   </ul>
 </section>
 
@@ -154,13 +155,14 @@
       <tr><td>Extreme single feature</td><td>✓</td><td>✓</td><td>✓</td></tr>
       <tr><td>Strange combination</td><td>✗</td><td>✓</td><td>✓</td></tr>
       <tr><td>Local density anomaly</td><td>✗</td><td>partial</td><td>✓</td></tr>
+      <tr><td>Tight group (application ring)</td><td>✓ if far out</td><td>✓</td><td>✗ unless $k$ &gt; group size</td></tr>
       <tr><td>High-dimensional</td><td>✗</td><td>✓</td><td>slow</td></tr>
     </tbody>
   </table>
 </section>
 
 <section>
-  <h2>Score blending — more robust than any single method</h2>
+  <h2>Score blending — often more robust, never guaranteed</h2>
   <pre><code class="language-python" data-trim>
 def normalise(x):
     return (x - x.min()) / (x.max() - x.min() + 1e-9)
@@ -172,39 +174,74 @@ lof_s = normalise(-lof.negative_outlier_factor_)
 blended = (z_s + if_s + lof_s) / 3
 anomalies = blended &gt; 0.7
   </code></pre>
-  <p>Caught-by-all-three → almost certainly anomaly. Caught-by-one → review.</p>
+  <p>Blending helps when detectors make <em>different</em> mistakes. A detector blind to an anomaly type dilutes the ones that catch it, so a blend can score <em>below</em> its best member — always compare on a labelled review sample.</p>
 </section>
 
 <section>
-  <h2>EnsembleEngine does this with one API</h2>
+  <h2>Kailash AnomalyDetectionEngine</h2>
   <pre><code class="language-python" data-trim>
-from kailash_ml import EnsembleEngine
+from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
 
-ensemble = EnsembleEngine()
-blended = ensemble.blend(
-    scores={"z": z_s, "iforest": if_s, "lof": lof_s},
-    normalise=True,
-    agg="mean",
-)
+# X: a polars frame of numeric, standardised features
+detector = AnomalyDetectionEngine()  # isolation_forest | lof | one_class_svm
+iso = detector.detect(X, algorithm="isolation_forest", contamination=0.01)
+print(iso.n_anomalies)               # iso.scores: [0, 1], higher = more anomalous
+
+blend = detector.ensemble_detect(X, algorithms=["isolation_forest", "lof"],
+                                 contamination=0.01, voting="score_average")
+top = blend.combined_scores          # normalised scores, averaged
   </code></pre>
   <div class="callout-slide kailash">
-    <strong>⚙ Kailash:</strong> <code>blend()</code>, <code>stack()</code>, <code>bag()</code>, <code>boost()</code> — unified ensemble API for both anomaly detection and supervised learning.
+    <strong>⚙ Kailash:</strong> the engine flips sklearn's sign convention (higher = more anomalous) and normalises to [0, 1] — the manual blend in one call. <code>EnsembleEngine.blend()</code> / <code>.stack()</code> are <strong>supervised</strong> classifier ensembles: they need a target column.
   </div>
+  <aside class="notes">This is the engine the exercises and the assessment's anomaly task use. ensemble_detect with voting="score_average" averages the normalised scores (the previous slide); the default "majority" votes on labels. Contamination only moves the cut-off, never the ranking. Do NOT use EnsembleEngine.blend to blend anomaly scores — it soft/hard-votes fitted classifiers against a target and does its own train/test split. That is the next slide.</aside>
 </section>
 
 <section>
-  <h2>Worked example: financial fraud</h2>
+  <h2>Once analysts label a review sample: EnsembleEngine</h2>
   <pre><code class="language-python" data-trim>
-features = ["amount", "hour", "recipient_count_24h", "location_km"]
-X = StandardScaler().fit_transform(...)
+from kailash_ml import EnsembleEngine
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
-iforest = IsolationForest(contamination=0.01, random_state=42).fit(X)
-lof = LocalOutlierFactor(n_neighbors=20, contamination=0.01)
-lof.fit_predict(X)
+# score_frame: one column per detector score + "is_anomaly" from analyst review
+logreg = LogisticRegression(max_iter=1000).fit(X_review, y_review)
+forest = RandomForestClassifier(n_estimators=200, random_state=42).fit(X_review, y_review)
 
-# ... blend scores, flag top 1% ...
-print(f"Flagged {anomalies.sum()} of {len(X)} transactions")
+engine = EnsembleEngine()
+blended = engine.blend([logreg, forest], holdout_frame, "is_anomaly",
+                       weights=[0.5, 0.5], method="soft")
+stacked = engine.stack([logreg, forest], holdout_frame, "is_anomaly")
+print(blended.metrics["auc"], stacked.metrics["auc"])
   </code></pre>
+  <p style="font-size: 0.8em; color: #64748B;">A <em>supervised second stage</em>: classifiers learn from the detector scores which detector to trust. It needs labels, so it comes after unsupervised screening — never instead of it.</p>
+  <aside class="notes">Mirrors Exercise 4.4 part (E). The base classifiers are fitted on the labelled review sample; the holdout frame goes to the engine, which does its own 80/20 split and reports AUC. blend() soft-votes predicted probabilities; stack() trains a meta-learner (logistic regression by default) on the base models' predictions.</aside>
+</section>
+
+<section>
+  <h2>Worked example: credit-application screening</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import LocalOutlierFactor
+from sklearn.metrics import roc_auc_score
+from shared.mlfp04.ex_4 import load_dataset
+
+X, y, cols, frame = load_dataset()   # 20,000 real applications + 200 injected anomalies
+iso_s = -IsolationForest(contamination=0.01, random_state=42).fit(X).decision_function(X)
+lof = LocalOutlierFactor(n_neighbors=50, contamination=0.01)
+lof.fit_predict(X)
+lof_s = -lof.negative_outlier_factor_  # negate both: higher = more anomalous
+print(roc_auc_score(y, iso_s), roc_auc_score(y, lof_s))   # y used ONLY to score
+  </code></pre>
+  <table style="font-size: 0.62em;">
+    <thead><tr><th>AUC-ROC by injected type</th><th>Global (one field 5–8σ)</th><th>Synthetic identity</th><th>Application ring (40)</th></tr></thead>
+    <tbody>
+      <tr><td>Z-score (max |z|)</td><td>0.995</td><td>0.55</td><td>0.97</td></tr>
+      <tr><td>Isolation Forest</td><td>0.77</td><td>0.68</td><td>0.98</td></tr>
+      <tr><td>LOF, k = 20</td><td>0.995</td><td>0.99</td><td><strong>0.22</strong> (masked)</td></tr>
+      <tr><td>LOF, k = 50</td><td>0.995</td><td>0.98</td><td>0.89</td></tr>
+    </tbody>
+  </table>
 </section>
 
 <section>
@@ -214,6 +251,7 @@ print(f"Flagged {anomalies.sum()} of {len(X)} transactions")
     <li>Set too high → false positives explode.</li>
     <li>Set too low → real anomalies missed.</li>
     <li>Rule of thumb: start with the real base rate, then tune by inspecting top-$k$.</li>
+    <li>Contamination only moves the cut-off — it never changes the <em>ranking</em>.</li>
   </ul>
   <div class="callout-slide warning">
     <strong>⚠ Warning:</strong> there is no precision/recall without labels. You must inspect manually.
@@ -223,7 +261,7 @@ print(f"Flagged {anomalies.sum()} of {len(X)} transactions")
 <section>
   <h2>Four rookie mistakes</h2>
   <ol>
-    <li>Contamination set to 10% when the real rate is 0.1%.</li>
+    <li>Contamination set to 10% when the real rate is 0.1% — you flag 100× too many.</li>
     <li>Z-score on right-skewed data without log-transform.</li>
     <li>Unscaled features in multivariate methods.</li>
     <li>Treating raw anomaly scores as probabilities across methods.</li>
@@ -231,20 +269,22 @@ print(f"Flagged {anomalies.sum()} of {len(X)} transactions")
 </section>
 
 <section>
-  <h2>Production: DriftMonitor uses this</h2>
-  <p>
-    The same algorithms — trained on yesterday's distribution — flag
-    today's data as "drifted" when too many points look anomalous
-    compared to the reference.
-  </p>
+  <h2>Production: rows vs distributions</h2>
+  <ul>
+    <li><strong>Anomaly detection</strong> flags individual unusual rows; the <em>anomaly rate</em> over time is an early-warning signal.</li>
+    <li><strong>Drift monitoring</strong> compares whole distributions: kailash-ml's <code>DriftMonitor</code> (M3.8) runs PSI and KS tests against a reference set — not an anomaly detector.</li>
+  </ul>
   <pre><code class="language-python" data-trim>
+from kailash.db import ConnectionManager
 from kailash_ml import DriftMonitor
-monitor = DriftMonitor(reference=X_train, method="iforest")
-score = monitor.check(X_today)
-if score.drift_detected:
-    alert("Distribution shift — consider retraining")
+
+conn = ConnectionManager("sqlite:///drift.db")
+await conn.initialize()
+monitor = DriftMonitor(conn, tenant_id="_single", psi_threshold=0.2)
+await monitor.set_reference_data("app_screen", train_df, feature_names)
+report = await monitor.check_drift("app_screen", today_df)
   </code></pre>
-  <p style="font-size: 0.85em; color: #64748B;">Full DriftMonitor coverage in M5.</p>
+  <p style="font-size: 0.85em; color: #64748B;">Full DriftMonitor coverage: M3.8. Exercise 4.4 plots the ensemble's anomaly rate over time as a monitoring chart.</p>
 </section>
 
 <section>
@@ -252,8 +292,8 @@ if score.drift_detected:
   <ul>
     <li>✓ Apply Z-score, IQR, Isolation Forest, LOF.</li>
     <li>✓ Explain which outlier type each method catches.</li>
-    <li>✓ Normalise and blend scores into a single signal.</li>
-    <li>✓ Use EnsembleEngine for unified ensembles.</li>
+    <li>✓ Normalise and blend scores — and check the blend beats its best member.</li>
+    <li>✓ Use AnomalyDetectionEngine; add EnsembleEngine as a supervised second stage once labels exist.</li>
     <li>✓ Recognise when unsupervised anomaly detection will not work.</li>
   </ul>
   <div class="callout-slide foundations">

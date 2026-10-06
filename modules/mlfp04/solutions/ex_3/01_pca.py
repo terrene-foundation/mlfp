@@ -10,7 +10,7 @@
 #   - Read a scree plot and pick n_components by variance threshold
 #   - Interpret loadings to assign business meaning to each component
 #   - Quantify compression quality via reconstruction error
-#   - Recognise when PCA is the right tool (linear, fast, invertible)
+#   - Recognise when PCA is the right tool (linear, fast, exactly invertible)
 #
 # PREREQUISITES: MLFP04 Exercise 1 (clustering) + linear algebra basics.
 #
@@ -21,12 +21,13 @@
 #   2. Build — compute SVD, verify against sklearn.PCA
 #   3. Train — scree plot + three component-selection criteria
 #   4. Visualise — loadings heatmap + reconstruction error curve
-#   5. Apply — Shopee Singapore customer analytics compression
+#   5. Apply — customer-analytics compression at a Singapore marketplace
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
+import plotly.graph_objects as go
 from sklearn.decomposition import PCA
 
 from kailash_ml import ModelVisualizer
@@ -67,7 +68,7 @@ tracker, exp_name = setup_engines()
 
 X, feature_cols, _ = load_customer_matrix()
 n_samples, n_features = X.shape
-print(f"=== E-commerce customers ===")
+print("=== E-commerce customers ===")
 print(f"Samples: {n_samples:,}  Features: {n_features}")
 
 U, S, Vt = np.linalg.svd(X, full_matrices=False)
@@ -78,7 +79,7 @@ evr = explained_variance / total_variance
 cum_evr = np.cumsum(evr)
 
 print(f"\nTotal variance (~n_features={n_features}): {total_variance:.2f}")
-print(f"\nTop 10 principal components:")
+print("\nTop 10 principal components:")
 print(f"{'PC':>4} {'Sing. val':>12} {'Expl. var %':>14} {'Cumulative %':>14}")
 print("-" * 48)
 for i in range(min(10, n_features)):
@@ -121,7 +122,7 @@ broken_stick = np.array(
 )
 n_broken = int((evr > broken_stick).sum())
 
-print(f"=== Component-selection criteria ===")
+print("=== Component-selection criteria ===")
 print(f"  80% variance threshold : {n_80} components")
 print(f"  90% variance threshold : {n_90} components")
 print(f"  95% variance threshold : {n_95} components")
@@ -174,6 +175,23 @@ for i in range(n_pcs_inspect):
     names = [f"{feature_cols[j]} ({loadings[j, i]:+.2f})" for j in top]
     print(f"  PC{i + 1}: {', '.join(names)}")
 
+# Loadings heatmap — rows = original features, columns = PCs. Strong
+# red/blue cells are the features that define each component.
+fig_load = go.Figure(
+    data=go.Heatmap(
+        z=loadings,
+        x=[f"PC{i + 1}" for i in range(n_pcs_inspect)],
+        y=feature_cols,
+        colorscale="RdBu",
+        zmid=0.0,
+        colorbar=dict(title="loading"),
+    )
+)
+fig_load.update_layout(title="PCA loadings: which features define each component")
+loadings_path = OUTPUT_DIR / "01_pca_loadings_heatmap.html"
+fig_load.write_html(str(loadings_path))
+print(f"Saved: {loadings_path}")
+
 # (c) Reconstruction error as a function of k
 # For standardised data, MSE(k) = sum_{j>k} s_j^2 / (n_samples * n_features)
 n_range = list(range(1, min(n_features + 1, 21)))
@@ -199,36 +217,38 @@ print("\n[ok] Checkpoint 3 — visualisations + loadings + reconstruction\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Shopee Singapore customer analytics compression
+# TASK 5 — APPLY: Customer-Analytics Compression at a Singapore Marketplace
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Shopee SG (Sea Group) stores ~14 million active shoppers, each
-# described by 120+ behavioural features (category views, basket size,
-# delivery windows, coupon response, returns, support tickets...). The
-# analytics team runs a nightly K-means segmentation to power the homepage
-# recommendation carousel — but the full 120-D distance computation over
-# 14M shoppers misses the 6-hour window before morning traffic spikes.
+# SCENARIO (illustrative): a large Singapore e-commerce marketplace keeps
+# millions of active shoppers, each described by 100+ behavioural features
+# (category views, basket size, delivery windows, coupon response,
+# returns, support tickets...). The analytics team runs a nightly K-means
+# segmentation to power a homepage recommendation carousel — but the
+# full-dimensional distance computation misses the pre-dawn batch window.
 #
 # WHY PCA IS THE RIGHT TOOL HERE:
-#   - Linear and fast: O(np min(n, p)) on the nightly batch, ~8 minutes.
-#   - Invertible: we can reconstruct any customer from their compressed
-#     vector, which matters for downstream churn-model explainability.
+#   - Linear and fast: one SVD (or a randomised SVD) on the nightly batch.
+#   - Exactly invertible (up to the discarded components): any customer
+#     can be reconstructed from their compressed vector, which matters for
+#     downstream churn-model explainability.
 #   - Interpretable: loadings let marketing name the components
-#     ("Component 1 = price sensitivity, Component 2 = bulk buyers...").
+#     (see the heatmap — e.g. "PC1 = spend volume").
 #
-# BUSINESS IMPACT: Retaining 95% of variance typically compresses 120-D
-# shopper vectors to ~18-D. K-means on 18-D completes in ~42 minutes vs
-# ~5 hours at full rank — comfortably inside the pre-dawn window. The
-# recommendation carousel refreshes on time, and each on-time refresh is
-# worth an estimated S$180K/day in incremental GMV (Sea Q3 2025 investor
-# deck attributes ~0.4% basket lift to freshness of personalisation).
+# BUSINESS IMPACT (illustrative assumptions, not reported figures):
+# K-means cost grows linearly with the number of dimensions, so cutting
+# dimensions by the compression ratio printed below cuts the clustering
+# step by roughly the same factor. If that brings the nightly job inside
+# its window, the carousel refreshes on time every day; put your own
+# value on a fresh vs stale carousel to size the benefit.
 #
-# At 95% variance we drop 5% of ambient variance — which is mostly noise,
-# and removing noise is a feature, not a bug: the downstream segmentation
-# is MORE stable under PCA than over raw features.
+# The variance PCA discards is the smallest-variance directions. Often
+# that is mostly noise, which can make downstream segmentation more
+# stable — but check it: a small-variance direction can still carry a
+# rare, important signal.
 
 # Demonstrate the compression numerically.
 compression_ratio = n_features / max(n_95, 1)
-print(f"=== Shopee-style compression estimate ===")
+print("=== Marketplace-style compression estimate ===")
 print(f"  Raw dimensions       : {n_features}")
 print(f"  At 95% variance      : {n_95}")
 print(f"  Compression ratio    : {compression_ratio:.1f}x")
@@ -326,12 +346,14 @@ print(
   [x] Built a scree plot and applied three selection criteria
   [x] Read loadings to assign business meaning to principal components
   [x] Measured reconstruction error as a compression quality metric
-  [x] Costed PCA as the right tool for nightly Shopee segmentation
+  [x] Drew a loadings heatmap to name the components
+  [x] Framed PCA for a nightly marketplace segmentation (illustrative)
 
-  KEY INSIGHT: PCA is the only linear dim-reduction method with a true
-  inverse transform. If your downstream job needs to EXPLAIN a customer
-  in the original feature space, PCA is the answer — every other method
-  in this exercise gives you points in a new space with no way back.
+  KEY INSIGHT: PCA's inverse is EXACT linear algebra: X_hat = Z V^T + mean,
+  and the only error is the variance you chose to discard. Kernel PCA and
+  UMAP offer only APPROXIMATE (learned) inverses, and t-SNE has none. If
+  your downstream job needs to EXPLAIN a customer in the original feature
+  space, PCA is the safest answer.
 
   Next: 02_kernel_pca.py lifts this into nonlinear territory via the
   kernel trick — same math, richer feature space.

@@ -6,21 +6,22 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Apply DBSCAN with core/border/noise and select epsilon via a
-#     k-distance plot
-#   - Apply HDBSCAN to skip epsilon via the density hierarchy
+#   - Apply DBSCAN with core/border/noise classification and select
+#     epsilon via a k-distance plot
+#   - Apply HDBSCAN to skip epsilon altogether by building a hierarchy of
+#     DBSCAN clusterings and extracting the most stable partition
 #   - Decide when "noise" is a feature, not a bug
 #
-# PREREQUISITES: 01_kmeans.py.
+# PREREQUISITES: 01_kmeans.py (feature setup).
 #
 # ESTIMATED TIME: ~35 min
 #
 # TASKS:
-#   1. Theory — density-based clustering
-#   2. Build — k-distance plot + DBSCAN epsilon sweep
-#   3. Train — HDBSCAN with eom vs leaf
+#   1. Theory — density-based clustering and the epsilon/minPts contract
+#   2. Build — k-distance plot and DBSCAN sweep across epsilon
+#   3. Train — HDBSCAN with eom vs leaf cluster selection
 #   4. Visualise — k-distance elbow plot
-#   5. Apply — Grab SG hotspot discovery
+#   5. Apply — Singapore ride-hail hotspot discovery, $ impact
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -153,7 +154,7 @@ sil_eom = (
     else float("nan")
 )
 
-print(f"  HDBSCAN cluster-selection comparison:")
+print("  HDBSCAN cluster-selection comparison:")
 print(f"    EOM : {n_eom} clusters  noise={noise_eom:.1%}  sil={sil_eom:.4f}")
 print(f"    Leaf: {n_leaf} clusters  (finest granularity)")
 
@@ -184,16 +185,17 @@ print("\n  [ok] Checkpoint 3 passed — k-distance visualisation rendered\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Grab Singapore Ride-Hail Hotspot Discovery
+# TASK 5 — APPLY: Singapore Ride-Hail Hotspot Discovery
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Grab SG dispatches 400K+ rides/day. HDBSCAN finds hotspots
+# SCENARIO: A Singapore ride-hailing operator dispatches (assume) several
+# hundred thousand rides a day. HDBSCAN finds hotspots
 # of any shape, keeps genuinely sparse regions as noise, and handles
 # variable density (CBD vs Tuas).
 #
-# BUSINESS IMPACT: Estimated S$2.05M / year driver-incentive waste
-# recovery on ~US$192M incentive spend.
+# BUSINESS IMPACT (illustrative assumptions): ~S$2.05M / year
+# driver-incentive waste recovery on an assumed ~US$192M incentive spend.
 
-print("  APPLY — Grab SG Hotspot Discovery")
+print("  APPLY — Singapore Ride-Hail Hotspot Discovery")
 print("  ─────────────────────────────────────────────────────────────────")
 for cid in sorted(set(int(c) for c in hdb_eom_labels.tolist() if c >= 0)):
     n = int((hdb_eom_labels == cid).sum())
@@ -202,7 +204,7 @@ print(
     f"    Noise: {int((hdb_eom_labels == -1).sum()):,} customers "
     f"({float((hdb_eom_labels == -1).mean()):6.1%})"
 )
-print("    Estimated annual incentive waste recovery: S$2.05M")
+print("    Illustrative annual incentive waste recovery: S$2.05M")
 
 
 # ── Checkpoint 4 ──────────────────────────────────────────────────────────
@@ -217,9 +219,16 @@ print("\n  [ok] Checkpoint 4 passed — hotspot partition valid\n")
 # ════════════════════════════════════════════════════════════════════════
 # Best DBSCAN epsilon = the one with the highest silhouette in the sweep.
 
-dbscan_best_eps, dbscan_best_stats = max(
-    dbscan_results.items(), key=lambda x: x[1]["sil"]
-)
+# NaN silhouettes (fewer than 2 clusters) must be filtered BEFORE max():
+# every comparison with NaN is False, so a NaN first entry would "win".
+finite_dbscan = {e: r for e, r in dbscan_results.items() if np.isfinite(r["sil"])}
+if finite_dbscan:
+    dbscan_best_eps, dbscan_best_stats = max(
+        finite_dbscan.items(), key=lambda x: x[1]["sil"]
+    )
+else:
+    print("  No DBSCAN setting produced >= 2 clusters; logging the suggested eps.")
+    dbscan_best_eps, dbscan_best_stats = eps_suggested, dbscan_results[eps_suggested]
 
 # TODO: call track_run with run_name "dbscan_hdbscan". scalar_metrics MUST
 # include dbscan_best_eps, dbscan_best_silhouette, dbscan_best_n_clusters,
@@ -252,12 +261,12 @@ print(f"  [tracked] DBSCAN sweep + HDBSCAN run logged to {exp_name}\n")
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='dbscan')
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1's ClusteringEngine wraps DBSCAN. The engine handles the
+# kailash-ml's ClusteringEngine wraps DBSCAN. The engine handles the
 # polars→numpy conversion, fits, computes silhouette over the non-noise
 # subset, and returns ClusterResult — the same flow this lesson hand-rolled
 # across 60 lines of sklearn glue.
 #
-# HDBSCAN remains an exception: 1.5.1 does not have an HDBSCAN adapter
+# HDBSCAN remains an exception: the engine has no HDBSCAN adapter
 # yet. For HDBSCAN, the destination is the ExperimentTracker leaderboard.
 
 import polars as pl
@@ -277,7 +286,7 @@ print(
     f"silhouette={(fit_result.silhouette_score or 0.0):.4f}"
 )
 print(
-    "  ClusteringEngine 1.5.1: kmeans/dbscan/spectral/gmm. HDBSCAN — use the"
+    "  ClusteringEngine: kmeans/dbscan/spectral/gmm. HDBSCAN — use the"
     " hdbscan library + tracker until the engine adapter lands.\n"
 )
 
@@ -290,13 +299,22 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] DBSCAN defines clusters by local density
-  [x] epsilon selected via k-distance elbow, minPts via domain rule
-  [x] Noise (label = -1) is a feature: sparse points stay unassigned
-  [x] HDBSCAN eliminates epsilon by searching all density levels
-  [x] Mapped to Grab SG hotspot discovery — S$2.05M / year recovery
+  [x] DBSCAN defines clusters by local density, not distance to a centroid
+  [x] epsilon is chosen via the k-distance elbow, minPts via domain rule
+  [x] Noise (label = -1) is a FEATURE: sparse points stay unassigned
+  [x] HDBSCAN eliminates epsilon by running DBSCAN at every density and
+      extracting the most persistent clusters
+  [x] eom (Excess of Mass) vs leaf cluster selection: eom is default;
+      leaf is for finest granularity
+  [x] Mapped the method onto ride-hail hotspot discovery — an illustrative
+      S$2.05M/year recovered driver-incentive budget
 
-  Next: 04_spectral.py — non-convex clusters via the graph Laplacian.
+  KEY INSIGHT: If your data has VARIABLE density (CBD vs suburbs) or
+  arbitrary cluster SHAPES (strips, rings, moons), force-fitting K-means
+  will give you nonsense. Density-based clustering is what you reach for.
+
+  Next: 04_spectral.py — when you know the clusters are non-convex and
+  you need the graph structure to find them.
 """
 )
 

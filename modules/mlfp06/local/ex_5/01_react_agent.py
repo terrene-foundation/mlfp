@@ -168,7 +168,7 @@ Steps:
 1. Get a dataset summary to understand the columns and types
 2. Count question types (comparison vs bridge) and difficulty levels
 3. Search for documents relevant to the question above
-4. Look up the ground-truth answer
+4. Extract the answer evidence (the tool never sees answer labels)
 5. Synthesise your findings into a clear report.""",
     "comparison": f'Find evidence in the corpus and answer: "{comparison_q}"',
     "bridge": f'Find evidence in the corpus and answer: "{bridge_q}"',

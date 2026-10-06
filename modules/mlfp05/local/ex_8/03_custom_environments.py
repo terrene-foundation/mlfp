@@ -62,6 +62,7 @@ from shared.mlfp05.ex_8 import (
     setup_engines,
 )
 from kailash_ml import ModelVisualizer
+from shared.mlfp05 import create_visualizer
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 1 — Theory: Why Custom Environments Matter
@@ -731,7 +732,7 @@ print("=" * 70)
 print("  TASK 4: Visualise Custom Environment Behaviour")
 print("=" * 70)
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # ── Plot 1: ChurnPrevention training reward curve ────────────────────
 # TODO: Plot training reward curve with moving average using viz.training_history()

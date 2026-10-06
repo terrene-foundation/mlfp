@@ -12,6 +12,24 @@ loops) that technique files import. Each exercise gets its own submodule:
 Available after `uv sync` from any directory.
 """
 
+# ── Canonical ModelVisualizer factory ────────────────────────────────────
+def create_visualizer():
+    """Return a ModelVisualizer with the P2 experimental notice acknowledged.
+
+    kailash-ml 2.2.2 emits ExperimentalWarning (a UserWarning) at
+    ModelVisualizer construction; exercises run under warnings-as-errors,
+    so the notice is acknowledged narrowly here — the ONE construction site
+    every M5 technique should use.
+    """
+    import warnings as _warnings
+
+    from kailash_ml import ModelVisualizer
+    from kailash_ml._decorators import ExperimentalWarning as _EW
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore", _EW)
+        return ModelVisualizer()
+
 # ── Python 3.13 aiosqlite teardown fix (CLI-script counterpart of M4's
 # teardown_engines) ────────────────────────────────────────────────────
 # kailash's ExperimentTracker runs on aiosqlite, whose worker Thread (in

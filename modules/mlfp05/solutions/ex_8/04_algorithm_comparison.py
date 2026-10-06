@@ -364,7 +364,7 @@ print("=" * 70)
 print("  TASK 3: Comprehensive Comparison Visualisations")
 print("=" * 70)
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # ── Plot 1: Evaluation reward box plot ───────────────────────────────
 comparison_df = pl.DataFrame(
@@ -675,6 +675,7 @@ asyncio.run(conn.close())
 # (`pip install kailash-ml[rl]`); we report whether it is installed
 # rather than assume it.
 import importlib.util
+from shared.mlfp05 import create_visualizer
 
 sb3_installed = importlib.util.find_spec("stable_baselines3") is not None
 print("Library path: km.rl_train(env, algo='dqn' | 'ppo' | 'a2c' | ...)")

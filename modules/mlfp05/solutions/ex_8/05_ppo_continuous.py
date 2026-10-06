@@ -63,7 +63,14 @@ from shared.mlfp05.ex_8 import (
     rl_diagnostic_checkpoint,
     setup_engines,
 )
+from shared.mlfp05 import create_visualizer
 from kailash_ml import ModelVisualizer
+
+# Deterministic seeds — RL outcomes must reproduce run to run, or the
+# checkpoint below is unverifiable and students chase noise.
+SEED = 2026
+np.random.seed(SEED)
+torch.manual_seed(SEED)
 
 # ════════════════════════════════════════════════════════════════════════
 # PHASE 1 — THEORY: When the Action Is a Dial, Not a Button
@@ -222,9 +229,9 @@ random_returns = evaluate_policy(env, lambda s: env.action_space.sample(),
 random_mean = float(np.mean(random_returns))
 print(f"  Random policy baseline: {random_mean:.1f} mean return (10 episodes)")
 
-N_ITERS = 120
+N_ITERS = 240
 STEPS_PER_ITER = 1024
-GAMMA, LAM, CLIP_EPS, LR = 0.99, 0.95, 0.2, 3e-4
+GAMMA, LAM, CLIP_EPS, LR = 0.99, 0.95, 0.2, 1e-3
 REWARD_SCALE = 0.1  # critic/GAE see scaled rewards; REPORTED returns are raw
 # Pendulum's rewards are large and negative (a swing-up costs ~-1000).
 # Scaling by 0.1 keeps the critic's MSE in a sane numeric range without
@@ -413,14 +420,7 @@ rl_diagnostic_checkpoint(
     entropies=entropies,
 )
 
-import warnings
-
-from kailash_ml._decorators import ExperimentalWarning
-
-with warnings.catch_warnings():
-    # ModelVisualizer's P2 experimental notice; the gate is warnings-as-errors.
-    warnings.simplefilter("ignore", ExperimentalWarning)
-    viz = ModelVisualizer()
+viz = create_visualizer()
 
 fig = viz.training_history(
     metrics={

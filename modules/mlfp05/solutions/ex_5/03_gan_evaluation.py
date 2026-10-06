@@ -51,6 +51,7 @@ from shared.mlfp05.ex_5 import (
     plot_loss_curves,
     register_generator,
 )
+from shared.mlfp05 import create_visualizer
 from kailash_ml import ModelVisualizer
 
 
@@ -494,7 +495,7 @@ plt.show()
 
 # 4D: Combined training dynamics
 print("\n  4D: Combined training dynamics comparison")
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig_all = viz.training_history(
     metrics={
         "Vanilla G": gan_g_losses,

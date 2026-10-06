@@ -299,6 +299,7 @@ print("\n--- Checkpoint 2 passed --- WGAN-GP trained\n")
 # objective (no weights are updated), then compare with ex_5/01.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
 from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05 import create_visualizer
 
 
 def _g_loss(m, batch):
@@ -507,7 +508,7 @@ print("\n--- Checkpoint 3 passed --- WGAN-GP visualisations complete\n")
 # Interactive training curves with ModelVisualizer
 from kailash_ml import ModelVisualizer
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig_html = viz.training_history(
     metrics={
         "WGAN-GP G loss": wgan_g_losses,

@@ -242,6 +242,7 @@ G_gan, D_gan, gan_g_losses, gan_d_losses, gan_snapshots = asyncio.run(
 # losses captured above.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
 from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05 import create_visualizer
 
 diag_bce = nn.BCEWithLogitsLoss()
 
@@ -398,7 +399,7 @@ print("\n--- Checkpoint 3 passed --- vanilla GAN visualisations complete\n")
 # Also save training curves with ModelVisualizer (HTML interactive)
 from kailash_ml import ModelVisualizer
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig_html = viz.training_history(
     metrics={"GAN G loss": gan_g_losses, "GAN D loss": gan_d_losses},
     x_label="Epoch",

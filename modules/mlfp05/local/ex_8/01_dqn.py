@@ -337,7 +337,7 @@ print("=" * 70)
 print("  TASK 4: Visualise DQN Agent Behaviour")
 print("=" * 70)
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # ── Plot 1: DQN reward curve with moving average ─────────────────────
 # TODO: Plot the raw episode rewards and their 20-episode moving average
@@ -468,6 +468,7 @@ print("  TASK 5: Apply DQN — Singapore Retail Inventory Management")
 print("=" * 70)
 
 from gymnasium import spaces
+from shared.mlfp05 import create_visualizer
 
 
 class RetailInventoryEnv(gym.Env):

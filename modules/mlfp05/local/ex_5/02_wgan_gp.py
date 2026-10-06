@@ -534,8 +534,9 @@ print("\n--- Checkpoint 3 passed --- WGAN-GP visualisations complete\n")
 
 # Interactive training curves with ModelVisualizer
 from kailash_ml import ModelVisualizer
+from shared.mlfp05 import create_visualizer
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig_html = viz.training_history(
     metrics={
         "WGAN-GP G loss": wgan_g_losses,

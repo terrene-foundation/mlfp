@@ -434,7 +434,7 @@ print("=" * 70)
 print("  TASK 4: Visualise PPO Agent Behaviour")
 print("=" * 70)
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # ── Plot 1: PPO reward curve ─────────────────────────────────────────
 # TODO: Plot the per-iteration PPO returns with ModelVisualizer
@@ -462,6 +462,7 @@ advantages_final, _ = compute_gae(rewards_final, values_final, dones_final)
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from shared.mlfp05 import create_visualizer
 
 # TODO: Histogram (about 50 bins) of advantages_final with plotly
 fig3 = ____  # TODO

@@ -407,8 +407,9 @@ print("\n--- Checkpoint 3 passed --- vanilla GAN visualisations complete\n")
 
 # Also save training curves with ModelVisualizer (HTML interactive)
 from kailash_ml import ModelVisualizer
+from shared.mlfp05 import create_visualizer
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig_html = viz.training_history(
     metrics={"GAN G loss": gan_g_losses, "GAN D loss": gan_d_losses},
     x_label="Epoch",

@@ -407,7 +407,7 @@ print(
 # --- Training curves ---
 # TODO: Use ModelVisualizer to plot all training curves
 # Save to OUTPUT_DIR / "ex1_all_variants_training_curves.html"
-viz = ModelVisualizer()
+viz = create_visualizer()
 ____
 
 
@@ -466,6 +466,7 @@ asyncio.run(conn.close())
 
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
 from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05 import create_visualizer
 
 # The VAE is the lesson's most expressive variant. flat_loader yields
 # (xb,) tuples, and vae_loss returns (loss, extras).

@@ -52,6 +52,7 @@ from shared.mlfp05.ex_1 import (
     all_losses,
     all_models,
 )
+from shared.mlfp05 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -533,7 +534,7 @@ print(
 )
 
 # --- Training curves ---
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig_all = viz.training_history(
     metrics={name: all_losses[name_to_key[name]] for name, _, _ in image_variants},
     x_label="Epoch",

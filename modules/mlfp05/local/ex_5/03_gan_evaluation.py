@@ -503,7 +503,7 @@ plt.show()
 
 # 4D: Combined training dynamics
 print("\n  4D: Combined training dynamics comparison")
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig_all = viz.training_history(
     metrics={
         "Vanilla G": gan_g_losses,
@@ -855,6 +855,7 @@ asyncio.run(close_engines(conn))
 # gradient-flow, dead-neuron and loss-trend readings.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
 from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05 import create_visualizer
 
 
 def _wgan_g_loss(m, batch):

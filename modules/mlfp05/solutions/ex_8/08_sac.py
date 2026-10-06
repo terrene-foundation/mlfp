@@ -43,6 +43,13 @@ import copy
 
 import numpy as np
 import torch
+
+# Deterministic seeds — RL outcomes must reproduce run to run, or the
+# checkpoints are unverifiable and students chase noise.
+SEED = 2026
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
@@ -63,6 +70,7 @@ from shared.mlfp05.ex_8 import (
     rl_diagnostic_checkpoint,
     setup_engines,
 )
+from shared.mlfp05 import create_visualizer
 
 # ════════════════════════════════════════════════════════════════════════
 # PHASE 1 — THEORY: Maximum-Entropy RL and SAC's Two Fixes
@@ -449,7 +457,7 @@ from kailash_ml._decorators import ExperimentalWarning
 with warnings.catch_warnings():
     # ModelVisualizer's P2 experimental notice; the gate is warnings-as-errors.
     warnings.simplefilter("ignore", ExperimentalWarning)
-    viz = ModelVisualizer()
+    viz = create_visualizer()
 
 fig = viz.training_history(
     metrics={

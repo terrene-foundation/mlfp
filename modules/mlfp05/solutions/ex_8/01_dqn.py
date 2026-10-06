@@ -329,7 +329,7 @@ print("=" * 70)
 print("  TASK 4: Visualise DQN Agent Behaviour")
 print("=" * 70)
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # ── Plot 1: DQN reward curve with moving average ─────────────────────
 fig1 = viz.training_history(
@@ -389,6 +389,7 @@ q_heatmap_df = pl.DataFrame(heatmap_rows)
 
 # Pivot for heatmap visualisation
 import plotly.graph_objects as go
+from shared.mlfp05 import create_visualizer
 
 fig3 = go.Figure(
     data=go.Heatmap(

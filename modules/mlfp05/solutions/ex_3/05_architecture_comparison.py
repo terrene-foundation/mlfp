@@ -297,15 +297,13 @@ for symbol, sdf in stock_data.items():
             torch.from_numpy(y_s[:sp]).to(device),
         ),
         batch_size=BATCH_SIZE,
-        shuffle=True,
-    )
+        shuffle=True, num_workers=0)
     ldr_v = DataLoader(
         TensorDataset(
             torch.from_numpy(X_s[sp:]).to(device),
             torch.from_numpy(y_s[sp:]).to(device),
         ),
-        batch_size=BATCH_SIZE,
-    )
+        batch_size=BATCH_SIZE, num_workers=0)
     # Train the best architecture on this stock
     if best_name == "LSTM+Attention":
         m = LSTMWithAttention(input_dim=N_FEATURES, hidden_dim=HIDDEN_DIM).to(device)

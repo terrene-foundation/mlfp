@@ -289,7 +289,7 @@ data_range[data_range == 0] = 1.0
 data_norm = (data_np - data_min) / data_range
 
 data_tensor = torch.tensor(data_norm, device=device)
-patient_loader = DataLoader(TensorDataset(data_tensor), batch_size=256, shuffle=True)
+patient_loader = DataLoader(TensorDataset(data_tensor), batch_size=256, shuffle=True, num_workers=0)
 
 
 class PatientVAE(nn.Module):

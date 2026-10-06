@@ -100,7 +100,7 @@ sensor_test = generate_sensor_data(N_SERIES_TEST, SEQ_LEN, seed=99)
 
 sensor_train_t = torch.tensor(sensor_train).to(device)
 sensor_test_t = torch.tensor(sensor_test).to(device)
-sensor_loader = DataLoader(TensorDataset(sensor_train_t), batch_size=128, shuffle=True)
+sensor_loader = DataLoader(TensorDataset(sensor_train_t), batch_size=128, shuffle=True, num_workers=0)
 
 print(
     f"Sensor data: {sensor_train.shape[0]} train, {sensor_test.shape[0]} test, seq_len={SEQ_LEN}"
@@ -300,8 +300,7 @@ train_seqs = sequences[normal_mask][: int(normal_mask.sum() * 0.8)]
 fin_train_tensor = torch.tensor(train_seqs, device=device)
 fin_test_tensor = torch.tensor(sequences, device=device)
 fin_train_loader = DataLoader(
-    TensorDataset(fin_train_tensor), batch_size=128, shuffle=True
-)
+    TensorDataset(fin_train_tensor), batch_size=128, shuffle=True, num_workers=0)
 
 print(
     f"Training on {len(train_seqs)} normal-only sequences (shape: {FIN_SEQ_LEN}x{N_FEATURES})"

@@ -264,8 +264,7 @@ test_normal_tensor = torch.tensor(
 )
 test_anomalous_tensor = torch.tensor(anomalous_images[:, None, :, :], device=device)
 med_train_loader = DataLoader(
-    TensorDataset(train_med_tensor), batch_size=64, shuffle=True
-)
+    TensorDataset(train_med_tensor), batch_size=64, shuffle=True, num_workers=0)
 
 print(f"Normal: {N_NORMAL}, Anomalous: {N_ANOMALOUS}")
 

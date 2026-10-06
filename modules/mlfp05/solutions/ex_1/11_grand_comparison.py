@@ -418,7 +418,7 @@ for _ in range(5000):
     sig = (sig - sig.min()) / (sig.max() - sig.min() + 1e-8)
     sensor_data.append(sig)
 sensor_t = torch.tensor(np.array(sensor_data, dtype=np.float32)).to(device)
-sensor_loader = DataLoader(TensorDataset(sensor_t), batch_size=128, shuffle=True)
+sensor_loader = DataLoader(TensorDataset(sensor_t), batch_size=128, shuffle=True, num_workers=0)
 
 print("=" * 70)
 print("  GRAND COMPARISON — Training All 10 Variants")

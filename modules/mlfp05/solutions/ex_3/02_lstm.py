@@ -532,8 +532,7 @@ y_dbs_val = torch.from_numpy(y_dbs[dbs_split:]).to(device)
 dbs_loader = torch.utils.data.DataLoader(
     torch.utils.data.TensorDataset(X_dbs_train, y_dbs_train),
     batch_size=64,
-    shuffle=True,
-)
+    shuffle=True, num_workers=0)
 dbs_model = LSTMRegressor(input_dim=N_FEATURES, hidden_dim=HIDDEN_DIM).to(device)
 opt = torch.optim.Adam(dbs_model.parameters(), lr=LR)
 

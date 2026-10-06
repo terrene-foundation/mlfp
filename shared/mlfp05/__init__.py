@@ -12,6 +12,22 @@ loops) that technique files import. Each exercise gets its own submodule:
 Available after `uv sync` from any directory.
 """
 
+# ── Lightning operational-nag filter ─────────────────────────────────────
+# Lightning's PossibleUserWarning ("GPU available but not used", "does not
+# have many workers") fires per Trainer.fit — environment observations, not
+# correctness signals, and fatal under the warnings-as-errors gate. M5
+# exercises train in-process, so this module-level filter reaches them
+# (unlike km.train's spawned workers — see ex_0/00's documented exemption).
+# Message-matched only: every other UserWarning still errors.
+import warnings as _warnings
+
+_warnings.filterwarnings(
+    "ignore", message=r".*GPU available but not used.*", category=UserWarning
+)
+_warnings.filterwarnings(
+    "ignore", message=r".*does not have many workers.*", category=UserWarning
+)
+
 # Re-export the canonical factory (shared/kailash_helpers.py).
 from shared.kailash_helpers import create_visualizer
 

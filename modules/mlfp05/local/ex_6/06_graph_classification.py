@@ -181,8 +181,8 @@ for c in range(N_GRAPH_CLASSES):
     val_idx.extend(idx[cut:].tolist())
 train_set = [dataset[i] for i in sorted(train_idx)]
 val_set = [dataset[i] for i in sorted(val_idx)]
-train_loader = PyGDataLoader(train_set, batch_size=32, shuffle=True)
-val_loader = PyGDataLoader(val_set, batch_size=128)
+train_loader = PyGDataLoader(train_set, batch_size=32, shuffle=True, num_workers=0)
+val_loader = PyGDataLoader(val_set, batch_size=128, num_workers=0)
 print(f"  split: {len(train_set)} train / {len(val_set)} val (stratified)")
 
 
@@ -241,7 +241,7 @@ class GCNClassifier(nn.Module):
 assert n_graphs >= 100, f"Too few graphs ({n_graphs}) for a classification demo"
 assert N_GRAPH_CLASSES == 2
 _probe = GCNClassifier().to(device)
-_batch = next(iter(PyGDataLoader([dataset[0], dataset[1]], batch_size=2))).to(device)
+_batch = next(iter(PyGDataLoader([dataset[0], dataset[1]], batch_size=2, num_workers=0))).to(device)
 with torch.no_grad():
     _out = _probe(_batch)
     _emb = _probe.embed(_batch)
@@ -433,7 +433,7 @@ best_model.eval()
 embs, emb_labels = [], []
 with torch.no_grad():
     for batch in PyGDataLoader([dataset[i] for i in range(n_graphs)],
-                               batch_size=64):
+                               batch_size=64, num_workers=0):
         embs.append(best_model.embed(batch.to(device)).cpu().numpy())
         emb_labels.append(batch.y.cpu().numpy())
 embs = np.concatenate(embs)

@@ -184,9 +184,8 @@ def prepare_dataloaders(
     test_y = torch.from_numpy(test_labels).to(DEVICE)
 
     train_loader = DataLoader(
-        TensorDataset(train_t, train_y), batch_size=batch_size, shuffle=True
-    )
-    val_loader = DataLoader(TensorDataset(val_t, val_y), batch_size=batch_size)
+        TensorDataset(train_t, train_y), batch_size=batch_size, shuffle=True, num_workers=0)
+    val_loader = DataLoader(TensorDataset(val_t, val_y), batch_size=batch_size, num_workers=0)
 
     return train_loader, val_loader, train_t, train_y, test_t, test_y
 

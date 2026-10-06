@@ -251,14 +251,12 @@ bert_train_loader = DataLoader(
         bert_train_ids.to(DEVICE), bert_train_mask.to(DEVICE), bert_train_y.to(DEVICE)
     ),
     batch_size=BERT_BATCH_SIZE,
-    shuffle=True,
-)
+    shuffle=True, num_workers=0)
 bert_test_loader = DataLoader(
     TensorDataset(
         bert_test_ids.to(DEVICE), bert_test_mask.to(DEVICE), bert_test_y.to(DEVICE)
     ),
-    batch_size=BERT_BATCH_SIZE,
-)
+    batch_size=BERT_BATCH_SIZE, num_workers=0)
 
 
 async def train_bert_async(model, train_loader, test_loader, epochs=3, lr=2e-5):

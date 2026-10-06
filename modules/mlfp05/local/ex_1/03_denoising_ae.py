@@ -257,8 +257,7 @@ test_clean = torch.tensor(
     clean_norm[n_train:].reshape(N_WINDOWS - n_train, -1), device=device
 )
 sensor_train_loader = DataLoader(
-    TensorDataset(train_noisy, train_clean), batch_size=128, shuffle=True
-)
+    TensorDataset(train_noisy, train_clean), batch_size=128, shuffle=True, num_workers=0)
 
 print(
     f"Generated {N_WINDOWS} sensor windows: {WINDOW_SIZE} timesteps x {N_SENSORS} sensors"

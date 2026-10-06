@@ -304,9 +304,8 @@ def prepare_dataloaders(
     print(f"  X_val:   {tuple(X_val_t.shape)}    y_val:   {tuple(y_val_t.shape)}")
 
     train_loader = DataLoader(
-        TensorDataset(X_train_t, y_train_t), batch_size=BATCH_SIZE, shuffle=True
-    )
-    val_loader = DataLoader(TensorDataset(X_val_t, y_val_t), batch_size=BATCH_SIZE)
+        TensorDataset(X_train_t, y_train_t), batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+    val_loader = DataLoader(TensorDataset(X_val_t, y_val_t), batch_size=BATCH_SIZE, num_workers=0)
     n_features = X_train_t.shape[-1]
 
     return (

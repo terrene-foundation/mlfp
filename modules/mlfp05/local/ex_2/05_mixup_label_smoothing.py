@@ -287,9 +287,8 @@ X_train, y_train, X_val, y_val, _, _ = load_cifar10()
 X_sub = X_train[:ABLATION_SUBSET]
 y_sub = y_train[:ABLATION_SUBSET]
 sub_loader = DataLoader(
-    TensorDataset(X_sub, y_sub), batch_size=BATCH_SIZE, shuffle=True
-)
-val_loader = DataLoader(TensorDataset(X_val, y_val), batch_size=512)
+    TensorDataset(X_sub, y_sub), batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+val_loader = DataLoader(TensorDataset(X_val, y_val), batch_size=512, num_workers=0)
 print(
     f"Ablation data: {len(X_sub):,} train images (subset), "
     f"{len(X_val):,} val images (full)"

@@ -329,8 +329,7 @@ test_labels = np.concatenate([np.zeros(len(test_normal)), np.ones(len(test_fraud
 train_tensor = torch.tensor(train_features, device=device)
 test_tensor = torch.tensor(test_features, device=device)
 fraud_train_loader = DataLoader(
-    TensorDataset(train_tensor), batch_size=512, shuffle=True
-)
+    TensorDataset(train_tensor), batch_size=512, shuffle=True, num_workers=0)
 
 print(f"Training on {len(train_features):,} normal-only transactions")
 print(f"Test set: {len(test_normal):,} normal + {len(test_fraud):,} fraud")

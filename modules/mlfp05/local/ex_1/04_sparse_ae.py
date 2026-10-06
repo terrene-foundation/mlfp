@@ -227,8 +227,7 @@ train_good_tensor = torch.tensor(good_wafers[:n_train_wafer, None, :, :], device
 test_good_tensor = torch.tensor(good_wafers[n_train_wafer:, None, :, :], device=device)
 test_defective_tensor = torch.tensor(defective_wafers[:, None, :, :], device=device)
 wafer_train_loader = DataLoader(
-    TensorDataset(train_good_tensor), batch_size=64, shuffle=True
-)
+    TensorDataset(train_good_tensor), batch_size=64, shuffle=True, num_workers=0)
 
 print(f"Good wafers: {N_GOOD}, Defective: {N_DEFECTIVE}")
 

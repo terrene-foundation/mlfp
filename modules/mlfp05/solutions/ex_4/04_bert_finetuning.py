@@ -174,14 +174,12 @@ bert_train_loader = DataLoader(
         bert_train_ids.to(DEVICE), bert_train_mask.to(DEVICE), bert_train_y.to(DEVICE)
     ),
     batch_size=BERT_BATCH_SIZE,
-    shuffle=True,
-)
+    shuffle=True, num_workers=0)
 bert_test_loader = DataLoader(
     TensorDataset(
         bert_test_ids.to(DEVICE), bert_test_mask.to(DEVICE), bert_test_y.to(DEVICE)
     ),
-    batch_size=BERT_BATCH_SIZE,
-)
+    batch_size=BERT_BATCH_SIZE, num_workers=0)
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert bert_train_ids.shape[0] == len(train_df), "Should tokenise all training samples"

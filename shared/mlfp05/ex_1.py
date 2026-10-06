@@ -82,8 +82,8 @@ def load_fashion_mnist() -> (
     X_test_img = X_test_img.to(device).float()
     X_test_flat = X_test_img.reshape(len(X_test_img), -1)
 
-    flat_loader = DataLoader(TensorDataset(X_flat), batch_size=256, shuffle=True)
-    img_loader = DataLoader(TensorDataset(X_img), batch_size=256, shuffle=True)
+    flat_loader = DataLoader(TensorDataset(X_flat), batch_size=256, shuffle=True, num_workers=0)
+    img_loader = DataLoader(TensorDataset(X_img), batch_size=256, shuffle=True, num_workers=0)
 
     print(
         f"Fashion-MNIST loaded: {len(X_img)} train + {len(X_test_img)} test images, "

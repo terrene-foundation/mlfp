@@ -95,8 +95,7 @@ def load_mnist(device: torch.device) -> tuple[torch.Tensor, torch.Tensor, DataLo
     print(f"  class distribution: {class_dist}")
 
     real_loader = DataLoader(
-        TensorDataset(X_real), batch_size=BATCH_SIZE, shuffle=True, drop_last=True
-    )
+        TensorDataset(X_real), batch_size=BATCH_SIZE, shuffle=True, drop_last=True, num_workers=0)
     return X_real, y_real, real_loader
 
 
@@ -257,8 +256,7 @@ def train_feature_extractor(
     for epoch in range(epochs):
         losses = []
         for xb, yb in DataLoader(
-            TensorDataset(X_01, y_real), batch_size=256, shuffle=True
-        ):
+            TensorDataset(X_01, y_real), batch_size=256, shuffle=True, num_workers=0):
             loss = F.cross_entropy(extractor(xb), yb)
             opt.zero_grad()
             loss.backward()

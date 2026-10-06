@@ -338,7 +338,7 @@ mol_range[mol_range == 0] = 1.0
 mol_norm = (mol_data - mol_min) / mol_range
 
 mol_tensor = torch.tensor(mol_norm, device=device)
-mol_loader = DataLoader(TensorDataset(mol_tensor), batch_size=128, shuffle=True)
+mol_loader = DataLoader(TensorDataset(mol_tensor), batch_size=128, shuffle=True, num_workers=0)
 
 
 class MolecularCVAE(nn.Module):

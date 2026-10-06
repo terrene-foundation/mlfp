@@ -386,13 +386,11 @@ class NormalisingDataset(torch.utils.data.Dataset):
 aug_loader = DataLoader(
     NormalisingDataset(train_set_aug),
     batch_size=BATCH_SIZE,
-    shuffle=True,
-)
+    shuffle=True, num_workers=0)
 noaug_loader = DataLoader(
     NormalisingDataset(train_set_noaug),
     batch_size=BATCH_SIZE,
-    shuffle=True,
-)
+    shuffle=True, num_workers=0)
 
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
 from shared.mlfp05.diagnostics import print_prescription_pad

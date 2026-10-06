@@ -126,8 +126,8 @@ def load_cifar10() -> tuple[
 
     train_ds = TensorDataset(X_train, y_train)
     val_ds = TensorDataset(X_val, y_val)
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE)
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, num_workers=0)
 
     print(
         f"CIFAR-10: train {tuple(X_train.shape)}, val {tuple(X_val.shape)}, "

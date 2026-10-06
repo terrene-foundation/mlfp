@@ -680,8 +680,7 @@ for _ in range(3):
     for xb, yb in torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(X_01[:5000], y_real[:5000]),
         batch_size=256,
-        shuffle=True,
-    ):
+        shuffle=True, num_workers=0):
         loss = torch.nn.functional.cross_entropy(model_real(xb), yb)
         opt_real.zero_grad()
         loss.backward()
@@ -702,8 +701,7 @@ for _ in range(3):
     for xb, yb in torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(synth_01, pseudo_labels),
         batch_size=256,
-        shuffle=True,
-    ):
+        shuffle=True, num_workers=0):
         loss = torch.nn.functional.cross_entropy(model_synth(xb), yb)
         opt_synth.zero_grad()
         loss.backward()

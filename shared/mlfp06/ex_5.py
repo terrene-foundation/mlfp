@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -73,7 +74,6 @@ def load_hotpotqa() -> pl.DataFrame:
         "hotpotqa/hotpot_qa",
         "distractor",
         split="validation",
-        trust_remote_code=True,
     )
     ds = ds.shuffle(seed=42).select(range(min(500, len(ds))))
     rows = []
@@ -219,22 +219,76 @@ def run_query(query_description: str) -> str:
 
 
 def answer_question(question: str) -> str:
-    """Look up the answer to a specific HotpotQA question.
+    """Extract answer evidence for a question from the corpus text itself.
 
     Args:
-        question: The exact question text to look up.
+        question: The natural-language question to answer.
 
     Returns:
-        The ground-truth answer if found, or 'not found'.
+        The highest-overlap evidence sentences from the most relevant
+        documents, with provenance. This tool NEVER reads the dataset's
+        stored answer labels — the agent must synthesise the final answer
+        from the returned evidence, exactly like a production RAG tool
+        that only sees raw documents.
     """
     df = _require_data()
-    for row in df.iter_rows(named=True):
-        if question.lower().strip() in row["question"].lower():
-            return (
-                f"Answer: {row['answer']}\n"
-                f"Type: {row['type']}, Level: {row['level']}"
-            )
-    return "Question not found in dataset."
+    q_terms = _content_words(question)
+    if not q_terms:
+        return "Could not extract content words from that question — rephrase it."
+
+    # Rank documents by content-word overlap with the question.
+    scored_docs = []
+    for i, row in enumerate(df.iter_rows(named=True)):
+        text_l = row["text"].lower()
+        doc_score = sum(text_l.count(term) for term in q_terms)
+        if doc_score > 0:
+            scored_docs.append((doc_score, i, row))
+    if not scored_docs:
+        return "No documents in the corpus overlap with that question."
+    scored_docs.sort(key=lambda x: x[0], reverse=True)
+
+    # Inside each top document, extract the most relevant SENTENCES.
+    sections = []
+    for doc_score, idx, row in scored_docs[:2]:
+        sentences = re.split(r"(?<=[.!?])\s+", row["text"])
+        scored_sents = sorted(
+            (
+                (sum(s.lower().count(term) for term in q_terms), s.strip())
+                for s in sentences
+                if s.strip()
+            ),
+            key=lambda x: x[0],
+            reverse=True,
+        )
+        evidence = [s for sc, s in scored_sents[:3] if sc > 0]
+        if not evidence:
+            continue
+        excerpt = "\n".join(f"  - {sent}" for sent in evidence)
+        sections.append(f"[Doc {idx}] (overlap={doc_score})\n{excerpt}")
+
+    if not sections:
+        return "Relevant documents found but no sentence matched the question terms."
+    return (
+        "\n\n".join(sections)
+        + "\n\n(Evidence extracted from the corpus text. Synthesise the final "
+        "answer from these sentences — this tool has no access to answer labels.)"
+    )
+
+
+_STOPWORDS = frozenset(
+    "the a an is are was were of in on at to and or for with what which who "
+    "whom whose when where why how did does do by as that this it its from "
+    "be been has have had not no yes".split()
+)
+
+
+def _content_words(text: str) -> list[str]:
+    """Lower-cased, punctuation-stripped question terms minus stopwords."""
+    return [
+        w
+        for w in (t.strip("?,.\"'():;").lower() for t in text.split())
+        if w and w not in _STOPWORDS
+    ]
 
 
 def make_tools(qa_data: pl.DataFrame) -> list:

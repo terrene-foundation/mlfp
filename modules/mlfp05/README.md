@@ -9,13 +9,13 @@ Every major DL architecture. One paradigm per lesson. All implemented.
 ## Lessons (8)
 
 1. **Autoencoders** — Vanilla, denoising, VAE (ELBO, reparameterisation), convolutional
-2. **CNNs and Computer Vision** — Convolution, pooling, ResNet, SE blocks, mixed precision, ViT
-3. **RNNs and Sequence Models** — LSTM (4 gates), GRU, multi-layer + residual, temporal attention
+2. **CNNs and Computer Vision** — Convolution, pooling, ResNet, SE blocks, mixed precision, ViT, Mixup + label-smoothing + Kaiming ablation
+3. **RNNs and Sequence Models** — LSTM (4 gates), GRU, multi-layer + residual, temporal attention, technical indicators (RSI/MACD/Bollinger), character-level LSTM text generation with perplexity
 4. **Transformers** — Self-attention from scratch, multi-head, positional encoding, BERT fine-tuning, ViT
 5. **Generative Models — GANs and Diffusion** — DCGAN, WGAN (gradient penalty), mode collapse, diffusion basics
-6. **Graph Neural Networks** — GCN, GraphSAGE, GAT, node/graph classification, message passing
+6. **Graph Neural Networks** — GCN, GraphSAGE, GAT, node/graph classification (Cora + MUTAG/TUDataset with GIN), message passing
 7. **Transfer Learning** — CV (ResNet fine-tuning), NLP (BERT), ONNX export, InferenceServer
-8. **Reinforcement Learning** — Bellman equations, DQN, PPO, custom Gymnasium environments
+8. **Reinforcement Learning** — Bellman equations, DQN, PPO (discrete + continuous), A2C, DDPG, SAC, custom Gymnasium environments
 
 ## Exercises (8)
 
@@ -26,6 +26,6 @@ Every major DL architecture. One paradigm per lesson. All implemented.
 | 3 | Sequence Models — RNNs and LSTMs | Financial time series |
 | 4 | Transformer Architecture | Text classification |
 | 5 | Generative Models — GANs | 2D synthetic data |
-| 6 | Graph Neural Networks | Karate Club / synthetic |
+| 6 | Graph Neural Networks | Karate Club / synthetic + MUTAG (TUDataset) |
 | 7 | Transfer Learning with Transformers | Singapore text |
-| 8 | Reinforcement Learning | Inventory management |
+| 8 | Reinforcement Learning | Inventory management + CartPole/Pendulum |

@@ -36,270 +36,387 @@
 </h1>
 
 <p class="lead">
-  Total time: ~90 minutes &nbsp;·&nbsp; 18 slides &nbsp;·&nbsp; ~5 min per slide
+  Total time: ~90 minutes &nbsp;·&nbsp; 21 slides &nbsp;·&nbsp; ~4 min per slide average
 </p>
 
 <p>
-  This lesson has the best ratio of pedagogical payoff to mathematical
-  density in M4. PCA is the one algorithm in classical ML with a clean
-  closed-form derivation, and walking through it gives students a rare
-  moment of "oh, the math actually works out". Spend extra time on the
-  loadings — they are what makes PCA interpretable and what stakeholders
-  care about.
+  The longest lesson of M4 and the most visual. The through-line: PCA
+  is the only reduction method that's also a <em>feature</em> method —
+  t-SNE and UMAP are for seeing, not for feeding downstream. Two
+  honesty points to land hard: trustworthiness (not silhouette) is how
+  you rank reducers, and UMAP's inter-cluster distances are still not
+  quantitative. The worked example's answer — 7 features compress to
+  only 5 — is itself a teaching moment about redundancy.
 </p>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
   <h3>Dimensionality Reduction</h3>
   <p>
-    Open: "In 4.1 and 4.2 we asked 'which group'. Today we ask a
-    different question: 'which axis'. Not 'where does this point live'
-    but 'along which direction does the data vary the most'. That
-    question has a beautiful closed-form answer, and it will teach you
-    half of linear algebra along the way."
+    Open with the outcome: "4.1 and 4.2 asked 'which group does this
+    point belong to?' Today: 'which axis does the data actually live
+    along?' Outcome: find how many of 7 customer features you really
+    need."
   </p>
-  <div class="transition">→ "Let's motivate it."</div>
+  <div class="transition">→ "From groups to axes."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Motivation</span></div>
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Groups to axes</span></div>
   <h3>From "which group" to "which axis"</h3>
   <p>
-    Give a concrete example: "Your feature table has 50 columns. Six of
-    them are variants of 'total amount' (spend, revenue, basket value,
-    lifetime value, etc). They are 95% correlated. The model treats them
-    as independent information and overfits. PCA replaces the six with
-    one or two linear combinations that capture the same signal without
-    the redundancy."
+    Draw the contrast: clustering partitioned the <em>points</em>;
+    dimensionality reduction <em>rotates the features</em>. Goal:
+    fewer features, most variance kept. Uses: visualisation,
+    compression, feature extraction.
   </p>
-  <div class="audience-cue beginner">
-    "Think of it as 'find the single column that best summarises a bunch of related columns, then repeat'."
-  </div>
-  <div class="transition">→ "Here's what it looks like geometrically."</div>
+  <p>
+    Read the green box: "If two features carry the same information,
+    you have one feature's worth of signal. Reduction finds the
+    non-redundant directions."
+  </p>
+  <div class="transition">→ "The rotation, drawn."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>Rotation diagram</span></div>
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>PCA picture</span></div>
   <h3>PCA rotates the axes to the data</h3>
   <p>
-    Walk the two panels. The left shows data elongated along the
-    $y = -x$ diagonal in the original coordinates. Most of the variance
-    is along that diagonal but PC1 does not exist yet — the axes are
-    $x_1$ and $x_2$. On the right, PCA has found new axes aligned with
-    the data: PC1 along the diagonal, PC2 perpendicular. Projecting
-    onto PC1 alone recovers almost all the information.
+    Walk the two panels. Left: the data stretched diagonally across
+    the original $x_1, x_2$ axes — neither axis alone captures the
+    spread. Right: PCA's rotation — PC1 lies along the long direction
+    of the cloud, PC2 across it. "PCA doesn't create new information.
+    It re-aims the coordinate system so the first axis carries the
+    most variance possible, the second the most of what's left."
   </p>
-  <div class="transition">→ "How does PCA find PC1? Variance maximisation."</div>
+  <div class="transition">→ "One Lagrangian."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 4</span><span>~6 min</span><span>Lagrangian derivation</span></div>
+  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>PCA derivation</span></div>
   <h3>Deriving PCA — one Lagrangian</h3>
   <p>
-    Walk the derivation step by step on the board. "We want the direction
-    $\mathbf{w}$ that maximises the variance of the projections.
-    Constraint: $\mathbf{w}$ must be a unit vector, otherwise we could
-    cheat by making it huge. Lagrangian, take the derivative, set to
-    zero, and we get $C \mathbf{w} = \lambda \mathbf{w}$ — an eigenvalue
-    equation."
+    Set up the problem: maximise the projected variance
+    $\mathbf{w}^\top C \mathbf{w}$ subject to $\|\mathbf{w}\| = 1$.
+    One Lagrangian later: $C\mathbf{w} = \lambda\mathbf{w}$ — an
+    eigenvalue equation.
   </p>
   <p>
-    Pause here: "This is rare. Most ML problems have no closed form.
-    PCA is one of a handful of problems where the optimisation reduces
-    to linear algebra you already know."
+    Read the blue box: "The solution is the top eigenvector of the
+    covariance matrix, and the variance it captures <em>is</em> the
+    eigenvalue. PCA is eigen-decomposition of a covariance matrix —
+    everything else is bookkeeping."
   </p>
-  <div class="audience-cue beginner">
-    "If the algebra is hazy, remember the conclusion: PCA solves the problem by computing eigenvectors of the covariance matrix. The biggest eigenvalue gives you PC1."
-  </div>
-  <div class="audience-cue expert">
-    "The Rayleigh quotient $\mathbf{w}^\top C \mathbf{w} / \mathbf{w}^\top \mathbf{w}$ is maximised at the top eigenvector — this is the variational characterisation of eigenvalues. Same idea appears in spectral clustering and graph Laplacians."
-  </div>
-  <div class="transition">→ "In practice, we use SVD instead."</div>
+  <div class="transition">→ "Nobody computes it that way. SVD."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 5</span><span>~5 min</span><span>SVD</span></div>
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>SVD</span></div>
   <h3>SVD = PCA's computational engine</h3>
   <p>
-    Walk the diagram. "Every $N \times D$ matrix factorises as $U \Sigma V^\top$.
-    $V$'s columns are the principal component directions. Σ's diagonal
-    gives you the singular values, and the variance captured by each
-    component is $\sigma_i^2 / (N-1)$."
+    Walk the factorisation picture: $X = U\Sigma V^\top$ — $U$ the
+    left singular vectors, $\Sigma$ the diagonal of singular values,
+    $V^\top$ the right singular vectors. "The columns of $V$ are the
+    principal directions; $\Sigma^2/(N-1)$ gives the variances.
+    Numerically, every serious PCA goes through SVD — it never forms
+    the covariance matrix, so it's faster and better conditioned."
   </p>
-  <p>
-    Explain why SVD is preferred: "Forming $X^\top X$ squares the
-    condition number and loses precision. SVD skips this step and works
-    on $X$ directly. Every production PCA library — sklearn, PyTorch,
-    JAX — uses SVD under the hood."
-  </p>
-  <div class="transition">→ "Now the practical question: how many components?"</div>
+  <div class="transition">→ "How many to keep?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Scree plot</span></div>
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Scree plot</span></div>
   <h3>Scree plot: how many components?</h3>
   <p>
-    Walk the plot. "Bars descend because components are sorted by
-    variance. The elbow is at $k \approx 4$ in this example — after that,
-    adding more components buys you little." Explain the two heuristics:
-    visual elbow (subjective) vs variance threshold (objective). Use
-    both, agree on the answer.
+    Walk the bar chart: variance per component, falling off. The red
+    dashed line marks the elbow at $k \approx 4$ — where the bars
+    stop falling fast and start tailing.
   </p>
-  <div class="transition">→ "But components are just numbers unless you interpret them."</div>
+  <p>
+    Read the rule: "Take the smallest $k$ where <em>cumulative</em>
+    variance reaches your threshold — 90–95% is the usual range. The
+    elbow is the visual version; the threshold is the operational
+    one."
+  </p>
+  <div class="transition">→ "But what do the components <em>mean</em>?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>Loadings</span></div>
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Loadings</span></div>
   <h3>Loadings make PCA interpretable</h3>
   <p>
-    Walk the code and the example. "If PC1 has large positive loadings on
-    spend, visits, and items, it is an 'overall activity' axis. If PC2 has
-    positive loading on account age and negative on recent clicks, it is
-    a 'tenure vs novelty' axis. These names are what the stakeholder
-    cares about. A scree plot without loadings is an academic exercise."
+    Walk the code: sort each component's weights by magnitude and
+    print the top features. Then read the answer on the slide: on the
+    7 standardised customer features, PC1 = +0.71 avg order value
+    + 0.65 revenue − 0.28 order count — "<em>spend per order</em>",
+    26.5% of the variance.
   </p>
-  <div class="audience-cue beginner">
-    "You name PCs the same way you name clusters — look at which original features dominate, and give it a human-meaningful label."
-  </div>
-  <div class="transition">→ "Next: what if the structure is curved?"</div>
+  <p>
+    "A component you can't name is a component you shouldn't ship.
+    The loadings turn 'PC1' into a sentence a stakeholder can argue
+    with — that's what makes PCA a feature method and not just a
+    compressor."
+  </p>
+  <div class="transition">→ "When the structure is curved."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Kernel PCA</span></div>
+  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>Kernel PCA</span></div>
   <h3>Kernel PCA — for curved structure</h3>
   <p>
-    Brief. "PCA can only rotate. For S-curves, spirals, rings — curved
-    manifolds — you need kernel PCA. It applies PCA in a higher-dim
-    feature space via the kernel trick. RBF kernel is the default.
-    Scales only to a few thousand points because it builds an $N \times N$
-    matrix."
+    Walk the bullets. Standard PCA can only rotate — a curved
+    manifold stays curved. Kernel PCA runs PCA in an implicit feature
+    space via the kernel trick — the same trick as 3.3's SVM. Common
+    kernels: RBF, polynomial.
   </p>
-  <div class="transition">→ "And for visualisation, two non-linear methods."</div>
+  <p>
+    Two costs to name: "$O(N^2)$ memory — only viable for a few
+    thousand points. And there's no exact inverse: mapping back to
+    input space — the pre-image problem — needs an approximation like
+    <code>fit_inverse_transform=True</code>."
+  </p>
+  <div class="transition">→ "The famous one: t-SNE."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 9</span><span>~5 min</span><span>t-SNE</span></div>
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>t-SNE</span></div>
   <h3>t-SNE: good for plots, bad for features</h3>
   <p>
-    Walk the KL formula at a high level. "t-SNE defines a notion of
-    closeness in high-dim space and another in low-dim space, then
-    shoves the low-dim points around until the two notions match. The
-    result is gorgeous visualisations but non-deterministic, with no
-    inverse transform."
+    Walk the objective: minimise the KL divergence between pairwise
+    neighbourhood distributions in high-dim and low-dim. "It
+    preserves <em>local</em> structure — who your neighbours are —
+    and distorts <em>global</em> structure — how clusters relate.
+    Non-deterministic, no inverse transform, and the knob is
+    <code>perplexity</code>, roughly 5–50."
   </p>
-  <div class="audience-cue expert">
-    "t-SNE's pairwise distributions use Gaussian kernels in high-dim and Student's t in low-dim. The heavy tails of the t distribution prevent the 'crowding problem' where many points want to be near the origin in 2D."
-  </div>
   <p>
-    Most importantly: "Never use t-SNE output as features for a
-    downstream model. The stochasticity means your model gets different
-    inputs every time you run it. Use it only for visualisation."
+    Read the amber box as a rule of the course: "<em>Never</em> use
+    t-SNE for feature extraction. The coordinates have no consistent
+    meaning across runs, there's no transform for new points, and
+    distances between clusters are fiction. Use it only to
+    <em>see</em>."
   </p>
-  <div class="transition">→ "UMAP fixes most of t-SNE's problems."</div>
+  <div class="transition">→ "The modern default: UMAP."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>UMAP</span></div>
   <h3>UMAP: newer, faster, better defaults</h3>
   <p>
-    Key points: faster, preserves more global structure, has inverse
-    transform, deterministic with a seed. This is our default choice for
-    any visualisation task.
+    Walk the four bullets. Better global layout than t-SNE — but
+    cluster sizes and gaps are <em>still not quantitative</em>. About
+    10× faster; scales to millions of points. It can embed <em>new</em>
+    points with <code>.transform()</code> — t-SNE cannot. And it's
+    deterministic given a seed.
   </p>
-  <div class="transition">→ "Side-by-side table."</div>
+  <p>
+    Read the footer: "Default choice for any visualisation task.
+    Fall back to t-SNE only when specifically needed."
+  </p>
+  <div class="transition">→ "Head to head."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Comparison table</span></div>
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>t-SNE vs UMAP</span></div>
   <h3>t-SNE vs UMAP at a glance</h3>
   <p>
-    Walk the table quickly. Recap: UMAP for almost everything. t-SNE
-    only if you already know exactly why you need it. "In the exercise
-    you will try both and see the difference."
+    Walk the table quickly — the rows students actually use: speed
+    (UMAP fast; t-SNE's Barnes-Hut is $O(n\log n)$ with a large
+    constant, exact is $O(n^2)$), global structure (poor vs better-
+    but-still-qualitative), new-point embedding (no vs yes),
+    determinism (no vs yes with seed), key knob (perplexity vs
+    n_neighbors), best for (dense small data vs everything else).
   </p>
-  <div class="transition">→ "One more theoretical result."</div>
+  <div class="transition">→ "See the guarantees, not the marketing."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>Eckart-Young</span></div>
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>Preservation picture</span></div>
+  <h3>Same data, different preservation guarantees</h3>
+  <p>
+    Walk the two panels — same five clusters through both methods.
+    t-SNE: tight beautiful blobs, and the caption says the quiet
+    part — <em>inter-cluster distances are meaningless</em>. UMAP:
+    better layout — related clusters sit near each other — and its
+    caption: sizes and inter-cluster distances <em>still</em> not
+    quantitative; the dashed connectors are layout hints only.
+  </p>
+  <p>
+    "Both are microscopes, not maps. You may say 'these points are
+    neighbours'. You may never say 'cluster A is twice as far from B
+    as from C' — not even with UMAP."
+  </p>
+  <div class="transition">→ "The classics, for completeness."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Other manifolds</span></div>
+  <h3>Other manifold learners: Isomap, LLE, MDS</h3>
+  <p>
+    Walk the table briefly — this is a reference slide. MDS preserves
+    all pairwise distances — the pick when you only have a
+    dissimilarity matrix. Isomap preserves geodesic distances along a
+    k-NN graph — for unrolling one smooth manifold like the Swiss
+    roll. LLE preserves each point as a weighted mix of its
+    neighbours — for small, clean, locally linear manifolds.
+  </p>
+  <p>
+    Read the footer: "All in <code>sklearn.manifold</code>. In
+    practice UMAP has replaced them for visualisation — know them for
+    the ideas: distances, geodesics, local linearity."
+  </p>
+  <div class="transition">→ "How do you rank reducers honestly?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~4 min</span><span>Trustworthiness</span></div>
+  <h3>Comparing reducers: trustworthiness, not silhouette</h3>
+  <p>
+    Walk the first bullet — the circularity trap: "t-SNE and UMAP
+    pull points into blobs <em>by construction</em>. Running K-means
+    silhouette inside the embedding rewards the picture the method
+    manufactured, not faithfulness to the data."
+  </p>
+  <p>
+    Then the metric: trustworthiness in [0, 1] — are a point's
+    embedding neighbours its <em>real</em> neighbours? 1 means no
+    false neighbours. Walk the code: computed on the same 3,000-row
+    subsample for every reducer — it needs all pairwise distances.
+    "Exercise 3.5 ranks PCA, kernel PCA, t-SNE, UMAP, and Isomap by
+    trustworthiness; silhouette survives only as a 'clusterability'
+    column."
+  </p>
+  <div class="transition">→ "And PCA's crown: provable optimality."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Eckart-Young</span></div>
   <h3>Eckart-Young: PCA is optimal</h3>
   <p>
-    State the theorem informally: "Among all rank-$k$ approximations of
-    a matrix, the truncated SVD is the best in Frobenius norm. PCA is
-    provably optimal for linear compression — you cannot beat it with a
-    better linear method."
+    Walk the theorem: the best rank-$k$ approximation in Frobenius
+    norm has error equal to the sum of the discarded squared singular
+    values — achieved by the truncated SVD.
   </p>
-  <div class="audience-cue expert">
-    "The proof uses the fact that the Frobenius norm is orthogonally invariant and the singular values are ordered. Extends to nuclear norm via Mirsky's theorem, which is why nuclear-norm minimisation is the convex relaxation of rank minimisation in matrix completion."
-  </div>
-  <div class="transition">→ "So how many components does your data actually need?"</div>
+  <p>
+    Read the blue box: "PCA is provably the best linear low-rank
+    approximation. No linear method beats it. When someone proposes a
+    fancier linear reduction, this theorem is the answer."
+  </p>
+  <div class="transition">→ "So how many dimensions are really there?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Intrinsic dimension</span></div>
+  <div class="meta"><span class="badge">Slide 16</span><span>~4 min</span><span>Intrinsic dimension</span></div>
   <h3>Intrinsic dimension</h3>
   <p>
-    Brief. Three ways to estimate: scree elbow, variance threshold,
-    participation ratio. If the intrinsic dimension is close to the
-    number of features, PCA will not help much — you cannot compress
-    data that has no redundancy.
+    Walk the four estimators. Scree elbow — visual. Variance
+    threshold — smallest $k$ hitting 90–95%. Participation ratio —
+    $(\sum\lambda)^2 / \sum\lambda^2$, an effective count of active
+    directions. Nearest-neighbour MLE (Levina–Bickel) — uses
+    neighbour-distance ratios; non-linear, so it sees curved
+    manifolds PCA cannot.
   </p>
-  <div class="transition">→ "Let's see it on real data."</div>
+  <p>
+    Read the footer numbers: "Customer data: 90% → 5 PCs, 95% → 6
+    PCs, participation ratio ≈ 5.3 — three methods agreeing. And the
+    sanity check: the MLE returns ≈ 8 on 8-D Gaussian noise — it
+    recovers the truth when we know it."
+  </p>
+  <div class="transition">→ "Compress the customers."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~4 min</span><span>Worked example</span></div>
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Worked compression</span></div>
   <h3>Worked example: compress customer features</h3>
   <p>
-    Walk the code. Point at the result: "15 features, 6 components for
-    90% variance. Downstream models will train on 6 inputs instead of
-    15." Forward-connect: "In the exercise you will compare a logistic
-    regression trained on the raw features vs on the PCA features."
+    Walk the code: fit PCA on the 50,000-row standardised frame,
+    cumulative-sum the explained variance, and search for the 90% and
+    95% marks. The answers: 5 components for 92.2%, 6 for 98.0%.
   </p>
-  <div class="transition">→ "Kailash wraps this."</div>
-</div>
-
-<div class="slide-block">
-  <div class="meta"><span class="badge">Slide 15</span><span>~2 min</span><span>Kailash engine</span></div>
-  <h3>Kailash ModelVisualizer</h3>
   <p>
-    Quick. "ModelVisualizer has a scree_plot helper that takes a fitted
-    PCA and returns a Plotly figure with top-3 loadings annotated. This
-    is the figure we give to stakeholders."
+    Read the interpretation: "Only 7 → 5 — these features are not
+    very redundant. Teach the lesson in that: PCA pays off most when
+    you have <em>many correlated</em> features. Then downstream
+    models train faster and overfit less. Here the win is modest —
+    and honesty about small wins is part of the course."
   </p>
-  <div class="transition">→ "Four rookie mistakes."</div>
+  <div class="transition">→ "The Kailash surface."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Mistakes</span></div>
+  <div class="meta"><span class="badge">Slide 18</span><span>~4 min</span><span>Kailash engines</span></div>
+  <h3>Kailash DimReductionEngine + ModelVisualizer</h3>
+  <p>
+    Walk the code. Wrap the standardised matrix as polars, then
+    <code>DimReductionEngine</code>: <code>variance_analysis</code>
+    gives the 95% count and the elbow; <code>reduce(algorithm="pca",
+    n_components=2)</code> returns the embedding with explained
+    variance and reconstruction error. Wrap the result as a polars
+    frame and scatter it with <code>ModelVisualizer</code>.
+  </p>
+  <p>
+    Read the teal box — two practical facts: "The engine reports
+    variance and reconstruction error; loadings you read yourself, as
+    on the earlier slide. And ModelVisualizer has <em>no scree
+    helper</em> — plot <code>cumulative_variance</code> with plotly
+    directly. Also note: the engine does not standardise for you —
+    that's your job upstream, as always."
+  </p>
+  <div class="transition">→ "Four mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 19</span><span>~3 min</span><span>Mistakes</span></div>
   <h3>Four rookie mistakes</h3>
   <p>
-    Walk all four. #2 (t-SNE as feature extractor) is the career-limiting
-    one — the student fixes it in the review and learns the lesson.
+    Walk the four. One: forgetting to centre/standardise — PCA on raw
+    scales chases the biggest units, not the biggest structure. Two:
+    t-SNE as a feature extractor — forbidden, slide 9. Three: $k$ too
+    small — over-aggressive compression throws away signal you'll
+    blame the downstream model for missing. Four: reporting
+    components without loadings — black-box PCA; name every component
+    you keep.
   </p>
-  <div class="transition">→ "Decision matrix."</div>
+  <div class="transition">→ "The decision table."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>When to use which</span></div>
+  <div class="meta"><span class="badge">Slide 20</span><span>~2 min</span><span>Which to use</span></div>
   <h3>When to use which</h3>
   <p>
-    Walk the table. PCA is 80% of the answer for business data. UMAP for
-    visualisation. Kernel PCA only for small non-linear problems. t-SNE
-    rarely.
+    Walk the table. Linear compression or feeding a downstream linear
+    model: PCA. Non-linear compression: kernel PCA at small $N$.
+    Visualise high-dimensional structure: UMAP. Show local
+    neighbourhoods for teaching: t-SNE. Extract features for new
+    points: PCA or UMAP — the only two with a
+    <code>transform()</code>.
   </p>
-  <div class="transition">→ "Recap."</div>
+  <div class="transition">→ "Recap and bridge."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 18</span><span>~2 min</span><span>Recap</span></div>
+  <div class="meta"><span class="badge">Slide 21</span><span>~2 min</span><span>Recap</span></div>
   <h3>What you can now do</h3>
   <p>
-    Walk the checklist. Preview 4.4: "Next we ask a new question — what
-    about the points that don't fit into any cluster? Anomaly detection."
+    Walk the bullets: derive PCA as variance maximisation, connect it
+    to SVD, read scree plots and loadings, choose among PCA/kernel
+    PCA/t-SNE/UMAP, and explain why t-SNE is never a feature
+    extractor. Tease 4.4: "What about the points that don't belong to
+    <em>any</em> cluster? Anomaly detection."
   </p>
-  <div class="transition">→ End of lesson. Hand out Exercise 3.</div>
+  <div class="transition">→ End of Lesson 4.3. Ten-minute break.</div>
 </div>
+
+<nav class="lesson-nav">
+  <a href="../02/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    4.2 Speaker Notes
+  </a>
+  <a href="../04/notes.html" class="next">
+    <span class="label">Next →</span>
+    4.4 Speaker Notes
+  </a>
+</nav>
 
 </main>
 </body>

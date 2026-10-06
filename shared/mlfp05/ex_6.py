@@ -372,7 +372,16 @@ async def _train_node_classifier_async(
 # VISUALISATION HELPERS
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+# ModelVisualizer carries a kailash-ml P2 experimental notice (a UserWarning
+# at construction). Exercises run under warnings-as-errors, so acknowledge
+# the notice narrowly at this module-level construction site only.
+import warnings as _warnings
+
+from kailash_ml._decorators import ExperimentalWarning as _ExperimentalWarning
+
+with _warnings.catch_warnings():
+    _warnings.simplefilter("ignore", _ExperimentalWarning)
+    viz = ModelVisualizer()
 
 
 def plot_training_curves(

@@ -513,8 +513,20 @@ def plot_tsne(
 
 
 def create_visualizer() -> ModelVisualizer:
-    """Return a configured ModelVisualizer instance."""
-    return ModelVisualizer()
+    """Return a configured ModelVisualizer instance.
+
+    ModelVisualizer carries a kailash-ml P2 experimental notice (a
+    UserWarning at construction); exercises run under
+    warnings-as-errors, so the notice is acknowledged narrowly at
+    this construction site.
+    """
+    import warnings as _warnings
+
+    from kailash_ml._decorators import ExperimentalWarning as _EW
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore", _EW)
+        return ModelVisualizer()
 
 
 def save_training_plots(

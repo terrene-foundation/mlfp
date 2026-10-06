@@ -65,6 +65,62 @@ def make_cartpole() -> tuple[gym.Env, int, int]:
     return env, obs_dim, n_actions
 
 
+def make_pendulum() -> tuple[gym.Env, int, int, float]:
+    """Create Pendulum-v1 and return (env, obs_dim, act_dim, act_limit).
+
+    Pendulum is the canonical CONTINUOUS control benchmark: 3-D state
+    (cos/sin angle + angular velocity), one continuous torque in
+    [-2, 2]. Rewards are negative (best ~= 0 when upright and still);
+    a random policy averages about -1200 per episode.
+    """
+    env = gym.make("Pendulum-v1")
+    obs_space = env.observation_space
+    act_space = env.action_space
+    assert (
+        isinstance(obs_space, spaces.Box) and obs_space.shape is not None
+    ), f"Pendulum obs space expected Box, got {type(obs_space).__name__}"
+    assert (
+        isinstance(act_space, spaces.Box) and act_space.shape is not None
+    ), f"Pendulum action space expected Box, got {type(act_space).__name__}"
+    obs_dim = obs_space.shape[0]
+    act_dim = act_space.shape[0]
+    act_limit = float(act_space.high[0])
+    print(
+        f"Pendulum-v1  obs_dim={obs_dim}  act_dim={act_dim}  "
+        f"act_limit={act_limit}"
+    )
+    return env, obs_dim, act_dim, act_limit
+
+
+# ════════════════════════════════════════════════════════════════════════
+# CONTINUOUS REPLAY BUFFER — shared by DDPG and SAC (float actions)
+# ════════════════════════════════════════════════════════════════════════
+
+
+class ContinuousReplayBuffer:
+    """Fixed-size buffer for continuous actions (float tensors, not long)."""
+
+    def __init__(self, capacity: int = 50_000):
+        self.buffer: deque = deque(maxlen=capacity)
+
+    def push(self, state, action, reward, next_state, done):
+        self.buffer.append((state, action, reward, next_state, done))
+
+    def sample(self, batch_size: int):
+        batch = random.sample(list(self.buffer), batch_size)
+        states, actions, rewards, next_states, dones = zip(*batch)
+        return (
+            torch.tensor(np.array(states), dtype=torch.float32, device=device),
+            torch.tensor(np.array(actions), dtype=torch.float32, device=device),
+            torch.tensor(rewards, dtype=torch.float32, device=device),
+            torch.tensor(np.array(next_states), dtype=torch.float32, device=device),
+            torch.tensor(dones, dtype=torch.float32, device=device),
+        )
+
+    def __len__(self):
+        return len(self.buffer)
+
+
 # ════════════════════════════════════════════════════════════════════════
 # KAILASH ENGINE SETUP
 # ════════════════════════════════════════════════════════════════════════

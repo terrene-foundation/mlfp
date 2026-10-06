@@ -148,3 +148,8 @@ for the same pre-filter figure at integration.
 - Repeated fleet mirror resets (other repos' concurrent trestle runs) killed several long suite re-runs; the
   per-module local + fleet evidence above stands as the verification. The content is correct; the shared-fleet
   per-file budget under thread caps is the constraint for the heaviest two M3 workflow exercises.
+
+## M5 fleet result (2026-10-06, final)
+**43/43 pass on the fleet** at a 3600s/file budget — including the ex_2/03 torch.onnx.export fallback and all
+the slow full-dataset training (BERT, transfer ResNet, simple CNN). Every module is now fleet-verified except
+the M6 LLM-dependent subset (which needs an Ollama host).

@@ -1,102 +1,87 @@
-# MLFP06 — Task 4: PACT Governance for a Production Agent Fleet
+# MLFP06 — Task 4: Design the Governance Org for a Bank's AI Office
 
-**Weight**: 30 marks · **Difficulty**: Hard · **Framework**: PACT `GovernanceEngine`
-· **Dataset**: canonical SG FinTech org (`shared.mlfp06.ex_7`)
+**Weight**: 20 marks · **Framework**: PACT (`load_org_yaml`,
+`GovernanceEngine`, `apply_governance_specs`) · **Outcomes assessed**: D/T/R
+org design, clearance ladders, envelope authoring (6.7)
 
 ## Scenario
 
-A Singapore digital bank is putting an autonomous agent fleet into production.
-Before go-live, MAS TRM and the bank's own risk committee require **structural
-governance**: every agent runs inside an _operating envelope_ (a dollar budget
+A regional bank stands up an AI office. You are handed the organisational
+brief below and asked to express it as a PACT governance definition (the flat
+YAML schema used in Exercise 7) that compiles, applies, and **enforces**.
 
-- an allow-listed action set), every access decision is checked by a governance
-  engine, and **privilege escalation is impossible by construction** — not merely
-  "unlikely at runtime".
+The grader does not trust your compiled engine: it re-loads **your YAML**,
+rebuilds the engine itself, applies the specs, and probes the rebuilt engine
+with its own requests. The YAML is the artefact under assessment.
 
-Your job is to compile the organisation, attach least-privilege envelopes to
-four agent roles, exercise the engine's decision function across allow **and**
-deny paths, and prove that a rogue re-delegation is rejected at envelope time.
+## The organisational brief
 
-This task is **100% deterministic** — no LLM calls. The governance engine is a
-pure decision function. Implement `solve() -> dict`.
+**Departments** (2): `model_development`, `operations`.
+**Teams** (3): `research_team` and `deployment_team` under model development;
+`support_team` under operations.
 
-## Step 1 — Compile the organisation
+**Roles** (5):
 
-Use `compile_governance()` from `shared.mlfp06.ex_7`. It returns
-`(engine, org)`. Report the org counters in `org_stats`:
-`n_agents`, `n_delegations`, `n_departments`.
+| Role id              | Heads / reports to                                       | Clearance      |
+| -------------------- | -------------------------------------------------------- | -------------- |
+| `chief_data_officer` | heads `model_development`                                | `secret`       |
+| `head_of_operations` | heads `operations`                                       | `secret`       |
+| `research_scientist` | reports to `chief_data_officer`, heads `research_team`   | `confidential` |
+| `ml_engineer`        | reports to `chief_data_officer`, heads `deployment_team` | `confidential` |
+| `support_agent`      | reports to `head_of_operations`, heads `support_team`    | `public`       |
 
-## Step 2 — Attach least-privilege envelopes (build EXACTLY these)
+Clearances use PACT's ladder as installed: `public < restricted <
+confidential < secret < top_secret`. Every agent sits at or below the head it
+reports to.
 
-For each role below, build a `ConstraintEnvelopeConfig` (all five canonical
-dimensions populated — Financial, Operational, Temporal, Data Access,
-Communication) and attach it to the engine with a `RoleEnvelope` using the
-addresses in the table. The financial cap and the allowed-action list are the
-two dimensions graded.
+**Envelopes** (3): each defined by the agent's department head, for the agent:
 
-| Role (address)                 | Delegator (address)          | Clearance  | Max spend (USD) | Allowed actions                                                   |
-| ------------------------------ | ---------------------------- | ---------- | --------------- | ----------------------------------------------------------------- |
-| `data_analyst` `D1-R1-T1-R1`   | `chief_ml_officer` `D1-R1`   | RESTRICTED | 20.0            | `read_data`, `summarise_data`, `generate_report`                  |
-| `model_trainer` `D1-R1-T2-R1`  | `chief_ml_officer` `D1-R1`   | RESTRICTED | 100.0           | `train_model`, `evaluate_model`, `read_data`                      |
-| `risk_assessor` `D2-R1-T1-R1`  | `chief_risk_officer` `D2-R1` | RESTRICTED | 200.0           | `read_data`, `audit_model`, `generate_report`, `access_audit_log` |
-| `customer_agent` `D3-R1-T1-R1` | `vp_customer` `D3-R1`        | PUBLIC     | 5.0             | `answer_question`, `search_faq`                                   |
+| Target               | Cap (USD) | Allowed actions                                                |
+| -------------------- | --------- | -------------------------------------------------------------- |
+| `research_scientist` | 50.00     | `read_data`, `run_experiment`, `train_model`                   |
+| `ml_engineer`        | 80.00     | `deploy_model`, `monitor_model`, `rollback_model`, `read_data` |
+| `support_agent`      | 5.00      | `answer_ticket`, `search_kb`                                   |
 
-## Step 3 — Exercise `engine.verify_action()` across these 10 cases
+The two human heads carry **no** envelopes — under the installed default they
+are auto-approved; that is a deliberate choice for this office, and the
+grader pins it.
 
-Call `engine.verify_action(role_address=..., action=..., context={"cost": ...})`
-for each case **in this exact order**, and collect `verdict.allowed` (a bool)
-into the `verdicts` list:
-
-| #   | Role             | Action             | Cost (USD) |
-| --- | ---------------- | ------------------ | ---------- |
-| 0   | `data_analyst`   | `read_data`        | 0.10       |
-| 1   | `data_analyst`   | `deploy_model`     | 0.10       |
-| 2   | `data_analyst`   | `read_data`        | 50.0       |
-| 3   | `model_trainer`  | `train_model`      | 5.0        |
-| 4   | `model_trainer`  | `deploy_model`     | 1.0        |
-| 5   | `risk_assessor`  | `audit_model`      | 0.50       |
-| 6   | `risk_assessor`  | `access_audit_log` | 1.0        |
-| 7   | `customer_agent` | `search_faq`       | 0.01       |
-| 8   | `customer_agent` | `read_data`        | 0.10       |
-| 9   | `customer_agent` | `answer_question`  | 100.0      |
-
-## Step 4 — Prove privilege escalation is rejected
-
-Build a department-head **parent** envelope for `vp_customer` (clearance
-CONFIDENTIAL, max spend 50.0, allowed actions `answer_question`, `search_faq`).
-Then build a **rogue child** envelope that tries to escalate
-(clearance RESTRICTED, max spend 1000.0, allowed actions that add `read_data`
-and `deploy_model`). Call `RoleEnvelope.validate_tightening(parent_envelope=...,
-child_envelope=...)`; it MUST raise `MonotonicTighteningError`. Set
-`escalation_caught = True` when (and only when) that error is raised.
-
-## Return contract
+## Interface
 
 ```python
-def solve() -> dict:
-    return {
-        "org_stats": {"n_agents": int, "n_delegations": int, "n_departments": int},
-        "verdicts": [bool, ...],   # exactly 10, in case order 0..9
-        "escalation_caught": bool,
-    }
+def solve() -> dict: ...
 ```
 
-## Visible sanity checks
+Returns `{"org_yaml": str, "engine": GovernanceEngine}` — your YAML as a
+string, and the engine you get by loading it and applying the specs
+(`load_org_yaml` → `GovernanceEngine(loaded.org_definition)` →
+`apply_governance_specs(engine, loaded)`).
 
-- `org_stats == {"n_agents": 6, "n_delegations": 6, "n_departments": 3}`
-- `verdicts == [True, False, False, True, False, True, True, True, False, False]`
-- `escalation_caught == True`
+The flat schema (departments/teams/roles/clearances/envelopes with `heads` /
+`reports_to` / `defined_by` / `target`) is the one in Exercise 7;
+`shared.mlfp06.ex_7.ORG_YAML` is a working example of it for a different org.
 
-## Grading (10 automated checks, all must pass)
+## Acceptance criteria (what the grader measures)
 
-return type is dict · `n_agents` correct · `n_delegations` correct ·
-`n_departments` correct · 10 verdicts returned · allow-path verdicts correct ·
-deny-by-action verdicts correct · deny-by-budget verdicts correct · all 10
-verdicts match the reference exactly · privilege escalation caught structurally.
+| #   | Check                                                                          |
+| --- | ------------------------------------------------------------------------------ |
+| 1   | `org_yaml` is a string and the engine answers `verify_action` (gate)           |
+| 2   | The grader can re-load your YAML itself (gate)                                 |
+| 3   | Structure: 2 departments, 3 teams, 5 roles                                     |
+| 4   | Heads and reporting lines match the brief                                      |
+| 5   | Every clearance is a valid pact level, and every agent is at or below its head |
+| 6   | Clearances match the brief exactly (heads secret; agents as tabled)            |
+| 7   | Envelope targets, caps and action sets match the brief                         |
+| 8   | Within-envelope probes on the rebuilt engine are **allowed**                   |
+| 9   | Outside-envelope action probes are **blocked**                                 |
+| 10  | An over-budget probe (cap × 1.5–3, grader-drawn) is **blocked**                |
+| 11  | Unknown address and the envelope-less heads are **auto-approved**              |
+
+Marks = 20 × (non-gate checks passed / 9). If a gate fails, the task scores 0.
 
 ## Rules
 
-- **PACT only** — use `GovernanceEngine.verify_action()` and
-  `RoleEnvelope.validate_tightening()`. No hand-rolled `if cost > cap` checks.
-- Deterministic — no LLM, no randomness.
-- Build all five envelope dimensions explicitly (least privilege is structural).
+- No LLM calls. Deterministic YAML: no timestamps or random ids.
+- Use the flat schema — nested `head`/`tasks` blocks are not it.
+- Self-check: run `starter.py`; it compiles your YAML, applies the specs, and
+  prints verdicts for a fixed probe list.

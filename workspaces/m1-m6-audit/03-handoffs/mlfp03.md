@@ -63,3 +63,10 @@
 - PythonCodeNode sandbox refuses polars / lightgbm / shared imports (textbook says so).
 - Upstream: LocalRuntime logs _record_execution_metrics error under skip_branches; HyperparameterSearch sampler unseeded
   (best params vary); TrainingPipeline F1 is support-weighted.
+
+---
+# Additions from the assessment shard (S5, merged e3dc1a50)
+- Deck + spec assessment slide: "4 auto-graded coding tasks, 100 marks (20/20/30/30): leakage-free features;
+  model zoo; evaluation/imbalance/interpretability; production registry/drift/deploy" (P5).
+- Graders score against grader-held truth; reference passes all four (20/20/30/30); stubs and constant-SHAP
+  plausible-wrong submissions score 0.

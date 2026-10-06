@@ -103,7 +103,7 @@ from shared.mlfp03.ex_7 import (
 
 search_space = SearchSpace(
     params=[
-        ParamDistribution("n_estimators", "int_uniform", low=100, high=800),
+        ParamDistribution("n_estimators", "int_uniform", low=100, high=500),
         # TODO: learning rate between 0.01 and 0.3, sampled on a LOG scale
         # Hint: ParamDistribution(<name>, <type string>, low=..., high=...)
         ____,
@@ -123,7 +123,7 @@ search_config = SearchConfig(
     # TODO: choose the strategy that runs Optuna's TPE sampler
     # Hint: SearchConfig strategies include "grid", "random", "bayesian"
     strategy=____,
-    n_trials=20,
+    n_trials=12,
     metric_to_optimize="auc",
     direction="maximize",
     register_best=False,
@@ -141,6 +141,9 @@ FIXED_PARAMS: dict[str, Any] = {"random_state": RANDOM_SEED, "verbose": -1, "n_j
 EVAL_SPEC = EvalSpec(metrics=ENGINE_METRICS, split_strategy="holdout", test_size=0.2)
 
 dev, test, feature_cols = prepare_credit_frames()
+# Bayesian search is a teaching demo: cap its rows so the run finishes in
+# minutes on a free Colab / fleet slot, not hours (same lesson, same mechanics).
+dev_for_search = dev.sample(min(dev.height, 15000), seed=RANDOM_SEED)
 schema = credit_feature_schema(feature_cols)
 print(f"\nDev frame: {dev.height:,} rows (search + grid)   Test frame: {test.height:,} rows")
 
@@ -173,7 +176,7 @@ async def run_search_and_grid() -> dict[str, Any]:
         # Hint: the engine method that takes data, schema, base_model_spec,
         # search_space, config, eval_spec and experiment_name
         result = await searcher.____(
-            data=dev,
+            data=dev_for_search,
             schema=schema,
             base_model_spec=lgbm_spec({}),
             search_space=search_space,
@@ -186,7 +189,7 @@ async def run_search_and_grid() -> dict[str, Any]:
         grid_scores: list[float] = []
         for i, params in enumerate(GRID):
             g = await pipeline.train(
-                data=dev,
+                data=dev_for_search,
                 schema=schema,
                 model_spec=lgbm_spec(params),
                 eval_spec=EVAL_SPEC,

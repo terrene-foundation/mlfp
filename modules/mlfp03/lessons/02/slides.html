@@ -170,16 +170,17 @@
     <li><strong>Lasso</strong> ≡ MAP estimate under a <em>Laplace</em> prior on $\boldsymbol\beta$</li>
   </ul>
   <div style="padding: 16px; background: #F8FAFC; border-radius: 8px; margin: 1em 0;">
-    \[ \log p(\boldsymbol\beta \mid \text{data}) \propto -\frac{1}{2\tau^2}\sum_i(y_i - \boldsymbol\beta^\top x_i)^2 - \frac{\lambda}{2\tau^2}\sum_j \beta_j^2 \]
+    \[ \log p(\boldsymbol\beta \mid \text{data}) = -\frac{1}{2\sigma^2}\sum_i(y_i - \boldsymbol\beta^\top x_i)^2 - \frac{1}{2\tau^2}\sum_j \beta_j^2 + \text{const} \]
   </div>
-  <p style="font-size: 0.82em;">Maximising the log-posterior is algebraically identical to minimising ridge loss. The Laplace prior has a sharp spike at zero — the Bayesian image of the L1 diamond corner.</p>
+  <p style="font-size: 0.82em;">$\sigma^2$ = noise variance, $\tau^2$ = prior variance. Multiply by $2\sigma^2$: maximising the log-posterior is minimising ridge loss with $\lambda = \sigma^2/\tau^2$ — a tighter prior means a bigger penalty. The Laplace prior has a sharp spike at zero — the Bayesian image of the L1 diamond corner.</p>
 </section>
 
 <section>
   <h2>Elastic Net</h2>
   <div style="padding: 16px; background: #F8FAFC; border-radius: 8px; margin: 1em 0;">
-    \[ \mathcal{L}(\boldsymbol\beta) + \lambda\bigl(\alpha \|\boldsymbol\beta\|_1 + (1-\alpha)\|\boldsymbol\beta\|_2^2\bigr) \]
+    \[ \mathcal{L}(\boldsymbol\beta) + \lambda\bigl(\rho \|\boldsymbol\beta\|_1 + (1-\rho)\|\boldsymbol\beta\|_2^2\bigr) \]
   </div>
+  <p style="font-size: 0.7em; color: #64748B;">sklearn naming: <code>alpha</code> = $\lambda$ (overall strength), <code>l1_ratio</code> = $\rho$ (mix).</p>
   <p style="font-size: 0.85em;">Mixed Laplace-Gaussian prior. Use when:</p>
   <ul style="font-size: 0.85em;">
     <li>Lasso oversimplifies correlated features (arbitrary pick)</li>
@@ -271,18 +272,20 @@ print(f"Honest MSE: {-np.mean(outer_scores):,.0f}")
 </section>
 
 <section>
-  <h2>Worked example — HDB overfitting</h2>
+  <h2>Worked example — overfitting a noisy sine</h2>
   <pre><code class="language-python" data-trim>
-for degree in [1, 2, 3, 5, 9]:
-    model = Pipeline([
-        ("poly", PolynomialFeatures(degree)),
-        ("lin",  LinearRegression()),
-    ])
-    mse = -cross_val_score(model, X, y, cv=5,
-        scoring="neg_mean_squared_error").mean()
-    print(f"d={degree}: CV MSE = {mse:,.0f}")
+from sklearn.metrics import mean_squared_error
+from shared.mlfp03.ex_2 import make_poly_pipeline, make_sine_dataset
+
+# y = sin(2πx) + ε, σ = 0.2: 40 training points, 1,000 test points
+x_tr, y_tr, x_te, y_te, noise_var = make_sine_dataset()
+for degree in [1, 2, 4, 6, 9, 12, 15, 20]:
+    model = make_poly_pipeline(degree).fit(x_tr, y_tr)
+    tr = mean_squared_error(y_tr, model.predict(x_tr))
+    te = mean_squared_error(y_te, model.predict(x_te))
+    print(f"d={degree:>2}: train {tr:.4f}  test {te:.4f}")
   </code></pre>
-  <p style="font-size: 0.82em;">You will see the U-shape live: degree 1 underfits, degree 3 is optimal, degree 9 explodes.</p>
+  <p style="font-size: 0.82em;">You will see the U-shape live: degrees 1–2 underfit (test MSE ≈ 0.25), degrees 4–9 sit just above the noise floor σ² = 0.04 (best: degree 6, 0.044), and by degree 20 the test error climbs (0.060) while training error keeps falling.</p>
 </section>
 
 <section>

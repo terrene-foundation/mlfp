@@ -7,34 +7,45 @@
 #
 # WHAT YOU'LL LEARN:
 #   - Structure of the Mitchell et al. Model Card (9 sections)
-#   - Auto-generating a model card from training artifacts
+#   - Generating every number in a card from measurements, not prose
+#   - Measuring disaggregated fairness (race, gender, age band) for the card
 #   - Distinguishing "intended use" from "out of scope"
-#   - Writing the ethics + limitations sections regulators actually read
 #   - Rendering the card as a visual summary for non-technical reviewers
 #
-# PREREQUISITES: Exercise 8.1 (reuses the calibrated model).
+# PREREQUISITES: 01_conformal_prediction.py (this file re-trains the same
+# model so it runs on its own).
 #
-# ESTIMATED TIME: ~25 min
+# ESTIMATED TIME: ~30 min
 #
 # TASKS:
-#   1. Theory     — why model cards exist (EU AI Act, MAS FEAT, Mitchell)
-#   2. Build      — the 9-section template filled from training artifacts
-#   3. Train      — (no training) render the card to markdown
-#   4. Visualise  — a single-page model-card summary diagram
-#   5. Apply      — MAS FEAT compliance for a high-risk credit model
+#   1. Theory     — why model cards exist and what goes in them
+#   2. Build      — measure performance, coverage and per-group fairness
+#   3. Train      — (no new training) render the card + its evidence file
+#   4. Visualise  — a one-page model-card summary
+#   5. Apply      — the questions the card hands to a risk committee
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
-from pathlib import Path
 
-import numpy as np
 import plotly.graph_objects as go
+import polars as pl
+from plotly.subplots import make_subplots
 
 from shared.mlfp03.ex_8 import (
+    BASELINE_PARAMS,
+    CARD_EVIDENCE_PATH,
+    CARD_PATH,
+    COST_FN_SGD,
+    COST_FP_SGD,
+    DECISION_THRESHOLD,
     OUTPUT_DIR,
+    conformal_on_test,
     evaluate_classification,
+    fairness_report,
+    fairness_summary,
     load_credit_split,
     train_calibrated_model,
 )
@@ -43,23 +54,45 @@ from shared.mlfp03.ex_8 import (
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Why Model Cards Exist
 # ════════════════════════════════════════════════════════════════════════
-# Mitchell et al. (2019) proposed Model Cards after a string of ML
-# failures where the model worked as built but was DEPLOYED outside its
-# intended context. The card is a one-page contract: what this model
-# does, where it's been validated, where it must NOT be used, how to
-# tell when it stops working.
+# Mitchell et al. (2019) proposed Model Cards so that a trained model
+# ships with a short document saying what it is for, how it was
+# evaluated, and how well it works FOR DIFFERENT GROUPS of people. Their
+# motivation included documented cases such as commercial face-analysis
+# systems whose error rates differed sharply by skin type and gender
+# (Buolamwini & Gebru, 2018) — differences an aggregate accuracy hides.
 #
-# Regulatory context: EU AI Act Article 13, Singapore MAS FEAT
-# principles, US NIST AI RMF — all require model cards for high-risk AI.
+# The card is a contract between the ML team and everyone downstream:
+# what the model does, where it was validated, where it MUST NOT be
+# used, and how to tell when it stops working.
 #
-# The 9 SECTIONS:
-#   1. Model details     2. Intended use      3. Factors
-#   4. Metrics           5. Evaluation data   6. Training data
-#   7. Quantitative      8. Ethical           9. Caveats
+# Regulatory context (check the current texts before relying on them):
+#   - EU AI Act: credit scoring of individuals is a high-risk use; such
+#     systems need technical documentation and transparency information.
+#   - Singapore's FEAT principles (MAS, 2018) ask firms using AI in
+#     financial decisions to be able to justify, explain and account for
+#     them. They do not prescribe a model card — a card is one practical
+#     way to evidence those principles.
+#   - NIST AI RMF: documentation of this kind supports its MAP and
+#     MEASURE functions.
+#
+# THE GOLDEN RULE: every number in a card must come from a measurement
+# of THIS model. A card that says "fairness within band" without the
+# measurement is worse than no card — it is a false assurance.
+#
+# The 9 SECTIONS (Mitchell et al. 2019):
+#   1. Model details        — type, version, date, contact
+#   2. Intended use         — primary users, primary purpose, scope
+#   3. Factors              — groups, instruments, environments
+#   4. Metrics              — evaluation measures + decision thresholds
+#   5. Evaluation data      — source, preprocessing, motivation
+#   6. Training data        — same categories as evaluation
+#   7. Quantitative analyses— aggregate AND disaggregated results
+#   8. Ethical considerations— risks, mitigations, dual-use concerns
+#   9. Caveats & recommendations — out-of-scope uses, future work
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — BUILD the model card template from training artifacts
+# TASK 2 — BUILD: measure everything the card will state
 # ════════════════════════════════════════════════════════════════════════
 
 print("\n" + "=" * 70)
@@ -69,98 +102,179 @@ print("=" * 70)
 split = load_credit_split()
 X_train, y_train = split["X_train"], split["y_train"]
 X_test, y_test = split["X_test"], split["y_test"]
+feature_names = split["feature_names"]
 
-# TODO: Train the calibrated model and score the test set
+# Hint: train_calibrated_model(<X>, <y>, <feature names>)
 calibrated_model = ____
-y_proba = ____
-metrics = evaluate_classification(y_test, y_proba)
+y_proba = calibrated_model.predict_proba(X_test)[:, 1]
 
-# Conformal coverage (short re-derivation so this file runs standalone)
-n_cal = X_test.shape[0] // 2
-cal_proba = calibrated_model.predict_proba(X_test[:n_cal])[:, 1]
-cal_scores = np.where(y_test[:n_cal] == 1, 1 - cal_proba, cal_proba)
-alpha = 0.10
-q_level = np.ceil((len(cal_scores) + 1) * (1 - alpha)) / len(cal_scores)
-q_hat = float(np.quantile(cal_scores, min(q_level, 1.0)))
-eval_proba = calibrated_model.predict_proba(X_test[n_cal:])[:, 1]
-y_eval = y_test[n_cal:]
-correct_sets = [
-    (y_eval[i] == 1 and (1 - eval_proba[i]) <= q_hat)
-    or (y_eval[i] == 0 and eval_proba[i] <= q_hat)
-    for i in range(len(y_eval))
-]
-coverage = float(np.mean(correct_sets))
+# Threshold-free metrics (AUC, Brier) plus the confusion-based ones at
+# the cost-derived decision threshold the lender would actually use.
+# Hint: evaluate_classification(<y>, <p>, threshold=<the decision threshold>)
+metrics = ____
+# Hint: conformal_on_test(<y>, <p>, alpha=0.10)
+conformal = ____
+
+# Disaggregated fairness: per-group rates, then one summary row per
+# protected attribute (race, gender, age band).
+# Hint: fairness_report(<y>, <p>, <the split's test_groups>, <threshold>)
+group_table = ____
+# Hint: fairness_summary(<per-group table>)
+fair = ____
 
 print(
-    f"\nAUC-ROC={metrics['auc_roc']:.4f}  Brier={metrics['brier']:.4f}  Coverage={coverage:.3f}"
+    f"\nAUC-ROC={metrics['auc_roc']:.4f}  Brier={metrics['brier']:.4f}  "
+    f"Coverage={conformal['coverage']:.3f} at α={conformal['alpha']}"
 )
+print(f"Decision threshold p(default) >= {DECISION_THRESHOLD:.3f}")
+print("\n=== Per-group rates on the test set ===")
+print(group_table)
+print("\n=== Fairness summary per attribute ===")
+print(fair)
 
-# TODO: Fill in the f-string model card below. Every section must be
-# present — the checkpoint below scans for the 9 Mitchell section names.
+
+# ── Checkpoint 1 ────────────────────────────────────────────────────────
+assert metrics["auc_roc"] > 0.5, "Task 2: Model should beat random"
+assert set(fair["attribute"].to_list()) == {"race", "gender", "age_band"}, (
+    "Task 2: fairness must be measured for race, gender and age band"
+)
+assert fair["disparate_impact"].is_between(0, 1).all(), "Task 2: DI is a ratio in [0, 1]"
+print("\n[ok] Checkpoint 1 — performance, coverage and fairness measured\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 3 — render the card from the measurements (no new training)
+# ════════════════════════════════════════════════════════════════════════
+# Every number below is an f-string over a measured value. The fairness
+# verdicts are computed too: the four-fifths rule of thumb (DI >= 0.8).
+
+fairness_lines = []
+for row in fair.iter_rows(named=True):
+    # Hint: "meets" when the disparate impact is at least 0.8, otherwise "FAILS"
+    verdict = ____
+    fairness_lines.append(
+        f"- **{row['attribute']}**: disparate impact {row['disparate_impact']:.2f} "
+        f"({verdict} the four-fifths rule of thumb); TPR gap {row['tpr_gap']:.3f}; "
+        f"FPR gap {row['fpr_gap']:.3f}; max |mean prediction − base rate| "
+        f"{row['max_calibration_gap']:.3f}"
+    )
+group_lines = [
+    f"| {r['attribute']} | {r['group']} | {r['n']:,} | {r['base_rate']:.3f} | "
+    f"{r['flag_rate']:.3f} | {r['tpr']:.3f} | {r['fpr']:.3f} | {r['mean_pred']:.3f} |"
+    for r in group_table.iter_rows(named=True)
+]
+# Hint: filter the summary to DI below 0.8, then take the attribute column as a list
+failing = ____
+
 model_card = f"""
 # Model Card: Singapore Credit Default Prediction
 
 ## 1. Model Details
-- **Model type**: LightGBM Classifier + isotonic calibration
-- **Version**: 1.0
+- **Model type**: LightGBM classifier ({BASELINE_PARAMS['n_estimators']} trees, max depth
+  {BASELINE_PARAMS['max_depth']}) trained with kailash-ml TrainingPipeline, isotonic-calibrated
+  with TrainingPipeline.calibrate on a held-out 20% of the training rows
+- **Version**: registered as a new version in the exercise registry each run (see 8.4)
 - **Date**: {datetime.now().strftime("%Y-%m-%d")}
-- **Framework**: kailash-ml (Terrene Foundation)
-- **License**: Apache 2.0
-- **Contact**: model-risk@example-sg.org
+- **Framework**: kailash-ml (Terrene Foundation), Apache 2.0
+- **Contact**: model-risk@example.org
 
 ## 2. Intended Use
-- **Primary use**: Singapore retail unsecured credit default risk
-- **Primary users**: Credit analysts; automated underwriting with human escalation
-- **Out of scope**: Commercial credit, cross-border lending, regulatory capital
+- **Primary use**: teaching example of default-risk scoring for unsecured
+  consumer credit applications in Singapore.
+- **Primary users**: credit-risk analysts; an underwriting workflow that
+  routes ambiguous applications (conformal set {{0, 1}}) to a human.
+- **Out of scope**:
+  - Corporate/commercial credit decisions
+  - Applicants outside the population the data describes
+  - Regulatory capital calculation (needs dedicated PD/LGD/EAD models)
+  - Any decision without a human-review path
 
 ## 3. Factors
-- **Groups evaluated**: age, gender, residency status, income bands
-- **Instruments**: application forms + bureau data
-- **Environments**: online + branch application intake
+- **Groups evaluated**: race, gender, age band (<30, 30-44, 45-59, 60+)
+- **Note**: race, gender and age are MODEL INPUTS in this version.
 
 ## 4. Metrics
-- **Measures**: AUC-ROC, AUC-PR, Brier, F1
-- **Decision thresholds**: conformal α=0.10 prediction set routing
-- **Fairness measures**: disparate impact, equalised odds gap
+- **Evaluation measures**: AUC-ROC, AUC-PR, Brier score, log loss; precision,
+  recall and F1 at the decision threshold
+- **Decision threshold**: flag as likely default when p >= {DECISION_THRESHOLD:.3f}
+  (= c_FP / (c_FP + c_FN) with illustrative costs S${COST_FP_SGD:,.0f} / S${COST_FN_SGD:,.0f})
+- **Uncertainty**: split-conformal prediction sets at α={conformal['alpha']}
+- **Fairness measures**: disparate impact (lowest / highest group flag rate),
+  TPR and FPR gaps (equalised odds), per-group calibration gap
 
 ## 5. Evaluation Data
-- **Source**: held-out 20% of Singapore credit applications
-- **Size**: {X_test.shape[0]:,} samples
-- **Preprocessing**: kailash-ml PreprocessingPipeline (ordinal encoding)
+- **Source**: the 20% test split of `sg_credit_scoring.parquet` (course dataset)
+- **Size**: {X_test.shape[0]:,} applications
+- **Preprocessing**: kailash-ml PreprocessingPipeline, ordinal encoding,
+  fitted on the training split only (the test split was held out first);
+  `customer_id` and the post-outcome `future_default_indicator` removed
+- **Motivation / limit**: a seeded RANDOM split, stratified on `default` — it does not test how the
+  model performs on future applicants (no time-ordered evaluation)
 
 ## 6. Training Data
-- **Source**: Singapore credit applications
-- **Size**: {X_train.shape[0]:,} samples / {X_train.shape[1]} features
-- **Target**: Binary default ({y_train.mean():.1%} positive)
-- **Time range**: 2020-2024
+- **Source**: the 80% training split of the same file
+- **Size**: {X_train.shape[0]:,} applications, {X_train.shape[1]} features
+- **Target**: binary default ({y_train.mean():.1%} positive rate)
 
 ## 7. Quantitative Analyses
+### Aggregate (test split)
 - **AUC-ROC**: {metrics['auc_roc']:.4f}
-- **AUC-PR**: {metrics['auc_pr']:.4f}
-- **Brier**: {metrics['brier']:.4f}
-- **F1**: {metrics['f1']:.4f}
-- **Conformal coverage**: {coverage:.1%} at α={alpha}
+- **AUC-PR**: {metrics['auc_pr']:.4f} (a random ranking scores ≈ {y_test.mean():.3f})
+- **Brier Score**: {metrics['brier']:.4f} (base-rate forecast: {y_test.mean() * (1 - y_test.mean()):.4f})
+- **At threshold {DECISION_THRESHOLD:.3f}**: precision {metrics['precision']:.3f}, recall
+  {metrics['recall']:.3f}, F1 {metrics['f1']:.3f}
+
+### Uncertainty Quantification
+- **Method**: split conformal prediction (q̂ from half the test split)
+- **Coverage**: {conformal['coverage']:.1%} at α={conformal['alpha']} on the other half
+- **Guarantee**: P(Y ∈ C(X)) ≥ 1-α on average over applicants (marginal),
+  assuming future applicants are exchangeable with the calibration set
+
+### Disaggregated fairness (measured, test split)
+{chr(10).join(fairness_lines)}
+
+| attribute | group | n | base rate | flag rate | TPR | FPR | mean p |
+|---|---|---|---|---|---|---|---|
+{chr(10).join(group_lines)}
 
 ## 8. Ethical Considerations
-- Protected attributes analysed with SHAP
-- Disparate impact within MAS FEAT 0.8-1.25 band
-- Contestability: every adverse decision includes top-5 SHAP reasons
-- Ambiguous cases routed to human review
+- **Protected attributes as inputs**: race and gender are used by the model;
+  that use must be justified or removed (removing them alone does not
+  guarantee fairness — proxies remain).
+- **Measured disparities**: attributes failing the four-fifths rule of
+  thumb: {', '.join(failing) if failing else 'none'}. Compare the base-rate
+  column: when groups default at different rates, a calibrated model
+  cannot also equalise flag rates and error rates (the impossibility
+  result from Exercise 6). Which criterion to prioritise is a policy
+  decision for the lender, not a modelling default.
+- **Dual use**: outputs MUST NOT be used for marketing segmentation.
+- **Contestability**: adverse decisions need reasons an applicant can act
+  on (Exercise 6 shows SHAP / LIME explanations) and a human-appeal path.
 
 ## 9. Caveats and Recommendations
-- Retrain when PSI > 0.2 OR AUC-PR < {metrics['auc_pr'] * 0.9:.4f}
-- Exchangeability assumption breaks under adversarial drift
-- Singapore-only — do not apply to other markets without retraining
-- Sunset at version 2.0 or 12 months, whichever first
+- **Drift**: re-check inputs with DriftMonitor (8.2); retrain on severe
+  input drift or when measured AUC-PR falls below {metrics['auc_pr'] * 0.9:.4f}
+  (a 10% degradation floor chosen for this example)
+- **Exchangeability**: conformal coverage is void once applicants shift;
+  recalibrate q̂ on recent labelled data first
+- **Fairness**: re-measure the table above on every retrain
 """
 
-# TODO: Write model_card to OUTPUT_DIR / "ex8_03_model_card.md"
-card_path = OUTPUT_DIR / "ex8_03_model_card.md"
-____
+CARD_PATH.write_text(model_card)
+evidence = {
+    "created": datetime.now().isoformat(),
+    "decision_threshold": DECISION_THRESHOLD,
+    "metrics": metrics,
+    "conformal": conformal,
+    "fairness_summary": fair.to_dicts(),
+    "fairness_groups": group_table.to_dicts(),
+}
+CARD_EVIDENCE_PATH.write_text(json.dumps(evidence, indent=2))
+print(f"Saved: {CARD_PATH}\nSaved: {CARD_EVIDENCE_PATH}")
 
 
-# ── Checkpoint 1 ────────────────────────────────────────────────────────
-assert card_path.exists(), "Task 2: Model card should be written"
+# ── Checkpoint 2 ────────────────────────────────────────────────────────
+assert CARD_PATH.exists(), "Task 3: Model card should be written"
 required_sections = [
     "Model Details",
     "Intended Use",
@@ -173,13 +287,13 @@ required_sections = [
     "Caveats and Recommendations",
 ]
 for section in required_sections:
-    assert section in model_card, f"Task 2: Missing section '{section}'"
-print("\n[ok] Checkpoint 1 — all 9 Mitchell sections present\n")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 3 — render the card (no training)
-# ════════════════════════════════════════════════════════════════════════
+    assert section in model_card, f"Task 3: Missing section '{section}'"
+assert "AUC-ROC" in model_card
+assert "Coverage" in model_card
+assert f"disparate impact {fair['disparate_impact'][0]:.2f}" in model_card, (
+    "Task 3: the card must quote the measured disparate impact"
+)
+print("\n[ok] Checkpoint 2 — all 9 sections present, numbers from measurements\n")
 
 print("=== Model Card (excerpt) ===")
 for line in model_card.splitlines()[:25]:
@@ -190,62 +304,94 @@ print("  ... (full card written to disk)")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — VISUALISE the card as a one-page summary
 # ════════════════════════════════════════════════════════════════════════
+# Reviewers skim. Top row: headline metrics. Bottom row: the per-group
+# flag rate next to each group's actual default rate — the picture that
+# explains every fairness number in the card.
 
-fig = go.Figure()
-# TODO: Add four Indicator gauges for AUC-ROC, AUC-PR, Brier, Coverage.
-# Use grid positions {"row": 0-1, "column": 0-1} to make a 2x2 panel.
-fig.add_trace(
-    go.Indicator(
-        mode="gauge+number",
-        value=metrics["auc_roc"],
-        title={"text": "AUC-ROC"},
-        gauge={"axis": {"range": [0.5, 1.0]}, "bar": {"color": "#2563eb"}},
-        domain={"row": 0, "column": 0},
+fig = make_subplots(
+    rows=2,
+    cols=4,
+    specs=[[{"type": "indicator"}] * 4, [{"type": "xy", "colspan": 4}, None, None, None]],
+    row_heights=[0.4, 0.6],
+    vertical_spacing=0.12,
+)
+gauges = [
+    ("AUC-ROC", metrics["auc_roc"], [0.5, 1.0]),
+    ("AUC-PR", metrics["auc_pr"], [0.0, 1.0]),
+    ("Brier (lower=better)", metrics["brier"], [0.0, 0.25]),
+    (f"Coverage (target {1 - conformal['alpha']:.0%})", conformal["coverage"], [0.0, 1.0]),
+]
+for col, (title, value, axis_range) in enumerate(gauges, start=1):
+    fig.add_trace(
+        go.Indicator(
+            mode="gauge+number",
+            value=value,
+            title={"text": title},
+            gauge={"axis": {"range": axis_range}},
+            number={"valueformat": ".3f"},
+        ),
+        row=1,
+        col=col,
     )
+group_labels = [f"{a}: {g}" for a, g in zip(group_table["attribute"], group_table["group"])]
+fig.add_trace(
+    go.Bar(x=group_labels, y=group_table["base_rate"].to_list(), name="Actual default rate", marker_color="#94a3b8"),
+    row=2,
+    col=1,
 )
 fig.add_trace(
-    go.Indicator(
-        mode="gauge+number",
-        value=metrics["auc_pr"],
-        title={"text": "AUC-PR"},
-        gauge={"axis": {"range": [0.0, 1.0]}, "bar": {"color": "#10b981"}},
-        domain={"row": 0, "column": 1},
-    )
+    go.Bar(x=group_labels, y=group_table["flag_rate"].to_list(), name="Flagged by model", marker_color="#ef4444"),
+    row=2,
+    col=1,
 )
-# TODO: Add the Brier indicator (row=1, column=0, range 0-0.25, lower is better)
-____
-# TODO: Add the Coverage indicator (row=1, column=1, range 0-1)
-____
 fig.update_layout(
-    grid={"rows": 2, "columns": 2, "pattern": "independent"},
-    title="Model Card Summary — Singapore Credit Default v1.0",
-    height=560,
+    title="Model Card Summary — Singapore Credit Default",
+    barmode="group",
+    height=760,
+    legend=dict(orientation="h", y=-0.15),
 )
 viz_path = OUTPUT_DIR / "ex8_03_model_card_summary.html"
 fig.write_html(str(viz_path))
 print(f"\nSaved: {viz_path}")
 
 
-# ── Checkpoint 2 ────────────────────────────────────────────────────────
-assert Path(viz_path).exists(), "Task 4: Summary visual should be written"
-print("\n[ok] Checkpoint 2 — one-page visual summary rendered\n")
+# ── Checkpoint 3 ────────────────────────────────────────────────────────
+assert viz_path.exists(), "Task 4: Summary visual should be written"
+print("\n[ok] Checkpoint 3 — one-page visual summary rendered\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: MAS FEAT compliance savings at UOB scale
+# TASK 5 — APPLY: the questions the card hands to a risk committee
 # ════════════════════════════════════════════════════════════════════════
-# Manual card authoring: 40h/model × 180 models × S$120/h × 4q = ~S$3.5M/yr
-# Automated card authoring: 4h/model same math = ~S$350K/yr
-# Annual savings: ~S$3.1M + avoided MAS deficiency exposure (up to S$1M/model).
+# SCENARIO (illustrative): a Singapore lender's model-risk committee must
+# approve this model before 8.4 promotes it. The card's job is to put the
+# decisions in front of them with numbers attached — not to make them.
 
-hours_manual = 40
-hours_automated = 4
-models = 180
-hourly = 120.0
-annual_savings = (hours_manual - hours_automated) * models * hourly * 4
-print(f"\n=== UOB FEAT compliance savings ===")
-print(f"  Annual savings: S${annual_savings:,.0f}/yr")
-print(f"  Plus: avoided MAS deficiency exposure (up to S$1M per model)")
+questions = []
+for row in fair.iter_rows(named=True):
+    if row["disparate_impact"] < 0.8:
+        groups = group_table.filter(pl.col("attribute") == row["attribute"])
+        lo = groups.sort("flag_rate").row(0, named=True)
+        hi = groups.sort("flag_rate").row(-1, named=True)
+        questions.append(
+            f"{row['attribute']}: '{hi['group']}' is flagged {hi['flag_rate']:.1%} vs "
+            f"'{lo['group']}' {lo['flag_rate']:.1%} (actual default {hi['base_rate']:.1%} vs "
+            f"{lo['base_rate']:.1%}). Is this attribute a permitted credit factor, and "
+            f"is a calibrated-but-unequal outcome acceptable?"
+        )
+if conformal["coverage"] < 1 - conformal["alpha"]:
+    questions.append(
+        f"Conformal coverage {conformal['coverage']:.1%} is slightly below the "
+        f"{1 - conformal['alpha']:.0%} target on this sample — accept as sampling noise "
+        f"or recalibrate?"
+    )
+questions.append(
+    "Race and gender are model inputs. Keep them (with a written justification) "
+    "or retrain without them and re-measure the fairness table?"
+)
+print("=== Decisions for the model-risk committee (generated from the card) ===")
+for i, q in enumerate(questions, start=1):
+    print(f"  {i}. {q}")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -256,11 +402,18 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     f"""
-  [x] 9 Mitchell et al. model card sections
-  [x] Auto-generated card from training artifacts
-  [x] One-page visual summary for non-technical reviewers
-  [x] MAS FEAT compliance: ~S${annual_savings:,.0f}/yr at UOB scale
+  [x] The 9 Mitchell et al. model card sections and when to use each
+  [x] Generated every number in the card from measurements of this model
+  [x] Measured disaggregated fairness for {fair.height} protected attributes
+      ({len(failing)} below the four-fifths rule of thumb)
+  [x] Rendered a one-page visual summary for non-technical reviewers
+  [x] Turned the card into {len(questions)} concrete decisions for a risk committee
 
-  Next: 04_deployment_pipeline.py — register, version, promote.
+  KEY INSIGHT: A model card is not paperwork. It is the contract that
+  says where the model was validated and for whom — and a card with an
+  unmeasured claim is a false assurance.
+
+  Next: 04_deployment_pipeline.py — register, version, promote and
+  roll back the model with a full audit trail.
 """
 )

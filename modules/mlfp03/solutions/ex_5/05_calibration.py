@@ -18,20 +18,25 @@
 #
 # 5-PHASE STRUCTURE:
 #   Theory   — calibration intuition + why it matters for loan pricing
-#   Build    — wrap the cost-sensitive model in CalibratedClassifierCV
+#   Build    — calibrate the cost-sensitive model with TrainingPipeline.calibrate
 #   Train    — fit Platt and Isotonic variants
 #   Visualise — reliability diagrams + final comparison table
-#   Apply    — Standard Chartered SG risk-based loan pricing
+#   Apply    — illustrative risk-based personal-loan pricing
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
+
+import asyncio
 
 import lightgbm as lgb
 import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 from dotenv import load_dotenv
-from sklearn.calibration import CalibratedClassifierCV
+from sklearn.metrics import brier_score_loss
+from sklearn.model_selection import train_test_split
+
+from kailash_ml import TrainingPipeline
 
 from shared.mlfp03.ex_5 import (
     ANNUAL_APPLICATIONS,
@@ -56,9 +61,11 @@ load_dotenv()
 # ════════════════════════════════════════════════════════════════════════
 # A model output p=0.2 is CALIBRATED if, among all applicants with
 # p=0.2, exactly 20% actually default. A gradient booster trained with
-# cost-sensitive weights is usually a great RANKER (high AUC-PR) but a
-# terrible CALIBRATOR — the output scores compress towards 0 and 1
-# because of the weighted loss. Banking requires calibration for:
+# cost-sensitive weights can still be a good RANKER (AUC-PR) but is a poor
+# CALIBRATOR: up-weighting defaulters tells the model defaults are more
+# common than they are, so it systematically OVER-predicts default (you
+# saw the mean predicted p jump well above the real rate in 5.2). Banking
+# requires calibration for:
 #
 #   - LOAN PRICING: risk-based interest rates are computed as
 #     rate = funding_cost + expected_loss(p) + margin. If p is
@@ -81,8 +88,16 @@ load_dotenv()
 #
 #   ISOTONIC REGRESSION — fits a non-decreasing step function.
 #     Non-parametric, higher variance, more flexible. Needs >1000
-#     calibration samples to avoid overfitting, but can correct
-#     non-monotonic miscalibrations that Platt cannot.
+#     calibration samples to avoid overfitting. It can correct ANY
+#     monotone distortion of the scores (not just a sigmoid-shaped one),
+#     but because it is monotone by construction it cannot fix a
+#     non-monotone one — and it never changes the ranking (AUC stays put,
+#     apart from ties created by its flat steps).
+#
+#   Both are fitted on a held-out CALIBRATION slice (20% of the training
+#   rows the booster never saw): calibrating on the same rows the booster
+#   trained on would learn its over-confidence on training data, not its
+#   behaviour on new applicants.
 #
 # RULE OF THUMB: small calibration set -> Platt; large -> Isotonic;
 # always check with a reliability diagram.
@@ -95,23 +110,37 @@ load_dotenv()
 X_train, y_train, X_test, y_test, pos_rate = load_credit_splits()
 
 scale_weight = (1 - pos_rate) / pos_rate
+# 80% of the training rows fit the weighted booster; the other 20% are
+# kept back to fit the calibration maps.
+X_fit, X_cal, y_fit, y_cal = train_test_split(
+    X_train, y_train, test_size=0.2, stratify=y_train, random_state=42
+)
 base_estimator = lgb.LGBMClassifier(
     n_estimators=300,
     scale_pos_weight=scale_weight,
     random_state=42,
     verbose=-1,
 )
+base_estimator.fit(X_fit, y_fit)
 
-platt = CalibratedClassifierCV(base_estimator, method="sigmoid", cv=5)
-isotonic = CalibratedClassifierCV(base_estimator, method="isotonic", cv=5)
+# kailash-ml's TrainingPipeline.calibrate wraps an already-fitted model
+# (frozen — it is not re-trained) and fits the calibration map on the
+# held-out rows. No registry is needed for calibration alone.
+pipeline = TrainingPipeline(feature_store=None, registry=None)
+X_cal_frame = pl.DataFrame(X_cal, schema=[f"f{i}" for i in range(X_cal.shape[1])], orient="row")
+y_cal_series = pl.Series("default", y_cal)
 
 print("\n" + "=" * 70)
 print("  Exercise 5.5 — Calibration (Platt + Isotonic)")
 print("=" * 70)
-print("  Fitting Platt scaling (5-fold CV)...")
-platt.fit(X_train, y_train)
-print("  Fitting Isotonic regression (5-fold CV)...")
-isotonic.fit(X_train, y_train)
+print(f"  Fitting Platt scaling on {len(y_cal):,} held-out rows...")
+platt = asyncio.run(
+    pipeline.calibrate(base_estimator, X_cal_frame, y_cal_series, method="sigmoid")
+)
+print(f"  Fitting Isotonic regression on {len(y_cal):,} held-out rows...")
+isotonic = asyncio.run(
+    pipeline.calibrate(base_estimator, X_cal_frame, y_cal_series, method="isotonic")
+)
 
 y_proba_platt = platt.predict_proba(X_test)[:, 1]
 y_proba_iso = isotonic.predict_proba(X_test)[:, 1]
@@ -120,9 +149,12 @@ save_strategy_proba("isotonic_calibrated", y_proba_iso)
 
 
 # ── Checkpoint 5 ────────────────────────────────────────────────────────
+brier_raw = brier_score_loss(y_test, load_strategy_proba("cost_sensitive_scale"))
 assert 0 <= y_proba_platt.min() and y_proba_platt.max() <= 1, "Platt out of range"
 assert 0 <= y_proba_iso.min() and y_proba_iso.max() <= 1, "Isotonic out of range"
-print("[ok] Checkpoint 5 — two calibrated probability vectors saved\n")
+assert brier_score_loss(y_test, y_proba_platt) < brier_raw, "Platt must improve Brier"
+assert brier_score_loss(y_test, y_proba_iso) < brier_raw, "Isotonic must improve Brier"
+print("[ok] Checkpoint 5 — both calibrators improve Brier over the raw weighted model\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -140,12 +172,34 @@ print_reliability("Cost-sensitive", bins_cost)
 print_reliability("Platt", bins_platt)
 print_reliability("Isotonic", bins_iso)
 
-# INTERPRETATION: The baseline reliability curve hugs the diagonal in
-# the low-probability bins (which is most of the data) because the
-# model rarely predicts high default probabilities. Cost-sensitive
-# compresses probabilities towards 0.5 — terrible for pricing.
-# Platt straightens the curve parametrically. Isotonic matches it
-# non-parametrically and usually wins on large calibration sets.
+
+
+def expected_calibration_error(bins: pl.DataFrame) -> float:
+    """ECE = count-weighted mean |mean_pred - empirical_rate| over bins."""
+    return float((bins["count"] * bins["gap"]).sum() / bins["count"].sum())
+
+
+y_proba_cost = load_strategy_proba("cost_sensitive_scale")
+calibration_summary = [
+    (name, proba, expected_calibration_error(bins))
+    for name, proba, bins in [
+        ("Baseline", load_strategy_proba("baseline"), bins_baseline),
+        ("Cost-sensitive", y_proba_cost, bins_cost),
+        ("Platt", y_proba_platt, bins_platt),
+        ("Isotonic", y_proba_iso, bins_iso),
+    ]
+]
+print(f"\n  Real default rate in test: {y_test.mean():.3f}")
+print(f"  {'Variant':<16} {'mean p':>8} {'ECE':>8} {'Brier':>8}")
+for name, proba, ece in calibration_summary:
+    brier = metrics_row(name, y_test, proba)["brier"]
+    print(f"  {name:<16} {proba.mean():>8.3f} {ece:>8.4f} {brier:>8.4f}")
+# INTERPRETATION: A point ABOVE the diagonal in a reliability bin means
+# the model's probabilities there are too LOW (more defaults happen than
+# predicted); BELOW means too HIGH. Read the table with that in mind:
+# where does the cost-sensitive model's mean p sit relative to the real
+# default rate, and how much do Platt and Isotonic shrink ECE and Brier?
+# (Brier mixes calibration with discrimination; ECE isolates calibration.)
 
 # Final comparison table across every strategy we've trained
 strategies = [
@@ -153,16 +207,15 @@ strategies = [
     ("SMOTE", "smote"),
     ("Cost-sens (scale)", "cost_sensitive_scale"),
     ("Cost-sens (matrix)", "cost_sensitive_matrix"),
-    ("Focal alpha=2.0", "focal_alpha_2.0"),
+    ("Focal gamma=2.0", "focal_gamma_2.0"),
     ("Cost + Platt", "platt_calibrated"),
     ("Cost + Isotonic", "isotonic_calibrated"),
 ]
+# Every strategy must exist — run 01-04 first. A missing one raises with
+# a clear message rather than silently shrinking the comparison.
 all_rows: list[dict] = []
 for display, key in strategies:
-    try:
-        p = load_strategy_proba(key)
-    except (KeyError, FileNotFoundError):
-        continue
+    p = load_strategy_proba(key)
     all_rows.append(metrics_row(display, y_test, p))
 
 print_metrics_table(all_rows, "FINAL COMPARISON — all imbalance strategies")
@@ -245,68 +298,64 @@ print(f"  Best Brier:  {best_brier['strategy']} (Brier={best_brier['brier']:.4f}
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — Standard Chartered SG risk-based personal-loan pricing
+# APPLY — Risk-based personal-loan pricing (illustrative)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Standard Chartered Singapore prices every personal loan
-# individually using a risk-based formula:
+# SCENARIO (illustrative): a Singapore retail bank prices every personal
+# loan individually with a risk-based formula:
 #
-#     APR = funding_cost + expected_loss(p) * LGD + operating_margin
+#     APR = funding_cost + expected_loss(p) + operating_margin
+#     expected_loss(p) = p * LGD * EAD
 #
-# where expected_loss(p) = p * EAD. If the probability p is
-# miscalibrated by even 15%, the entire pricing curve is wrong —
-# profitable customers are over-priced and churn to competitors,
-# while risky customers are under-priced and blow up the book.
+# If p is systematically too high (as with the raw weighted model), every
+# good customer is over-priced and drifts to competitors; if too low, the
+# risky book is under-priced and provisions are understated. Model-risk
+# reviewers therefore ask to see calibration on held-out data (the
+# reliability diagram and ECE above) before a pricing model goes live.
 #
-# MAS guidance (MAS Notice 1101 on credit risk models) REQUIRES
-# demonstrating calibration on a holdout set before any pricing
-# model goes live. Platt/Isotonic post-processing is the standard
-# industry answer.
+# Production recipe:
+#   1. Train a strong ranker (LightGBM, optionally class-weighted)
+#   2. Post-calibrate on held-out data (Isotonic with plenty of data,
+#      Platt with little)
+#   3. Apply the Bayes threshold t* = cost_FP / (cost_FP + cost_FN) to
+#      the CALIBRATED probabilities
+#   4. Price loans from the calibrated p
+#   5. Monitor drift (Exercise 8)
 #
-# Production recipe at SCB-SG:
-#   1. Train a strong ranker (LightGBM with scale_pos_weight)
-#   2. Post-calibrate with Isotonic (SCB has >50K calibration samples)
-#   3. Tune threshold from cost matrix (exercise 5.4)
-#   4. Price loans from the calibrated p using the formula above
-#   5. Monitor drift quarterly (kailash-ml DriftMonitor)
-#
-# BUSINESS IMPACT: on a S$500M/year personal-loan book, 15%
-# miscalibration translates to roughly S$12M/year in either
-# over-provisioning (write-off overstated) or under-pricing
-# (margin leakage). Calibration post-processing costs ~1 compute
-# hour per retrain. It is the highest-ROI post-hoc step in the
-# entire ML lifecycle.
+# The ROI below applies t* to the raw weighted scores and to the two
+# calibrated versions — t* is only valid for the calibrated ones.
 
-# Annual ROI at the cost-matrix threshold using the calibrated probs
 t_star = DEFAULT_COSTS.optimal_threshold
+roi_by_variant: dict[str, dict] = {}
 for display, proba in [
-    ("Cost-sens (raw)", load_strategy_proba("cost_sensitive_scale")),
+    ("Cost-sens (raw)", y_proba_cost),
     ("Cost + Platt", y_proba_platt),
     ("Cost + Isotonic", y_proba_iso),
 ]:
     roi = annual_roi(y_test, proba, threshold=t_star, annual_volume=ANNUAL_APPLICATIONS)
+    roi_by_variant[display] = roi
     print_roi(f"{display} @ t*={t_star:.4f}", roi)
 
+best_variant = max(roi_by_variant, key=lambda k: roi_by_variant[k]["annual_savings_usd"])
+print(f"\n  Highest annual savings at t*: {best_variant}")
+
 
 # ════════════════════════════════════════════════════════════════════════
-# PRODUCTION RECOMMENDATION
+# PRODUCTION RECOMMENDATION — computed from this run
 # ════════════════════════════════════════════════════════════════════════
+best_calibrated = min(calibration_summary[2:], key=lambda t: t[2])
 print(
-    """
-  Production recipe for Singapore consumer credit (100:1 cost ratio,
-  ~12% default rate, ~100K annual applications):
+    f"""
+  From this run (~{y_test.mean():.0%} default rate, cost ratio
+  {DEFAULT_COSTS.fn / DEFAULT_COSTS.fp:.1f}:1):
 
-    1. LightGBM with scale_pos_weight = (1 - pos_rate) / pos_rate
-       (equivalently: sample_weight = cost matrix lookup)
-    2. Calibrate with Isotonic regression (5-fold CV) — OR Platt if
-       your calibration set is under 1,000 samples
-    3. Tune threshold from cost matrix: t* = cost_FP / (cost_FP + cost_FN)
-    4. Report AUC-PR + Brier + annual S$ savings to the risk committee
-    5. Monitor drift with kailash-ml DriftMonitor quarterly
+    1. Best ranking (AUC-PR):     {best_auc_pr['strategy']}
+    2. Best Brier:                {best_brier['strategy']}
+    3. Best calibrated variant:   {best_calibrated[0]} (ECE {best_calibrated[2]:.4f})
+    4. Decision rule:             decline if calibrated p >= t* = {t_star:.3f}
+    5. Report AUC-PR + Brier/ECE + annual S$ savings to the risk committee
 
-  DO NOT use SMOTE in production unless:
-    - You have fewer than 500 samples
-    - You have fewer than 10 features
-    - You have verified it IMPROVES calibration on a holdout set
+  If you use SMOTE or class weights, recalibrate on held-out data
+  before reading the outputs as probabilities.
 """
 )
 
@@ -324,7 +373,8 @@ print(
 from kailash_ml import diagnose
 
 # `kind="classical_classifier"` dispatches to the sklearn ClassifierMixin
-# adapter. CalibratedClassifierCV implements the ClassifierMixin interface.
+# adapter. TrainingPipeline.calibrate returns an sklearn
+# CalibratedClassifierCV, which implements the ClassifierMixin interface.
 # Use the isotonic variant — typically the better calibrator for >1k samples.
 report = diagnose(
     isotonic, kind="classical_classifier", data=(X_test, y_test), show=False
@@ -352,7 +402,7 @@ print(
   [x] Read reliability diagrams to spot under/over-confidence
   [x] Final comparison across all seven strategies (baseline, SMOTE,
       cost-sens x2, focal, Platt, Isotonic)
-  [x] Translated the winner into annual S$ savings at SCB pricing
+  [x] Translated the winner into annual S$ savings for loan pricing
   [x] Documented the production recipe for Singapore consumer credit
 
   WHOLE-EXERCISE INSIGHT: The winning strategy on financial tabular
@@ -360,7 +410,7 @@ print(
   learning + post-hoc calibration + cost-matrix threshold tuning.
   Simple, production-grade, auditable.
 
-  NEXT: Exercise 6 adds SHAP interpretability — required for MAS
-  model risk governance and the EU AI Act right-to-explanation.
+  NEXT: Exercise 6 adds SHAP interpretability — the per-decision
+  explanations that model-risk reviewers and customers ask for.
 """
 )

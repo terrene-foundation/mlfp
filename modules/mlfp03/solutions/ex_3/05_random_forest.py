@@ -11,9 +11,10 @@
 #   - The (1 - 1/n)^n -> 1/e result behind OOB coverage
 #   - Read Random Forest feature importances and compare to a single tree
 #   - Visualise OOB convergence as the forest grows
-#   - Apply a robust, drop-in churn model to Singapore e-commerce scale
+#   - Apply a robust, drop-in churn model at e-commerce scale
 #
-# PREREQUISITES: 04_decision_tree.py
+# PREREQUISITES: 04_decision_tree.py (and 01_svm.py for CV AUC and the
+#   majority-class baseline)
 #
 # ESTIMATED TIME: ~30 min
 #
@@ -21,8 +22,8 @@
 #   1. Theory — bagging, OOB, feature importance
 #   2. Build — RF with 200 trees, sqrt feature subsampling
 #   3. Train — inspect OOB score and compare to CV
-#   4. Visualise — OOB convergence curve + importance bar chart
-#   5. Apply — Singapore e-commerce marketplace churn at 250K MAU
+#   4. Visualise — OOB convergence curve, importance chart, 2D boundary
+#   5. Apply — regional e-commerce marketplace churn at 250K MAU
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -36,7 +37,7 @@ from sklearn.ensemble import RandomForestClassifier
 from shared.mlfp03.ex_3 import (
     build_train_test_split,
     churn_saved_dollars,
-    cv_accuracy_f1,
+    cv_scores,
     decision_boundary_mesh,
     fit_and_evaluate,
     get_visualizer,
@@ -44,6 +45,8 @@ from shared.mlfp03.ex_3 import (
     print_classification_report,
     project_2d,
     RANDOM_SEED,
+    save_decision_boundaries,
+    save_sweep_plot,
 )
 
 load_dotenv()
@@ -120,10 +123,13 @@ print(
     f"accuracy={rf_result['accuracy']:.4f} | "
     f"F1={rf_result['f1']:.4f} | AUC={rf_result['auc_roc']:.4f}"
 )
-print(f"OOB score: {rf_model.oob_score_:.4f}")
+print(
+    f"OOB accuracy: {rf_model.oob_score_:.4f} | majority-class baseline "
+    f"accuracy (test): {data['majority_accuracy']:.4f}"
+)
 print_classification_report(y_test, rf_result["pred"])
 
-rf_cv_acc, rf_cv_f1 = cv_accuracy_f1(
+rf_cv = cv_scores(
     RandomForestClassifier(
         n_estimators=100,
         max_features="sqrt",
@@ -134,9 +140,11 @@ rf_cv_acc, rf_cv_f1 = cv_accuracy_f1(
     y_train,
     cv,
 )
+rf_cv_acc = rf_cv["accuracy"]
 print(
-    f"5-fold CV — accuracy: {rf_cv_acc:.4f} | F1: {rf_cv_f1:.4f} "
-    f"(OOB should be within 10pp)"
+    f"5-fold CV — accuracy: {rf_cv_acc:.4f} | AUC: {rf_cv['auc_roc']:.4f} "
+    f"| OOB - CV accuracy: {rf_model.oob_score_ - rf_cv_acc:+.4f} "
+    f"(both estimate unseen-data accuracy, so they should agree closely)"
 )
 
 
@@ -173,21 +181,18 @@ for name, imp in importances[:10]:
     bar = "#" * int(imp * 50)
     print(f"{name:<30} {imp:>12.4f}  {bar}")
 
-viz = get_visualizer()
-fig_oob = viz.training_history(
-    {"OOB score": oob_scores},
-    x_label="trees (index into n_trees_grid)",
+oob_out = save_sweep_plot(
+    n_trees_grid,
+    {"OOB accuracy": oob_scores},
+    x_label="number of trees",
+    title="Random Forest — OOB accuracy vs number of trees",
+    fname="ex3_05_rf_oob.html",
 )
-fig_oob.update_layout(title="Random Forest — OOB score vs number of trees")
-out_oob = OUTPUT_DIR / "ex3_05_rf_oob.html"
-fig_oob.write_html(str(out_oob))
-print(f"\nSaved: {out_oob}")
+print(f"\nSaved: {oob_out}")
 
-fig_imp = viz.training_history(
-    {"importance": [imp for _, imp in importances[:10]]},
-    x_label="feature rank (top 10)",
-)
-fig_imp.update_layout(title="Random Forest — top 10 feature importances")
+viz = get_visualizer()
+fig_imp = viz.feature_importance(rf_model, feature_names, top_n=10)
+fig_imp.update_layout(title="Random Forest — top 10 impurity-based importances")
 out_imp = OUTPUT_DIR / "ex3_05_rf_importance.html"
 fig_imp.write_html(str(out_imp))
 print(f"Saved: {out_imp}")
@@ -204,24 +209,35 @@ rf_2d = RandomForestClassifier(
 rf_2d.fit(X_train_2d, y_train)
 xx, yy = decision_boundary_mesh(X_train_2d)
 Z = rf_2d.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
-print(
-    f"\nDecision mesh shape: {Z.shape} | "
-    f"PCA variance captured: {pca_bundle['explained_variance'].sum():.2%}"
+boundary_out = save_decision_boundaries(
+    {"Random Forest (100 trees)": Z},
+    xx,
+    yy,
+    X_train_2d,
+    y_train,
+    fname="ex3_05_rf_boundary.html",
+    title="Random-forest regions in 2D PCA space (red = churned)",
 )
-print("RF boundaries look like 'voted' trees — axis-aligned but smoothed.")
+print(f"Saved: {boundary_out}")
+print(
+    f"PCA variance captured: {pca_bundle['explained_variance'].sum():.2%}. "
+    f"RF boundaries look like many voted trees — axis-aligned steps, but "
+    f"finer and less blocky than a single tree's."
+)
 
 # ── Checkpoint 1 ────────────────────────────────────────────────────────
-assert rf_result["accuracy"] > 0.5, "Random Forest must beat random"
-assert rf_model.oob_score_ > 0.5, "OOB score should beat random"
+assert rf_result["auc_roc"] > 0.6, "Random Forest must rank churners above retained customers"
 assert abs(rf_model.oob_score_ - rf_cv_acc) < 0.10, "OOB and CV within 10pp"
+assert boundary_out.exists(), "Decision-boundary figure must be written"
 print("\n[ok] Checkpoint 1 passed — OOB + CV consistent, RF trained and visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: 250K MAU Singapore marketplace churn model
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A mid-market Singapore e-commerce platform wants a single
+# SCENARIO: A mid-market regional e-commerce platform wants a single
 # production churn model to replace a stack of hand-tuned heuristics.
+# (Business figures are illustrative teaching assumptions.)
 # Requirements:
 #   - Robust across seasonal shifts (11.11, 12.12, Chinese New Year)
 #   - Tolerant of mixed feature types and missing values
@@ -230,10 +246,11 @@ print("\n[ok] Checkpoint 1 passed — OOB + CV consistent, RF trained and visual
 #     budget
 #
 # Why Random Forest fits:
-#   - Bagging + feature subsampling produce calibrated, robust models
-#     with minimal tuning. "A Random Forest of 200 trees on whatever
-#     cleaned features we have" is the single most reliable baseline
-#     in tabular ML.
+#   - Bagging + feature subsampling produce robust models with minimal
+#     tuning. "A Random Forest of 200 trees on whatever cleaned features
+#     we have" is one of the most reliable baselines in tabular ML.
+#     (Its predict_proba is a vote share, not a calibrated probability —
+#     calibrate before using it as one; Lesson 3.5.)
 #   - OOB gives a trustworthy accuracy estimate without a holdout
 #     split, which saves training data for regions with thin coverage
 #     (e.g. new campaign cohorts).
@@ -270,8 +287,9 @@ print(
   [x] Bagging — bootstrap + feature subsampling de-correlates trees
   [x] OOB score as a free cross-validation proxy
   [x] The (1 - 1/n)^n -> 1/e result behind OOB coverage
-  [x] Held-out accuracy: {rf_result['accuracy']:.4f}, F1: {rf_result['f1']:.4f}
-  [x] OOB convergence curve and feature importance plot
+  [x] Held-out accuracy {rf_result['accuracy']:.4f} vs majority baseline
+      {data['majority_accuracy']:.4f}; AUC {rf_result['auc_roc']:.4f}
+  [x] OOB convergence curve, feature importance plot, 2D boundary
   [x] 250K MAU churn business case
       — S${monthly_scale:,.0f}/month retained value at scale
 

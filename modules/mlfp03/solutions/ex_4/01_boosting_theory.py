@@ -7,6 +7,7 @@
 #
 # WHAT YOU'LL LEARN:
 #   - Explain why boosting reduces BIAS while bagging reduces VARIANCE
+#   - Run AdaBoost by hand: re-weight the rows the last stump got wrong
 #   - Implement gradient boosting from scratch with shallow decision trees
 #   - Derive the XGBoost split-gain formula from a 2nd-order Taylor
 #     expansion of the log-loss
@@ -22,10 +23,10 @@
 #
 # TASKS:
 #   1. Theory — bias vs variance, sequential residual fitting
-#   2. Build — from-scratch gradient booster on 1D logistic data
-#   3. Train — 10 rounds, watch residuals shrink
-#   4. Visualise — decision surface after each round (saved HTML)
-#   5. Apply — Singapore SME credit committee: when to refuse a split
+#   2. Build — AdaBoost warm-up, then a from-scratch gradient booster
+#   3. Train — 10 rounds, watch residuals shrink; derive the split gain
+#   4. Visualise — residual shrinkage + final probability surface (HTML)
+#   5. Apply — an SME credit committee: when to refuse a split
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -33,7 +34,8 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 from dotenv import load_dotenv
-from sklearn.tree import DecisionTreeRegressor
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 from shared.mlfp03.ex_4 import (
     OUTPUT_DIR,
@@ -74,15 +76,57 @@ load_dotenv()
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — BUILD a from-scratch gradient booster
+# TASK 2a — BUILD: AdaBoost warm-up (boosting by RE-WEIGHTING rows)
+# ════════════════════════════════════════════════════════════════════════
+# AdaBoost (Freund & Schapire, 1997) was the first practical booster.
+# Each round it fits a depth-1 tree ("stump") on WEIGHTED rows, then:
+#     err_t   = Σ w_i over the rows the stump got wrong
+#     α_t     = ½ ln((1 - err_t) / err_t)        (the stump's vote)
+#     w_i    ← w_i · exp(+α_t) if wrong, w_i · exp(-α_t) if right; renormalise
+# After the update the misclassified rows hold exactly HALF the total
+# weight, so the next stump is forced to concentrate on them. Gradient
+# boosting (below) generalises this: instead of re-weighting rows, each
+# new tree is fit to the gradient of any differentiable loss.
+
+print("\n" + "=" * 70)
+print("  AdaBoost Warm-Up on a 1D Logistic Demo")
+print("=" * 70)
+
+x_demo, y_demo = make_1d_demo(n=200)
+n_demo = len(y_demo)
+
+w = np.full(n_demo, 1.0 / n_demo)
+print(f"\n  {'Round':>6} {'weighted err':>13} {'alpha':>8} {'weight on missed rows':>22}")
+print("  " + "─" * 54)
+for t in range(1, 4):
+    stump = DecisionTreeClassifier(max_depth=1, random_state=SEED)
+    stump.fit(x_demo, y_demo, sample_weight=w)
+    missed = stump.predict(x_demo) != y_demo
+    err = float(w[missed].sum())
+    alpha = 0.5 * np.log((1 - err) / err)
+    w = w * np.exp(np.where(missed, alpha, -alpha))
+    w = w / w.sum()
+    missed_share = float(w[missed].sum())
+    print(f"  {t:>6} {err:>13.4f} {alpha:>8.4f} {missed_share:>22.4f}")
+
+ada = AdaBoostClassifier(
+    estimator=DecisionTreeClassifier(max_depth=1), n_estimators=50, random_state=SEED
+)
+ada.fit(x_demo, y_demo)
+ada_acc = list(ada.staged_score(x_demo, y_demo))
+print(
+    f"\n  sklearn AdaBoost (50 stumps): training accuracy after 1 stump = "
+    f"{ada_acc[0]:.4f}, after {len(ada_acc)} = {ada_acc[-1]:.4f}"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 2b — BUILD a from-scratch gradient booster
 # ════════════════════════════════════════════════════════════════════════
 
 print("\n" + "=" * 70)
 print("  From-Scratch Gradient Boosting on 1D Logistic Demo")
 print("=" * 70)
-
-x_demo, y_demo = make_1d_demo(n=200)
-n_demo = len(y_demo)
 
 # Hyperparameters for the demo run
 learning_rate = 0.3
@@ -126,6 +170,7 @@ final_acc = history[-1][3]
 
 
 # ── Checkpoint 1 ────────────────────────────────────────────────────────
+assert abs(missed_share - 0.5) < 1e-9, "AdaBoost puts half the weight on missed rows"
 assert final_acc > 0.6, "From-scratch boosting should converge above 60% accuracy"
 assert history[-1][1] < history[0][1], "MSE of residuals must shrink across rounds"
 # INTERPRETATION: Every round, the MSE of the residuals decreases — the
@@ -144,13 +189,21 @@ print("\n[ok] Checkpoint 1 passed — from-scratch gradient boosting converged\n
 #
 #     L ≈ Σ [g_i · f(x_i) + ½ h_i · f(x_i)²] + Ω(f)
 #
+# where Ω(f) = γ·T + ½ λ Σ_j w_j² penalises a tree f with T leaves and
+# leaf weights w_j.
 # where g_i = ∂L/∂ŷ (first derivative) and h_i = ∂²L/∂ŷ² (second). For
 # log-loss on a binary classification target:
 #
 #     g_i = p_i - y_i           (predicted minus actual)
 #     h_i = p_i · (1 - p_i)     (prediction variance)
 #
-# The split-gain formula falls out algebraically:
+# Grouping the rows by the leaf j they fall in (G_j = Σ g_i, H_j = Σ h_i
+# over that leaf), the loss is a quadratic in each w_j, minimised at
+#
+#     w_j* = - G_j / (H_j + λ)     with loss  - ½ G_j² / (H_j + λ) + γ
+#
+# Comparing the loss of one leaf (the parent) against two (the children),
+# the split-gain formula falls out algebraically:
 #
 #     Gain = ½ [ G_L²/(H_L+λ) + G_R²/(H_R+λ) - (G_L+G_R)²/(H_L+H_R+λ) ] - γ
 #
@@ -276,43 +329,52 @@ print(f"  Saved: {surface_path}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Singapore SME Credit Committee
+# TASK 5 — APPLY: An SME Credit Committee — When To Refuse A Split
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore mid-tier bank runs an SME credit committee that
-# scores loan applications up to S$500K. The underwriters use an XGBoost
-# model to pre-rank applications; the committee then approves or refuses
-# the top-scoring 40% each week.
+# SCENARIO (illustrative): a Singapore bank's SME credit committee uses a
+# boosted model to pre-rank loan applications. A committee member asks:
+# "Young companies are risky — why didn't the model split on
+# 'company age ≤ 2 years'?"
 #
-# The question that keeps recurring at committee: "The model split on
-# 'months since last bounced cheque ≤ 3' and put most of the defaults
-# on one side. Why did it refuse to split on 'company age ≤ 2 years'
-# even though that also separates the classes?"
-#
-# ANSWER — the XGBoost gain formula:
-#   - 'months since bounced cheque' produces a clean G_L / G_R split with
-#     large |G| on each side → high Gain → accepted.
-#   - 'company age ≤ 2y' DOES separate the classes, but with only 40
-#     applications in the minority leaf. With λ=1, the leaf weight
-#     G/(H+λ) gets shrunk toward zero because H is small. The gain
-#     formula computes Gain ≈ 0.18, just under γ=0.2 → PRUNED.
-#
-#   The committee's intuition ("young companies are risky") is correct,
-#   but the MODEL refuses to split because the leaf is too small to be
-#   reliably informative. This is how structural regularisation prevents
-#   overfitting on minority segments.
-#
-# BUSINESS IMPACT: Singapore SMEs default at ~4-6% on average but the
-# specific segment 'company age ≤ 2y AND no audited financials' defaults
-# at ~18%. A bank that splits aggressively on this segment will see the
-# training AUC climb but the out-of-sample AUC collapse — because the
-# 40-row leaf memorises noise. At typical SME portfolio sizes (S$400M
-# loans at risk), a 2-point AUC collapse is worth S$3-5M in under-priced
-# loans per year.
-#
-# The γ parameter, tuned on a hold-out set, is literally a monetary
-# policy decision: the higher γ, the more the bank refuses to split on
-# small segments, the lower the training AUC, the more robust the
-# portfolio. This is why γ is tuned with the risk team in the loop.
+# The gain formula answers it. Take the same node as above (100 defaults,
+# 800 non-defaults, current prediction 0.12) and compare the strong split
+# from Task 3 with a split that isolates a SMALL segment of 40 young
+# companies, 8 of which defaulted (20% vs 12% overall).
+
+g_young = 8 * g_default + 32 * g_no_default
+h_young = 40 * h_per_sample
+g_rest = 92 * g_default + 768 * g_no_default
+h_rest = 860 * h_per_sample
+gain_young = xgb_split_gain(g_young, h_young, g_rest, h_rest, lambda_reg=1.0, gamma=0.0)
+
+print("\n" + "=" * 70)
+print("  Small-segment split vs strong split (λ = 1)")
+print("=" * 70)
+print(f"  Strong split (Task 3)          gain before γ: {gain:.4f}")
+print(f"  'company age ≤ 2y' (40 rows)   gain before γ: {gain_young:.4f}")
+for gam in [0.0, 1.0, round(gain_young * 1.5, 2)]:
+    verdict = (
+        "accept"
+        if xgb_split_gain(g_young, h_young, g_rest, h_rest, 1.0, gam) > 0
+        else "PRUNE"
+    )
+    print(f"    with γ = {gam:<6} → young-company split: {verdict}")
+print(
+    f"\n  Any γ above {gain_young:.4f} refuses the young-company split while the "
+    f"strong split (gain {gain:.4f}) survives γ values up to {gain:.1f}."
+)
+
+# ── Checkpoint 3 ────────────────────────────────────────────────────────
+assert 0 < gain_young < gain, "The small-segment split must earn far less gain"
+print("\n[ok] Checkpoint 3 passed — γ separates weak splits from strong ones\n")
+
+# INTERPRETATION: The committee's intuition ("young companies are riskier")
+# is correct — the segment's default rate is higher — but with only 40
+# rows the loss reduction is small and the leaf weight G/(H+λ) is shrunk
+# hard by λ because H is small. γ sets the minimum improvement a split
+# must buy. Tuned on held-out data (never on the test set), γ is in effect
+# a policy decision: higher γ = refuse to carve out small segments =
+# lower training fit but more stable out-of-sample behaviour.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -330,8 +392,10 @@ print(
       expansion of log-loss
   [x] Interpreted λ and γ as structural regularisers that prevent the
       tree from memorising small, high-variance segments
-  [x] Connected γ to a Singapore SME credit committee's decision to
-      refuse splits on minority segments
+  [x] Ran AdaBoost by hand: re-weighting puts half the weight on the
+      rows the last stump missed
+  [x] Connected γ to a credit committee's decision to refuse splits on
+      small segments, with the gain computed rather than asserted
 
   KEY INSIGHT: Boosting is just gradient descent in function space. Every
   round, a new tree is the negative gradient direction in a space of
@@ -339,8 +403,7 @@ print(
   lets the tree justify every split against a complexity cost, turning
   "build a big tree" into "build only the splits that pay for themselves".
 
-  Next: 02_xgboost.py trains the full XGBoost classifier on real Singapore
-  credit data, measures feature importance, and compares it against a
-  naive Random Forest baseline.
+  Next: 02_xgboost.py screens the Singapore credit data for leakage,
+  trains the full XGBoost classifier and ranks its feature importances.
 """
 )

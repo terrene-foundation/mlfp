@@ -10,6 +10,7 @@
 #   - Run Recursive Feature Elimination (RFE) around a Random Forest
 #   - Understand how wrapper methods capture feature INTERACTIONS
 #   - Compare RFE's selection against the filter consensus
+#   - Keep RFE inside the CV folds so the elimination curve is honest
 #   - Apply wrapper selection in a setting where interactions matter
 #     (cardiology risk models)
 #
@@ -20,8 +21,8 @@
 #   1. Theory — why wrappers see what filters miss
 #   2. Build — assemble estimator + RFE
 #   3. Train — fit RFE, get ranking + support mask
-#   4. Visualise — ranked table, marker for selected features
-#   5. Apply — National Heart Centre Singapore risk scoring (S$ impact)
+#   4. Visualise — ranked table + grouped-CV elimination curve
+#   5. Apply — heart-failure readmission risk at a Singapore hospital
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -32,7 +33,8 @@ import numpy as np
 import plotly.graph_objects as go
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFE
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import GroupKFold, cross_val_score
+from sklearn.pipeline import Pipeline
 
 from shared.mlfp03.ex_1 import (
     OUTPUT_DIR,
@@ -88,7 +90,6 @@ rf_estimator = RandomForestClassifier(
     n_estimators=100,
     max_depth=5,
     random_state=42,
-    n_jobs=-1,
 )
 
 N_FEATURES_TO_SELECT = 15
@@ -132,30 +133,40 @@ print(f"\n  Total RFE-selected features: {len(rfe_selected)}")
 print(f"  Selected: {rfe_selected}")
 
 # --- RFE elimination curve: accuracy vs number of features ---
+# The curve must be HONEST: if RFE chooses features on all rows and we
+# then cross-validate on those same rows, the held-out folds helped pick
+# the features (selection leakage). So RFE goes INSIDE a Pipeline and is
+# re-fitted within every training fold. Folds are grouped by patient_id
+# — one patient can have several admissions, and the same patient must
+# not sit in both train and test.
+groups = features["patient_id"].to_numpy()
+group_cv = GroupKFold(n_splits=3)
+majority_acc = float(max(y_binary.mean(), 1 - y_binary.mean()))
 n_features_range = [5, 8, 10, 12, 15, 18, 20, 25]
 n_features_range = [n for n in n_features_range if n <= len(feature_cols)]
 elim_scores = []
 for n_feat in n_features_range:
-    rfe_curve = RFE(
-        estimator=RandomForestClassifier(
-            n_estimators=50, max_depth=5, random_state=42, n_jobs=-1
-        ),
-        n_features_to_select=n_feat,
-        step=5,
+    pipe = Pipeline(
+        [
+            (
+                "rfe",
+                RFE(
+                    estimator=RandomForestClassifier(
+                        n_estimators=50, max_depth=5, random_state=42
+                    ),
+                    n_features_to_select=n_feat,
+                    step=5,
+                ),
+            ),
+            ("rf", RandomForestClassifier(n_estimators=50, max_depth=5, random_state=42)),
+        ]
     )
-    rfe_curve.fit(X_sel, y_binary)
-    X_reduced = X_sel[:, rfe_curve.support_]
     cv_acc = cross_val_score(
-        RandomForestClassifier(
-            n_estimators=50, max_depth=5, random_state=42, n_jobs=-1
-        ),
-        X_reduced,
-        y_binary,
-        cv=3,
-        scoring="accuracy",
+        pipe, X_sel, y_binary, cv=group_cv, groups=groups, scoring="accuracy"
     ).mean()
     elim_scores.append(cv_acc)
-    print(f"  n_features={n_feat:<3}  CV accuracy={cv_acc:.4f}")
+    print(f"  n_features={n_feat:<3}  grouped CV accuracy={cv_acc:.4f}")
+print(f"  Majority-class baseline accuracy: {majority_acc:.4f}")
 
 fig_rfe = go.Figure()
 fig_rfe.add_trace(
@@ -179,9 +190,10 @@ fig_rfe.add_annotation(
 fig_rfe.update_layout(
     title="RFE Elimination Curve — Accuracy vs Number of Features",
     xaxis_title="Number of Features Selected",
-    yaxis_title="3-Fold CV Accuracy",
+    yaxis_title="3-fold grouped CV accuracy (RFE inside each fold)",
     height=450,
 )
+fig_rfe.add_hline(y=majority_acc, line_dash="dot", annotation_text="majority-class baseline")
 rfe_path = OUTPUT_DIR / "ex1_03_rfe_elimination_curve.html"
 fig_rfe.write_html(str(rfe_path))
 print(f"\n  Saved: {rfe_path}")
@@ -191,10 +203,26 @@ print(f"\n  Saved: {rfe_path}")
 assert rfe_ranking[0][1] == 1, "Task 4: top-ranked features should have rank=1"
 print("\n[ok] Checkpoint 2 passed — RFE ranking is well-formed\n")
 
-# INTERPRETATION: compare this list to filter consensus from 02. RFE will
-# typically promote interaction-rich features (shock_index,
-# treatment_burden_score) that the filter methods under-rank because
-# each interaction factor alone is only weakly related to the target.
+# INTERPRETATION — computed: does ANY feature subset beat guessing the
+# majority class?
+best_acc = max(elim_scores)
+print(
+    f"  Best grouped CV accuracy {best_acc:.4f} vs majority baseline "
+    f"{majority_acc:.4f} ({best_acc - majority_acc:+.4f})."
+)
+if best_acc - majority_acc < 0.01:
+    print(
+        "  → No subset beats the baseline: RFE still returns 15 'selected'\n"
+        "    features, but on this data they are an ordering of noise. A\n"
+        "    wrapper's ranking means something only when the model it wraps\n"
+        "    beats a trivial baseline under honest CV."
+    )
+else:
+    print(
+        "  → Compare the selected list with the filter consensus from 02:\n"
+        "    features RFE keeps but filters ranked low are candidates for\n"
+        "    interaction effects."
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -229,33 +257,29 @@ print(f"\n  ExperimentTracker run: {run_id}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: National Heart Centre Singapore Risk Stratification
+# TASK 5 — APPLY: heart-failure readmission risk at a Singapore hospital
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: National Heart Centre Singapore (NHCS) wants a 30-day
-# re-admission risk model for heart-failure patients. The training set
-# has ~220 candidate features across demographics, lab panels, medication
-# history, and procedure codes. Interactions are KNOWN to dominate:
-#   - ejection_fraction * diuretic_dose (under-diuresed weak heart)
-#   - creatinine * ACE_inhibitor (renal contraindication)
-#   - BNP * beta_blocker_dose (titration window)
-# Filter methods rank each factor individually and miss every one of
-# these combinations.
+# SCENARIO (illustrative): a Singapore cardiac centre wants a 30-day
+# readmission risk model for heart-failure patients. The training set has
+# ~220 candidate features across demographics, lab panels, medication
+# history and procedure codes. Clinicians expect interactions to matter:
+#   - ejection fraction × diuretic dose (under-diuresed weak heart)
+#   - creatinine × ACE inhibitor (renal contraindication)
+#   - BNP × beta-blocker dose (titration window)
+# Filter methods score each factor on its own and can miss these.
 #
-# Why RFE + Random Forest is the right tool:
+# Why RFE + Random Forest fits:
 #   - Random Forest captures interactions natively through its splits
-#   - RFE iteratively removes the weakest factor, giving the remaining
-#     features a chance to re-combine in the retained subset
-#   - The ranking is stable enough that NHCS cardiologists can audit
-#     the top 15 against clinical guidelines
+#   - RFE iteratively removes the weakest features, re-fitting so the
+#     survivors can re-combine
+#   - The final 15 can be reviewed by cardiologists against guidelines
 #
-# BUSINESS IMPACT: NHCS estimates each prevented 30-day readmission
-# saves S$12,500 in avoided ICU bed-days, plus ~S$3,800 in avoided
-# follow-up imaging. The baseline readmission rate is 23%; a model
-# that cuts readmissions by 4 percentage points on ~3,600
-# heart-failure discharges per year saves:
-#     3,600 x 0.04 x (S$12,500 + S$3,800) ~ S$2.35M/year
-# RFE + RF training cost: one data scientist x two weeks = ~S$24K.
-# First-year ROI: ~95x.
+# ILLUSTRATIVE ARITHMETIC (assumed values): if each prevented readmission
+# saves ~S$16,000 and a model cuts readmissions by 4 percentage points
+# on ~3,600 heart-failure discharges a year:
+#     3,600 × 0.04 × S$16,000 ≈ S$2.3M/year
+# — but only if the selected features beat a trivial baseline under
+# honest (in-fold, grouped) cross-validation, as checked above.
 #
 # LIMITATIONS:
 #   - RFE is estimator-specific: the 15 features that help a Random
@@ -280,7 +304,7 @@ print(
   [x] Fit RFE and extracted the selected-feature mask + ranking
   [x] Understood how wrappers promote interaction-rich features
   [x] Logged the wrapper run to ExperimentTracker
-  [x] Applied RFE to NHCS heart-failure readmission scoring
+  [x] Measured the elimination curve with RFE inside grouped CV folds
 
   KEY INSIGHT: Wrappers see interactions but pay a compute tax. Use them
   when you can afford the training time AND when domain knowledge tells

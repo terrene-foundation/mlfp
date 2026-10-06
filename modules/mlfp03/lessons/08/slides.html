@@ -77,7 +77,7 @@
         <rect x="295" y="38" width="150" height="62" rx="8" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
         <text x="370" y="58" text-anchor="middle" font-weight="700" font-size="11" fill="#92400E">ModelRegistry</text>
         <g font-family="JetBrains Mono" font-size="7" fill="#78716C">
-          <text x="370" y="72" text-anchor="middle">v1 (retired)</text>
+          <text x="370" y="72" text-anchor="middle">v1 (archived)</text>
           <text x="370" y="82" text-anchor="middle">v2 (staging)</text>
           <text x="370" y="92" text-anchor="middle" font-weight="600" fill="#166534">v3 (production)</text>
         </g>
@@ -92,7 +92,7 @@
         <g font-family="JetBrains Mono" font-size="7" fill="#475569">
           <text x="554" y="72" text-anchor="middle">POST /predict</text>
           <text x="554" y="82" text-anchor="middle">{"p": 0.73,</text>
-          <text x="554" y="92" text-anchor="middle"> "ci": [0.61, 0.85]}</text>
+          <text x="554" y="92" text-anchor="middle"> "set": ["default"]}</text>
         </g>
 
         <!-- Live data arrow -->
@@ -107,7 +107,7 @@
         <text x="554" y="150" text-anchor="middle" font-weight="700" font-size="11" fill="#B91C1C">DriftMonitor</text>
         <g font-family="JetBrains Mono" font-size="8" fill="#7F1D1D">
           <text x="554" y="166" text-anchor="middle">PSI per feature | KS test</text>
-          <text x="554" y="178" text-anchor="middle">check_interval = "daily"</text>
+          <text x="554" y="178" text-anchor="middle">check_drift() per batch</text>
         </g>
 
         <!-- Arrow from inference down to drift -->
@@ -122,7 +122,7 @@
         <!-- FEEDBACK LOOP: DriftMonitor → retrain -->
         <path d="M 464 165 L 70 165 L 70 100" fill="none" stroke="#3B82F6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#a38d)"/>
         <rect x="200" y="155" width="120" height="20" rx="4" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1"/>
-        <text x="260" y="169" text-anchor="middle" font-weight="600" font-size="8" fill="#3B82F6">retrain trigger (PSI &gt; 0.25)</text>
+        <text x="260" y="169" text-anchor="middle" font-weight="600" font-size="8" fill="#3B82F6">alert: PSI &gt; 0.2 or KS p &lt; 0.001</text>
 
         <!-- DataFlow persistence layer -->
         <rect x="20" y="210" width="720" height="50" rx="8" fill="#F8FAFC" stroke="#0D9488" stroke-width="1.5" stroke-dasharray="4 3"/>
@@ -151,20 +151,23 @@
 <section>
   <h2>DataFlow: zero-config persistence</h2>
   <pre><code class="language-python" data-trim>
-from kailash_dataflow import DataFlow, field
+from pathlib import Path
+from dataflow import DataFlow
 
-db = DataFlow()
+# DataFlow needs an absolute sqlite path
+db = DataFlow(f"sqlite:///{Path('monitoring.db').resolve()}")
 
 @db.model
 class Prediction:
-    id: int = field(primary_key=True)
+    id: int
     customer_id: str
     probability: float
     model_version: int
 
-await db.express.create(Prediction,
-    customer_id="C001", probability=0.73,
-    model_version=1)
+await db.initialize()
+await db.express.create("Prediction", {
+    "customer_id": "C001", "probability": 0.73,
+    "model_version": 1})
   </code></pre>
   <p style="font-size: 0.85em;">Define a model, get CRUD for free. No SQL.</p>
 </section>
@@ -172,20 +175,21 @@ await db.express.create(Prediction,
 <section>
   <h2>DataFlow operations</h2>
   <pre><code class="language-python" data-trim>
-# Read — high risk predictions
-high_risk = await db.express.list(Prediction,
-    filters={"probability__gt": 0.7})
+# Read — high-risk predictions
+high_risk = await db.express.list("Prediction",
+    filter={"probability": {"$gt": 0.7}})
+row = high_risk[0]
 
-# Update
-await db.express.update(Prediction,
-    id=1, probability=0.68)
+# Update — by primary key
+await db.express.update("Prediction", row["id"],
+    {"probability": 0.68})
 
 # Delete
-await db.express.delete(Prediction, id=42)
+await db.express.delete("Prediction", row["id"])
   </code></pre>
   <div style="background: #F0FDF4; padding: 12px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1em;">
     <strong style="color: #22C55E;">🟢 Foundations:</strong>
-    <code>express</code> is the simple API. For complex queries, DataFlow supports raw SQL too.
+    <code>express</code> is the simple API. Each <code>@db.model</code> also generates CRUD workflow nodes for <code>WorkflowBuilder</code> — no hand-written SQL.
   </div>
 </section>
 
@@ -223,35 +227,41 @@ await db.express.delete(Prediction, id=42)
 <section>
   <h2>DriftMonitor code</h2>
   <pre><code class="language-python" data-trim>
-from kailash_ml import DriftMonitor, DriftSpec
+from kailash.db import ConnectionManager
+from kailash_ml import DriftMonitor
 
-monitor = DriftMonitor(spec=DriftSpec(
-    features=["income", "age", "credit_score"],
-    psi_threshold=0.15,
-    ks_alpha=0.05,
-    check_interval="daily",
-))
+# its OWN SQLite file — sharing the registry's DB fails
+conn = ConnectionManager("sqlite:///drift.db")
+await conn.initialize()
+monitor = DriftMonitor(conn, tenant_id="_single",
+    psi_threshold=0.2,
+    ks_threshold=0.001)  # Bonferroni: 33 features tested at once
 
-report = monitor.check(df_train, df_prod)
-for alert in report.alerts:
-    print(f"  {alert.feature}: PSI={alert.psi:.3f}")
+await monitor.set_reference_data("credit_scorer", train_df, feature_names)
+report = await monitor.check_drift("credit_scorer", batch_df)
+for f in report.feature_results:
+    if f.drift_detected:
+        print(f"  {f.feature_name}: PSI={f.psi:.3f}")
   </code></pre>
 </section>
 
 <section>
   <h2>Conformal prediction</h2>
   <pre><code class="language-python" data-trim>
-# Distribution-free prediction intervals
-residuals = np.abs(y_cal - model.predict(X_cal))
-q90 = np.quantile(residuals, 0.90)
+# Split conformal for a classifier (Exercise 8.1)
+p_cal = model.predict_proba(X_cal)[:, 1]
+scores = np.where(y_cal == 1, 1 - p_cal, p_cal)  # 1 - p(true class)
+n, alpha = len(scores), 0.10
+q_hat = np.quantile(scores, np.ceil((n + 1) * (1 - alpha)) / n,
+                    method="higher")
 
-y_hat = model.predict(X_new)
-interval = (y_hat - q90, y_hat + q90)
-print(f"90% interval: [{interval[0]:.0f}, {interval[1]:.0f}]")
+p_new = model.predict_proba(X_new)[:, 1]
+has_default = (1 - p_new) &lt;= q_hat
+has_repay = p_new &lt;= q_hat  # both True -&gt; route to a human
   </code></pre>
   <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; margin-top: 1em;">
     <strong style="color: #3B82F6;">🔵 Theory:</strong>
-    No distributional assumptions. Guaranteed coverage on exchangeable data.
+    No model assumptions, but two conditions: calibration and new data must be <em>exchangeable</em> (drift breaks it), and coverage ≥ 1 − α is <em>marginal</em> — averaged over applicants, not guaranteed inside each sub-group.
   </div>
 </section>
 
@@ -263,12 +273,13 @@ print(f"90% interval: [{interval[0]:.0f}, {interval[1]:.0f}]")
       <tr><td>Model details</td><td>Name, version, type, date</td></tr>
       <tr><td>Intended use</td><td>Primary use case, out-of-scope</td></tr>
       <tr><td>Training data</td><td>Source, size, date range</td></tr>
-      <tr><td>Evaluation</td><td>AUC, F1, calibration</td></tr>
-      <tr><td>Fairness</td><td>DI, equalised odds (from 3.6)</td></tr>
+      <tr><td>Evaluation</td><td>AUC, AP, Brier, conformal coverage; threshold 0.130 = $c_{FP}/(c_{FP}+c_{FN})$</td></tr>
+      <tr><td>Fairness</td><td>DI, TPR/FPR per group — measured, not asserted (from 3.6)</td></tr>
       <tr><td>Limitations</td><td>Known failure modes</td></tr>
       <tr><td>Monitoring</td><td>Drift thresholds, retrain triggers</td></tr>
     </tbody>
   </table>
+  <p style="font-size: 0.68em; color: #64748B;">Exercises 8.4–8.5: rollback = <code>promote_model</code> archived → staging → production; readiness = 11 gates computed from evidence + a human sign-off.</p>
 </section>
 
 <section>
@@ -280,7 +291,7 @@ print(f"90% interval: [{interval[0]:.0f}, {interval[1]:.0f}]")
     <strong>2. PSI on unused features</strong><br><span style="font-size: 0.85em;">Monitor the features the model actually uses.</span>
   </div>
   <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
-    <strong>3. Point predictions without uncertainty</strong><br><span style="font-size: 0.85em;">Conformal prediction adds intervals for free.</span>
+    <strong>3. Point predictions without uncertainty</strong><br><span style="font-size: 0.85em;">Conformal prediction adds calibrated prediction sets (or intervals) cheaply.</span>
   </div>
 </section>
 
@@ -297,8 +308,7 @@ print(f"90% interval: [{interval[0]:.0f}, {interval[1]:.0f}]")
     <li><strong>Production pipeline — today (3.8)</strong></li>
   </ul>
   <div style="background: #F0FDFA; padding: 16px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
-    <strong>Foundation Certificate complete.</strong> The Advanced Certificate (M4-M6)
-    starts with unsupervised learning and deep learning.
+    <strong>Module 3 complete.</strong> Module 4 finishes the Foundation Certificate (M1–M4): clustering, mixture models, dimensionality reduction, anomaly detection, association rules, topic models, recommenders, and a first look at neural networks. The Advanced Certificate (M5–M6) covers deep learning and vision, then LLMs and agents.
   </div>
 </section>
 

@@ -1,95 +1,101 @@
-# MLFP06 — Task 3: Tool-Using Agent over a Real Dataset
+# MLFP06 — Task 3: Serve a Governed Endpoint (JWT + Rate Limit + Role Routing)
 
-**Weight**: 25 marks · **Difficulty**: Hard · **Framework**: Kaizen `Delegate`
-
-- `ToolRegistry` (Ollama, `llama3.2:3b`) · **Dataset**:
-  `data/mlfp06/sst2/sst2_200.parquet` (real SST-2 sentiment, 200 rows)
+**Weight**: 30 marks · **Framework**: Nexus (`Nexus`, `NexusAuthPlugin`) +
+PACT (`GovernanceEngine`) · **Outcomes assessed**: production serving with
+authentication, rate limiting, CORS, and governance on the handler (6.8, 6.7)
 
 ## Scenario
 
-A data desk wants one agent that can answer a whole class of questions about a
-dataset by **choosing the right tool** — instead of a bespoke script per
-question. You will give a Kaizen Delegate four deterministic tools over the real
-SST-2 dataset and let the LLM decide, per question, which tool to call and with
-what arguments. This is the core agentic skill: **tool selection + argument
-extraction**, with the deterministic computation done by the tools, not the
-model.
+A public agency ships an internal policy assistant. Officers from several
+ministries call one HTTP endpoint; each ministry's SSO issues HS256 JWTs
+carrying a `roles` claim. The endpoint must:
 
-The four tools are provided (they query the real data and record every call).
-Your job is to register them with JSON schemas and run the agent over five fixed
-questions.
+- **refuse** requests with no token or a forged token (401, from the
+  middleware — before any handler code runs);
+- **throttle** bursts (429 from the rate limiter);
+- answer **CORS** correctly: echo only the allow-listed origin;
+- take the caller's tier from the **verified token claim** — never from the
+  request body (a body saying `"role": "admin"` must not escalate anyone);
+- run a **PACT governance check** for the tier before serving.
 
-Implement `solve() -> dict`.
+No LLM is involved: the governed "answer" is a deterministic string built
+from the question. What is real is the middleware stack and the governance
+decision — that is what is graded.
 
-## The four tools (provided)
-
-| Tool                    | Parameters   | Returns                                  |
-| ----------------------- | ------------ | ---------------------------------------- |
-| `dataset_size`          | _(none)_     | total number of reviews                  |
-| `count_by_label`        | `label: str` | count of reviews with that label         |
-| `average_review_length` | _(none)_     | mean review length in characters         |
-| `get_review_by_index`   | `index: int` | label + text of the review at that index |
-
-## The five questions (single-hop — exactly one correct tool each)
-
-| #   | Question                                              | Correct tool            | Correct arg        |
-| --- | ----------------------------------------------------- | ----------------------- | ------------------ |
-| 0   | How many reviews are in the dataset in total?         | `dataset_size`          | —                  |
-| 1   | How many reviews have the positive label?             | `count_by_label`        | `label="positive"` |
-| 2   | How many reviews have the negative label?             | `count_by_label`        | `label="negative"` |
-| 3   | What is the average review length in characters?      | `average_review_length` | —                  |
-| 4   | What is the sentiment label of the review at index 0? | `get_review_by_index`   | `index=0`          |
-
-## What to build
-
-1. **Register** all four tools on a `ToolRegistry` with correct JSON-schema
-   `parameters` (the no-arg tools use `properties={}`). The tool description is
-   what the LLM reads to choose — make it precise.
-2. **Run** a `make_delegate(..., tools=reg)` (temperature 0) on each question;
-   capture the `turn_complete` event's text as the answer.
-3. **Record** each transcript: the question, the list of `[tool_name, args]`
-   actually called (from the provided `call_log`), and the final answer.
-
-## Return contract
+## Interfaces
 
 ```python
-def solve() -> dict:
-    return {
-        "tool_names": [str, ...],          # the 4 registered tool names
-        "transcripts": [                   # one per question, in order
-            {"question": str,
-             "tools_called": [[name, args], ...],
-             "answer": str},
-            ...
-        ],
-    }
+def solve() -> dict: ...
 ```
 
-## Visible sanity check
+Returns `{"app": Nexus, "issuer": JWTValidator, "endpoint": str}`.
 
-A correct agent selects `dataset_size` for Q0, `count_by_label(label="positive")`
-for Q1, …, `get_review_by_index(index=0)` for Q4 — one correct tool per question,
-recorded in `tools_called`.
+- `app`: a Nexus app with one async handler registered under the name
+  `serve_qa` (so the endpoint is `/workflows/serve_qa/execute`), an
+  auth plugin configured with HS256 JWT and a rate limit of
+  **6 requests/minute, burst 2**, and a CORS allow-list containing exactly
+  `https://intranet.example.sg`.
+- `issuer`: a `JWTValidator` bound to the same HS256 secret the app verifies
+  with (read the secret from `MLFP_JWT_SECRET` if set, else generate one per
+  run — never hardcode it). The grader mints its own tokens through this
+  issuer.
+- `endpoint`: the path string above.
 
-## Grading (11 automated checks, all must pass)
+### The governance tiers
 
-return type is dict · all four tool names registered · 5 transcripts · transcript
-keys present · every question invoked ≥1 tool · no hallucinated tool names ·
-**correct tool selected for all 5 questions** · `count_by_label` args correct
-(positive + negative) · `get_review_by_index` index arg is 0 · all four tools
-exercised across the run · every answer non-empty.
+Build a PACT engine (the canonical course org compiles structurally with
+`compile_governance(apply_specs=False)`) and attach two envelopes:
 
-**How this stays deterministic.** The graded signal is the **tool call + its
-arguments**, recorded by the tool wrappers themselves — independent of the
-model's prose. Because each tool computes its result deterministically from the
-real SST-2 data, "correct tool + correct args" guarantees the correct computed
-value was produced as an observation. The model's final wording (which small
-local models often fail to populate with the value) is NOT graded. At
-temperature 0 the tool-selection outcome is byte-stable across runs.
+| Tier    | Role address  | Cap (USD) | Allowed actions   |
+| ------- | ------------- | --------- | ----------------- |
+| `qa`    | `D1-R1-T1-R1` | 0.015     | `generate_answer` |
+| `admin` | `D1-R1-T2-R1` | 0.05      | `generate_answer` |
+
+A request's cost is `$0.02` when the question is longer than 280 characters,
+else `$0.01`. The handler calls
+`engine.verify_action(role_address=..., action="generate_answer", context={"cost": cost})`
+for the token's tier and serves only when the verdict allows it. A token
+whose role is neither `qa` nor `admin` is refused.
+
+### Handler response contract
+
+On success (HTTP 200), the handler returns a dict with at least:
+`{"answer": f"[{role}] {question}", "role": role, "verdict": "served",
+"blocked": False, "user": <token subject>, "cost": cost}`.
+
+On a governance refusal (unknown tier, over-budget question), still HTTP 200
+with `{"blocked": True, "verdict": "blocked", "role": <role or "">, "user":
+<token subject>, "error": <reason>}`.
+
+## Acceptance criteria (what the grader measures)
+
+The grader sends real HTTP requests through your app's middleware stack
+(in-process, no ports) with tokens it mints itself:
+
+| #   | Check                                                                            |
+| --- | -------------------------------------------------------------------------------- |
+| 1   | Contract: app, issuer and endpoint returned (gate)                               |
+| 2   | `qa` token + short question → 200, served, role `qa`, correct answer string      |
+| 3   | `qa` token + long question → 200, **blocked** (over the qa cap)                  |
+| 4   | `admin` token + long question → 200, served                                      |
+| 5   | `qa` token + body `"role": "admin"` + long question → still the `qa` decision    |
+| 6   | Token with an unknown role (grader-chosen per run) → blocked                     |
+| 7   | The handler output carries the grader's per-run token subject                    |
+| 8   | No token → 401                                                                   |
+| 9   | Forged token (grader's own secret) → 401                                         |
+| 10  | A burst of requests hits 429                                                     |
+| 11  | `Origin: https://intranet.example.sg` is echoed in `access-control-allow-origin` |
+| 12  | `Origin: https://evil.example.com` is not echoed                                 |
+
+Marks = 30 × (non-gate checks passed / 11). If the gate fails, the task
+scores 0.
 
 ## Rules
 
-- **Kaizen `Delegate` + `ToolRegistry` only** — no raw LLM HTTP, no hand-rolled
-  routing. The LLM must choose the tool; do not `if`/`else` on the question.
-- **Local Ollama only**, temperature 0.
-- Do not modify the provided tools or questions.
+- No LLM calls. No network listeners — the grader drives the app in-process.
+- The role comes from `request.state.user` (set by the JWT middleware);
+  the request body's `role` field is ignored.
+- Keep the middleware order: rate limit first, then JWT (the plugin's
+  documented order), so unauthenticated bursts are refused cheaply.
+- Self-check: run `starter.py`; it drives your app in-process and prints the
+  status codes and handler outputs.

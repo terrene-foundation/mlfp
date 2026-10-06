@@ -1,140 +1,169 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP06 — Assessment Task 3: Tool-Using Agent (Reference Solution)
+MLFP06 — Assessment Task 3: Serve a Governed Endpoint (Reference Solution)
 
-Reference implementation. Withheld from students. Verified to pass grader.py.
-A Kaizen Delegate (Ollama, temperature 0) is given four deterministic tools
-over the real SST-2 dataset. For each fixed question the agent must SELECT the
-correct tool and produce the deterministic answer the tool computes.
+Withheld from students. Verified to pass grader.py across seeds. No LLM calls.
+
+The stack: Nexus + NexusAuthPlugin (HS256 JWT + 6rpm/burst-2 rate limit) +
+a one-item CORS allow-list. The handler reads the VERIFIED role from
+request.state.user (never the body), prices the question ($0.02 over 280
+chars, else $0.01), and runs PACT verify_action for the tier's envelope
+before serving. Refusals are HTTP 200 with blocked=True; auth failures are
+401 from the middleware, before the handler runs.
 """
-from __future__ import annotations
+# NOTE: no `from __future__ import annotations` here — Nexus binds the
+# handler's `request: Request` parameter from its runtime annotation, and
+# deferred (string) annotations would defeat the extractor.
 
-import asyncio
+import os
+import secrets
 
-import polars as pl
-from kaizen_agents.delegate.loop import ToolRegistry
+from kailash.trust.auth.jwt import JWTConfig, JWTValidator
+from kailash.trust.rate_limit.config import RateLimitConfig
+from nexus import Nexus, NexusAuthPlugin
+from starlette.requests import Request
 
-from shared import MLFPDataLoader
-from shared.mlfp06._ollama_bootstrap import make_delegate
+from shared.mlfp06.ex_7 import compile_governance
 
-# Each question is single-hop: exactly one correct tool answers it.
-QUESTIONS: list[str] = [
-    "How many reviews are in the dataset in total?",
-    "How many reviews have the positive label?",
-    "How many reviews have the negative label?",
-    "What is the average review length in characters?",
-    "What is the sentiment label of the review at index 0?",
-]
+ALLOWED_ORIGIN = "https://intranet.example.sg"
+ENDPOINT = "/workflows/serve_qa/execute"
+
+TIERS = {
+    "qa": ("D1-R1-T1-R1", 0.015),
+    "admin": ("D1-R1-T2-R1", 0.05),
+}
+LONG_QUESTION_CHARS = 280
+COST_SHORT = 0.01
+COST_LONG = 0.02
+
+_HEAD_BY_ADDRESS = {"D1-R1-T1-R1": "D1-R1", "D1-R1-T2-R1": "D1-R1"}
 
 
-def _make_tools(df: pl.DataFrame, call_log: list[tuple[str, dict]]):
-    """Build four deterministic SST-2 tools that append to ``call_log``."""
-
-    async def dataset_size() -> str:
-        call_log.append(("dataset_size", {}))
-        return f"The dataset has {df.height} reviews."
-
-    async def count_by_label(label: str) -> str:
-        key = str(label).strip().lower()
-        n = df.filter(pl.col("label") == key).height
-        call_log.append(("count_by_label", {"label": key}))
-        return f"There are {n} reviews with label '{key}'."
-
-    async def average_review_length() -> str:
-        avg = df.select(pl.col("text").str.len_chars().mean()).item()
-        call_log.append(("average_review_length", {}))
-        return f"The average review length is {avg:.2f} characters."
-
-    async def get_review_by_index(index: int) -> str:
-        try:
-            i = int(index)
-        except (TypeError, ValueError):
-            i = -1
-        call_log.append(("get_review_by_index", {"index": i}))
-        if 0 <= i < df.height:
-            row = df.row(i, named=True)
-            return f"Review {i}: label='{row['label']}', text={row['text'][:80]!r}"
-        return f"Index {index} is out of range."
-
-    reg = ToolRegistry()
-    reg.register(
-        name="dataset_size",
-        description="Return the total number of reviews in the dataset.",
-        parameters={"type": "object", "properties": {}},
-        executor=dataset_size,
+def _attach_tier_envelopes(engine) -> None:
+    from pact import (
+        CommunicationConstraintConfig,
+        ConfidentialityLevel,
+        ConstraintEnvelopeConfig,
+        DataAccessConstraintConfig,
+        FinancialConstraintConfig,
+        OperationalConstraintConfig,
+        RoleEnvelope,
+        TemporalConstraintConfig,
     )
-    reg.register(
-        name="count_by_label",
-        description="Return how many reviews have a given sentiment label "
-        "('positive' or 'negative').",
-        parameters={
-            "type": "object",
-            "properties": {
-                "label": {"type": "string", "description": "positive or negative"}
-            },
-            "required": ["label"],
-        },
-        executor=count_by_label,
-    )
-    reg.register(
-        name="average_review_length",
-        description="Return the average review length in characters across the dataset.",
-        parameters={"type": "object", "properties": {}},
-        executor=average_review_length,
-    )
-    reg.register(
-        name="get_review_by_index",
-        description="Return the sentiment label and text of the review at a given "
-        "integer row index.",
-        parameters={
-            "type": "object",
-            "properties": {"index": {"type": "integer", "description": "Row index"}},
-            "required": ["index"],
-        },
-        executor=get_review_by_index,
-    )
-    return reg
 
-
-async def _run() -> dict:
-    df = MLFPDataLoader().load("mlfp06", "sst2/sst2_200.parquet")
-    transcripts: list[dict] = []
-    tool_names: list[str] = []
-    for question in QUESTIONS:
-        call_log: list[tuple[str, dict]] = []
-        reg = _make_tools(df, call_log)
-        tool_names = reg.tool_names
-        delegate = make_delegate(
-            model="llama3.2:3b", temperature=0.0, max_tokens=512, tools=reg
+    for role, (address, cap) in TIERS.items():
+        config = ConstraintEnvelopeConfig(
+            id=f"{role}_tier_envelope",
+            description=f"{role} tier",
+            confidentiality_clearance=ConfidentialityLevel.RESTRICTED,
+            financial=FinancialConstraintConfig(max_spend_usd=cap),
+            operational=OperationalConstraintConfig(
+                allowed_actions=["generate_answer"], blocked_actions=[]
+            ),
+            temporal=TemporalConstraintConfig(blackout_periods=[]),
+            data_access=DataAccessConstraintConfig(
+                read_paths=["/internal/*"], write_paths=[], blocked_data_types=[]
+            ),
+            communication=CommunicationConstraintConfig(allowed_channels=["internal"]),
+            max_delegation_depth=1,
         )
-        final = ""
-        async for event in delegate.run(question):
-            if getattr(event, "event_type", None) == "turn_complete":
-                final = getattr(event, "text", "") or final
-        transcripts.append(
-            {
-                "question": question,
-                "tools_called": [[name, args] for name, args in call_log],
-                "answer": final.strip(),
-            }
+        engine.set_role_envelope(
+            RoleEnvelope(
+                id=f"{role}_tier_role_envelope",
+                defining_role_address=_HEAD_BY_ADDRESS[address],
+                target_role_address=address,
+                envelope=config,
+            )
         )
-    return {"tool_names": tool_names, "transcripts": transcripts}
 
 
 def solve() -> dict:
-    """Run the tool-using agent over the five fixed questions.
+    engine, _org = compile_governance(apply_specs=False)
+    _attach_tier_envelopes(engine)
 
-    Returns {"tool_names": [str], "transcripts": [{question, tools_called,
-    answer}]} with one transcript per question.
-    """
-    return asyncio.run(_run())
+    secret = os.environ.get("MLFP_JWT_SECRET") or secrets.token_urlsafe(48)
+    jwt_config = JWTConfig(secret=secret, algorithm="HS256")
+    issuer = JWTValidator(jwt_config)
+
+    app = Nexus(
+        api_port=8000,
+        rate_limit=None,  # rate limiting lives on the auth plugin
+        cors_origins=[ALLOWED_ORIGIN],
+        enable_durability=False,
+    )
+    app.add_plugin(
+        NexusAuthPlugin(
+            jwt=jwt_config,
+            rate_limit=RateLimitConfig(requests_per_minute=6, burst_size=2),
+        )
+    )
+
+    async def serve_qa(question: str, request: Request) -> dict:
+        user = getattr(request.state, "user", None)
+        subject = getattr(user, "user_id", None)
+        roles = list(getattr(user, "roles", None) or [])
+        role = next((r for r in roles if r in TIERS), "")
+        cost = COST_LONG if len(str(question)) > LONG_QUESTION_CHARS else COST_SHORT
+        if not role:
+            return {
+                "blocked": True,
+                "verdict": "blocked",
+                "role": "",
+                "user": subject,
+                "error": f"no governed tier for roles {roles}",
+            }
+        address, _cap = TIERS[role]
+        verdict = engine.verify_action(
+            role_address=address, action="generate_answer", context={"cost": cost}
+        )
+        if not verdict.allowed:
+            return {
+                "blocked": True,
+                "verdict": "blocked",
+                "role": role,
+                "user": subject,
+                "error": str(verdict.reason),
+            }
+        return {
+            "answer": f"[{role}] {question}",
+            "role": role,
+            "verdict": "served",
+            "blocked": False,
+            "user": subject,
+            "cost": cost,
+        }
+
+    app.handler_extract("serve_qa", serve_qa, description="Governed policy QA")
+    return {"app": app, "issuer": issuer, "endpoint": ENDPOINT}
 
 
 if __name__ == "__main__":
+    import asyncio
+
+    import httpx
+
     out = solve()
-    print("tools:", out["tool_names"])
-    for t in out["transcripts"]:
-        print(
-            f"  Q={t['question'][:48]!r:50} tools={t['tools_called']} ans={t['answer'][:60]!r}"
-        )
+    app, issuer = out["app"], out["issuer"]
+    qa_token = issuer.create_access_token("officer.amy", roles=["qa"])
+
+    async def demo():
+        transport = httpx.ASGITransport(app=app.fastapi_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            ok = await c.post(
+                ENDPOINT,
+                json={"inputs": {"question": "What is the leave policy?"}},
+                headers={"Authorization": f"Bearer {qa_token}"},
+            )
+            long_qa = await c.post(
+                ENDPOINT,
+                json={"inputs": {"question": "x" * 300}},
+                headers={"Authorization": f"Bearer {qa_token}"},
+            )
+            no_tok = await c.post(ENDPOINT, json={"inputs": {"question": "hi"}})
+        return ok, long_qa, no_tok
+
+    ok, long_qa, no_tok = asyncio.run(demo())
+    print("qa short:", ok.status_code, ok.json()["outputs"]["handler"])
+    print("qa long:", long_qa.status_code, long_qa.json()["outputs"]["handler"])
+    print("no token:", no_tok.status_code)

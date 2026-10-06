@@ -1,128 +1,142 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP06 — Assessment Task 1: Schema-Constrained Extraction (Reference Solution)
+MLFP06 — Assessment Task 1: Operating Envelopes and Deny-Paths
+(Reference Solution)
 
-Reference implementation. Withheld from students. Verified to pass grader.py.
-Uses a Kaizen Signature + BaseAgent wired to the local Ollama daemon at
-temperature 0 for deterministic, type-safe structured output.
+Withheld from students. Verified to pass grader.py across seeds. No LLM calls.
+
+The deny-paths only exist because envelopes are attached: the installed
+kailash-pact auto-approves roles without envelopes (and unknown addresses),
+so attaching the four least-privilege envelopes is the whole job. The
+tightening check is structural: RoleEnvelope.validate_tightening is
+keyword-only and raises MonotonicTighteningError on any widening —
+clearance (secret child under confidential parent), budget, or actions.
 """
 from __future__ import annotations
 
-import asyncio
+from kailash.trust.pact.envelopes import MonotonicTighteningError
+from pact import (
+    CommunicationConstraintConfig,
+    ConfidentialityLevel,
+    ConstraintEnvelopeConfig,
+    DataAccessConstraintConfig,
+    FinancialConstraintConfig,
+    OperationalConstraintConfig,
+    RoleEnvelope,
+    TemporalConstraintConfig,
+)
 
-from kaizen import InputField, OutputField, Signature
-from kaizen.core.base_agent import BaseAgent
+from shared.mlfp06.ex_7 import compile_governance
 
-from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
+ROLE_ADDRESSES = {
+    "data_analyst": "D1-R1-T1-R1",
+    "model_trainer": "D1-R1-T2-R1",
+    "risk_assessor": "D2-R1-T1-R1",
+    "customer_agent": "D3-R1-T1-R1",
+}
+HEAD_ADDRESSES = {
+    "chief_ml_officer": "D1-R1",
+    "chief_risk_officer": "D2-R1",
+    "vp_customer": "D3-R1",
+}
+ROLE_TO_HEAD = {
+    "data_analyst": "chief_ml_officer",
+    "model_trainer": "chief_ml_officer",
+    "risk_assessor": "chief_risk_officer",
+    "customer_agent": "vp_customer",
+}
 
-# ════════════════════════════════════════════════════════════════════════
-# FIXED CORPUS — six SG last-mile logistics incident reports.
-# Each report states the five fields explicitly; extraction is deterministic.
-# ════════════════════════════════════════════════════════════════════════
-INCIDENT_REPORTS: list[str] = [
-    (
-        "Incident Report INC-3001\n"
-        "Severity: HIGH. Location: Tuas Checkpoint.\n"
-        "A container truck overturned during transfer. 42 parcels affected. "
-        "An insurance claim is required for the damaged goods."
+# role -> (clearance, max_spend_usd, allowed_actions) from problem.md.
+ENVELOPE_SPEC = {
+    "data_analyst": (
+        ConfidentialityLevel.RESTRICTED,
+        20.0,
+        ["read_data", "summarise_data", "generate_report"],
     ),
-    (
-        "Incident Report INC-3002\n"
-        "Severity: LOW. Location: Changi Airfreight Centre.\n"
-        "A scanning belt jammed briefly. 3 parcels affected. "
-        "No insurance claim is needed."
+    "model_trainer": (
+        ConfidentialityLevel.RESTRICTED,
+        100.0,
+        ["train_model", "evaluate_model", "read_data"],
     ),
-    (
-        "Incident Report INC-3003\n"
-        "Severity: MEDIUM. Location: Jurong Port.\n"
-        "A forklift clipped a pallet stack. 17 parcels affected. "
-        "An insurance claim is required."
+    "risk_assessor": (
+        ConfidentialityLevel.RESTRICTED,
+        200.0,
+        ["read_data", "audit_model", "generate_report", "access_audit_log"],
     ),
-    (
-        "Incident Report INC-3004\n"
-        "Severity: HIGH. Location: Woodlands Checkpoint.\n"
-        "A refrigeration unit failed in transit. 58 parcels affected. "
-        "An insurance claim is required for the spoiled shipment."
+    "customer_agent": (
+        ConfidentialityLevel.PUBLIC,
+        5.0,
+        ["answer_question", "search_faq"],
     ),
-    (
-        "Incident Report INC-3005\n"
-        "Severity: LOW. Location: Pasir Panjang Terminal.\n"
-        "A label printer ran out of ink. 1 parcel affected. "
-        "No insurance claim is needed."
-    ),
-    (
-        "Incident Report INC-3006\n"
-        "Severity: MEDIUM. Location: Tampines Logistics Hub.\n"
-        "A delivery rider was rerouted by road closures. 9 parcels affected. "
-        "No insurance claim is needed."
-    ),
-]
+}
 
 
-class IncidentExtraction(Signature):
-    """Extract structured fields from a last-mile logistics incident report."""
-
-    report_text: str = InputField(description="Raw incident report text")
-
-    incident_id: str = OutputField(
-        description="The incident reference id, e.g. INC-3001"
+def _config(
+    envelope_id: str,
+    clearance: ConfidentialityLevel,
+    max_spend_usd: float,
+    allowed_actions: list[str],
+) -> ConstraintEnvelopeConfig:
+    """A structurally-complete five-dimension envelope config."""
+    return ConstraintEnvelopeConfig(
+        id=envelope_id,
+        description=envelope_id,
+        confidentiality_clearance=clearance,
+        financial=FinancialConstraintConfig(max_spend_usd=max_spend_usd),
+        operational=OperationalConstraintConfig(
+            allowed_actions=list(allowed_actions), blocked_actions=[]
+        ),
+        temporal=TemporalConstraintConfig(blackout_periods=[]),
+        data_access=DataAccessConstraintConfig(
+            read_paths=["/*"], write_paths=[], blocked_data_types=[]
+        ),
+        communication=CommunicationConstraintConfig(allowed_channels=["internal"]),
+        max_delegation_depth=3,
     )
-    severity: str = OutputField(description="Exactly one of: low, medium, high")
-    location: str = OutputField(
-        description="The location or facility named in the report"
-    )
-    parcels_affected: int = OutputField(
-        description="Number of parcels affected (an integer)"
-    )
-    claim_required: bool = OutputField(
-        description="True if an insurance claim is required, otherwise False"
-    )
 
 
-def _make_agent() -> BaseAgent:
-    class Extractor(BaseAgent):
-        def __init__(self) -> None:
-            super().__init__(
-                config={
-                    "model": DEFAULT_CHAT_MODEL,
-                    "llm_provider": "ollama",
-                    "base_url": OLLAMA_BASE_URL,
-                    "use_async_llm": True,
-                    "temperature": 0.0,
-                },
-                signature=IncidentExtraction(),
+def solve() -> dict:
+    # Structural compile only: the YAML envelope block stays unapplied, so the
+    # ONLY governance in force is what this function attaches.
+    engine, _org = compile_governance(apply_specs=False)
+    for role, (clearance, cap, actions) in ENVELOPE_SPEC.items():
+        engine.set_role_envelope(
+            RoleEnvelope(
+                id=f"{role}_role_envelope",
+                defining_role_address=HEAD_ADDRESSES[ROLE_TO_HEAD[role]],
+                target_role_address=ROLE_ADDRESSES[role],
+                envelope=_config(f"{role}_envelope", clearance, cap, actions),
             )
-
-    return Extractor()
-
-
-async def _extract_all() -> list[dict]:
-    results: list[dict] = []
-    for report in INCIDENT_REPORTS:
-        agent = _make_agent()
-        out = await agent.run_async(report_text=report)
-        results.append(
-            {
-                "incident_id": out.get("incident_id"),
-                "severity": out.get("severity"),
-                "location": out.get("location"),
-                "parcels_affected": out.get("parcels_affected"),
-                "claim_required": out.get("claim_required"),
-            }
         )
-    return results
+    return {"engine": engine}
 
 
-def solve() -> list[dict]:
-    """Extract a structured record from each of the six incident reports.
-
-    Returns a list of six dicts, each with keys: incident_id, severity,
-    location, parcels_affected, claim_required.
-    """
-    return asyncio.run(_extract_all())
+def validate_child(parent, child) -> bool:
+    """True iff `child` is equal-or-tighter than `parent` on every dimension."""
+    try:
+        RoleEnvelope.validate_tightening(parent_envelope=parent, child_envelope=child)
+    except MonotonicTighteningError:
+        return False
+    return True
 
 
 if __name__ == "__main__":
-    for rec in solve():
-        print(rec)
+    out = solve()
+    engine = out["engine"]
+    probes = [
+        ("D1-R1-T1-R1", "read_data", 0.10),
+        ("D1-R1-T1-R1", "deploy_model", 0.10),
+        ("D3-R1-T1-R1", "answer_question", 100.0),
+        ("D99-R99-T99-R99", "read_data", 0.0),
+        ("D1-R1-T3-R1", "deploy_model", 1.0),
+    ]
+    for addr, action, cost in probes:
+        v = engine.verify_action(role_address=addr, action=action, context={"cost": cost})
+        print(f"{addr:>16} {action:<18} ${cost:>7.2f} -> allowed={v.allowed} level={v.level}")
+
+    parent = _config("p", ConfidentialityLevel.CONFIDENTIAL, 50.0, ["a", "b"])
+    legal = _config("c", ConfidentialityLevel.RESTRICTED, 25.0, ["a"])
+    rogue = _config("r", ConfidentialityLevel.SECRET, 25.0, ["a"])
+    print("tighter child legal:", validate_child(parent, legal))
+    print("escalating child caught:", not validate_child(parent, rogue))

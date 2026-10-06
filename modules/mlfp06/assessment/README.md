@@ -1,64 +1,100 @@
-# MLFP06 Assessment — Language Models & Agentic Workflows
+# MLFP06 — End-of-Module Assessment: Language Models & Agentic Workflows
 
-End-of-module assessment for **MLFP06: Machine Learning with Language Models and
-Agentic Workflows**. Four auto-graded tasks covering the module's core skills:
-prompt engineering with structured output, retrieval-augmented generation,
-tool-using agents, and production governance.
+Four practical coding tasks on the module's production skills: PACT operating
+envelopes and deny-paths, a governed agent's tools and config, a served
+governed endpoint behind real middleware, and a governance organisation
+designed from a brief. There is no multiple choice.
 
-**Total: 100 marks · Duration: 3 hours · Open-book · No AI assistants.**
+The tasks state **goals, contracts and acceptance criteria**. They do not
+give the implementation. Designing it is part of every task.
 
-All tasks run against a **local Ollama** model (`llama3.2:3b`) plus the
-`nomic-embed-text` embedding model — no API keys, no cloud models, no internet
-required during the exam. Ensure the Ollama daemon is running (`ollama serve`)
-and both models are pulled before you begin.
+**Duration**: 3 hours · **Total**: 100 marks · **Open book**: documentation is
+allowed; AI assistants are **not** allowed.
+
+## No LLM required
+
+Every task runs **in-process with no LLM calls** — governance engines, tool
+registries, governed-supervisor config and Nexus middleware are all exercised
+directly, the way the merged exercises probe them. You do not need Ollama (or
+any provider) running, and no task downloads a dataset.
 
 ## Tasks
 
-| Task   | Topic                                   | Framework                             | Marks |
-| ------ | --------------------------------------- | ------------------------------------- | ----- |
-| Task 1 | Prompt engineering & structured output  | Kaizen `Signature` + `BaseAgent`      | 20    |
-| Task 2 | RAG pipeline with evaluation            | Kaizen Ollama embeddings + `Delegate` | 25    |
-| Task 3 | Tool-using agent over a real dataset    | Kaizen `Delegate` + `ToolRegistry`    | 25    |
-| Task 4 | Governance for a production agent fleet | PACT `GovernanceEngine`               | 30    |
+| Task | Marks | Framework                                  | What it assesses                                                                                                                                                           | Spec lessons |
+| ---- | ----- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| 1    | 30    | PACT (`GovernanceEngine`, `RoleEnvelope`)  | Attach least-privilege envelopes; deny-paths blocked, within-envelope allowed; the installed fail-open default pinned; monotonic tightening with the real clearance ladder | 6.7          |
+| 2    | 20    | Kaizen (`ToolRegistry`), kaizen-agents     | Register tools with JSON schemas and executors; build a `GovernedSupervisor` with budget + clearance set at construction                                                   | 6.5, 6.7     |
+| 3    | 30    | Nexus (`NexusAuthPlugin`, JWT, rate limit) | Serve one governed endpoint: verified role claim routes the tier, body `role` is ignored, 401/429/CORS all exercised in-process                                            | 6.8, 6.7     |
+| 4    | 20    | PACT (`load_org_yaml`)                     | Author a governance org from a brief (departments/teams/roles/clearances/envelopes); the grader rebuilds and probes your YAML                                              | 6.7          |
 
-Each task lives in its own folder (`task_1/` … `task_4/`) and contains:
+Each task directory contains:
 
-- `problem.md` — the scenario, exact contract, and grading checklist
-- `starter.py` — the file you complete and submit
+- `problem.md`: the scenario, the interface, the acceptance criteria and the
+  rules;
+- `starter.py`: the contract as code (constants, signatures, a local runner).
+  You complete it and submit it.
+
+Instructors also hold `solution.py` (the reference), `grader.py`, and the
+shared `grading_harness.py`. These are not given to students.
+
+## How grading works
+
+Every grader measures **the behaviour of the objects you return** on inputs
+you cannot influence. No number or verdict a submission reports about itself
+is trusted:
+
+- Task 1 probes **your returned engine** with grader-drawn costs (fresh
+  multipliers every run) on actions inside, outside and over budget — plus an
+  unknown address and envelope-less roles, which the installed engine
+  auto-approves (that default is pinned as a check). `validate_child` is fed
+  grader-built envelope configs, including a `secret` child under a
+  `confidential` parent (must be rejected) and a `restricted` child (legal —
+  `restricted` is the second-lowest rung of the ladder).
+- Task 2 calls your registered executors with fresh seeded inputs, reads your
+  agent's envelope attributes directly (`data_clearance="internal"` maps to
+  `RESTRICTED`), and runs one governed objective with a grader-supplied
+  executor to check the audit chain grows and verifies.
+- Task 3 mints its own JWTs with your returned issuer (per-run subjects and
+  roles), drives your app's full middleware stack in-process
+  (`httpx.ASGITransport` — no ports), and checks served/blocked decisions,
+  401s for missing and forged tokens, a 429 burst, and CORS echo behaviour.
+- Task 4 re-loads **your YAML**, rebuilds the engine itself, applies the
+  specs, discovers role addresses from the rebuilt org, and probes that
+  engine. Pre-cooked verdicts are impossible.
+
+Marks are awarded per check: weight × (checks passed / checks). Each task has
+a **gate** (the returned contract must exist and work); if a gate fails, the
+task scores 0.
+
+Run a grader (instructors):
+
+```bash
+python modules/mlfp06/assessment/task_1/grader.py path/to/submission.py
+python modules/mlfp06/assessment/task_1/grader.py path/to/submission.py --seed 123  # replay
+```
+
+It prints a JSON report with each check, the marks, and diagnostic notes.
 
 ## How to work
 
-1. Read `task_N/problem.md` in full. It specifies the exact return contract,
-   the datasets, the target, and the grading checklist.
-2. Complete the `solve()` function in `task_N/starter.py`. The placeholder does
-   not pass — you must implement the TODOs.
-3. Run your file directly to sanity-check it (e.g.
-   `.venv/bin/python task_1/starter.py`) and compare against the visible sanity
-   checks in `problem.md`.
-4. **Submit your completed `starter.py` files to the portal.**
+1. Read `task_N/problem.md` in full.
+2. Implement the functions in `task_N/starter.py` and run it — the runner
+   exercises your code end to end in-process.
+3. Submit your completed `starter.py` files. Do not rename the functions or
+   change their contracts.
 
-## Environment
+## Rules
 
-```bash
-# One-time: confirm the daemon is up and the models are present
-ollama serve            # if not already running
-ollama pull llama3.2:3b
-ollama pull nomic-embed-text
-
-# Run a task file (always use the project venv)
-.venv/bin/python modules/mlfp06/assessment/task_1/starter.py
-```
-
-- **Polars only** — no pandas anywhere.
-- **Temperature 0** for every LLM call (the tasks require it for stable output).
-- Read model names / endpoint from the course Ollama bootstrap
-  (`shared.mlfp06._ollama_bootstrap`); never hardcode keys.
-
-## Grading
-
-Each task is graded automatically against robust, deterministic outcomes —
-schema compliance, retrieval recall@k, tool-selection + arguments, and
-governance-policy verdicts — **not** exact LLM text (which is not bit-stable).
-The graders are withheld; your visible sanity checks in each `problem.md` tell
-you when your implementation is on track. A task passes only when **all** of its
-checks pass.
+- No LLM calls in any task; no network listeners (Task 3 is driven
+  in-process).
+- No hardcoded model names — where a model name is needed (Task 2's agent),
+  read the course default from `shared.mlfp06._ollama_bootstrap`.
+- Governance facts as installed: `verify_action` is the only decision call;
+  `.level` is one of `auto_approved` / `flagged` / `held` / `blocked`; the
+  clearance ladder is `public < restricted < confidential < secret <
+top_secret`; `validate_tightening` is keyword-only.
+- Task 3: the handler's module must not use `from __future__ import
+annotations` (Nexus's extractor reads runtime annotations); JWT HS256
+  secrets must be at least 32 characters (the framework enforces it).
+- Deterministic: the grader owns all randomness; the same `--seed` replays
+  the same grading run.

@@ -1,18 +1,14 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP05 — Assessment Task 2: Tiny CNN for Image Classification
+MLFP05 — Assessment Task 2: Triage a Ward of Failing Training Runs
 
-Complete the `solve()` function. Read problem.md for the full specification.
+Implement `diagnose_model()`. problem.md defines the four labels and what
+each means. The grader builds its own ward of patients with planted
+pathologies — a fixed answer, or "healthy" for everything, fails.
 
-Build a convolutional neural network FROM SCRATCH and train it to classify bundled
-8x8 handwritten digits. The grader re-runs your model and requires test accuracy
->= 0.90.
-
-    python grader.py starter.py     # grade your attempt
-    python grader.py solution.py    # verify the reference passes
-
-No GPU required — trains on CPU in well under 25 seconds.
+    python starter.py               # (you) smoke-test on example patients
+    python grader.py starter.py     # (instructor) grade an attempt
 """
 from __future__ import annotations
 
@@ -20,75 +16,50 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from sklearn.datasets import load_digits
-from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, TensorDataset
 
-N_CLASSES = 10
-SEED = 42
+torch.set_num_threads(2)
+
+LABELS = ("healthy", "dead_neurons", "vanishing_gradients", "diverging_loss")
 
 
-def make_dataset() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Deterministic 8x8 digit split — DO NOT EDIT.
+def diagnose_model(
+    model: torch.nn.Module,
+    loader,
+    loss_fn,
+    *,
+    train_losses: list[float] | None = None,
+    val_losses: list[float] | None = None,
+) -> str:
+    """Return the single label from LABELS that names this run's condition.
 
-    Returns (X_train, y_train, X_test, y_test):
-      X_* (N, 1, 8, 8) float32 in [0, 1];  y_* (N,) int 0..9.
+    Args:
+        model: the trained model handed to you (do not mutate it).
+        loader: yields (x_batch, y_batch) batches of the run's data.
+        loss_fn: loss_fn(model, (x_batch, y_batch)) -> scalar loss.
+        train_losses: per-epoch training loss recorded by the run.
+        val_losses: per-epoch validation loss, when recorded.
     """
-    digits = load_digits()
-    X = (digits.images / 16.0).astype(np.float32)[:, None, :, :]  # (N, 1, 8, 8)
-    y = digits.target.astype(int)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.30, random_state=SEED, stratify=y
+    raise NotImplementedError("Implement diagnose_model() — see problem.md")
+
+
+# ── example patients for your own smoke-test (NOT the grader's ward) ──────
+def _example_loader(seed: int = 3):
+    rng = np.random.default_rng(seed)
+    X = rng.normal(size=(256, 20)).astype(np.float32)
+    y = (X @ rng.normal(size=(20, 4))).argmax(1).astype(np.int64)
+    return torch.utils.data.DataLoader(
+        torch.utils.data.TensorDataset(torch.tensor(X), torch.tensor(y)),
+        batch_size=64,
     )
-    return X_train, y_train, X_test, y_test
 
 
-def solve() -> dict:
-    """Build + train a CNN from scratch; return predictions on the test split."""
-    torch.manual_seed(SEED)
-    X_train, y_train, X_test, y_test = make_dataset()
-
-    # TODO 1: build a small CNN as a torch.nn.Module.
-    #         It MUST contain at least one nn.Conv2d layer.
-    #         A working recipe for 8x8 inputs:
-    #           Conv2d(1->16, 3, padding=1) -> BatchNorm2d(16) -> ReLU -> MaxPool2d(2)  # 8->4
-    #           Conv2d(16->32, 3, padding=1) -> BatchNorm2d(32) -> ReLU -> MaxPool2d(2) # 4->2
-    #           Flatten -> Linear(32*2*2 -> 64) -> ReLU -> Linear(64 -> 10)
-    class TinyCNN(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            # self.features = nn.Sequential(...)
-            # self.head = nn.Sequential(...)
-
-        def forward(self, x):
-            # return self.head(self.features(x))
-            return torch.zeros(x.shape[0], N_CLASSES)  # <- replace
-
-    model = TinyCNN()
-
-    # TODO 2: count the nn.Conv2d layers you actually defined.
-    n_conv = 0  # <- replace (must match the real number of Conv2d layers)
-
-    # TODO 3: train with cross-entropy on (X_train, y_train).
-    #         ~25 epochs of Adam (lr=1e-3), batch size 64 is enough.
-    #         loss = F.cross_entropy(model(xb), yb)
-    # train_ds = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
-    # loader = DataLoader(train_ds, batch_size=64, shuffle=True)
-    # optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
-    # for epoch in range(25): ...
-
-    # TODO 4: predict on X_test (argmax of logits).
-    preds = np.zeros(len(y_test), dtype=int)  # <- replace with real predictions
-
-    return {
-        "model": model,
-        "preds": preds,
-        "y_test": y_test,
-        "n_conv": n_conv,
-    }
+def _ce(model, batch):
+    xb, yb = batch
+    return F.cross_entropy(model(xb), yb)
 
 
 if __name__ == "__main__":
-    out = solve()
-    acc = (out["preds"] == out["y_test"]).mean()
-    print(f"conv_layers={out['n_conv']}  test_acc={acc:.3f}")
+    loader = _example_loader()
+    torch.manual_seed(0)
+    demo = nn.Sequential(nn.Linear(20, 32), nn.ReLU(), nn.Linear(32, 4))
+    print("example patient ->", diagnose_model(demo, loader, _ce, train_losses=[1.4, 0.9, 0.6]))

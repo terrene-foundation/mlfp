@@ -1,148 +1,192 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Automated grader for MLFP05 Assessment Task 1 — Autoencoder Anomaly Detection.
+"""Grader for MLFP05 Assessment Task 1 — Handwritten Postcode Reader.
 
-Usage:
-    python grader.py starter.py     # grade your attempt
-    python grader.py solution.py    # verify the reference passes
+    python grader.py starter.py          # grade a submission
+    python grader.py solution.py         # verify the reference passes
+    python grader.py solution.py --seed 123   # replay a grading run
 
-The grader regenerates fresh healthy/anomalous telemetry independently and re-runs
-the returned model on it, so a submission that returns a pre-baked `scores` array
-without a genuinely-trained autoencoder fails the anti-faking check.
+Ground truth the student cannot influence:
+  * the grader draws its OWN stratified split of the bundled digits with a
+    fresh secret seed, and scores the RETURNED MODEL's predictions against its
+    own labels — self-reported metrics are never read;
+  * the grader trains its own classical baseline (logistic regression on raw
+    pixels) on its own training slice and requires the CNN to be competitive
+    with it;
+  * a grader-built intensity-jittered variant of the held-out mail checks the
+    model generalises beyond the exact pixels it was shown.
+
+Anti-stub: an untrained network scores ~10% on the held-out split; a constant
+predictor fails the majority and distinct-class checks; a model whose Conv2d
+is declared but unwired fails the forward-hook check.
 """
 from __future__ import annotations
 
-import argparse
-import importlib.util
-import json
 import sys
 from pathlib import Path
 
 import numpy as np
-import torch
-import torch.nn as nn
-from sklearn.metrics import roc_auc_score
 
-INPUT_DIM = 12
-AUC_FLOOR = 0.90
-SEP_FLOOR = 1.5
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from grading_harness import Checks, finalize, load_student_module, main, quiet  # noqa: E402
 
-
-def _fresh_eval_batches() -> tuple[np.ndarray, np.ndarray]:
-    """Independent healthy + anomalous batches with a DIFFERENT seed.
-
-    Used to verify the returned model itself ranks anomalies above healthy —
-    a faked `scores` array cannot pass this.
-    """
-    rng = np.random.default_rng(20260624)
-    basis = rng.normal(size=(3, INPUT_DIM))
-    z = rng.normal(size=(200, 3))
-    healthy = (z @ basis + 0.15 * rng.normal(size=(200, INPUT_DIM))).astype(np.float32)
-    anom = (2.5 * rng.normal(size=(200, INPUT_DIM))).astype(np.float32)
-    return healthy, anom
+WEIGHT = 25
+ACC_FLOOR = 0.90
+JITTER_FLOOR = 0.80
+BASELINE_SLACK = 0.05
+GATES = ("returns_model", "output_contract")
 
 
-def load_student_module(path: Path):
-    spec = importlib.util.spec_from_file_location("student_task1", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+def _grader_split(seed: int):
+    """Grader-held stratified split of the bundled digits (fresh seed)."""
+    from sklearn.datasets import load_digits
+    from sklearn.model_selection import train_test_split
+
+    x, y = load_digits(return_X_y=True)
+    x = (x / 16.0).astype(np.float32).reshape(-1, 1, 8, 8)
+    x_tr, x_te, y_tr, y_te = train_test_split(
+        x, y.astype(np.int64), test_size=0.3, stratify=y, random_state=seed
+    )
+    return x_tr, y_tr, x_te, y_te
 
 
-def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
+def _classical_baseline_acc(x_tr, y_tr, x_te, y_te, seed: int) -> float:
+    """The legacy pipeline: logistic regression on flattened pixels."""
+    from sklearn.linear_model import LogisticRegression
+
+    clf = LogisticRegression(max_iter=1500, random_state=seed)
+    clf.fit(x_tr.reshape(len(x_tr), -1), y_tr)
+    return float(clf.score(x_te.reshape(len(x_te), -1), y_te))
+
+
+def _jitter(x: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """Intensity-jittered variant: global gain + per-pixel noise, clipped."""
+    gain = float(rng.uniform(0.75, 1.25))
+    noise = rng.normal(0.0, 0.05, size=x.shape).astype(np.float32)
+    return np.clip(x * gain + noise, 0.0, 1.0).astype(np.float32)
+
+
+def _predict(model, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(logits, predictions) of the student's model on grader inputs."""
+    import torch
+
+    model.eval()
+    with torch.no_grad():
+        logits = model(torch.tensor(x))
+    return logits.numpy(), logits.argmax(1).numpy()
+
+
+def grade(student_path: Path, seed: int) -> dict:
+    checks = Checks()
     try:
-        student = load_student_module(student_path)
+        st = load_student_module(student_path, "student_m5_task1")
     except Exception as e:
-        score["error"] = f"Failed to import: {type(e).__name__}: {e}"
-        return score
-    if not hasattr(student, "solve"):
-        score["error"] = "Module does not define a solve() function"
-        return score
+        return finalize(checks, WEIGHT, seed, f"Failed to import: {type(e).__name__}: {e}", GATES)
+    if not callable(getattr(st, "solve", None)):
+        return finalize(checks, WEIGHT, seed, "Module does not define solve()", GATES)
     try:
-        r = student.solve()
+        with quiet():
+            r = st.solve()
     except Exception as e:
-        score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
-        return score
+        return finalize(checks, WEIGHT, seed, f"solve() raised {type(e).__name__}: {e}", GATES)
 
-    c = score["checks"]
-    c["returns_dict"] = isinstance(r, dict)
-    if not c["returns_dict"]:
-        return _finalize(score)
+    import torch
+    import torch.nn as nn
 
-    required = {"model", "scores", "y_test", "input_dim", "latent_dim"}
-    c["has_required_keys"] = required.issubset(r.keys())
-    if not c["has_required_keys"]:
-        return _finalize(score)
+    torch.set_num_threads(2)
+    rng = np.random.default_rng(seed)
 
-    model = r["model"]
-    c["model_is_nn_module"] = isinstance(model, nn.Module)
+    model = r.get("model") if isinstance(r, dict) else None
+    checks.add(
+        "returns_model",
+        isinstance(model, nn.Module),
+        f"solve() must return a dict with a torch.nn.Module under 'model'; got {type(model).__name__}",
+    )
+    if not checks.results["returns_model"]:
+        return finalize(checks, WEIGHT, seed, None, GATES)
 
-    try:
-        latent = int(r["latent_dim"])
-        c["undercomplete_bottleneck"] = 0 < latent < int(r["input_dim"]) == INPUT_DIM
-    except Exception:
-        c["undercomplete_bottleneck"] = False
+    x_tr, y_tr, x_te, y_te = _grader_split(seed)
 
-    try:
-        scores = np.asarray(r["scores"], dtype=float).ravel()
-        y_test = np.asarray(r["y_test"]).ravel().astype(int)
-        c["scores_shape_matches"] = scores.shape == y_test.shape and scores.size > 0
-    except Exception:
-        c["scores_shape_matches"] = False
-        scores, y_test = np.array([]), np.array([])
-
-    # AUC of the submitted scores against the labels.
-    if c["scores_shape_matches"] and len(set(y_test.tolist())) == 2:
+    def contract():
+        probe = torch.tensor(x_te[:4])
+        fired: list[str] = []
+        hooks = []
+        for name, mod in model.named_modules():
+            if isinstance(mod, nn.Conv2d):
+                hooks.append(mod.register_forward_hook(lambda m, i, o, n=name: fired.append(n)))
         try:
-            auc = roc_auc_score(y_test, scores)
-            c["auc_at_least_0p90"] = bool(auc >= AUC_FLOOR)
-        except Exception:
-            c["auc_at_least_0p90"] = False
-        try:
-            sep = scores[y_test == 1].mean() / max(scores[y_test == 0].mean(), 1e-12)
-            c["separation_at_least_1p5x"] = bool(sep >= SEP_FLOOR)
-        except Exception:
-            c["separation_at_least_1p5x"] = False
-    else:
-        c["auc_at_least_0p90"] = False
-        c["separation_at_least_1p5x"] = False
-
-    # Anti-faking: re-run the RETURNED model on fresh, independently-seeded data.
-    # A genuine AE trained on the healthy manifold must assign higher recon error
-    # to off-manifold anomalies than to fresh healthy cycles.
-    if c["model_is_nn_module"]:
-        try:
-            healthy, anom = _fresh_eval_batches()
             model.eval()
             with torch.no_grad():
-                h = torch.tensor(healthy)
-                a = torch.tensor(anom)
-                he = ((h - model(h)) ** 2).mean(dim=1).mean().item()
-                ae = ((a - model(a)) ** 2).mean(dim=1).mean().item()
-            c["model_ranks_anomalies_higher"] = bool(ae > he * SEP_FLOOR)
-        except Exception:
-            c["model_ranks_anomalies_higher"] = False
-    else:
-        c["model_ranks_anomalies_higher"] = False
+                out = model(probe)
+        finally:
+            for h in hooks:
+                h.remove()
+        ok_shape = isinstance(out, torch.Tensor) and tuple(out.shape) == (4, 10)
+        return {
+            "output_contract": (
+                bool(ok_shape),
+                f"model((4,1,8,8)) returned {getattr(out, 'shape', type(out).__name__)}; expected (4, 10) logits",
+            ),
+            "conv_fires": (
+                len(fired) > 0,
+                "no Conv2d module fired during the forward pass — a declared-but-unused convolution does not count",
+            ),
+        }
 
-    return _finalize(score)
+    checks.guarded(["output_contract", "conv_fires"], contract)
+    if not checks.results["output_contract"]:
+        return finalize(checks, WEIGHT, seed, None, GATES)
 
+    def scores():
+        logits1, pred1 = _predict(model, x_te)
+        logits2, _ = _predict(model, x_te)
+        acc = float((pred1 == y_te).mean())
+        majority = float(np.bincount(y_tr, minlength=10).max() / len(y_tr))
+        baseline = _classical_baseline_acc(x_tr, y_tr, x_te, y_te, seed)
+        xj = _jitter(x_te, rng)
+        _, predj = _predict(model, xj)
+        acc_j = float((predj == y_te).mean())
+        return {
+            "deterministic_eval": (
+                bool(np.array_equal(logits1, logits2)),
+                "two eval-mode forward passes on identical input gave different logits (dropout or sampling left on?)",
+            ),
+            "heldout_accuracy_at_least_0p90": (
+                acc >= ACC_FLOOR,
+                f"accuracy on the grader-held split is {acc:.3f} (floor {ACC_FLOOR})",
+            ),
+            "beats_majority": (
+                acc > majority + 0.05,
+                f"accuracy {acc:.3f} does not clear the majority rate {majority:.3f}",
+            ),
+            "competitive_with_classical_baseline": (
+                acc >= baseline - BASELINE_SLACK,
+                f"accuracy {acc:.3f} is below the grader's logistic-regression baseline {baseline:.3f} minus {BASELINE_SLACK}",
+            ),
+            "jittered_accuracy_at_least_0p80": (
+                acc_j >= JITTER_FLOOR,
+                f"accuracy on the intensity-jittered variant is {acc_j:.3f} (floor {JITTER_FLOOR})",
+            ),
+            "predictions_vary": (
+                len(set(pred1.tolist())) >= 5,
+                f"only {len(set(pred1.tolist()))} distinct predicted classes on held-out mail",
+            ),
+        }
 
-def _finalize(score: dict) -> dict:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
-    return score
+    checks.guarded(
+        [
+            "deterministic_eval",
+            "heldout_accuracy_at_least_0p90",
+            "beats_majority",
+            "competitive_with_classical_baseline",
+            "jittered_accuracy_at_least_0p80",
+            "predictions_vary",
+        ],
+        scores,
+    )
+    return finalize(checks, WEIGHT, seed, None, GATES)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("student", type=Path)
-    args = parser.parse_args()
-    result = grade(args.student)
-    print(json.dumps(result, indent=2))
-    sys.exit(0 if result["passed"] else 1)
+    main(grade)

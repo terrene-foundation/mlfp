@@ -109,10 +109,11 @@ p_tiny = np.array([0.10, 0.80, 0.60, 0.55])
 # Hand computation: clip to avoid log(0), then apply the formula.
 eps = 1e-15
 p_clipped = np.clip(p_tiny, eps, 1 - eps)
-hand_loss = -np.mean(
-    y_tiny * np.log(p_clipped) + (1 - y_tiny) * np.log(1 - p_clipped)
-)
-sklearn_loss = log_loss(y_tiny, p_tiny)
+# TODO: −mean( y·log p + (1−y)·log(1−p) ) over the tiny example
+# Hint: np.mean of (y_tiny * np.log(p_clipped) + (1 - y_tiny) * np.log(1 - p_clipped))
+hand_loss = ____
+# TODO: the same number from sklearn.metrics
+sklearn_loss = ____
 print(f"  Tiny example y={y_tiny.tolist()}  p={p_tiny.tolist()}")
 print(f"  Hand-computed log loss: {hand_loss:.6f}")
 print(f"  sklearn log_loss:       {sklearn_loss:.6f}")
@@ -143,12 +144,15 @@ print(f"  Real default rate on test: {pos_rate:.3f}")
 rows: list[dict] = []
 for name in saved:
     p = load_strategy_proba(name)
+    # TODO: score each strategy with all three metrics
+    # Hint: log_loss(y_test, p), brier_score_loss(y_test, p),
+    #       roc_auc_score(y_test, p) — wrap each in float(...)
     rows.append(
         {
             "strategy": name,
-            "log_loss": float(log_loss(y_test, p)),
-            "brier": float(brier_score_loss(y_test, p)),
-            "auc_roc": float(roc_auc_score(y_test, p)),
+            "log_loss": ____,
+            "brier": ____,
+            "auc_roc": ____,
             "mean_p": float(p.mean()),
         }
     )
@@ -167,8 +171,10 @@ print("[ok] Checkpoint 2 — log loss computed for every strategy\n")
 # Per-row log-loss curve: for an actual defaulter (y=1), loss = −log(p).
 # For a non-defaulter (y=0), loss = −log(1 − p). Plot both curves.
 p_grid = np.linspace(0.001, 0.999, 400)
-loss_when_y1 = -np.log(p_grid)
-loss_when_y0 = -np.log(1 - p_grid)
+# TODO: per-row loss when the true label is 1
+loss_when_y1 = ____
+# TODO: per-row loss when the true label is 0
+loss_when_y0 = ____
 
 fig_curve = go.Figure()
 fig_curve.add_trace(
@@ -212,8 +218,10 @@ fig_compare.write_html(str(compare_path))
 print(f"  Saved: {compare_path}")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-best_logloss_strategy = min(rows, key=lambda r: r["log_loss"])["strategy"]
-best_auc_strategy = max(rows, key=lambda r: r["auc_roc"])["strategy"]
+# TODO: strategy name with the lowest log_loss (min over rows)
+best_logloss_strategy = ____
+# TODO: strategy name with the highest auc_roc (max over rows)
+best_auc_strategy = ____
 print(f"\n  Best by log loss: {best_logloss_strategy}")
 print(f"  Best by AUC-ROC:  {best_auc_strategy}")
 # INTERPRETATION: log loss rewards CALIBRATED probabilities; AUC rewards

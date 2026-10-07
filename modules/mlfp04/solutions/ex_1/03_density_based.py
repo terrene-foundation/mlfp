@@ -42,7 +42,7 @@ from shared.mlfp04.ex_1 import (
     out_path,
     standardise,
 )
-from shared.mlfp004 import create_visualizer
+from shared.mlfp04 import create_visualizer
 
 load_dotenv()
 

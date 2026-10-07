@@ -38,7 +38,7 @@ from shared.mlfp04.ex_7 import (
     print_method_scores,
     save_html,
 )
-from shared.mlfp004 import create_visualizer
+from shared.mlfp04 import create_visualizer
 
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Why content-based works

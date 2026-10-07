@@ -34,7 +34,7 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from kailash_ml import ModelVisualizer
 
 from shared.mlfp04.ex_6 import OUTPUT_DIR, TOY_CORPUS, print_scenario
-from shared.mlfp004 import create_visualizer
+from shared.mlfp04 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════

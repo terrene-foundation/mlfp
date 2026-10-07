@@ -47,7 +47,7 @@ from shared.mlfp04.ex_1 import (
     teardown_engines,
     track_run,
 )
-from shared.mlfp004 import create_visualizer
+from shared.mlfp04 import create_visualizer
 
 load_dotenv()
 

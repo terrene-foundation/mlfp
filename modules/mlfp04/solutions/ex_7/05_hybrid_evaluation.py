@@ -39,7 +39,7 @@ from shared.mlfp04.ex_7 import (
     evaluate_method,
     save_html,
 )
-from shared.mlfp004 import create_visualizer
+from shared.mlfp04 import create_visualizer
 
 K_LATENT = N_LATENT_TRUE
 LAMBDA_REG = 5.0

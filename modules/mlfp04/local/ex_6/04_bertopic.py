@@ -46,7 +46,7 @@ from shared.mlfp04.ex_6 import (
     print_scenario,
     topic_embedding_model,
 )
-from shared.mlfp004 import create_visualizer
+from shared.mlfp04 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════

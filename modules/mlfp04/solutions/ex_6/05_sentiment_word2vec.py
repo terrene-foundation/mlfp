@@ -50,7 +50,7 @@ from shared.mlfp04.ex_6 import (
     print_scenario,
     tokenize_review,
 )
-from shared.mlfp004 import create_visualizer
+from shared.mlfp04 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════

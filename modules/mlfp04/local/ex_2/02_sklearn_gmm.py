@@ -34,7 +34,7 @@ from kailash_ml import ModelVisualizer
 # Cross-exercise import: tracker helpers live in ex_1.shared so every M4
 # unsupervised technique logs to the same `m4_clustering_zoo` experiment.
 from shared.mlfp04.ex_1 import setup_engines, teardown_engines, track_run
-from shared.mlfp004 import create_visualizer
+from shared.mlfp04 import create_visualizer
 from shared.mlfp04.ex_2 import (
     load_customers_scaled,
     out_path,

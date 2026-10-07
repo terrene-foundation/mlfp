@@ -39,7 +39,7 @@ from shared.mlfp04.ex_3 import (
     teardown_engines,
     track_run,
 )
-from shared.mlfp004 import create_visualizer
+from shared.mlfp04 import create_visualizer
 
 # ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
 tracker, exp_name = setup_engines()

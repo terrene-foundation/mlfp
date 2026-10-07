@@ -43,7 +43,7 @@ from shared.mlfp04.ex_7 import (
     print_warm_comparison,
     save_html,
 )
-from shared.mlfp004 import create_visualizer
+from shared.mlfp04 import create_visualizer
 
 K_LATENT = N_LATENT_TRUE  # we search for as many factors as the data has
 LAMBDA_REG = 5.0

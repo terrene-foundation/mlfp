@@ -76,6 +76,17 @@ module. Phase A (S1–S5 correctness) for all modules, then Phase B (S5 redesign
   M6 ex_2/07 (13cb2d65). Generator runs that write the tree must run LOCAL — fleet mirrors do not
   sync generated files back.
 - **Deck parity baselines refreshed** (49a73888) — a7269663 + M5 diagnostics edits had red-drifted them.
-- **Lanes in flight:** lane-m5-specgaps (5.2 Mixup/label-smoothing/Kaiming, 5.3 indicators + char-LSTM,
-  5.5 DCGAN, 5.6 GIN/TUDataset landed; 5.8 DDPG/SAC/A2C in progress) and lane-assessments (M5+M6
-  full assessment rebuild, per-task commits, no LLM/no-Drive design).
+- **lane-m5-specgaps MERGED (1179e00c), reaped** — 9 technique pairs (5.2 Mixup ablation, 5.3
+  indicators + char-LSTM perplexity, 5.5 DCGAN w/ FID vs noise reference, 5.6 GIN/GCN on MUTAG,
+  5.8 PPO/A2C/DDPG/SAC pure-torch), all fleet-passed; README/index aligned (73f15f5f).
+- **lane-assessments MERGED (3dcaa2c4), reaped** — all 8 M5+M6 tasks rebuilt: graders score the
+  returned model on grader-held ground truth with fresh secret seeds; adversarial stubs verified
+  FAIL. Handoff noted in merge body (6bcf3386 auto-commit misdescribes; real task_1 in d0a49ef2).
+- **Strict-gate hardening:** course-wide create_visualizer() factory sweep (94fa3398); RL exercises
+  seeded + PPO re-budgeted (556928fc); Lightning nag filter + num_workers=0 (84a8f9a8); ex_0/00
+  exempted with documented spawn-inheritance cause (360433f9); auto-format hook now reports
+  on-disk rewrites (976c0550).
+- **M3 suite 47/49 on fleet (bbsl6g6ja) + ex_7 pair verified locally under -W error::UserWarning
+  with 4-thread caps (b1gcq1vm6)** — the two fleet failures were host memory pressure (MemoryError
+  at execution start / mid-run) plus one remote 0%-CPU hang (fleet-monitor f9d9d48e; likely
+  mirror sqlite lock-wait). Same files pass locally in minutes: M3 effectively 49/49.

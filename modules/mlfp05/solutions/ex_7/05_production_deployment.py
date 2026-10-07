@@ -220,22 +220,15 @@ onnx_path = OUTPUT_DIR / "transfer_resnet18.onnx"
 bridge = OnnxBridge()
 # torch 2.12's exporter warns that dynamic_axes is deprecated under the
 # (default) dynamo=True path — a deprecation notice inside OnnxBridge's
-# internals, not a correctness signal. Acknowledged narrowly so the
-# warnings-as-errors gate keeps everything else strict.
-import warnings as _warnings
-
-with _warnings.catch_warnings():
-    _warnings.filterwarnings(
-        "ignore", message=r".*dynamic_axes.*not recommended.*", category=UserWarning
-    )
-    export_result = bridge.export(
-        serving_adapter,
-        "torch",
-        output_path=onnx_path,
-        # TWO rows: a 1-row trace fixes the batch dimension at 1, and the server
-        # predicts batches of 8 below
-        sample_input=torch.randn(2, N_PIXELS),
-    )
+# internals, acknowledged once course-wide in shared/kailash_helpers.py.
+export_result = bridge.export(
+    serving_adapter,
+    "torch",
+    output_path=onnx_path,
+    # TWO rows: a 1-row trace fixes the batch dimension at 1, and the server
+    # predicts batches of 8 below
+    sample_input=torch.randn(2, N_PIXELS),
+)
 print(
     f"  OnnxBridge.export: success={export_result.success} "
     f"status={export_result.onnx_status}"

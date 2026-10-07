@@ -455,3 +455,16 @@ def create_visualizer():
     with _warnings.catch_warnings():
         _warnings.simplefilter("ignore", _EW)
         return ModelVisualizer()
+
+# ── SDK-internal deprecation nag filter (strict-gate hygiene) ────────────
+# torch 2.12's ONNX exporter warns that dynamic_axes is "not recommended"
+# under dynamo=True — a deprecation notice inside OnnxBridge's internals,
+# not a correctness signal, and fatal under warnings-as-errors. Acknowledged
+# here (kailash_helpers is imported by every shared.mlfpNN package, so every
+# technique file gets it); message-matched, everything else still errors.
+import warnings as _warnings
+
+_warnings.filterwarnings(
+    "ignore", message=r".*dynamic_axes.*not recommended.*", category=UserWarning
+)
+

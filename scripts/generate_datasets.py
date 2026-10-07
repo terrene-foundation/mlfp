@@ -3242,11 +3242,18 @@ def make_icu_admissions() -> pl.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def make_icu_vitals() -> pl.DataFrame:
+def make_icu_vitals(admissions: pl.DataFrame) -> pl.DataFrame:
     """
     ICU vital signs (~60,000 rows).
     Irregular monitoring intervals (realistic: Q1h to Q4h depending on severity).
     Joins to icu_admissions on admission_id.
+
+    TIMESTAMPS ARE ADMISSION-ANCHORED (P1 fix, 2026-10-07): every reading falls
+    inside its admission's [admit_time, discharge_time] stay — the previous
+    version drew a random 2020–2024 offset, which left only 4 of 8,000
+    admissions with any reading inside the 24h prediction window (measured:
+    median first vital ~3,032h BEFORE admission). The point-in-time feature
+    exercises need the first-24h window populated.
 
     Intentional messiness:
     - ~5% null spo2 (probe detached)
@@ -3256,14 +3263,35 @@ def make_icu_vitals() -> pl.DataFrame:
     """
     from datetime import datetime, timedelta, timezone
 
-    # Sample 1,000 admission IDs to attach vitals to
+    # The monitored subset: the first 1,000 admission IDs, same as before.
     n_admissions = 1_000
     admission_ids = [f"ADM-{20000 + i}" for i in range(n_admissions)]
 
-    # Each admission gets between 20 and 120 vital sign records
+    # Admission stay windows (string timestamps in the admissions frame).
+    stay = {
+        r["admission_id"]: (r["admit_time"], r["discharge_time"])
+        for r in admissions.filter(pl.col("admission_id").is_in(admission_ids))
+        .select(["admission_id", "admit_time", "discharge_time"])
+        .iter_rows(named=True)
+    }
+
+    def _parse(ts: str) -> datetime:
+        return datetime.strptime(ts, "%Y-%m-%d %H:%M:%S").replace(
+            tzinfo=timezone.utc
+        )
+
+    # Each admission gets up to 120 vital sign records, bounded by stay length
     records = []
     for adm_id in admission_ids:
-        n_vitals = int(RNG.integers(20, 121))
+        if adm_id not in stay:
+            continue  # defensive; the monitored subset is always present
+        admit_dt, discharge_dt = (_parse(t) for t in stay[adm_id])
+        # Deliberate data-entry rows (discharge < admit, ~0.5% of admissions)
+        # yield no in-stay readings — honest consequence, kept.
+        stay_end = min(discharge_dt, admit_dt + timedelta(days=7))
+        if stay_end <= admit_dt:
+            continue
+
         base_hr = float(RNG.uniform(65, 100))
         base_sbp = float(RNG.uniform(105, 135))
         base_dbp = base_sbp - float(RNG.uniform(30, 50))
@@ -3271,13 +3299,15 @@ def make_icu_vitals() -> pl.DataFrame:
         base_spo2 = float(RNG.uniform(94, 100))
         base_rr = float(RNG.uniform(14, 22))
 
-        ts = datetime(2020, 1, 1, tzinfo=timezone.utc) + timedelta(
-            hours=int(RNG.integers(0, 8760 * 4))
-        )
-        for _ in range(n_vitals):
+        ts = admit_dt
+        n_target = int(RNG.integers(20, 121))
+        n_kept = 0
+        while n_kept < n_target:
             # Irregular intervals: 30min to 4 hours
             interval_min = int(RNG.choice([30, 60, 120, 240], p=[0.20, 0.45, 0.25, 0.10]))
             ts += timedelta(minutes=interval_min)
+            if ts > stay_end:
+                break
 
             hr = round(base_hr + float(RNG.normal(0, 8)), 0)
             sbp = round(base_sbp + float(RNG.normal(0, 10)), 0)
@@ -3298,6 +3328,7 @@ def make_icu_vitals() -> pl.DataFrame:
                     "respiratory_rate": rr,
                 }
             )
+            n_kept += 1
 
     n = len(records)
 
@@ -3361,10 +3392,14 @@ def make_icu_vitals() -> pl.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def make_icu_medications() -> pl.DataFrame:
+def make_icu_medications(admissions: pl.DataFrame) -> pl.DataFrame:
     """
     ICU medication orders (~20,000 rows).
     Joins to icu_admissions on admission_id.
+
+    TIMESTAMPS ARE ADMISSION-ANCHORED (P1 fix, 2026-10-07): start_time falls
+    inside the admission's stay (was: random 2020–2024, independent of the
+    admission — which made first-24h medication features empty).
 
     Intentional messiness:
     - end_time occasionally null (ongoing infusions)
@@ -3386,8 +3421,22 @@ def make_icu_medications() -> pl.DataFrame:
     routes = ["IV", "PO", "IM", "SQ", "ET"]
     route_weights = np.array([0.60, 0.20, 0.10, 0.07, 0.03])
 
-    base_ts = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp())
-    end_ts = int(datetime(2024, 12, 31, tzinfo=timezone.utc).timestamp())
+    # Admission stay windows — medication times anchor to these.
+    stay = {
+        r["admission_id"]: (r["admit_time"], r["discharge_time"])
+        for r in admissions.filter(pl.col("admission_id").is_in(admission_ids))
+        .select(["admission_id", "admit_time", "discharge_time"])
+        .iter_rows(named=True)
+    }
+
+    def _ts(s: str) -> int:
+        return int(
+            datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+            .replace(tzinfo=timezone.utc)
+            .timestamp()
+        )
+
+    stay_s = {a: (_ts(v[0]), _ts(v[1])) for a, v in stay.items()}
 
     def fmt_ts(ts):
         return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime(
@@ -3395,7 +3444,14 @@ def make_icu_medications() -> pl.DataFrame:
         )
 
     adm_ids = RNG.choice(admission_ids, size=n).tolist()
-    start_ts = RNG.integers(base_ts, end_ts, n)
+    # Start within the admission's stay (admit .. discharge, or admit alone
+    # for the deliberate discharge<admit rows).
+    start_ts = np.array(
+        [
+            RNG.integers(stay_s[a][0], max(stay_s[a][0] + 1, stay_s[a][1]))
+            for a in adm_ids
+        ]
+    )
     duration_h = RNG.integers(1, 72, n)
     end_ts_arr = start_ts + duration_h * 3600
 
@@ -3446,10 +3502,14 @@ def make_icu_medications() -> pl.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def make_icu_labs() -> pl.DataFrame:
+def make_icu_labs(admissions: pl.DataFrame) -> pl.DataFrame:
     """
     ICU lab results (~30,000 rows).
     Joins to icu_admissions on admission_id.
+
+    TIMESTAMPS ARE ADMISSION-ANCHORED (P1 fix, 2026-10-07): the draw time
+    falls inside the admission's stay (was: random 2020–2024, independent
+    of the admission).
 
     Intentional messiness:
     - value stored as string to preserve mixed numeric/text entries
@@ -3490,9 +3550,25 @@ def make_icu_labs() -> pl.DataFrame:
 
     from datetime import datetime, timezone
 
-    base_ts = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp())
-    end_base = int(datetime(2024, 12, 31, tzinfo=timezone.utc).timestamp())
-    ts_raw = RNG.integers(base_ts, end_base, n)
+    # Admission stay windows — lab draw times anchor to these.
+    def _ts(x: str) -> int:
+        return int(
+            datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
+            .replace(tzinfo=timezone.utc)
+            .timestamp()
+        )
+
+    stay_s = {
+        r["admission_id"]: (_ts(r["admit_time"]), _ts(r["discharge_time"]))
+        for r in admissions.filter(pl.col("admission_id").is_in(admission_ids))
+        .select(["admission_id", "admit_time", "discharge_time"])
+        .iter_rows(named=True)
+    }
+    # Draw within the stay (admit .. discharge; admit alone for the
+    # deliberate discharge<admit rows).
+    ts_raw = np.array(
+        [RNG.integers(stay_s[a][0], max(stay_s[a][0] + 1, stay_s[a][1])) for a in adm_ids]
+    )
     timestamp_arr = [
         datetime.fromtimestamp(int(t), tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         for t in ts_raw
@@ -3593,19 +3669,6 @@ def main():
             DATA_ROOT / "mlfp02" / "sg_credit_scoring.parquet",
             "parquet",
         ),
-        (make_icu_patients, DATA_ROOT / "mlfp02" / "icu_patients.parquet", "parquet"),
-        (
-            make_icu_admissions,
-            DATA_ROOT / "mlfp02" / "icu_admissions.parquet",
-            "parquet",
-        ),
-        (make_icu_vitals, DATA_ROOT / "mlfp02" / "icu_vitals.parquet", "parquet"),
-        (
-            make_icu_medications,
-            DATA_ROOT / "mlfp02" / "icu_medications.parquet",
-            "parquet",
-        ),
-        (make_icu_labs, DATA_ROOT / "mlfp02" / "icu_labs.parquet", "parquet"),
         (
             make_ecommerce_customers,
             DATA_ROOT / "mlfp03" / "ecommerce_customers.parquet",
@@ -3627,6 +3690,29 @@ def main():
     ]
 
     print("\nGenerating datasets...")
+
+    # ICU block: vitals/medications/labs anchor to the admissions' stay
+    # windows (P1 fix) — generated explicitly, in dependency order.
+    icu_block = [
+        (make_icu_patients, DATA_ROOT / "mlfp02" / "icu_patients.parquet"),
+        (make_icu_admissions, DATA_ROOT / "mlfp02" / "icu_admissions.parquet"),
+    ]
+    _icu_frames = {}
+    for fn, path in icu_block:
+        df = fn()
+        df.write_parquet(str(path), compression="zstd")
+        _icu_frames[path.stem] = df
+        print(f"  {path.name:<50} {len(df):>8} rows  {path.stat().st_size // 1024:>6} KB  ({path.parent.name})")
+    _adm = _icu_frames["icu_admissions"]
+    for fn, path in [
+        (lambda: make_icu_vitals(_adm), DATA_ROOT / "mlfp02" / "icu_vitals.parquet"),
+        (lambda: make_icu_medications(_adm), DATA_ROOT / "mlfp02" / "icu_medications.parquet"),
+        (lambda: make_icu_labs(_adm), DATA_ROOT / "mlfp02" / "icu_labs.parquet"),
+    ]:
+        df = fn()
+        df.write_parquet(str(path), compression="zstd")
+        print(f"  {path.name:<50} {len(df):>8} rows  {path.stat().st_size // 1024:>6} KB  ({path.parent.name})")
+
     for fn, path, mode in tasks:
         df = fn()
         if mode == "csv":

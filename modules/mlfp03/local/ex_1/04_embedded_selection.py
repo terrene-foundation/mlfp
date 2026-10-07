@@ -107,7 +107,7 @@ print("-" * 30)
 lasso_results: dict[float, dict] = {}
 for c_val in C_VALUES:
     # TODO: L1 LogisticRegression at this C (l1_ratio=1.0, solver="saga",
-    # max_iter=5000, random_state=42), then fit it on the scaled inputs.
+    # max_iter=20000, random_state=42), then fit it on the scaled inputs.
     lasso = ____
     ____
     coefs = lasso.coef_[0].copy()
@@ -226,7 +226,7 @@ async def log_embedded() -> str:
             "penalty": "l1",
             "C": str(LASSO_C),
             "solver": "saga",
-            "max_iter": "5000",
+            "max_iter": "20000",
         },
         extra_metrics={
             "top_abs_coef": lasso_importance[0][1] if lasso_importance else 0.0,

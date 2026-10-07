@@ -90,3 +90,11 @@ module. Phase A (S1–S5 correctness) for all modules, then Phase B (S5 redesign
   with 4-thread caps (b1gcq1vm6)** — the two fleet failures were host memory pressure (MemoryError
   at execution start / mid-run) plus one remote 0%-CPU hang (fleet-monitor f9d9d48e; likely
   mirror sqlite lock-wait). Same files pass locally in minutes: M3 effectively 49/49.
+
+## LANDING (2026-10-07)
+
+Single integration PR opened as **#22** (owner decision over refreshing the 7-PR
+stack); #13–#21 closed with traceable references. Verification grid at open:
+M1 8/8, M2 41/41, M3 49/49 (47 fleet + 2 local), M4 38/38 (35 suite + 3 re-runs),
+M5 52/52, M6 13/13 non-LLM (26 LLM exercises need an Ollama host). 720 commits,
+1,313 files vs main.

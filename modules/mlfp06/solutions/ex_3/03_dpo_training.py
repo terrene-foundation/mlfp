@@ -71,6 +71,13 @@ print("=" * 70)
 print("TASK 1: Build DPO AlignmentConfig")
 print("=" * 70)
 
+# kailash-align resumes unconditionally from any checkpoint in the
+# experiment dir — a crashed run's stale checkpoint poisons re-runs
+# (measured in ex_2/06: 0.047s, loss 0.0). Clear before configuring.
+import shutil
+
+shutil.rmtree(ADAPTER_OUTPUT_DIR, ignore_errors=True)
+
 # kailash-align 0.6.0+ uses a composed AlignmentConfig: top-level
 # method + base_model_id + experiment_dir, plus LoRAConfig + SFTConfig
 # + DPOConfig sub-configs. Here we set DPO + LoRA hyperparameters; the

@@ -129,7 +129,7 @@ def load_mmlu_eval(n_rows: int = 100) -> pl.DataFrame:
 
 ADAPTER_SEARCH_ROOTS: tuple[Path, ...] = (
     Path("outputs") / "ex2_finetuning",  # Ex 2.6 SFT experiment_dir
-    Path("dpo_output"),  # Ex 3.3 DPO experiment_dir
+    Path("outputs/ex3_dpo/dpo_output"),  # Ex 3.3 DPO experiment_dir
 )
 
 

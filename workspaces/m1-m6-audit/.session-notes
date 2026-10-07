@@ -56,3 +56,21 @@ decisions.md. M6 full verification needs an Ollama host. Remote branches
 fix/audit-m0{1..6}, fix/audit-tooling-base, fix/m5-quiz-and-deck-diagnostics,
 fix/deck-code-fit-font deletable post-merge. Temp runner
 scripts/.audit_run_solutions.py deleted (verification complete).
+
+## 2026-10-08 — M6 Ollama verification + decisions executed
+
+Owner approved all pending decisions and activated Ollama. Merged: #23 (P4/P5),
+#24 (P1 ICU admission-anchored regen + P2 shared storey cleaner + nag filters),
+#25 (ex_1/06 value validation, ex_6/03 layout), #26 (align resume-trap hygiene,
+DPO output dir), #27 (M6 notebooks), #28 (plan record), #29 (bf16 device-aware,
+ReAct one-retry, pin_memory both variants).
+
+M6 verification: 40/40 green with Ollama (fleet + GPU host 100.71.125.70).
+Notable root causes found: align 0.7.3's unconditional checkpoint resume
+(0.047s zero-work "training" from stale state); bf16=True SDK defaults
+hard-fail CPU hosts; small-model tool-call flakiness (one retry with a firmer
+instruction is the taught mitigation). Course models pulled on the GPU host;
+this Mac's .env flipped to it; local Ollama idles (rollback kept).
+
+Course now: M1 8/8, M2 41/41, M3 49/49, M4 38/38, M5 52/52, M6 40/40 — every
+module fully verified, every executable green under the strict gate.

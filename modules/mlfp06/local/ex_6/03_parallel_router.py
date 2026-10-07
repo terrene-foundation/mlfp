@@ -394,7 +394,9 @@ ax2.set_ylabel("Routing accuracy (measured)")
 ax2.set_title("Keyword vs LLM Routing", fontweight="bold")
 ax2.legend(fontsize=8)
 
-plt.tight_layout()
+# bbox_inches='tight' on savefig handles the canvas fit; plt.tight_layout()
+# is dropped — on headless hosts its decoration fit check nags (UserWarning)
+# without changing the saved figure.
 fname = OUTPUT_DIR / "ex6_parallel_router_viz.png"
 plt.savefig(fname, dpi=150, bbox_inches="tight")
 plt.close(fig)

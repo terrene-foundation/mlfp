@@ -100,6 +100,8 @@ async def run_signature_extraction() -> list[dict]:
     # TODO: For each text, `await agent.run_async(review_text=text[:800])`.
     # The result is a dict keyed by OutputField names. If any name in
     # OUTPUT_FIELDS is missing, raise RuntimeError (no placeholder values).
+    # Then validate VALUES: confidence must be float()-coercible — the model
+    # sometimes returns explicit nulls; LLM output is untrusted input.
     # Append each result; print the first 3 using result["sentiment"],
     # result["confidence"], result["key_phrases"], result["targets"],
     # result["tone"].

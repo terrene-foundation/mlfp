@@ -467,4 +467,10 @@ import warnings as _warnings
 _warnings.filterwarnings(
     "ignore", message=r".*dynamic_axes.*not recommended.*", category=UserWarning
 )
+# matplotlib's Agg backend (forced in headless/script runs) nags
+# "FigureCanvasAgg is non-interactive, and thus cannot be shown" on every
+# plt.show() — a backend notice, not a correctness signal.
+_warnings.filterwarnings(
+    "ignore", message=r".*non-interactive.*cannot be shown.*", category=UserWarning
+)
 

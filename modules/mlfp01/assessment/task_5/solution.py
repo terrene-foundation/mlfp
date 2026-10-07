@@ -31,7 +31,7 @@ import polars as pl
 
 from kailash_ml import ModelVisualizer, PreprocessingPipeline
 from shared import MLFPDataLoader
-from shared.mlfp001 import create_visualizer
+from shared import create_visualizer
 
 FEATURES = [
     "pickup_zone",

@@ -50,7 +50,7 @@ from shared.mlfp02.ex_1 import (
     percentile_ci,
     print_interval,
 )
-from shared.mlfp002 import create_visualizer
+from shared.mlfp02 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════

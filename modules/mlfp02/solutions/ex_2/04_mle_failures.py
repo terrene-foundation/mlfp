@@ -40,7 +40,7 @@ from shared.mlfp02.ex_2 import (
     load_singapore_econ,
     save_figure,
 )
-from shared.mlfp002 import create_visualizer
+from shared.mlfp02 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════

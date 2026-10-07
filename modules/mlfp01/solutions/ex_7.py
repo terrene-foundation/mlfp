@@ -50,7 +50,7 @@ from kailash_ml import DataExplorer, ModelVisualizer
 from kailash_ml import AlertConfig
 
 from shared import MLFPDataLoader
-from shared.mlfp001 import create_visualizer
+from shared import create_visualizer
 
 viz = create_visualizer()
 

@@ -57,7 +57,7 @@ from shared.mlfp02.ex_3 import (
     srm_check_multi,
     print_header,
 )
-from shared.mlfp002 import create_visualizer
+from shared.mlfp02 import create_visualizer
 
 print_header("MLFP02 Exercise 3.1: Bootstrap CIs & Power Analysis")
 

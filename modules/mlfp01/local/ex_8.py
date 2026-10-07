@@ -56,7 +56,7 @@ import polars as pl
 from kailash_ml import AlertConfig, ModelVisualizer, PreprocessingPipeline
 
 from shared import MLFPDataLoader, run_compare, run_profile, run_report
-from shared.mlfp001 import create_visualizer
+from shared import create_visualizer
 
 
 # ── Data Loading ──────────────────────────────────────────────────────

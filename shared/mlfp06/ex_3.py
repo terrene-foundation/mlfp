@@ -30,9 +30,11 @@ np.random.seed(42)
 device = get_device()
 
 from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL
+from shared.mlfp06.ex_2 import get_base_model_name
 
 MODEL_NAME = DEFAULT_CHAT_MODEL
-BASE_MODEL = os.environ.get("SFT_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct")
+# Single home for the documented default: shared.mlfp06.ex_2.get_base_model_name
+BASE_MODEL = get_base_model_name()
 
 # Output directories
 OUTPUT_DIR = Path("outputs") / "ex3_dpo"

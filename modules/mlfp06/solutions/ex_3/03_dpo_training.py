@@ -92,8 +92,9 @@ dpo_config = AlignmentConfig(
         target_modules=("q_proj", "v_proj"),
         dropout=0.05,
     ),
-    sft=SFTConfig(),
+    sft=SFTConfig(bf16=torch.cuda.is_available()),  # bf16 is CUDA-only; align defaults True
     dpo=DPOConfig(
+        bf16=torch.cuda.is_available(),  # bf16 is CUDA-only; align defaults True
         num_train_epochs=2,
         per_device_train_batch_size=2,
         gradient_accumulation_steps=4,

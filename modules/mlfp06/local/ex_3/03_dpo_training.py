@@ -80,8 +80,11 @@ shutil.rmtree(ADAPTER_OUTPUT_DIR, ignore_errors=True)
 #   method="dpo", base_model_id=BASE_MODEL,
 #   lora=LoRAConfig(rank=16, alpha=32,
 #                   target_modules=("q_proj","v_proj"), dropout=0.05),
-#   sft=SFTConfig(),  # unused for DPO but required by the constructor
-#   dpo=DPOConfig(num_train_epochs=2, per_device_train_batch_size=2,
+#   sft=SFTConfig(bf16=torch.cuda.is_available()),  # unused for DPO but
+#       # required by the constructor; bf16 is CUDA-only (align defaults True
+#       # and hard-fails on CPU/MPS)
+#   dpo=DPOConfig(bf16=torch.cuda.is_available(), num_train_epochs=2,
+#       per_device_train_batch_size=2,
 #                 gradient_accumulation_steps=4, learning_rate=5e-5,
 #                 warmup_ratio=0.1, max_length=512, beta=0.1),
 #   experiment_dir=str(ADAPTER_OUTPUT_DIR)

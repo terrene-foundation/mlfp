@@ -69,6 +69,7 @@ from shared.mlfp05.ex_8 import (
     rl_diagnostic_checkpoint,
     setup_engines,
 )
+from shared.mlfp05 import create_visualizer
 from kailash_ml import ModelVisualizer
 
 # ════════════════════════════════════════════════════════════════════════
@@ -468,7 +469,6 @@ print("  TASK 5: Apply DQN — Singapore Retail Inventory Management")
 print("=" * 70)
 
 from gymnasium import spaces
-from shared.mlfp05 import create_visualizer
 
 
 class RetailInventoryEnv(gym.Env):

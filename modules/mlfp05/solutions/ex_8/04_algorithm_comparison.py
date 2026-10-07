@@ -58,6 +58,7 @@ from shared.mlfp05.ex_8 import (
     rl_diagnostic_checkpoint,
     setup_engines,
 )
+from shared.mlfp05 import create_visualizer
 from kailash_ml import ModelVisualizer
 
 
@@ -675,7 +676,6 @@ asyncio.run(conn.close())
 # (`pip install kailash-ml[rl]`); we report whether it is installed
 # rather than assume it.
 import importlib.util
-from shared.mlfp05 import create_visualizer
 
 sb3_installed = importlib.util.find_spec("stable_baselines3") is not None
 print("Library path: km.rl_train(env, algo='dqn' | 'ppo' | 'a2c' | ...)")

@@ -70,6 +70,7 @@ from shared.mlfp05.ex_8 import (
     rl_diagnostic_checkpoint,
     setup_engines,
 )
+from shared.mlfp05 import create_visualizer
 from kailash_ml import ModelVisualizer
 
 # ════════════════════════════════════════════════════════════════════════
@@ -389,7 +390,6 @@ q_heatmap_df = pl.DataFrame(heatmap_rows)
 
 # Pivot for heatmap visualisation
 import plotly.graph_objects as go
-from shared.mlfp05 import create_visualizer
 
 fig3 = go.Figure(
     data=go.Heatmap(

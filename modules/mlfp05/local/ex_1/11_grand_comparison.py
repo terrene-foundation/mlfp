@@ -52,6 +52,7 @@ from shared.mlfp05.ex_1 import (
     all_losses,
     all_models,
 )
+from shared.mlfp05 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -466,7 +467,6 @@ asyncio.run(conn.close())
 
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
 from shared.mlfp05.diagnostics import print_prescription_pad
-from shared.mlfp05 import create_visualizer
 
 # The VAE is the lesson's most expressive variant. flat_loader yields
 # (xb,) tuples, and vae_loss returns (loss, extras).

@@ -51,6 +51,7 @@ from shared.mlfp05.ex_5 import (
     plot_loss_curves,
     register_generator,
 )
+from shared.mlfp05 import create_visualizer
 from kailash_ml import ModelVisualizer
 
 
@@ -855,7 +856,6 @@ asyncio.run(close_engines(conn))
 # gradient-flow, dead-neuron and loss-trend readings.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
 from shared.mlfp05.diagnostics import print_prescription_pad
-from shared.mlfp05 import create_visualizer
 
 
 def _wgan_g_loss(m, batch):

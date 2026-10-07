@@ -67,6 +67,13 @@ print("=" * 70)
 print("TASK 1: Build DPO AlignmentConfig")
 print("=" * 70)
 
+# kailash-align resumes unconditionally from any checkpoint in the
+# experiment dir — a crashed run's stale checkpoint poisons re-runs.
+# Clear before configuring (deterministic retraining).
+import shutil
+
+shutil.rmtree(ADAPTER_OUTPUT_DIR, ignore_errors=True)
+
 # TODO: Configure AlignmentConfig for DPO. kailash-align 0.6.0+ uses a
 # composed shape — top-level method + base_model_id + experiment_dir,
 # plus LoRAConfig + SFTConfig + DPOConfig sub-configs. Build:

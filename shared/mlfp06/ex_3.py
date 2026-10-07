@@ -44,7 +44,7 @@ DATA_CACHE = Path("data") / "mlfp06" / "ultrafeedback"
 DATA_CACHE.mkdir(parents=True, exist_ok=True)
 CACHE_FILE = DATA_CACHE / "ultrafeedback_2k.parquet"
 
-ADAPTER_OUTPUT_DIR = Path("./dpo_output")
+ADAPTER_OUTPUT_DIR = OUTPUT_DIR / "dpo_output"
 
 
 # ════════════════════════════════════════════════════════════════════════

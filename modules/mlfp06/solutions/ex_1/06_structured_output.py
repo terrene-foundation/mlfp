@@ -130,6 +130,17 @@ async def run_signature_extraction() -> list[dict]:
                 f"Review {i + 1}: the agent returned no {missing} "
                 f"(agent output: {str(result)[:300]})"
             )
+        # Presence is not validity: the model sometimes returns explicit
+        # nulls ("confidence": null) or numeric strings. Validate VALUES
+        # before any downstream float() — LLM output is untrusted input.
+        try:
+            conf = float(result["confidence"])
+        except (TypeError, ValueError):
+            raise RuntimeError(
+                f"Review {i + 1}: confidence not numeric-coercible: "
+                f"{result['confidence']!r} (agent output: {str(result)[:300]})"
+            ) from None
+        result["confidence"] = conf
         results.append(result)
         if i < 3:
             print(f"\n  Review {i+1}:")

@@ -248,15 +248,15 @@
   <p>
     Now the honest finding — teach it plainly: "When we run this clip
     on the course extract, the result is alarming: of 69,421
-    vital-sign rows, only 38 survive — 4 of 8,000 admissions. Counted
-    per individual reading (six vitals per row, unpivoted), that's
-    <strong>198 of 416,526 readings</strong> inside the first 24
-    hours; meds and labs are just as sparse. The event tables in this
-    extract are simply not time-aligned with admissions, so first-24h
-    features are nearly empty. Exercise 3.1 runs this <em>window
-    audit</em> as a data-quality finding — catching it before modelling
-    is the whole point. In a real project you'd go back and fix the
-    data feed."
+    Of 63,452 vital-sign rows, 16,435 fall inside the window —
+    996 of the 1,000 monitored admissions. Meds and labs are sparser
+    (765 / 821 admissions) but real. <strong>The window is populated
+    because the feed was fixed</strong>: an earlier cut of this dataset
+    had event timestamps unaligned to admissions (4 of 8,000 had any
+    in-window vitals), and this exact audit caught it. The honest
+    sequel: with the window populated, the features carry modest real
+    signal — full-matrix CV AUC ≈ 0.57. The data fix works; the signal
+    is what it is. Exercise 3.1 runs the same <em>window audit</em>."
   </p>
   <div class="audience-cue expert">
     <strong>For experts:</strong> this is why "predict at 24h" is a

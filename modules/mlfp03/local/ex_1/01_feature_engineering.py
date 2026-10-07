@@ -126,6 +126,15 @@ if max(coverage.values()) < 0.05:
         "  zero for nearly every row. Catching this BEFORE modelling is the\n"
         "  point of a point-in-time audit."
     )
+else:
+    print(
+        "\n  Window audit PASSES: the event tables are admission-anchored and\n"
+        "  the first-24h window is populated. An earlier cut of this dataset\n"
+        "  failed this audit hard (4 of 8,000 admissions had any in-window\n"
+        "  vitals — timestamps were not aligned to admissions); the fixed feed\n"
+        "  is what you are looking at. Run this audit on every event table,\n"
+        "  every time — the fix belongs in the data, not the model."
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════

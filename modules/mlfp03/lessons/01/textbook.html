@@ -453,21 +453,22 @@ vitals = vitals.with_columns(pl.col("timestamp").str.to_datetime(FMT))</code></p
           .filter(pl.col("hours_since_admit").is_between(0, 24))
 )
 print(vitals.height, vitals_24h.height,
-      vitals_24h["admission_id"].n_unique())   # 69421 38 4</code></pre>
+      vitals_24h["admission_id"].n_unique())   # 16435 996</code></pre>
     <p>
-      Look at that output before going further. Of 69,421 vital-sign rows,
-      only 38 fall inside the 24-hour window, covering 4 of 8,000
-      admissions. Exercise 3.1 counts the same thing per individual reading
-      (six vitals per row, unpivoted): only 198 of 416,526 readings fall in
-      the first 24 hours. Medications (14 admissions) and labs (17
-      admissions) are just as sparse. In this extract the event tables are
-      simply not time-aligned with the admissions, so <strong>the
-      first-24-hour features carry almost no signal</strong> — for all but
-      a handful of admissions they are empty and get imputed.
-      Exercise 3.1 runs the same <em>window audit</em> and reports it as a
-      data-quality finding. Catching this <em>before</em> modelling is the
-      whole point of the audit: in a real project you would go back and fix
-      the data feed.
+      Look at that output before going further. Of 63,452 vital-sign rows,
+      16,435 fall inside the 24-hour window, covering 996 of the 1,000
+      monitored admissions (the four missed are the deliberate
+      discharge-before-admit data-entry rows). Medications (765 admissions)
+      and labs (821 admissions) are sparser — not every monitored patient
+      gets drugs or bloods in the first day — but the window is real.
+      <strong>This is what a healthy feed looks like after the window
+      audit did its job.</strong> The dataset you are holding is the fixed
+      one: an earlier cut of this extract had event tables whose timestamps
+      were not aligned to admissions at all (4 of 8,000 admissions had any
+      first-24h vitals), and it was exactly this audit — row counts in the
+      window, admissions covered — that caught it. Exercise 3.1 runs the
+      same audit. Catching a broken feed <em>before</em> modelling is the
+      point: the fix is in the data, not in the model.
     </p>
   </div>
 

@@ -423,4 +423,4 @@ the same answer without further wiring.
 
 **R5 Source**: PCML6-13 (5 algorithms, advanced implementations). Note: RL needs new DECK content — R5 has notebook only.
 
-**End of Module Assessment**: Quiz + DL architecture project (choose a problem, select architecture, train, evaluate, deploy with ONNX).
+**End of Module Assessment**: 4 auto-graded tasks (100 marks, 3 hours, open book): CNN that beats a grader-trained classical baseline on grader-held data (5.2); DLDiagnostics triage of grader-grown planted pathologies (5.1–5.4); recurrent forecaster that beats a grader-computed naive forecast on fresh-seeded series (5.3); trained classifier shipped as an ONNX artefact with parity and accuracy probed by the grader (5.2, 5.7). Every task scores the returned model/artefact against ground truth the student cannot influence.

@@ -458,4 +458,4 @@ environment. There is no offline fallback that produces fake results
 
 **R5 Source**: ASCENT (new, not in R5)
 
-**End of Module Assessment**: Capstone project presentation + comprehensive quiz.
+**End of Module Assessment**: 4 auto-graded tasks (100 marks, 3 hours, no LLM required): PACT envelopes with deny-paths and monotonic tightening on the real clearance ladder (6.7); ToolRegistry + GovernedSupervisor config with budget/clearance at construction (6.5, 6.7); Nexus governed endpoint exercised in-process — 401/429/CORS/role-from-token (6.8); governance org YAML rebuilt and probed by the grader (6.7).

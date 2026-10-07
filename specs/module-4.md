@@ -343,4 +343,4 @@
 
 **R5 Source**: Deck 5B (42 slides, comprehensive) + PCML5-4 (DL basics notebook)
 
-**End of Module Assessment**: Quiz + project (unsupervised analysis → DL bridge: cluster data, reduce dimensions, build neural network on discovered features).
+**End of Module Assessment**: 5 auto-graded tasks (100 marks): customer segments + EM mixture models (4.1–4.2); PCA + embeddings + anomaly screening (4.3–4.4); basket rules + matrix-factorisation recommendations (4.5, 4.7); NMF topics from real news text (4.6); discovered segments feeding a supervised neural network — the unsupervised→DL bridge (4.8).

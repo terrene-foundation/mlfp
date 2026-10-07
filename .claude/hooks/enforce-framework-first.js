@@ -3,12 +3,14 @@
  * Hook: enforce-framework-first
  * Event: PostToolUse
  * Matcher: Write, Edit
- * Purpose: Block raw library imports when a Kailash Engine/framework exists.
- *          CC sees the block reason, rewrites using the framework, continues autonomously.
+ * Purpose: Flag raw library imports when a Kailash Engine/framework exists.
+ *          The main agent sees the finding via additionalContext, rewrites
+ *          using the framework, continues autonomously.
+ *
+ * Advisory posture (owner directive 2026-10-07): this hook NEVER blocks.
  *
  * Exit Codes:
- *   0 = success (continue)
- *   2 = blocking error (stop tool execution)
+ *   0 = always (findings reported as additionalContext)
  */
 
 const TIMEOUT_MS = 5000;
@@ -177,13 +179,16 @@ function checkForRawFrameworks(data) {
         const lib = content.match(pattern)?.[0] || "raw import";
         return {
           output: {
-            continue: false,
-            reason:
-              `BLOCKED: ${lib} in ${filePath}. ` +
-              `${group.reason} ` +
-              `Guide: ${group.guide}`,
+            continue: true,
+            hookSpecificOutput: {
+              hookEventName: "PostToolUse",
+              additionalContext:
+                `ADVISORY from enforce-framework-first (non-blocking per owner directive): ` +
+                `${lib} in ${filePath}. ${group.reason} Guide: ${group.guide}. ` +
+                `MAIN AGENT: resolve now — rewrite with the framework or document the approved exception, do not defer.`,
+            },
           },
-          exitCode: 2,
+          exitCode: 0,
         };
       }
     }

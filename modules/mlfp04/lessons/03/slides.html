@@ -34,7 +34,7 @@
   <h1>Dimensionality Reduction</h1>
   <p style="font-size: 0.7em; color: #64748B;">PCA · SVD · Kernel PCA · t-SNE · UMAP · Intrinsic dimension</p>
   <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
-    <strong style="color: #0D9488;">⏱ 90 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> compress 50 features into 6
+    <strong style="color: #0D9488;">⏱ 90 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> find how many of 7 customer features you really need
   </div>
 </section>
 
@@ -130,7 +130,7 @@
       <text x="280" y="55" font-size="11" fill="#EF4444">elbow → k ≈ 4</text>
     </svg>
   </figure>
-  <p>Rule of thumb: take the smallest $k$ where cumulative variance ≥ 90%.</p>
+  <p>Rule of thumb: take the smallest $k$ where cumulative variance reaches your threshold — 90–95% is the usual range.</p>
 </section>
 
 <section>
@@ -142,7 +142,7 @@ for i in range(3):
     for j in top:
         print(f"  {feature_names[j]}: {pca.components_[i][j]:+.3f}")
   </code></pre>
-  <p style="font-size: 0.85em;">Example: PC1 = +0.4 spend + 0.4 visits + 0.3 items → <em>"overall activity"</em>.</p>
+  <p style="font-size: 0.85em;">On the 7 standardised customer features: PC1 = +0.71 avg order value + 0.65 revenue − 0.28 order count → <em>"spend per order"</em> (26.5% of variance).</p>
 </section>
 
 <section>
@@ -152,6 +152,7 @@ for i in range(3):
     <li>Kernel PCA applies PCA in an implicit feature space via $k(\mathbf{x}, \mathbf{y}) = \phi(\mathbf{x})^\top \phi(\mathbf{y})$.</li>
     <li>Common kernels: RBF, polynomial.</li>
     <li>Cost: $O(N^2)$ memory — only for ~few thousand points.</li>
+    <li>No exact inverse: mapping back to input space (the <em>pre-image</em> problem) needs an approximation, e.g. <code>fit_inverse_transform=True</code>.</li>
   </ul>
 </section>
 
@@ -172,9 +173,9 @@ for i in range(3):
 <section>
   <h2>UMAP: newer, faster, better defaults</h2>
   <ul>
-    <li>Preserves more global structure than t-SNE.</li>
+    <li>Better global layout than t-SNE — but cluster sizes and gaps are still not quantitative.</li>
     <li>~10× faster. Scales to millions of points.</li>
-    <li>Has an (approximate) inverse transform — can embed new points.</li>
+    <li>Can embed <em>new</em> points with <code>.transform()</code> (t-SNE cannot).</li>
     <li>Deterministic (given a seed).</li>
   </ul>
   <p style="font-size: 0.85em; color: #64748B;">Default choice for any visualisation task. Fall back to t-SNE only when specifically needed.</p>
@@ -185,8 +186,8 @@ for i in range(3):
   <table style="font-size: 0.75em;">
     <thead><tr><th></th><th>t-SNE</th><th>UMAP</th></tr></thead>
     <tbody>
-      <tr><td>Speed</td><td>slow</td><td>fast</td></tr>
-      <tr><td>Global structure</td><td>poor</td><td>good</td></tr>
+      <tr><td>Speed</td><td>slow (sklearn default Barnes-Hut, $O(n \log n)$, large constant; exact is $O(n^2)$)</td><td>fast</td></tr>
+      <tr><td>Global structure</td><td>poor</td><td>better (still qualitative)</td></tr>
       <tr><td>New-point embedding</td><td>no</td><td>yes</td></tr>
       <tr><td>Deterministic</td><td>no</td><td>yes (with seed)</td></tr>
       <tr><td>Key knob</td><td>perplexity</td><td>n_neighbors</td></tr>
@@ -275,13 +276,13 @@ for i in range(3):
         <circle cx="575" cy="232" r="3"/><circle cx="555" cy="228" r="3"/><circle cx="570" cy="242" r="3"/>
         <circle cx="548" cy="234" r="3"/><circle cx="565" cy="220" r="3"/>
       </g>
-      <!-- Meaningful distance annotations -->
+      <!-- Layout annotations (global layout is qualitative only) -->
       <line x1="468" y1="90" x2="535" y2="68" stroke="#94A3B8" stroke-width="0.8" stroke-dasharray="3 2"/>
-      <text x="502" y="88" text-anchor="middle" font-family="Inter" font-size="7" fill="#94A3B8">nearby = related</text>
+      <text x="502" y="88" text-anchor="middle" font-family="Inter" font-size="7" fill="#94A3B8">layout hint only</text>
       <line x1="488" y1="228" x2="548" y2="232" stroke="#94A3B8" stroke-width="0.8" stroke-dasharray="3 2"/>
-      <text x="518" y="248" text-anchor="middle" font-family="Inter" font-size="7" fill="#94A3B8">nearby = related</text>
-      <text x="570" y="270" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Local structure preserved AND</text>
-      <text x="570" y="282" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#22C55E">inter-cluster distances meaningful</text>
+      <text x="518" y="248" text-anchor="middle" font-family="Inter" font-size="7" fill="#94A3B8">layout hint only</text>
+      <text x="570" y="270" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Better global layout than t-SNE, BUT sizes and</text>
+      <text x="570" y="282" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#F59E0B">inter-cluster distances still not quantitative</text>
 
       <!-- Bottom labels -->
       <g font-family="Inter" font-size="9">
@@ -293,6 +294,34 @@ for i in range(3):
       </g>
     </svg>
   </figure>
+</section>
+
+<section>
+  <h2>Other manifold learners: Isomap, LLE, MDS</h2>
+  <table style="font-size: 0.72em;">
+    <thead><tr><th>Method</th><th>Preserves</th><th>Use when</th><th>Watch out</th></tr></thead>
+    <tbody>
+      <tr><td><strong>MDS</strong></td><td>all pairwise distances (minimises stress)</td><td>you only have a distance / dissimilarity matrix</td><td>$O(n^2)$ memory; linear-ish for Euclidean input</td></tr>
+      <tr><td><strong>Isomap</strong></td><td>geodesic distances along a k-NN graph</td><td>one smooth manifold to "unroll" (Swiss roll)</td><td>one wrong shortcut edge breaks the geometry</td></tr>
+      <tr><td><strong>LLE</strong></td><td>each point as a weighted mix of its neighbours</td><td>small, clean, locally linear manifolds</td><td>fragile with noise and uneven density</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size: 0.8em; color: #64748B;">All in <code>sklearn.manifold</code> (<code>MDS</code>, <code>Isomap</code>, <code>LocallyLinearEmbedding</code>). In practice UMAP has replaced them for visualisation; know them for the ideas — distances, geodesics, local linearity.</p>
+  <aside class="notes">Reference table only, as the spec asks: a brief mention. Classical MDS on Euclidean distances is equivalent to PCA; Isomap is MDS on geodesic (graph shortest-path) distances; LLE reconstructs each point from its neighbours and keeps those weights in low dimension. Isomap and LLE scale poorly and are sensitive to n_neighbors.</aside>
+</section>
+
+<section>
+  <h2>Comparing reducers: trustworthiness, not silhouette</h2>
+  <ul>
+    <li>t-SNE and UMAP pull points into blobs <em>by construction</em> — K-means silhouette in the embedding rewards the picture, not faithfulness.</li>
+    <li><strong>Trustworthiness</strong> ∈ [0, 1]: are a point's embedding neighbours its <em>real</em> neighbours? 1 = no false neighbours.</li>
+  </ul>
+  <pre><code class="language-python" data-trim>
+from sklearn.manifold import trustworthiness
+t = trustworthiness(X_sample, embedding, n_neighbors=10)   # same rows for every reducer
+  </code></pre>
+  <p style="font-size: 0.8em; color: #64748B;">Exercise 3.5 ranks PCA, kernel PCA, t-SNE, UMAP and Isomap by trustworthiness on the same 3,000 rows (it needs all pairwise distances); silhouette is kept only as a "clusterability" column.</p>
+  <aside class="notes">This mirrors the corrected Exercise 3 design. Silhouette measured inside a t-SNE or UMAP embedding is circular: those methods manufacture separated clusters. Trustworthiness penalises points that appear as neighbours in the embedding but are far apart in the original space. Always compute it on the same subsample for every method.</aside>
 </section>
 
 <section>
@@ -310,33 +339,46 @@ for i in range(3):
   <p>How many components do you truly need?</p>
   <ul>
     <li><strong>Scree elbow</strong> — visual estimate.</li>
-    <li><strong>Variance threshold</strong> — smallest $k$ with $\sum \sigma_i^2 / \sum \sigma^2 &gt; 0.9$.</li>
+    <li><strong>Variance threshold</strong> — smallest $k$ with $\sum_{i\le k} \sigma_i^2 / \sum_i \sigma_i^2 \ge$ 0.90–0.95.</li>
     <li><strong>Participation ratio</strong>: $(\sum \lambda_i)^2 / \sum \lambda_i^2$.</li>
+    <li><strong>Nearest-neighbour MLE</strong> (Levina–Bickel), with $T_j(x)$ the distance to the $j$-th neighbour: $\hat m_k(x) = \Bigl[\tfrac{1}{k-1}\sum_{j=1}^{k-1} \log \tfrac{T_k(x)}{T_j(x)}\Bigr]^{-1}$, averaged over $x$. Non-linear: it sees curved manifolds PCA cannot.</li>
   </ul>
+  <p style="font-size: 0.8em; color: #64748B;">Customer data (7 features): 90% → 5 PCs, 95% → 6 PCs, participation ratio ≈ 5.3. Sanity check: the MLE returns ≈ 8 on 8-D Gaussian noise.</p>
 </section>
 
 <section>
   <h2>Worked example: compress customer features</h2>
   <pre><code class="language-python" data-trim>
-pca = PCA().fit(StandardScaler().fit_transform(X))
+pca = PCA().fit(X)   # X = 7 standardised customer features, 50,000 rows
 cum = np.cumsum(pca.explained_variance_ratio_)
-k90 = int(np.searchsorted(cum, 0.90)) + 1
-# 15 features → 6 components for 90% variance
+k90 = int(np.searchsorted(cum, 0.90)) + 1   # → 5 components (92.2%)
+k95 = int(np.searchsorted(cum, 0.95)) + 1   # → 6 components (98.0%)
   </code></pre>
-  <p>After PCA, downstream models train faster, overfit less, often score slightly better.</p>
+  <p>Only 7 → 5: these features are not very redundant. PCA pays off most when you have many correlated features — then downstream models train faster and overfit less.</p>
 </section>
 
 <section>
-  <h2>Kailash ModelVisualizer</h2>
+  <h2>Kailash DimReductionEngine + ModelVisualizer</h2>
   <pre><code class="language-python" data-trim>
+import polars as pl
 from kailash_ml import ModelVisualizer
-viz = ModelVisualizer()
-fig = viz.scree_plot(pca)
-fig.write_html("scree.html")
+from kailash_ml.engines.dim_reduction import DimReductionEngine
+
+X_df = pl.from_numpy(X, schema=feature_cols)      # standardised features
+engine = DimReductionEngine()                     # "pca" | "nmf" | "tsne" | "umap"
+info = engine.variance_analysis(X_df)
+print(info["n_components_95"], info["elbow_component"])
+
+res = engine.reduce(X_df, algorithm="pca", n_components=2)
+print(res.explained_variance_ratio, res.reconstruction_error)
+emb = pl.DataFrame(res.transformed, schema=["pc1", "pc2"], orient="row")
+fig = ModelVisualizer().scatter(emb, x="pc1", y="pc2", title="Customers on PC1/PC2")
+fig.write_html("pca_scatter.html")
   </code></pre>
   <div class="callout-slide kailash">
-    <strong>⚙ Kailash:</strong> ModelVisualizer annotates the top-3 contributors to each component automatically — the interpretable part.
+    <strong>⚙ Kailash:</strong> the engine reports variance and reconstruction error; loadings you read yourself (previous slide). ModelVisualizer has no scree helper — plot <code>info["cumulative_variance"]</code> with plotly.
   </div>
+  <aside class="notes">Bridge from sklearn PCA to the Kailash surface used in the exercises and assessment. variance_analysis returns explained_variance_ratio, cumulative_variance, elbow_component and n_components_95. reduce returns a DimReductionResult whose transformed field is a list of rows, so wrap it in a polars DataFrame before plotting. The engine does not standardise for you.</aside>
 </section>
 
 <section>

@@ -2,34 +2,40 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP04 — Exercise 6.5: Word2Vec Features + Sentiment Analysis
+# MLFP04 — Exercise 6.5: Word Embeddings (Word2Vec-style) + Sentiment
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
 #   - Explain how Word2Vec learns dense word vectors (CBOW vs skip-gram)
+#     and why it is implicitly a factorisation of a word-context PMI matrix
+#   - Learn real word embeddings from unlabelled text with PPMI + SVD
 #   - Average word vectors into a document vector
-#   - Use document vectors as features for a sentiment classifier
-#   - Compare a lexicon baseline to a learned classifier
-#   - Apply the technique to DBS Bank multilingual review triage
+#   - Train a sentiment classifier on human-labelled reviews and test it
+#     on unseen sentences against a lexicon and a TF-IDF baseline
+#   - Apply the technique to bank app-review triage
 #
-# PREREQUISITES: Ex 6.1 (TF-IDF), basic classification (logistic
-# regression), understanding that neural networks learn by minimising
-# a loss function.
+# PREREQUISITES: Ex 6.1 (TF-IDF), Ex 3 (SVD / dimensionality reduction),
+# basic classification (logistic regression).
 #
-# ESTIMATED TIME: ~35 min
+# ESTIMATED TIME: ~40 min
 #
 # TASKS:
-#   1. Theory — Word2Vec as a shallow prediction network
-#   2. Build — document vectors from averaged word embeddings
-#   3. Train — compare lexicon sentiment vs learned classifier
-#   4. Visualise — sentiment by category, confusion on negative class
-#   5. Apply — DBS Bank app-store review triage
+#   1. Theory — Word2Vec and the PMI-factorisation view
+#   2. Build — co-occurrence counts -> PPMI -> SVD word vectors
+#   3. Train — document vectors + logistic regression vs baselines
+#   4. Visualise — word-vector map, classifier comparison
+#   5. Apply — bank app-store review triage
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
+from collections import Counter
+
 import numpy as np
-import polars as pl
+import plotly.graph_objects as go
+import scipy.sparse as sp
+from sklearn.decomposition import PCA, TruncatedSVD
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
@@ -39,212 +45,307 @@ from shared.mlfp04.ex_6 import (
     NEGATIVE_WORDS,
     OUTPUT_DIR,
     POSITIVE_WORDS,
-    corpus_as_lists,
     lexicon_sentiment,
-    load_corpus,
+    load_sentiment_reviews,
     print_scenario,
+    tokenize_review,
 )
+from shared.mlfp04 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
-# THEORY — Word2Vec as a Shallow Network
+# THEORY — Word2Vec, and Word2Vec as Matrix Factorisation
 # ════════════════════════════════════════════════════════════════════════
-# Word2Vec (Mikolov 2013) trains a two-layer neural network to predict
-# a target word from its context (CBOW) or the context from the target
-# (skip-gram). The network itself is discarded after training — what
-# you keep is the HIDDEN LAYER: for each word in the vocabulary, the
-# hidden-layer weights are its dense embedding vector.
+# Word2Vec (Mikolov 2013) trains a shallow network to predict a target
+# word from its context (CBOW) or the context from the target
+# (skip-gram). The network is discarded after training — what you keep
+# is the weight matrix: one dense vector per vocabulary word.
 #
-# Emergent properties from this single optimisation objective:
+# Emergent properties of that objective:
+#   - Words used in similar contexts end up near each other
+#   - Dense 100-300D vectors replace 10K+ sparse bag-of-words columns
 #
-#   - Similar words end up near each other:
-#         cos(king, queen) > cos(king, car)
+# THE FACTORISATION VIEW (Levy & Goldberg, 2014): skip-gram with negative
+# sampling implicitly factorises a word-by-context matrix whose cells are
+# (shifted) pointwise mutual information,
 #
-#   - Vector arithmetic encodes analogies:
-#         king - man + woman ≈ queen
+#     PMI(w, c) = log( P(w, c) / (P(w) P(c)) )
 #
-#   - Dense 100-300D vectors replace 10K+ sparse bag-of-words
+# So we can build the same family of embeddings EXPLICITLY, with tools
+# from this module:
+#   1. count how often each word appears within a few positions of each
+#      context word (a sliding window over unlabelled text)
+#   2. turn counts into Positive PMI (negative values clipped to 0)
+#   3. factorise the PPMI matrix with truncated SVD — each word's row of
+#      U * sqrt(S) is its embedding
+# The course environment does not ship the gensim package, so this is
+# how we get genuine distributional word vectors here; in production you
+# would train skip-gram with gensim or load pretrained vectors.
 #
-# WHY WE AVERAGE TO MAKE DOCUMENT VECTORS:
-# A document is a bag of words, so a reasonable document vector is
-# just the mean of its word vectors. This "Sentence-BOW" baseline is
-# crude but effective — it captures topic-level similarity even
-# without attention or positional encoding.
+# A WARNING TO CHECK IN THE DATA: "good" and "bad" appear in the same
+# contexts ("a ___ movie"), so distributional vectors can put antonyms
+# close together. Similar context != similar sentiment — inspect the
+# nearest neighbours and the word map below.
 #
-# This same optimisation principle — drive features out of a
-# reconstruction / prediction loss — is what MLFP05 neural networks
-# exploit. Word2Vec is the simplest example of the idea.
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 2 — BUILD: document vectors + lexicon baseline
-# ════════════════════════════════════════════════════════════════════════
-
-corpus_df = load_corpus()
-documents, categories = corpus_as_lists(corpus_df)
-print(f"Corpus: {len(documents):,} documents")
-
-# Lexicon baseline — fast and interpretable
-lex_scores = lexicon_sentiment(documents)
-print("\n" + "=" * 70)
-print("  Lexicon Sentiment Baseline")
-print("=" * 70)
-print(f"Positive (> 0.3): {(lex_scores > 0.3).mean():.1%}")
-print(f"Neutral:          {((lex_scores >= -0.3) & (lex_scores <= 0.3)).mean():.1%}")
-print(f"Negative (< -0.3):{(lex_scores < -0.3).mean():.1%}")
-print(f"Mean sentiment:   {lex_scores.mean():+.4f}")
+# DOCUMENT VECTORS: a sentence is a bag of words, so a simple sentence
+# vector is the mean of its word vectors. It loses word order (and so
+# most negation) but is cheap and dense.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — TRAIN: Word2Vec-style document vectors + classifier
+# TASK 2 — BUILD: co-occurrence -> PPMI -> SVD word vectors
 # ════════════════════════════════════════════════════════════════════════
-# For teaching purposes we use a deterministic pseudo-Word2Vec: a hash
-# of each token seeds a small random vector. This is NOT a real Word2Vec
-# but it demonstrates the averaging mechanic without requiring a 4GB
-# pre-trained embedding file. In production you would load real vectors
-# from gensim's downloader ("word2vec-google-news-300") or use a
-# kailash_ml SentenceTransformer wrapper.
 
-RNG = np.random.default_rng(42)
-EMBED_DIM = 64
-vocab_cache: dict[str, np.ndarray] = {}
+train_df, test_df = load_sentiment_reviews()
+train_texts = train_df["text"].to_list()
+test_texts = test_df["text"].to_list()
+y_train = train_df["label"].to_numpy()
+y_test = test_df["label"].to_numpy()
+print(f"Human-labelled movie-review text (SST-2):")
+print(f"  train: {len(train_texts):,} phrases/sentences (de-duplicated)")
+print(f"  test:  {len(test_texts):,} unseen sentences")
+print(f"  positive share — train {y_train.mean():.1%}, test {y_test.mean():.1%}")
+
+MIN_COUNT = 10  # ignore words seen fewer than 10 times
+WINDOW = 4  # context = up to 4 words either side
+EMBED_DIM = 100
+
+# Vocabulary from the TRAIN text only (labels are not used here)
+train_tokens = [tokenize_review(t) for t in train_texts]
+word_counts = Counter(w for toks in train_tokens for w in toks)
+vocab = [w for w, c in word_counts.most_common() if c >= MIN_COUNT]
+word_index = {w: i for i, w in enumerate(vocab)}
+V = len(vocab)
+print(f"\nVocabulary: {V:,} words (count >= {MIN_COUNT})")
 
 
-def pseudo_word2vec(token: str) -> np.ndarray:
-    """Deterministic pseudo-Word2Vec — hash the token to a seed, then draw
-    a stable random vector. Stands in for a pretrained embedding table."""
-    if token in vocab_cache:
-        return vocab_cache[token]
-    seed = abs(hash(token)) % (2**32)
-    vec = np.random.default_rng(seed).standard_normal(EMBED_DIM).astype(np.float64)
-    vocab_cache[token] = vec
-    return vec
+def cooccurrence_matrix(
+    token_lists: list[list[str]], window: int
+) -> sp.csr_matrix:
+    """Symmetric word-context counts within `window` positions.
+
+    A context word d positions away contributes 1/d (closer = stronger).
+    Built with array shifts instead of a Python double loop.
+    """
+    ids = [
+        np.array([word_index[w] for w in toks if w in word_index], dtype=np.int64)
+        for toks in token_lists
+    ]
+    flat = np.concatenate(ids)
+    sentence_id = np.concatenate([np.full(len(a), i) for i, a in enumerate(ids)])
+    rows, cols, vals = [], [], []
+    for d in range(1, window + 1):
+        same_sentence = sentence_id[d:] == sentence_id[:-d]
+        left, right = flat[:-d][same_sentence], flat[d:][same_sentence]
+        weight = np.full(left.shape, 1.0 / d)
+        rows += [left, right]
+        cols += [right, left]
+        vals += [weight, weight]
+    return sp.coo_matrix(
+        (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))),
+        shape=(V, V),
+    ).tocsr()
+
+
+def ppmi(counts: sp.csr_matrix, context_alpha: float = 0.75) -> sp.csr_matrix:
+    """Positive PMI with context-distribution smoothing (alpha = 0.75)."""
+    total = counts.sum()
+    p_word = np.asarray(counts.sum(axis=1)).ravel() / total
+    context = np.asarray(counts.sum(axis=0)).ravel() ** context_alpha
+    p_context = context / context.sum()
+    coo = counts.tocoo()
+    p_joint = coo.data / total
+    pmi = np.log(p_joint / (p_word[coo.row] * p_context[coo.col]))
+    keep = pmi > 0
+    return sp.csr_matrix(
+        (pmi[keep], (coo.row[keep], coo.col[keep])), shape=counts.shape
+    )
+
+
+C = cooccurrence_matrix(train_tokens, WINDOW)
+P = ppmi(C)
+svd = TruncatedSVD(n_components=EMBED_DIM, random_state=42)
+U_S = svd.fit_transform(P)  # = U * S
+embeddings = U_S / np.sqrt(svd.singular_values_)  # = U * sqrt(S)
+embeddings /= np.maximum(np.linalg.norm(embeddings, axis=1, keepdims=True), 1e-12)
+print(f"Co-occurrence non-zeros: {C.nnz:,}; PPMI non-zeros: {P.nnz:,}")
+print(f"Word embeddings: {embeddings.shape} (words x dimensions)")
+
+
+def nearest_words(word: str, k: int = 6) -> list[str]:
+    """Cosine nearest neighbours (rows are unit length, so dot = cosine)."""
+    sims = embeddings @ embeddings[word_index[word]]
+    return [vocab[i] for i in np.argsort(-sims)[1 : k + 1]]
+
+
+print("\nNearest neighbours (cosine):")
+for probe in ("good", "bad", "funny", "boring"):
+    if probe in word_index:
+        print(f"  {probe:<8} -> {', '.join(nearest_words(probe))}")
 
 
 def document_vector(text: str) -> np.ndarray:
-    """Average the pseudo-Word2Vec vectors of the tokens in a document."""
-    tokens = [t for t in text.lower().split() if t.isalpha()]
-    if not tokens:
+    """Average the embeddings of the in-vocabulary tokens of a text."""
+    rows = [word_index[w] for w in tokenize_review(text) if w in word_index]
+    if not rows:
         return np.zeros(EMBED_DIM, dtype=np.float64)
-    return np.mean([pseudo_word2vec(t) for t in tokens], axis=0)
+    return embeddings[rows].mean(axis=0)
 
 
-doc_vectors = np.stack([document_vector(doc) for doc in documents])
-
-# Bootstrap labels from the lexicon for a self-supervised sentiment task:
-# the classifier's job is to predict the lexicon's sign from the averaged
-# word-embedding features. A real pipeline uses human-labelled reviews;
-# the lexicon label is a stand-in to keep the exercise self-contained.
-labels = (lex_scores > 0).astype(int)
-print(
-    f"\nLabel balance: positive={labels.sum()}, negative={len(labels) - labels.sum()}"
-)
-
-# Holdout split
-split = int(0.8 * len(doc_vectors))
-X_train, X_test = doc_vectors[:split], doc_vectors[split:]
-y_train, y_test = labels[:split], labels[split:]
-
-clf = LogisticRegression(max_iter=500, random_state=42)
-clf.fit(X_train, y_train)
-
-train_acc = accuracy_score(y_train, clf.predict(X_train))
-test_acc = accuracy_score(y_test, clf.predict(X_test))
-print(f"\nLogistic regression on document vectors:")
-print(f"  Train accuracy: {train_acc:.3f}")
-print(f"  Test  accuracy: {test_acc:.3f}")
+X_train = np.stack([document_vector(t) for t in train_texts])
+X_test = np.stack([document_vector(t) for t in test_texts])
 
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert doc_vectors.shape == (
-    len(documents),
-    EMBED_DIM,
-), "Task 3: document vector shape mismatch"
-assert 0.0 <= test_acc <= 1.0, "Task 3: test accuracy must be a probability"
-assert len(POSITIVE_WORDS) > 5 and len(NEGATIVE_WORDS) > 5, "Task 3: lexicons non-empty"
-print("\n[ok] Checkpoint 1 passed — Word2Vec document vectors + classifier\n")
+assert embeddings.shape == (V, EMBED_DIM), "Task 2: one EMBED_DIM vector per word"
+assert np.allclose(
+    np.linalg.norm(embeddings, axis=1), 1.0, atol=1e-6
+), "Task 2: word vectors should be unit length"
+assert P.data.min() > 0, "Task 2: PPMI keeps only positive values"
+assert not set(test_texts) & set(train_texts), "Task 2: test text must be unseen"
+assert X_train.shape == (len(train_texts), EMBED_DIM), "Task 2: document vectors"
+print("\n[ok] Checkpoint 1 passed — PPMI + SVD word vectors and document vectors\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE: sentiment by category
+# TASK 3 — TRAIN: embedding classifier vs lexicon and TF-IDF baselines
 # ════════════════════════════════════════════════════════════════════════
 
-news_with_sentiment = corpus_df.with_columns(
-    pl.Series("sentiment", lex_scores),
-)
+majority_class = int(y_train.mean() >= 0.5)
+majority_acc = float((y_test == majority_class).mean())
 
-print("\nMean lexicon sentiment by category:")
-cat_sentiment: dict[str, float] = {}
-for cat in sorted(news_with_sentiment["category"].unique().to_list()):
-    mean_s = float(
-        news_with_sentiment.filter(pl.col("category") == cat)["sentiment"].mean()
+# Lexicon baseline: positive if score > 0, negative if < 0; when no
+# lexicon word appears (score 0) it falls back to the majority class.
+lex_scores = lexicon_sentiment(test_texts)
+lex_pred = np.where(lex_scores > 0, 1, np.where(lex_scores < 0, 0, majority_class))
+lex_acc = float(accuracy_score(y_test, lex_pred))
+lex_coverage = float((lex_scores != 0).mean())
+
+clf = LogisticRegression(max_iter=1000, random_state=42)
+clf.fit(X_train, y_train)
+emb_train_acc = float(accuracy_score(y_train, clf.predict(X_train)))
+emb_test_acc = float(accuracy_score(y_test, clf.predict(X_test)))
+
+# Reference: sparse TF-IDF + logistic regression on the same split
+tfidf = TfidfVectorizer(tokenizer=tokenize_review, token_pattern=None, min_df=2)
+T_train = tfidf.fit_transform(train_texts)
+T_test = tfidf.transform(test_texts)
+tfidf_clf = LogisticRegression(max_iter=1000, random_state=42)
+tfidf_clf.fit(T_train, y_train)
+tfidf_test_acc = float(accuracy_score(y_test, tfidf_clf.predict(T_test)))
+
+print("=" * 70)
+print("  Test accuracy on unseen, human-labelled sentences")
+print("=" * 70)
+print(f"  Majority class ('always {majority_class}')     {majority_acc:.3f}")
+print(f"  Lexicon ({lex_coverage:.0%} of sentences matched)  {lex_acc:.3f}")
+print(f"  Averaged word vectors + LR ({EMBED_DIM}D)   {emb_test_acc:.3f}"
+      f"  (train {emb_train_acc:.3f})")
+print(f"  TF-IDF + LR ({T_train.shape[1]:,} sparse cols)  {tfidf_test_acc:.3f}")
+
+best_name = max(
+    [("lexicon", lex_acc), ("word vectors", emb_test_acc), ("TF-IDF", tfidf_test_acc)],
+    key=lambda kv: kv[1],
+)[0]
+print(f"\n  Best on this test set: {best_name}.")
+if tfidf_test_acc > emb_test_acc:
+    print(
+        "  Averaging 100-D vectors learned from this small corpus throws away\n"
+        "  word identity and order; the sparse model keeps every word as its\n"
+        "  own feature. Embeddings pay off when they come from a much larger\n"
+        "  corpus than your labelled set, or when features must be compact."
     )
-    cat_sentiment[cat] = mean_s
-    indicator = "+" if mean_s > 0.05 else "-" if mean_s < -0.05 else "~"
-    bar = "#" * int(abs(mean_s) * 20)
-    print(f"  {cat:<22} {mean_s:+.4f} {indicator} {bar}")
-
-viz = ModelVisualizer()
-
-cat_data = {cat: {"mean_sentiment": s} for cat, s in cat_sentiment.items()}
-fig_cat = viz.metric_comparison(cat_data)
-fig_cat.update_layout(title="Mean Sentiment by Category")
-fig_cat.write_html(str(OUTPUT_DIR / "ex6_5_sentiment_by_category.html"))
-
-acc_data = {
-    "Lexicon baseline": {
-        "accuracy": float(accuracy_score(labels, (lex_scores > 0).astype(int)))
-    },
-    "Word2Vec + LR (train)": {"accuracy": float(train_acc)},
-    "Word2Vec + LR (test)": {"accuracy": float(test_acc)},
-}
-fig_acc = viz.metric_comparison(acc_data)
-fig_acc.update_layout(title="Sentiment Classifier Comparison")
-fig_acc.write_html(str(OUTPUT_DIR / "ex6_5_classifier_comparison.html"))
-
-print(f"\nSaved: {OUTPUT_DIR}/ex6_5_sentiment_by_category.html")
-print(f"Saved: {OUTPUT_DIR}/ex6_5_classifier_comparison.html")
 
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
-assert (
-    len(cat_sentiment) > 0
-), "Task 4: must compute sentiment for at least one category"
-assert all(
-    -1.0 <= s <= 1.0 for s in cat_sentiment.values()
-), "Task 4: sentiment in [-1, 1]"
-print("\n[ok] Checkpoint 2 passed — visualisations written\n")
+assert 0.0 <= emb_test_acc <= 1.0, "Task 3: accuracy must be a probability"
+assert emb_test_acc > majority_acc, "Task 3: embedding classifier must beat the majority class"
+assert len(POSITIVE_WORDS) > 5 and len(NEGATIVE_WORDS) > 5, "Task 3: lexicons non-empty"
+print("\n[ok] Checkpoint 2 passed — classifier trained and compared on unseen text\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: DBS Bank Multilingual Review Triage
+# TASK 4 — VISUALISE: word-vector map + classifier comparison
+# ════════════════════════════════════════════════════════════════════════
+# Project the lexicon words' 100-D vectors to 2-D with PCA. If sentiment
+# were what the vectors encode, blue and red would separate cleanly —
+# look at where "good" and "bad" land.
+
+map_words = sorted(w for w in POSITIVE_WORDS | NEGATIVE_WORDS if w in word_index)
+coords = PCA(n_components=2, random_state=42).fit_transform(
+    embeddings[[word_index[w] for w in map_words]]
+)
+colours = ["#1f77b4" if w in POSITIVE_WORDS else "#d62728" for w in map_words]
+fig_map = go.Figure(
+    go.Scatter(
+        x=coords[:, 0],
+        y=coords[:, 1],
+        mode="markers+text",
+        text=map_words,
+        textposition="top center",
+        marker=dict(color=colours, size=9),
+    )
+)
+fig_map.update_layout(
+    title="Sentiment-lexicon words in embedding space (PCA, blue=positive, red=negative)",
+    xaxis_title="PC1",
+    yaxis_title="PC2",
+    height=600,
+)
+fig_map.write_html(str(OUTPUT_DIR / "ex6_5_word_vector_map.html"))
+
+viz = create_visualizer()
+acc_data = {
+    "Majority class": {"test_accuracy": majority_acc},
+    "Lexicon": {"test_accuracy": lex_acc},
+    "Word vectors + LR": {"test_accuracy": emb_test_acc},
+    "TF-IDF + LR": {"test_accuracy": tfidf_test_acc},
+}
+fig_acc = viz.metric_comparison(acc_data)
+fig_acc.update_layout(title="Sentiment Classifiers — Test Accuracy on Unseen Sentences")
+fig_acc.write_html(str(OUTPUT_DIR / "ex6_5_classifier_comparison.html"))
+
+print(f"Saved: {OUTPUT_DIR}/ex6_5_word_vector_map.html")
+print(f"Saved: {OUTPUT_DIR}/ex6_5_classifier_comparison.html")
+
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert coords.shape == (len(map_words), 2), "Task 4: one 2-D point per mapped word"
+assert len(acc_data) == 4, "Task 4: four classifiers compared"
+print("\n[ok] Checkpoint 3 passed — visualisations written\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 5 — APPLY: Bank App-Store Review Triage
 # ════════════════════════════════════════════════════════════════════════
 
 print_scenario("sentiment_word2vec")
 print(
     """
-WHY WORD2VEC + LR FOR DBS:
-  - Lexicon sentiment is free but brittle. "Not good" counts as
-    positive because "good" is in the positive list and negation is
-    ignored. Word2Vec + logistic regression learns from training data
-    that "not good" drifts the document vector toward the negative
-    region.
-  - Word2Vec embeddings are pretrained on enormous corpora, so the
-    sentiment classifier transfers reasonably well across the
-    DBS-relevant languages (English, Mandarin — less well for Malay
-    and Tamil unless you use multilingual fastText).
-  - The pipeline is still cheap: 64D vectors, a linear classifier,
-    ~2ms per review on CPU. 40K reviews/month costs ~S$4 of compute.
-  - Higher accuracy on negative reviews is where the S$$$ live:
-    catching 20 extra negatives/month that the lexicon misses is
-    worth ~S$160K/month in avoided viral complaints.
+WHY WORD VECTORS + LR FOR REVIEW TRIAGE:
+  - Lexicon sentiment is free but brittle: it only fires on listed
+    words, and "not good" still counts as positive because negation is
+    ignored. Your run above shows how often it matched at all.
+  - A learned classifier uses every word it saw in labelled training
+    reviews. Averaged word vectors keep the model tiny (100 numbers per
+    review) — but on this data a sparse TF-IDF model was compared too,
+    so pick the one that wins on YOUR labelled sample.
+  - Domain shift is real: these models learned from movie reviews. Bank
+    app reviews use different words ("login", "OTP", "transfer"), so
+    collect and label a few thousand in-domain reviews before deploying.
+  - Other languages need their own labelled data and embeddings (or
+    cross-lingually aligned ones); English vectors do not transfer.
+
+ILLUSTRATIVE ARITHMETIC (assumptions, not measured figures):
+  - Assume ~40K reviews/month, 15% negative, and that routing a negative
+    review to the CX team within 10 minutes (instead of a daily batch)
+    avoids escalation worth ~S$50 on average. Catching 1,000 more
+    negatives a month is then ~S$50K/month, for a few dollars of CPU.
 
 WHEN TO GO FURTHER:
-  - For really tricky negations and domain-specific slang, Module 5
-    fine-tunes a distilled BERT on DBS-specific review data. Expect
-    another +4-6 accuracy points on the negative class.
-  - Module 6 introduces the LLM-based triage path (zero-shot with
-    Kaizen Delegate) which removes the need for labelled data entirely.
+  - Exercise 8 builds neural networks from these ideas; Module 5 covers
+    transformers, which read word order and handle negation far better
+    than averaged vectors.
 """
 )
 
@@ -257,29 +358,31 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Explained Word2Vec as a shallow neural network whose hidden
-      layer weights are the embeddings
-  [x] Averaged word vectors into a document vector
-  [x] Trained a logistic regression classifier on document vectors
-  [x] Compared lexicon sentiment to a learned classifier
-  [x] Mapped the technique to DBS Bank multilingual review triage
+  [x] Explained Word2Vec and why it is implicitly a PMI factorisation
+  [x] Learned word embeddings from unlabelled text with PPMI + SVD
+  [x] Inspected nearest neighbours: similar context != similar sentiment
+  [x] Averaged word vectors into document vectors and trained a
+      classifier on human-labelled reviews
+  [x] Measured it on unseen sentences against lexicon, TF-IDF and
+      majority-class baselines
+  [x] Mapped the technique to bank app-review triage, with its
+      domain-shift and language caveats
 
-  KEY INSIGHT: Word2Vec is the entry point to representation learning.
-  The training objective ("predict context") is a proxy — what you
-  actually care about is the hidden layer it learns along the way.
-  MLFP05's neural networks generalise this idea: train on one
-  objective, harvest the hidden representations, reuse them downstream.
+  KEY INSIGHT: Embeddings are learned representations — the training
+  objective ("predict context", or here "factorise co-occurrence") is a
+  proxy, and what you keep is the vector space it produces. Whether that
+  space helps a downstream task is an empirical question you answer with
+  a held-out test set, not an assumption.
 
   EXERCISE 6 COMPLETE. You now hold five distinct tools for text:
     - TF-IDF / BM25       — classic retrieval, no training
     - NMF                 — fast, interpretable topics
     - LDA                 — probabilistic, mixed-membership topics
-    - BERTopic            — multilingual, semantic topics
-    - Word2Vec + LR       — learned features for classification
+    - BERTopic            — semantic topics from sentence embeddings
+    - Word embeddings     — dense learned features for classification
 
-  Next: Exercise 7 — matrix factorisation for recommender systems.
-  You will see that the same optimisation-drives-features principle
-  powers user-item embeddings, which powers Netflix, Spotify, and
-  every modern recommender.
+  Next: Exercise 7 — matrix factorisation for recommender systems. The
+  same factorise-a-co-occurrence-matrix idea you used here powers
+  user-item embeddings.
 """
 )

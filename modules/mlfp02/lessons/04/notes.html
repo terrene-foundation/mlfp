@@ -35,218 +35,282 @@
   A/B Testing and Experiment Design
 </h1>
 
-<p class="lead">~45 minutes · 13 slides · ~3.5 min per slide</p>
+<p class="lead">
+  Total time: ~45 minutes &nbsp;·&nbsp; 14 slides &nbsp;·&nbsp; ~3 min per slide average
+</p>
 
 <p>
-  This lesson is where statistics becomes decision-making. Your tone
-  should shift from "here is the math" to "here is the workflow". The
-  pre-registration slide and the SRM slide are the ones that will save
-  learners time and money in real projects.
+  This is the payoff lesson of M2's first half: everything from 2.2 and
+  2.3 lands in one end-to-end experiment. The two teaching priorities are
+  discipline (pre-register, check SRM before outcomes) and the correct
+  sample-size number — 11,554 per arm, not the halved value students
+  expect. The worked example runs on the course experiment data with its
+  designed 40/35/15/10 split.
 </p>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
   <h3>A/B Testing and Experiment Design</h3>
   <p>
-    Open: "2.3 gave you hypothesis tests. 2.4 assembles them into
-    industrial A/B testing — the workflow Booking.com, Grab and Shopee
-    all run. By the end of the day you will run a full A/B test from
-    scratch on a BOGO promotion."
+    Open: "2.3 gave you the statistics — p-values, power, corrections.
+    Today we wrap them in the process that keeps you honest:
+    randomisation, pre-registration, power analysis, and the SRM check.
+    By the end you'll run the full loop on real experiment data."
   </p>
-  <div class="transition">→ "Why randomisation is the foundation."</div>
+  <div class="transition">→ "Why does randomisation even work?"</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Randomisation</span></div>
-  <h3>Why randomisation</h3>
+  <h3>Why randomisation works</h3>
   <p>
-    State the fundamental problem of causal inference. "We never see
-    both worlds for the same person. Randomisation is the trick that
-    makes the two groups we do see be, on average, identical — so the
-    difference we measure is the causal effect, not some confounder."
+    Walk the figure. The population box is full of confounders — young
+    and old, low- and high-income, mixed together. Random assignment
+    splits them into control and treatment so that <em>every</em>
+    confounder — measured and, crucially, <em>unmeasured</em> — ends up
+    roughly equally in both arms.
   </p>
-  <div class="audience-cue beginner">
-    <strong>Concrete framing:</strong> "Imagine you want to test whether
-    umbrellas cause rain. You measure umbrella owners and non-owners.
-    Owners see more rain. Does that mean umbrellas cause rain? No —
-    rainy places cause umbrella ownership. Randomisation prevents
-    this kind of reverse reasoning because you assign, not observe."
-  </div>
-  <div class="transition">→ "Before touching data — pre-register."</div>
+  <p>
+    Land it: "You don't have to know what the confounders are.
+    Randomisation balances the ones you never thought to measure. That's
+    the entire causal argument of the A/B test — any systematic
+    difference in outcomes must come from the treatment, because nothing
+    else differs between the groups."
+  </p>
+  <div class="transition">→ "Before you touch data, write everything down."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Pre-registration</span></div>
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>Pre-registration</span></div>
   <h3>Pre-register before you touch the data</h3>
   <p>
-    Walk the five items. Emphasise the discipline: "Once you've seen the
-    data you cannot fairly decide the test. Your brain has already
-    adjusted. Commit everything upfront — in writing — before the first
-    user is randomised."
+    Walk the five items. Unit of randomisation — user, session, or
+    device; mixing units breaks independence. Metrics: exactly
+    <em>one</em> primary, up to three secondary, plus guardrails that
+    must not degrade. Direction of the alternative. Decision rule —
+    $\alpha$, power target, MDE. Stopping criterion.
   </p>
   <p>
-    Tell the peeking story. "The single most common way to get a false
-    positive in industry: run until significance, then stop. If you do
-    this, your false positive rate isn't 5% — it's 30-50%. Most 'wins'
-    you see reported are this."
+    Then the red box. "Peeking inflates the false-positive rate — in our
+    simulation, checking the p-value daily and stopping at the first
+    $p &lt; 0.05$ turns a 5% false-positive rate into roughly 25%.
+    Decide everything upfront: commit it in writing, or log it as run
+    parameters in <code>ExperimentTracker</code> before you see any
+    outcome."
   </p>
-  <div class="transition">→ "Power analysis before data collection."</div>
+  <div class="audience-cue beginner">
+    <strong>If beginners ask why one primary metric:</strong> "Every
+    extra metric is another lottery ticket. With one primary metric the
+    decision is unambiguous: did <em>the</em> number move, yes or no.
+    Secondary metrics are for learning, not for the ship call."
+  </div>
+  <div class="transition">→ "How many users do you need?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>Power analysis</span></div>
+  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>Power sizing</span></div>
   <h3>Power analysis — sizing</h3>
   <p>
-    Walk both formulas. Point at the pieces: "The numerator is a function
-    of how careful you want to be — $z_\alpha$ for false positives,
-    $z_\beta$ for false negatives. The denominator is the signal-to-noise
-    ratio. If the effect is big relative to noise, you need fewer
-    observations."
+    Show both forms: the general $z$-test version and the proportion
+    version with baseline $p_0$ and lift $\Delta$. Then run the numbers
+    on the slide: detect a 1-percentage-point lift from an 8% baseline
+    at 80% power, $\alpha = 0.05$ → $n \approx 11{,}600$ per arm, about
+    23,100 in total.
   </p>
   <p>
-    Work the numbers: "Baseline 8% conversion. Want to detect 1pp lift.
-    $p(1-p) = 0.074$. $(z_{0.025} + z_{0.80})^2 \approx 7.85$. So
-    $n = 2 \cdot 7.85 \cdot 0.074 / 0.0001 \approx 11{,}600$ — wait, per
-    arm is half. Around 5,800 per arm. 11,600 total."
+    Emphasise the warning at the bottom of the slide: "The formula
+    already gives <em>per arm</em>. Do not halve it. The most common
+    sizing mistake in industry is quoting 5,800 here — that under-powers
+    the experiment and wastes the whole run."
   </p>
-  <div class="audience-cue expert">
-    <strong>For experts:</strong> mention that this is the Normal
-    approximation; for small $n$ or unbalanced arms, use
-    <code>statsmodels.stats.power.NormalIndPower</code>.
-  </div>
-  <div class="transition">→ "Power curves to see the scaling."</div>
+  <div class="transition">→ "What does the power curve look like?"</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 5</span><span>~2 min</span><span>Power curves</span></div>
   <h3>Power curves</h3>
   <p>
-    Show how power grows with $n$ for two effect sizes. Key insight:
-    "Power scales with $\delta^2$. Halve the effect, quadruple the
-    sample. If your PM says 'we expect a 0.5pp lift', check whether
-    they can afford the sample size. Most of the time they cannot."
+    Walk the two curves. The red curve is the small effect
+    ($\delta = 1\%$) — power crawls toward 0.8 slowly, needing huge $n$.
+    The teal curve is the big effect ($\delta = 5\%$) — power shoots up
+    fast. The dashed line at 0.8 is the conventional target.
   </p>
-  <div class="transition">→ "The first check before outcome analysis."</div>
+  <p>
+    Read the footer: "Required $n$ scales with $1/\delta^2$ — halve the
+    effect, quadruple the sample size. This is why the MDE conversation
+    with the business is the most important slide in the deck: 'what is
+    the smallest lift worth shipping?'"
+  </p>
+  <div class="transition">→ "The experiment is live. First check — before any outcome."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>SRM</span></div>
   <h3>SRM — the first check you run</h3>
   <p>
-    Sell SRM as a hygiene check: "Before you look at whether the
-    treatment worked, check whether the randomiser worked. If you asked
-    for 50/50 and got 52/48 on 10,000 users, something is broken — bot
-    filter, redirect bug, pipeline error. That analysis is contaminated."
+    "Before you look at a single outcome metric, check the allocation."
+    Walk the chi-squared formula and the code: intended 50/50, observed
+    5,212 vs 4,788 → $\chi^2 = 17.98$, $p = 0.00002$. Sample ratio
+    mismatch.
   </p>
   <p>
-    Walk the chi-squared. Stress the threshold: "Use 0.0001, not 0.05.
-    SRM is a hygiene alarm. You want very few false alarms that cause
-    engineers to waste time debugging nothing."
+    Read the amber box carefully — three teaching points. "Test against
+    the <em>designed</em> split, not a default 50/50. Use a strict
+    threshold — this course flags SRM at $p &lt; 0.01$, because SRM is a
+    data-quality alarm, not a hypothesis. And if it fires: do not ship.
+    Something in the randomisation or logging pipeline is broken, and no
+    analysis can rescue the data."
   </p>
-  <div class="audience-cue beginner">
-    <strong>Story:</strong> "At one company I worked with, SRM caught a
-    bug where the treatment variant took 50ms longer to load. Users on
-    slow connections timed out before reaching the randomiser. The
-    control had 10% more users. Without SRM, we would have concluded
-    'treatment kills conversions' and rolled back a good feature."
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> common SRM causes — bot traffic,
+    logging losses concentrated in one arm, hash-collision in the
+    bucketing function, re-randomisation on user properties. The
+    chi-squared test detects the symptom, not the cause.
   </div>
-  <div class="transition">→ "Now the framework for data collection."</div>
+  <div class="transition">→ "Zooming out — where does experiment data come from?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Collection framework</span></div>
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Collection framework</span></div>
   <h3>Data Collection Framework</h3>
   <p>
-    Walk the five questions. For each, give a concrete example from the
-    BOGO campaign:
+    Walk the five rows briskly. Why: hypothesis, business value, the
+    decision it drives — no experiment without a decision attached.
+    What: primary, secondary, guardrail metrics plus budget. Where:
+    internal sources (CRM, POS, app events) versus external
+    (data.gov.sg, APIs). How: at-start activities (review, discover,
+    validate) versus continuous collection. Frequency: collection vs
+    analysis cadence — and duration set by the power calculation, not by
+    the calendar.
   </p>
-  <ul>
-    <li><strong>Why:</strong> "Does BOGO increase conversion by 1pp? If yes, ship. If no, kill."</li>
-    <li><strong>What:</strong> "Primary: conversion rate. Secondary: AOV, RPV. Guardrail: page load time."</li>
-    <li><strong>Where:</strong> "Internal: event stream, order database. External: none needed."</li>
-    <li><strong>How:</strong> "Real-time event logging; nightly batch for reconciliation."</li>
-    <li><strong>Frequency:</strong> "Run for 14 days minimum to cover both weekday and weekend patterns."</li>
-  </ul>
-  <div class="transition">→ "The common pitfalls."</div>
+  <div class="transition">→ "And the ways it goes wrong."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Common pitfalls</span></div>
+  <div class="meta"><span class="badge">Slide 8</span><span>~2 min</span><span>Data pitfalls</span></div>
   <h3>Common data pitfalls</h3>
   <p>
-    Walk the list. Silos and red tape are organisational — name them
-    honestly. Aggregated-only is the one to watch in finance and public-
-    sector data. Selection bias is almost inevitable; the fix is logging
-    exposure, not just outcomes. Temporal leakage is what kills
-    experiments during marketing pushes.
+    Walk the five quickly, one sentence each. Silos: metrics spread
+    across systems that never get joined. Red tape: three sign-offs
+    before you can touch data — plan for it. Aggregated only: daily
+    totals with no user-level rows mean no proportion tests. Selection
+    bias: only completers get logged, so your sample is the survivors.
+    Temporal leakage: the experiment window overlaps a marketing push —
+    the lift belongs to the campaign, not your variant.
   </p>
-  <div class="transition">→ "Hands on the BOGO example."</div>
+  <div class="transition">→ "Now the worked example — sizing first."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>BOGO sample size</span></div>
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Worked sizing</span></div>
   <h3>Worked: BOGO sample size</h3>
   <p>
-    Run the code. Read the result aloud. "5,800 per arm. At our traffic of
-    1,000 users a day, that's 12 days minimum — pad to 14 to cover a full
-    week cycle."
+    Walk the code. Baseline conversion $p_0 = 0.08$, minimum lift worth
+    detecting $\Delta = 0.01$, $\alpha = 0.05$, power 0.80. Pull the two
+    $z$ values from <code>stats.norm.ppf</code>, plug into the
+    proportion formula, ceil up.
   </p>
-  <div class="transition">→ "Load data and SRM."</div>
+  <p>
+    The answer: <strong>11,554 per arm — 23,108 total</strong>. Write it
+    on the board. "Remember this number. Everyone's gut says a few
+    thousand. A 1pp lift at an 8% baseline is a small signal in a lot of
+    noise — that's what it costs."
+  </p>
+  <div class="transition">→ "Data collected. First check."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Load and SRM</span></div>
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Worked SRM</span></div>
   <h3>Worked: load and SRM check</h3>
   <p>
-    Run the code. Show that $p_{\text{SRM}}$ comes out clean. "Passed.
-    Now we can look at outcomes."
+    Walk the code. Load <code>experiment_data.parquet</code>. The
+    experiment was <em>designed</em> 40/35/15/10 across control,
+    treatment_a, treatment_b, variant_c — so the expected counts come
+    from those weights, never a flat 50/50. The all-arms chi-squared
+    gives $p \approx 0$: SRM — variant_c is over-allocated relative to
+    design.
   </p>
   <p>
-    Tell them to put the assert in their pipeline. "Every experiment
-    analysis function I have ever written starts with this assert. Catches
-    bugs automatically."
+    Then the recovery: "The four-arm design is compromised, but the
+    control vs treatment_a pair passes its own SRM check at the
+    <em>designed</em> 40:35 ratio — $p \approx 0.62$. We analyse that
+    pair and flag the rest. Note the assertion: below 0.01 we stop —
+    do not analyse a mismatched pair."
   </p>
-  <div class="transition">→ "The primary test."</div>
+  <div class="audience-cue beginner">
+    <strong>If beginners ask why 40:35 and not 50:50:</strong> "Testing
+    the pair against 50/50 would flag a perfectly healthy split as SRM,
+    because the design <em>intended</em> unequal arms. Always test
+    against what was designed."
+  </div>
+  <div class="transition">→ "Now the outcome."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Primary test</span></div>
+  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>Worked primary test</span></div>
   <h3>Worked: the primary test</h3>
   <p>
-    Walk the code. z-test for proportions gives p-value. CI tells us how
-    big the effect really is. Lift is the point estimate. Report all
-    three.
+    Walk the code. First the metric definition — conversion is a
+    <em>qualifying order</em>, <code>metric_value</code> of at least 50
+    dollars. "The metric definition is a business decision made at
+    pre-registration, not a line of code you improvise."
   </p>
-  <div class="transition">→ "Write the recommendation."</div>
+  <p>
+    Compute the two proportions: control ≈ 19.1%, treatment_a ≈ 24.8%.
+    Then the two-proportion $z$-test with the pooled standard error
+    under the null, the two-sided p-value, and the unpooled 95% CI for
+    the difference with 1.96. "Three numbers to report: the lift, its
+    interval, and the p-value. Point estimate alone is not an answer."
+  </p>
+  <div class="transition">→ "Say it to the business."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Reporting</span></div>
   <h3>Reporting to the business</h3>
   <p>
-    Read the recommendation aloud. Point at each piece: the decision
-    (ship), the effect (1.3 pp with CI), the p-value (0.003), the
-    business value ($240K/quarter), the guardrail check. This is the
-    shape of every good A/B test report.
+    Read the green box as a template — these are illustrative numbers
+    for the BOGO case. "Ship. Conversion increased 1.3 percentage
+    points, 95% CI 0.4 to 2.2, p = 0.003, exceeding the pre-registered
+    MDE of 1pp. Roughly 240K dollars additional revenue per quarter. No
+    SRM. No guardrail degradation."
   </p>
   <p>
-    Tell them what to NEVER do: "Don't say 'we prove'. Don't quote just
-    a p-value without a CI. Don't report the effect in percent when the
-    stakeholder wants dollars."
+    Unpack the craft: "Plain language. Uncertainty quoted, not hidden.
+    Connected to money. And never say 'we prove' — you accumulate
+    evidence, you never prove. The whole paragraph is four sentences;
+    if your report needs more, put it in an appendix."
   </p>
-  <div class="transition">→ "Three rookie mistakes and recap."</div>
+  <div class="transition">→ "Three ways to blow it all up."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~2 min</span><span>Recap</span></div>
-  <h3>Rookie mistakes + what you can now do</h3>
+  <div class="meta"><span class="badge">Slide 13</span><span>~2 min</span><span>Rookie mistakes</span></div>
+  <h3>Three rookie mistakes</h3>
   <p>
-    Walk the three mistakes one more time. Then the skills list. Tease
-    2.5: "You have M2's experimental track. Now we pivot to the modelling
-    track — linear regression from first principles. Same $t$-statistic
-    you learned today, but applied to every coefficient."
+    Walk the three red boxes. One: peeking — monitoring p-values and
+    stopping when significant; the simulation from slide 3 says this
+    roughly quintuples your false-positive rate. Two: no power analysis
+    — underpowered experiments either waste the run or ship noise.
+    Three: skipping SRM — "if allocation is broken, nothing else
+    matters. SRM is the cheapest check you'll ever run and the most
+    expensive one to skip."
   </p>
-  <div class="transition">→ End. 10-min break.</div>
+  <div class="transition">→ "Recap and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the bullets: pre-register with MDE, $\alpha$, power; compute
+    sample size; detect SRM; apply the Why/What/Where/How/Frequency
+    framework; run a proportion $z$-test with CI; report in business
+    language. Tease 2.5: "A/B testing compares two groups. But prices
+    don't come in two groups — they vary continuously. Next lesson:
+    linear regression from first principles."
+  </p>
+  <div class="transition">→ End of Lesson 2.4. Ten-minute break.</div>
 </div>
 
 <nav class="lesson-nav">

@@ -38,10 +38,12 @@
   tokens — data and compute that most teams do not have. Transfer learning
   sidesteps this: take a model pre-trained on a massive general dataset, freeze
   the early layers that capture universal features, and fine-tune the later layers
-  on your specific task. Today you fine-tune ResNet-18 for Singapore image
-  classification and BERT for text classification, export both to ONNX with
-  Kailash's <code>OnnxBridge</code>, and serve predictions with
-  <code>InferenceServer</code> — the complete pipeline from research to production.
+  on your specific task. Today you fine-tune ResNet-18 for CIFAR‑10 image
+  classification and BERT for news‑topic classification, add adapters that
+  train about 1% of a frozen network, export the image model to ONNX with
+  Kailash's <code>OnnxBridge</code>, and serve it with
+  <code>InferenceServer</code> from the model registry — the complete
+  pipeline from research to production.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -117,7 +119,7 @@
 
   <!-- Bottom labels -->
   <text x="105" y="200" text-anchor="middle" font-size="10" fill="#3B82F6">Pre-trained on</text>
-  <text x="105" y="215" text-anchor="middle" font-size="10" fill="#3B82F6">ImageNet (14M images)</text>
+  <text x="105" y="215" text-anchor="middle" font-size="10" fill="#3B82F6">ImageNet-1k (1.28M images)</text>
   <text x="300" y="200" text-anchor="middle" font-size="10" fill="#F59E0B">Adapted to your</text>
   <text x="300" y="215" text-anchor="middle" font-size="10" fill="#F59E0B">domain (5K images)</text>
   <text x="495" y="200" text-anchor="middle" font-size="10" fill="#22C55E">Your specific</text>
@@ -152,7 +154,7 @@
 <ul>
   <li><strong>Layers 1-3:</strong> Syntax — part-of-speech, dependency relations (universal to all English)</li>
   <li><strong>Layers 4-8:</strong> Semantics — word meaning, coreference (partially transferable)</li>
-  <li><strong>Layers 9-12:</strong> Task-specific — sentiment, topic, NER (not transferable)</li>
+  <li><strong>Layers 9-12:</strong> The most task‑ and objective‑specific — these change most during fine‑tuning</li>
 </ul>
 
 <h3>Three transfer learning strategies</h3>
@@ -236,8 +238,8 @@
     task) should change slowly. Empirically, lower layers have higher Fisher
     information for the pre-training objective, which is why LLRD applies
     lower learning rates to them. This connection is formalised in Elastic
-    Weight Consolidation (EWC), covered in the fine-tuning survey in
-    Lesson 6.2.
+    Weight Consolidation (EWC; Kirkpatrick et al., 2017), which penalises
+    changes to each weight in proportion to its Fisher information.
   </p>
 </div>
 
@@ -250,6 +252,9 @@
 </p>
 
 $$ \mathcal{L}_{\text{fine-tune}} = \mathcal{L}_{\text{task}} + \lambda \|\theta - \theta_{\text{pretrained}}\|^2 $$
+<p>
+  (This explicit form is known as L2‑SP, Li et al., 2018.)
+</p>
 
 <p>
   This $L_2$ penalty toward the pre-trained weights is implicit when you use
@@ -328,13 +333,13 @@ for param in model.parameters():
     param.requires_grad = False
 
 # Replace final FC layer with new head
-num_classes = 2  # e.g., mask / no mask
+num_classes = 10  # e.g. CIFAR-10, as in Exercise 7
 model.fc = nn.Linear(model.fc.in_features, num_classes)
 # Only model.fc parameters are trainable
 
 # Data augmentation for small datasets (critical)
 transform_train = transforms.Compose([
-    transforms.RandomResizedCrop(224),
+    transforms.RandomResizedCrop(224),           # Exercise 7 resizes CIFAR-10 to 96x96 instead
     transforms.RandomHorizontalFlip(),
     transforms.ColorJitter(brightness=0.2, contrast=0.2),
     transforms.ToTensor(),
@@ -342,11 +347,11 @@ transform_train = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-# Training with low learning rate
+# Only the new head trains, so a normal learning rate is fine for it
 optimizer = torch.optim.Adam(model.fc.parameters(), lr=1e-3)
 criterion = nn.CrossEntropyLoss()
 
-# Train for 10 epochs (fast — only 512 * 2 = 1024 params updating)
+# Train for a few epochs (fast — only 512 * 10 + 10 = 5,130 params updating)
 for epoch in range(10):
     model.train()
     for images, labels in train_loader:
@@ -369,72 +374,89 @@ optimizer = torch.optim.Adam([
     {"params": model.fc.parameters(), "lr": 1e-3}        # Normal
 ])
 
-# Train for 10 more epochs with unfrozen top block
-# Typically improves accuracy by 2-5 percentage points</code></pre>
+# Train a few more epochs with the unfrozen top block; keep it only if
+# VALIDATION accuracy improves — the gain depends on how far your data is from ImageNet</code></pre>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>NLP Transfer Learning: BERT Fine-Tuning</h2>
 
-<pre><code class="language-python">from transformers import (
-    BertForSequenceClassification,
-    BertTokenizer,
-    Trainer,
-    TrainingArguments
-)
+<pre><code class="language-python">import polars as pl
+from datasets import Dataset
+from transformers import (BertForSequenceClassification, BertTokenizer,
+                          Trainer, TrainingArguments)
 
-# Load pre-trained BERT
+# AG News headlines shipped with the course (the data of Exercise 4 file 04)
+train_df = pl.read_parquet("data/mlfp05/ag_news.parquet")        # 5,000 headlines, labels 0-3
+eval_df = pl.read_parquet("data/mlfp05/ag_news_test.parquet")    # 1,000 headlines
+
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 model = BertForSequenceClassification.from_pretrained(
-    "bert-base-uncased",
-    num_labels=6  # e.g., 6 complaint categories
+    "bert-base-uncased", num_labels=4,               # World, Sports, Business, Sci/Tech
 )
 
-# Tokenise dataset
-def tokenize(examples):
-    return tokenizer(
-        examples["text"],
-        padding="max_length",
-        truncation=True,
-        max_length=128
-    )
+def tokenize(batch):
+    return tokenizer(batch["text"], padding="max_length", truncation=True, max_length=64)
 
-train_ds = train_dataset.map(tokenize, batched=True)
-eval_ds = eval_dataset.map(tokenize, batched=True)
+train_ds = Dataset.from_dict(train_df.to_dict(as_series=False)).map(tokenize, batched=True)
+eval_ds = Dataset.from_dict(eval_df.to_dict(as_series=False)).map(tokenize, batched=True)
 
-# Training arguments — note the low learning rate
-training_args = TrainingArguments(
-    output_dir="./results",
-    num_train_epochs=3,
+args = TrainingArguments(
+    output_dir="/tmp/bert_agnews",
+    num_train_epochs=2,
     per_device_train_batch_size=16,
-    learning_rate=2e-5,        # 10-100x lower than training from scratch
-    weight_decay=0.01,          # Regularisation
-    warmup_steps=100,           # Gradual LR ramp-up
-    evaluation_strategy="epoch"
+    learning_rate=2e-5,             # 10-100x lower than training from scratch
+    weight_decay=0.01,              # regularisation
+    warmup_steps=100,               # gradual LR ramp-up
+    eval_strategy="epoch",          # (the old name evaluation_strategy was removed)
+    dataloader_pin_memory=False,    # avoids a warning on Apple MPS
+    report_to="none",
 )
+trainer = Trainer(model=model, args=args, train_dataset=train_ds, eval_dataset=eval_ds)
+trainer.train()                     # minutes on a GPU; much longer on a laptop CPU
+print(trainer.evaluate())           # eval_loss on the 1,000 held-out headlines</code></pre>
+<p>
+  The pre‑trained body is kept and a new, randomly initialised 4‑way
+  head is added (transformers warns that the head is untrained — that is
+  expected). <code>Trainer</code> runs the loop, evaluation and
+  checkpointing; Exercise 4 (file 04) writes the same fine‑tuning loop by
+  hand, with layer freezing, so you can see every step. We do not quote a
+  "typical" accuracy here: compare your fine‑tuned BERT against the
+  from‑scratch Transformer and LSTM of Exercise 4 on the same test
+  headlines — that comparison <em>is</em> the transfer advantage.
+</p>
 
-# HuggingFace Trainer handles training loop, evaluation, checkpointing
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=train_ds,
-    eval_dataset=eval_ds
-)
-trainer.train()
+<h3>Using a fine-tuned model: the pipeline API</h3>
+<p>
+  For inference, Hugging Face's <code>pipeline</code> wraps tokenisation,
+  the forward pass and softmax in one call, and returns readable labels
+  if the model's config has them:
+</p>
+<pre><code class="language-python">from transformers import pipeline
 
-# Typical result on 2000 examples:
-# Fine-tuned BERT: 87% accuracy
-# LSTM from scratch: 72% accuracy
-# The 15-point gap is the transfer learning advantage</code></pre>
+model.config.id2label = {0: "World", 1: "Sports", 2: "Business", 3: "Sci/Tech"}
+model.config.label2id = {v: k for k, v in model.config.id2label.items()}
+clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device="cpu")
+print(clf(["Stocks rally as central bank holds rates", "Striker signs four-year deal"]))
+# -&gt; [{'label': ..., 'score': ...}, {'label': ..., 'score': ...}]</code></pre>
+<p>
+  Before fine‑tuning, the scores are near 0.25 for every class (the head
+  is random); after fine‑tuning they should be confident and correct on
+  headlines like these. A topic classifier only knows its four topics:
+  give it a customer complaint and it will still confidently pick one of
+  World, Sports, Business or Sci/Tech — Exercise 4 file 04 ends on exactly
+  this out‑of‑distribution trap.
+</p>
+
 
 <div class="callout theory">
   <span class="label">Theory</span>
   <p>
     BERT's pre-training on 3.3 billion words of English text gives it a deep
     understanding of syntax, semantics, and world knowledge. When you fine-tune
-    on 2,000 complaint examples, it does not need to learn "what English is" —
-    it already knows. It only needs to learn "what makes a billing complaint
-    different from a technical complaint". This is why 2,000 examples is enough
-    for fine-tuning but not for training from scratch.
+    on 5,000 AG News headlines, it does not need to learn "what English is" —
+    it already knows. It only needs to learn "what makes a business headline
+    different from a sports headline". This is why a few thousand examples are
+    enough for fine‑tuning but not for training a language model from scratch.
   </p>
 </div>
 
@@ -467,26 +489,26 @@ trainer.train()
   <line x1="80" y1="120" x2="660" y2="120" stroke="#E2E8F0" stroke-width="0.5"/>
   <line x1="80" y1="80" x2="660" y2="80" stroke="#E2E8F0" stroke-width="0.5"/>
 
-  <!-- From scratch curve (red, slow, plateaus at 71%) -->
+  <!-- From scratch curve (red, slow, lower plateau) — ILLUSTRATIVE -->
   <polyline points="80,200 120,185 160,172 200,160 250,148 300,138 370,125 440,118 515,112 590,108 660,106" stroke="#EF4444" stroke-width="2.5" fill="none"/>
-  <text x="665" y="100" font-size="10" fill="#EF4444" font-weight="600">71%</text>
+  <text x="665" y="100" font-size="10" fill="#EF4444" font-weight="600">lower</text>
   <text x="600" y="88" font-size="9" fill="#EF4444">From scratch</text>
 
-  <!-- Transfer learning curve (green, fast, reaches 94%) -->
+  <!-- Transfer learning curve (green, fast, higher) — ILLUSTRATIVE -->
   <polyline points="80,96 120,76 160,68 200,63 250,60 300,58 370,57" stroke="#22C55E" stroke-width="2.5" fill="none"/>
-  <text x="375" y="50" font-size="10" fill="#22C55E" font-weight="600">94%</text>
+  <text x="375" y="50" font-size="10" fill="#22C55E" font-weight="600">higher</text>
   <text x="250" y="46" font-size="9" fill="#22C55E">Transfer learning</text>
 
   <!-- Annotation: starting point -->
   <circle cx="80" cy="96" r="4" fill="#22C55E"/>
   <line x1="85" y1="96" x2="130" y2="80" stroke="#94A3B8" stroke-width="0.8" stroke-dasharray="3 2"/>
-  <text x="135" y="78" font-size="8" fill="#94A3B8">Pre-trained start: ~60%</text>
+  <text x="135" y="78" font-size="8" fill="#94A3B8">Pre-trained start: well above chance</text>
 
   <circle cx="80" cy="200" r="4" fill="#EF4444"/>
   <line x1="85" y1="195" x2="130" y2="185" stroke="#94A3B8" stroke-width="0.8" stroke-dasharray="3 2"/>
-  <text x="135" y="183" font-size="8" fill="#94A3B8">Random start: ~0%</text>
+  <text x="135" y="183" font-size="8" fill="#94A3B8">Random start: chance level</text>
 </svg>
-<figcaption>Transfer learning starts with pre-trained features (~60% accuracy on day one) and converges to 94% in 10 epochs. Training from scratch starts at 0% and reaches only 71% after 50 epochs. The gap is the transfer learning dividend.</figcaption>
+<figcaption><strong>Illustrative shape, not a measured result.</strong> A transfer model starts from useful features, so it is well above chance after the first epoch and plateaus higher and sooner; a randomly initialised model starts at chance and needs far more epochs and labels. Exercise 7 (files 01–03) measures the real curves on CIFAR‑10.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -495,40 +517,61 @@ trainer.train()
 <div class="callout kailash">
   <span class="label">Kailash Engine</span>
   <p>
-    <code>OnnxBridge</code> exports any PyTorch model to ONNX (Open Neural Network
-    Exchange) format — a portable representation that runs on any ONNX runtime
-    (CPU, GPU, edge devices). <code>InferenceServer</code> wraps the ONNX model
-    with <code>predict()</code>, <code>predict_batch()</code>, and
-    <code>warm_cache()</code> methods. Together, they take a fine-tuned model
-    from notebook to production in three lines of code.
+    <code>OnnxBridge</code> exports a PyTorch model to ONNX (Open Neural
+    Network Exchange) — a portable file that runs on any ONNX Runtime (CPU,
+    GPU, edge devices) without PyTorch. <code>InferenceServer</code> serves a
+    model <em>registered</em> in the <code>ModelRegistry</code>: it is
+    created with the coroutine <code>InferenceServer.from_registry(name,
+    registry=..., version=..., runtime="onnx")</code>, loads the version's
+    <code>model.onnx</code> on <code>await server.start()</code>, and
+    answers <code>await server.predict({"records": [...]})</code> with a
+    plain mapping. There is no <code>predict_batch</code>,
+    <code>warm_cache</code> or result object — one <code>predict</code>
+    call takes a list of records, so batching is just sending more records.
   </p>
 </div>
 
-<pre><code class="language-python">from kailash_ml import OnnxBridge, InferenceServer
+<pre><code class="language-python">import asyncio
+from pathlib import Path
+import numpy as np
+import torch
+from kailash_ml import OnnxBridge, InferenceServer
+from shared.mlfp05.ex_7 import (FlatImageAdapter, N_PIXELS, attach_onnx_artifact,
+                                images_to_records, init_engines, register_model)
 
-# Export fine-tuned ResNet to ONNX
-bridge = OnnxBridge()
-bridge.export(
-    model=model,
-    dummy_input=torch.randn(1, 3, 224, 224),
-    output_path="resnet_finetuned.onnx",
-    input_names=["image"],
-    output_names=["prediction"],
-    dynamic_axes={"image": {0: "batch_size"}}
-)
+conn, tracker, exp_name, registry, _ = init_engines()       # Exercise 7's tracker + registry
 
-# Serve with InferenceServer
-server = InferenceServer(model_path="resnet_finetuned.onnx")
-server.warm_cache()  # Pre-load model into memory
+# 1. Export behind a flat-row adapter: the server feeds ONE flat row per record
+serving = FlatImageAdapter(model.cpu()).eval()              # model: the fine-tuned ResNet-18
+path = Path("/tmp/transfer_resnet18.onnx")
+res = OnnxBridge().export(serving, "torch", output_path=path,
+                          sample_input=torch.randn(2, N_PIXELS))   # 2-row trace keeps batch dynamic
+assert res.success, res.error_message
 
-# Single prediction
-result = server.predict(image_tensor)
-print(f"Class: {result.label}, Confidence: {result.confidence:.3f}")
+# 2. Register the trained model, then attach model.onnx to that version
+v = register_model(registry, "cifar10_transfer", model, val_acc, final_loss)
+attach_onnx_artifact("cifar10_transfer", v.version, path)
 
-# Batch prediction (faster for multiple images)
-results = server.predict_batch(image_batch)
-for r in results:
-    print(f"  {r.label}: {r.confidence:.3f}")</code></pre>
+# 3. Serve from the registry (all async)
+async def serve(images):
+    server = await InferenceServer.from_registry(
+        "cifar10_transfer", registry=registry, version=v.version, runtime="onnx")
+    await server.start()
+    out = await server.predict({"records": images_to_records(images)})
+    await server.stop()
+    return np.asarray(out["predictions"], dtype=np.float32)  # one logit row per image
+
+logits = asyncio.run(serve(images))      # images: preprocessed (N, 3, 96, 96) tensor</code></pre>
+<p>
+  We ran exactly this flow on the ImageNet ResNet‑18 with a fresh 10‑class
+  head and four random 96×96 inputs: the served logits matched PyTorch's to
+  within $2 \times 10^{-6}$ and gave the same classes. (The exporter may
+  print an opset‑conversion traceback before succeeding; that is log noise
+  — <code>res.success</code> is the real signal.) Exercise 7 (file 05) runs
+  it on the trained CIFAR‑10 model and also checks parity with
+  <code>OnnxBridge.validate</code>.
+</p>
+
 
 <figure class="diagram">
 <svg viewBox="0 0 720 160" class="illustration" xmlns="http://www.w3.org/2000/svg">
@@ -567,6 +610,58 @@ for r in results:
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
+<h2>Adapters: Train ~1% Inside a Frozen Backbone</h2>
+
+<p>
+  Freezing the backbone and training only a new head is cheap but can be
+  too rigid; full fine‑tuning is flexible but updates (and must store)
+  every weight per task. <strong>Adapters</strong> sit in between: small
+  bottleneck modules inserted <em>inside</em> the frozen network, trained
+  together with the head.
+</p>
+<div class="annotated-equation">
+  $$ \text{Adapter}(x) = x + W_{\text{up}}\,\mathrm{ReLU}(W_{\text{down}}\,x), \qquad W_{\text{up}} = 0 \text{ at initialisation} $$
+  <div class="annotations">
+    <span>$W_{\text{down}}$ — project $d \to r$ (bottleneck)</span>
+    <span>$W_{\text{up}}$ — project $r \to d$, zero‑initialised</span>
+    <span>skip connection — adapter starts as the identity</span>
+  </div>
+</div>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class BottleneckAdapter(nn.Module):
+    def __init__(self, dim, bottleneck=64):
+        super().__init__()
+        self.down = nn.Linear(dim, bottleneck)
+        self.up = nn.Linear(bottleneck, dim)
+        nn.init.zeros_(self.up.weight)            # start as the identity
+        nn.init.zeros_(self.up.bias)
+
+    def forward(self, x):
+        return x + self.up(F.relu(self.down(x)))
+
+a = BottleneckAdapter(256)
+x = torch.randn(2, 256)
+print(torch.equal(a(x), x))                                   # True: no change at step 0
+print(sum(p.numel() for p in a.parameters()),                 # 33088
+      sum(p.numel() for p in BottleneckAdapter(512).parameters()))  # 66112</code></pre>
+<p>
+  Exercise 7 (file 04) inserts one adapter after ResNet‑18's
+  <code>layer3</code> (256 channels) and one after <code>layer4</code>
+  (512 channels), applied to the channel‑pooled features. Its wrapper adds
+  only the adapter's <em>change</em> (<code>adapted − pooled</code>) back
+  onto the feature map, so the network computes exactly the ImageNet
+  features at step 0. Trainable parameters: 33,088 + 66,112 = 99,200 for
+  the adapters plus 5,130 for the 10‑class head — about 104K of roughly
+  11.3M, or about 1%. Because the backbone never changes, one copy of it
+  can serve many tasks, each with its own few‑hundred‑KB adapter. This is
+  the same idea as LoRA in Lesson 6.2: a small trainable change on top of
+  a frozen model.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
 <h2>Architecture Selection Guide</h2>
 
 <p>
@@ -577,7 +672,7 @@ for r in results:
 <table>
   <thead><tr><th>Data type</th><th>Best architecture</th><th>When to transfer</th><th>Pre-trained source</th></tr></thead>
   <tbody>
-    <tr><td>Images</td><td>CNN / ViT</td><td>Always</td><td>ImageNet (14M images)</td></tr>
+    <tr><td>Images</td><td>CNN / ViT</td><td>Always</td><td>ImageNet‑1k (1.28M images; torchvision's ResNet‑18 weights)</td></tr>
     <tr><td>Text</td><td>Transformer</td><td>Always</td><td>BERT/GPT (billions of tokens)</td></tr>
     <tr><td>Time series</td><td>LSTM / Transformer</td><td>Sometimes</td><td>Domain-specific corpora</td></tr>
     <tr><td>Graphs</td><td>GNN</td><td>Rarely</td><td>Task-specific (graph structures vary)</td></tr>
@@ -591,9 +686,9 @@ for r in results:
     The "tabular = never transfer" rule has an exception: foundation models
     for tabular data (TabPFN, TabR) are emerging. These models are pre-trained
     on thousands of synthetic tabular datasets and can zero-shot predict on
-    new tables. As of 2025, they are competitive with gradient boosting on
-    small datasets (&lt;10K rows) but not yet dominant. Watch this space — M6.2
-    discusses adapter-based fine-tuning that may make tabular transfer viable.
+    new tables. Published benchmarks show them competitive with gradient boosting on
+    small datasets (around 10K rows or fewer) but not yet dominant on larger
+    ones. Treat them as a candidate to benchmark, not a default.
   </p>
 </div>
 
@@ -603,84 +698,98 @@ for r in results:
 <div class="worked-example">
   <h3>Goal</h3>
   <p>
-    Fine-tune ResNet-18 on a Singapore mask detection dataset (1,000 images,
-    2 classes: mask / no mask), export to ONNX, and serve predictions with
-    InferenceServer.
+    Follow Exercise 7's path on CIFAR‑10 (60,000 small photos, 10 classes):
+    fine‑tune an ImageNet ResNet‑18 with a frozen backbone, export it to
+    ONNX, register it and serve it with <code>InferenceServer</code>. The
+    exercise downloads CIFAR‑10 (about 170 MB) on first use and trains for
+    several epochs, so this page shows the code and the shape of the
+    results rather than quoting numbers — run Exercise 7 for yours.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1. Prepare data with augmentation.</span>
-    <pre><code class="language-python">from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
+    <span class="step-label">Step 1. Data, resized for an ImageNet backbone.</span>
+    <pre><code class="language-python">from shared.mlfp05.ex_7 import load_cifar10
 
-transform = transforms.Compose([
-    transforms.RandomResizedCrop(224),
-    transforms.RandomHorizontalFlip(),
-    transforms.ColorJitter(brightness=0.3, contrast=0.3),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-])
-
-train_ds = datasets.ImageFolder("data/mask_detection/train", transform)
-test_ds = datasets.ImageFolder("data/mask_detection/test", transform)
-train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
-test_loader = DataLoader(test_ds, batch_size=32)</code></pre>
+train_set, val_set, train_loader, val_loader = load_cifar10()
+# 50,000 train / 10,000 validation images, resized 32x32 -&gt; 96x96, ImageNet-normalised;
+# training images also get random flips and crops</code></pre>
+    <p>
+      Pre‑trained weights expect the statistics they were trained with:
+      the helper normalises with the ImageNet mean and standard deviation
+      (Mistake 5 below). Upsizing to 96×96 gives ResNet‑18's five
+      downsampling stages a 3×3 map at the end instead of 1×1.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2. Fine-tune ResNet-18.</span>
-    <pre><code class="language-python">model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+    <span class="step-label">Step 2. Freeze the backbone, train a new head.</span>
+    <pre><code class="language-python">import torch
+import torch.nn as nn
+from torchvision import models
+from shared.kailash_helpers import get_device
+
+device = get_device()
+model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
 for param in model.parameters():
     param.requires_grad = False
-model.fc = nn.Linear(512, 2)
-
+model.fc = nn.Linear(model.fc.in_features, 10)             # 5,130 trainable parameters
+model = model.to(device)
 optimizer = torch.optim.Adam(model.fc.parameters(), lr=1e-3)
 
-for epoch in range(10):
+for epoch in range(3):                                     # Exercise 7 uses 8
     model.train()
     for images, labels in train_loader:
+        images, labels = images.to(device), labels.to(device)
         optimizer.zero_grad()
-        loss = nn.CrossEntropyLoss()(model(images), labels)
+        loss = nn.functional.cross_entropy(model(images), labels)
         loss.backward()
         optimizer.step()
-
-    # Evaluate
     model.eval()
-    correct = sum(
-        (model(imgs).argmax(1) == lbls).sum().item()
-        for imgs, lbls in test_loader
-    )
-    print(f"Epoch {epoch+1}: {correct/len(test_ds):.3f}")
-# Typical: 94% accuracy after 10 epochs on 1000 images</code></pre>
+    with torch.no_grad():
+        correct = sum((model(x.to(device)).argmax(1) == y.to(device)).sum().item()
+                      for x, y in val_loader)
+    val_acc, final_loss = correct / len(val_set), loss.item()
+    print(f"epoch {epoch + 1}: val acc {val_acc:.3f}")</code></pre>
+    <p>
+      Only the head learns, so each epoch is mostly forward passes through
+      the frozen backbone. Expect validation accuracy to be well above the
+      10% chance level after the first epoch and to rise only slowly after
+      that — the head can only recombine features learned for ImageNet.
+      Unfreezing <code>layer4</code> with a small learning rate (the
+      progressive‑unfreezing snippet above), or adding adapters, is the
+      next lever.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 3. Export to ONNX and serve.</span>
-    <pre><code class="language-python">from kailash_ml import OnnxBridge, InferenceServer
-
-bridge = OnnxBridge()
-bridge.export(model, torch.randn(1, 3, 224, 224), "mask_detector.onnx")
-
-server = InferenceServer(model_path="mask_detector.onnx")
-server.warm_cache()
-
-# Predict on a new image
-result = server.predict(test_image)
-print(f"Prediction: {result.label} ({result.confidence:.1%})")
-# → Prediction: mask (97.3%)</code></pre>
+    <span class="step-label">Step 3. Export, register, serve.</span>
+    <p>
+      Exactly the Kailash flow above: wrap with
+      <code>FlatImageAdapter</code>, export with a 2‑row sample, register
+      with <code>register_model</code>, attach <code>model.onnx</code> with
+      <code>attach_onnx_artifact</code>, then
+      <code>InferenceServer.from_registry</code> → <code>start</code> →
+      <code>predict</code>. Feed it a few validation images
+      (<code>images, _ = next(iter(val_loader))</code>) and check that the
+      served classes match <code>model(images).argmax(1)</code>.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 4. Compare with training from scratch.</span>
-    <pre><code class="language-python"># Train same ResNet-18 from scratch (random initialisation)
-scratch_model = models.resnet18(weights=None)
-scratch_model.fc = nn.Linear(512, 2)
-# ... same training loop, 50 epochs ...
-
-# Results comparison:
-# Transfer learning (10 epochs):  94% accuracy, 2 minutes
-# From scratch (50 epochs):       71% accuracy, 10 minutes
-# Transfer advantage:              +23 points, 5x faster</code></pre>
+    <pre><code class="language-python">scratch = models.resnet18(weights=None)                    # random initialisation
+scratch.fc = nn.Linear(512, 10)
+n_trainable = sum(p.numel() for p in scratch.parameters() if p.requires_grad)
+print(n_trainable)                                          # 11181642: every weight must be learned</code></pre>
+    <p>
+      Train it with the same loop (optimising <em>all</em> parameters) and
+      compare validation accuracy per epoch and per labelled image.
+      Exercise 7 file 01 trains a from‑scratch CNN baseline and file 03
+      repeats the transfer model on 10%, 25%, 50% and 100% of the training
+      labels. The pattern to look for: the transfer model reaches useful
+      accuracy with far fewer labels and epochs, and the gap is largest when
+      labels are scarce. How large it is on your run is the number to report.
+    </p>
   </div>
 </div>
 
@@ -745,9 +854,9 @@ scratch_model.fc = nn.Linear(512, 2)
 <div class="try-it">
   <h3>Exercise A — Progressive unfreezing</h3>
   <p>
-    Train the mask detection model three ways: (1) frozen backbone (only new head),
+    Train the CIFAR‑10 transfer model three ways: (1) frozen backbone (only new head),
     (2) unfreeze Block 4 with LR=$10^{-5}$, (3) unfreeze all blocks with
-    LLRD ($\xi=0.9$). Compare test accuracy and training time. Plot a table
+    LLRD ($\xi=0.9$). Use a 10% subset of the training images to keep runs short. Compare test accuracy and training time. Plot a table
     comparing the three approaches.
   </p>
 </div>
@@ -755,30 +864,34 @@ scratch_model.fc = nn.Linear(512, 2)
 <div class="try-it">
   <h3>Exercise B — BERT fine-tuning</h3>
   <p>
-    Fine-tune BERT on the TREC-6 question classification dataset (6 categories:
-    abbreviation, entity, description, human, location, numeric). Compare
-    with an LSTM baseline trained from scratch on the same data. Measure
-    accuracy, F1, and training time. How large is the transfer advantage?
+    Fine‑tune BERT on AG News with the <code>Trainer</code> code above, then
+    compare it with Exercise 4's from‑scratch LSTM baseline (file 03) on the
+    same 1,000 test headlines. Measure accuracy, macro‑F1 and training time.
+    How large is the transfer advantage, and does it grow if you keep only
+    500 training headlines?
   </p>
 </div>
 
 <div class="try-it">
   <h3>Exercise C — ONNX deployment</h3>
   <p>
-    Export both the fine-tuned ResNet and the fine-tuned BERT to ONNX. Serve
-    both with InferenceServer. Measure inference latency (milliseconds per
-    prediction) for single predictions and batches of 32. How does batch
-    inference compare to single inference?
+    Serve the exported ResNet with <code>InferenceServer</code> and measure
+    latency for one <code>predict</code> call carrying 1 record versus 32
+    records. Compute milliseconds per image for each. Then time ONNX Runtime
+    directly on the same batch: how much of the server's latency is the
+    model, and how much is turning records into arrays?
   </p>
 </div>
 
 <div class="try-it">
   <h3>Exercise D — Singapore domain transfer</h3>
   <p>
-    Fine-tune BERT on Singapore Straits Times news articles classified by
-    section (Business, Singapore, World, Sport, Tech). Use only 500 training
-    examples. Compare zero-shot, few-shot prompting (from 6.1), and fine-tuning.
-    Which approach wins with only 500 labelled examples?
+    Using only 500 AG News training headlines, compare three strategies:
+    (1) frozen BERT — use the <code>[CLS]</code> vector as features and train
+    only a linear head; (2) full fine‑tuning at $2 \times 10^{-5}$; (3) full
+    fine‑tuning with LLRD ($\xi = 0.9$). Which wins with so few labels, and
+    which is most stable across three random seeds? (Lesson 6.1 adds a fourth
+    option: prompting an LLM with no training at all.)
   </p>
 </div>
 
@@ -799,8 +912,8 @@ scratch_model.fc = nn.Linear(512, 2)
   parameter-efficient alternative to full fine-tuning that freezes the entire
   model and adds small trainable matrices.
   <br>
-  <strong>M3 Feature Engineering:</strong> the architecture selection guide
-  complements M3's model selection guide for tabular data.
+  <strong>M3 Supervised ML:</strong> the architecture selection guide
+  complements M3's model selection for tabular data (gradient boosting).
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -814,11 +927,11 @@ scratch_model.fc = nn.Linear(512, 2)
   InferenceServer).
 </p>
 <p>
-  The key numbers to remember: fine-tuning a ResNet on 1,000 images reaches
-  94% accuracy; training from scratch on the same data reaches 71%. Fine-tuning
-  BERT on 2,000 examples reaches 87%; an LSTM from scratch reaches 72%. These
-  gaps are the transfer learning dividend — pre-trained features are worth
-  millions of training examples.
+  The key comparison to remember is the one you measure yourself in
+  Exercises 4 and 7: the same task, the same labelled data, a pre‑trained
+  start versus a random one. The gap — largest when labels are scarce — is
+  the transfer‑learning dividend, and adapters let you collect it while
+  training about 1% of the weights.
 </p>
 <p>
   In Lesson 5.8, we complete Module 5 with reinforcement learning — the only

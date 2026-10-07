@@ -10,7 +10,7 @@
 #   - Read a scree plot and pick n_components by variance threshold
 #   - Interpret loadings to assign business meaning to each component
 #   - Quantify compression quality via reconstruction error
-#   - Recognise when PCA is the right tool (linear, fast, invertible)
+#   - Recognise when PCA is the right tool (linear, fast, exactly invertible)
 #
 # PREREQUISITES: MLFP04 Exercise 1 (clustering) + linear algebra basics.
 #
@@ -21,12 +21,13 @@
 #   2. Build — compute SVD, verify against sklearn.PCA
 #   3. Train — scree plot + three component-selection criteria
 #   4. Visualise — loadings heatmap + reconstruction error curve
-#   5. Apply — Shopee Singapore customer analytics compression
+#   5. Apply — customer-analytics compression at a Singapore marketplace
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
+import plotly.graph_objects as go
 from sklearn.decomposition import PCA
 
 from kailash_ml import ModelVisualizer
@@ -38,6 +39,7 @@ from shared.mlfp04.ex_3 import (
     teardown_engines,
     track_run,
 )
+from shared.mlfp04 import create_visualizer
 
 # ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
 tracker, exp_name = setup_engines()
@@ -46,10 +48,19 @@ tracker, exp_name = setup_engines()
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — PCA is SVD
 # ════════════════════════════════════════════════════════════════════════
-# Given a centred (and usually standardised) data matrix X, SVD gives:
+# Given a centred (and usually standardised) data matrix X of shape
+# (n_samples, n_features), the Singular Value Decomposition gives:
+#
 #     X = U  S  V^T
-# Columns of V are the principal directions, singular values s_k encode
-# strength, and variance explained by PC_k is s_k^2 / (n - 1).
+#
+#   - Columns of V are the principal directions (unit vectors in
+#     feature space). These are the "axes of maximum variance".
+#   - Singular values s_k encode the strength of each direction.
+#     The variance explained by PC_k is  s_k^2 / (n - 1).
+#   - Scores (the projection of each sample onto the PCs) = X V = U S.
+#
+# Everything else about PCA is bookkeeping on top of SVD. sklearn.PCA
+# computes exactly this under the hood — we will verify it below.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -58,7 +69,7 @@ tracker, exp_name = setup_engines()
 
 X, feature_cols, _ = load_customer_matrix()
 n_samples, n_features = X.shape
-print(f"=== E-commerce customers ===")
+print("=== E-commerce customers ===")
 print(f"Samples: {n_samples:,}  Features: {n_features}")
 
 # TODO: compute the SVD of X. Use np.linalg.svd with full_matrices=False.
@@ -75,13 +86,14 @@ evr = explained_variance / total_variance
 cum_evr = ____
 
 print(f"\nTotal variance (~n_features={n_features}): {total_variance:.2f}")
-print(f"\nTop 10 principal components:")
+print("\nTop 10 principal components:")
 print(f"{'PC':>4} {'Sing. val':>12} {'Expl. var %':>14} {'Cumulative %':>14}")
 print("-" * 48)
 for i in range(min(10, n_features)):
     print(f"{i + 1:>4} {S[i]:>12.4f} {evr[i]:>13.2%} {cum_evr[i]:>13.2%}")
 
-# Cross-check against sklearn's implementation.
+# Cross-check against sklearn's implementation. These MUST agree to ~1e-6;
+# if they don't, something is wrong with how X was centred/scaled.
 pca_full = PCA(n_components=n_features)
 pca_full.fit(X)
 max_diff = float(np.abs(pca_full.explained_variance_ratio_ - evr).max())
@@ -96,6 +108,8 @@ print("[ok] Checkpoint 1 — SVD-derived PCA matches sklearn\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 3 — TRAIN: scree plot + three selection criteria
 # ════════════════════════════════════════════════════════════════════════
+# There is no training loop for PCA — the "training" is the SVD itself.
+# The decision we make here is how many components to RETAIN.
 
 # TODO: find the number of components needed for 80 / 90 / 95% variance.
 # Hint: np.searchsorted(cum_evr, 0.90) + 1 gives the first k that crosses.
@@ -103,11 +117,13 @@ n_80 = ____
 n_90 = ____
 n_95 = ____
 
-# Kaiser: retain components whose eigenvalue > 1.
+# Kaiser: retain components whose eigenvalue > 1 (a component that
+# captures more than one original feature's worth of variance).
 # TODO: count eigenvalues (== explained_variance) greater than 1.
 n_kaiser = ____
 
-# Broken-stick reference (already wired up).
+# Broken-stick: a random partition of total variance would give each PC
+# a share of sum_{j=i}^p 1/j / p. Retain PCs that beat that share.
 broken_stick = np.array(
     [
         sum(1.0 / j for j in range(i, n_features + 1)) / n_features
@@ -116,7 +132,7 @@ broken_stick = np.array(
 )
 n_broken = int((evr > broken_stick).sum())
 
-print(f"=== Component-selection criteria ===")
+print("=== Component-selection criteria ===")
 print(f"  80% variance threshold : {n_80} components")
 print(f"  90% variance threshold : {n_90} components")
 print(f"  95% variance threshold : {n_95} components")
@@ -136,8 +152,12 @@ print("[ok] Checkpoint 2 — variance thresholds + Kaiser + broken-stick\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — VISUALISE: scree + loadings + reconstruction error
 # ════════════════════════════════════════════════════════════════════════
+# R9A: visual proof, not just a number. Three plots:
+#   (a) scree + cumulative variance
+#   (b) loadings for the first 5 PCs
+#   (c) reconstruction error vs k
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # (a) Scree plot
 fig_scree = viz.training_history(
@@ -167,7 +187,25 @@ for i in range(n_pcs_inspect):
     names = [f"{feature_cols[j]} ({loadings[j, i]:+.2f})" for j in top]
     print(f"  PC{i + 1}: {', '.join(names)}")
 
+# Loadings heatmap — rows = original features, columns = PCs. Strong
+# red/blue cells are the features that define each component.
+fig_load = go.Figure(
+    data=go.Heatmap(
+        z=loadings,
+        x=[f"PC{i + 1}" for i in range(n_pcs_inspect)],
+        y=feature_cols,
+        colorscale="RdBu",
+        zmid=0.0,
+        colorbar=dict(title="loading"),
+    )
+)
+fig_load.update_layout(title="PCA loadings: which features define each component")
+loadings_path = OUTPUT_DIR / "01_pca_loadings_heatmap.html"
+fig_load.write_html(str(loadings_path))
+print(f"Saved: {loadings_path}")
+
 # (c) Reconstruction error as a function of k
+# For standardised data, MSE(k) = sum_{j>k} s_j^2 / (n_samples * n_features)
 n_range = list(range(1, min(n_features + 1, 21)))
 recon_errors = []
 for k in n_range:
@@ -194,16 +232,38 @@ print("\n[ok] Checkpoint 3 — visualisations + loadings + reconstruction\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Shopee Singapore customer analytics compression
+# TASK 5 — APPLY: Customer-Analytics Compression at a Singapore Marketplace
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Shopee SG segments ~14M shoppers every night from 120+
-# behavioural features. K-means at full rank misses the 6-hour pre-dawn
-# window. PCA compresses shoppers to ~18D, K-means finishes in ~42 min,
-# and the homepage carousel refreshes on time. Freshness is worth
-# ~S$180K/day in incremental GMV vs a tiny compute bill.
+# SCENARIO (illustrative): a large Singapore e-commerce marketplace keeps
+# millions of active shoppers, each described by 100+ behavioural features
+# (category views, basket size, delivery windows, coupon response,
+# returns, support tickets...). The analytics team runs a nightly K-means
+# segmentation to power a homepage recommendation carousel — but the
+# full-dimensional distance computation misses the pre-dawn batch window.
+#
+# WHY PCA IS THE RIGHT TOOL HERE:
+#   - Linear and fast: one SVD (or a randomised SVD) on the nightly batch.
+#   - Exactly invertible (up to the discarded components): any customer
+#     can be reconstructed from their compressed vector, which matters for
+#     downstream churn-model explainability.
+#   - Interpretable: loadings let marketing name the components
+#     (see the heatmap — e.g. "PC1 = spend volume").
+#
+# BUSINESS IMPACT (illustrative assumptions, not reported figures):
+# K-means cost grows linearly with the number of dimensions, so cutting
+# dimensions by the compression ratio printed below cuts the clustering
+# step by roughly the same factor. If that brings the nightly job inside
+# its window, the carousel refreshes on time every day; put your own
+# value on a fresh vs stale carousel to size the benefit.
+#
+# The variance PCA discards is the smallest-variance directions. Often
+# that is mostly noise, which can make downstream segmentation more
+# stable — but check it: a small-variance direction can still carry a
+# rare, important signal.
 
+# Demonstrate the compression numerically.
 compression_ratio = n_features / max(n_95, 1)
-print(f"=== Shopee-style compression estimate ===")
+print("=== Marketplace-style compression estimate ===")
 print(f"  Raw dimensions       : {n_features}")
 print(f"  At 95% variance      : {n_95}")
 print(f"  Compression ratio    : {compression_ratio:.1f}x")
@@ -218,15 +278,13 @@ print(
 # ════════════════════════════════════════════════════════════════════════
 # Every M4 ex_3 lesson logs into the SAME experiment ('m4_dimreduction_zoo')
 # so PCA / Kernel-PCA / t-SNE / UMAP can be compared side-by-side from one
-# SQLite store after the lesson group ends.
+# SQLite store after the lesson group ends. Sweep series = per-k explained-
+# variance + reconstruction-MSE; scalar metrics = the chosen-k headlines.
 
-# TODO: call track_run with run_name "pca_svd". scalar_metrics include
-# n_components_80, n_components_90, n_components_95 (cast to float),
-# n_components_kaiser, n_components_broken_stick, compression_ratio_at_95,
-# variance_kept_at_95 (cum_evr[n_95 - 1]), recon_mse_at_95 (the relevant
-# entry in recon_errors), svd_vs_sklearn_max_diff. series_metrics: the
-# explained_variance_ratio + cumulative_explained_variance + reconstruction_mse
-# lists (cast evr / cum_evr to .tolist()).
+# TODO: call track_run with run_name="pca_svd". scalar_metrics need
+# variance_kept_at_95 (cum_evr[n_95 - 1]) and recon_mse_at_95 (the relevant
+# entry in recon_errors); series_metrics need evr / cum_evr as lists
+# (.tolist()).
 track_run(
     tracker,
     exp_name,
@@ -262,21 +320,21 @@ print(f"  [tracked] PCA scree + reconstruction series logged to {exp_name}\n")
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — the kailash-ml DimReductionEngine
 # ════════════════════════════════════════════════════════════════════════
-# You hand-rolled the SVD, the explained-variance bookkeeping, the three
-# component-selection criteria, and the reconstruction-error curve.
+# This lesson hand-rolled the SVD, the explained-variance bookkeeping,
+# the three component-selection criteria, and the reconstruction-error
+# curve — ~140 lines of structure to internalise PCA from first principles.
 #
 # kailash-ml ships a single engine that IS that pipeline. DimReductionEngine.
 # `reduce` runs the whole fit-and-transform on a polars DataFrame and
-# returns a DimReductionResult with embedding + explained variance +
-# reconstruction error. One sync call. Same surface for pca / tsne / umap /
-# nmf — the next four lessons all pivot on this engine.
+# returns a DimReductionResult with the embedding, explained variance, and
+# reconstruction error. One sync call. The engine owns pca, tsne, umap,
+# nmf — the next four lessons all pivot on this same surface.
 
 import polars as pl
 
 from kailash_ml.engines.dim_reduction import DimReductionEngine
 
 cust_df = pl.from_numpy(X, schema=feature_cols)
-
 # TODO: instantiate DimReductionEngine and call .reduce on cust_df with
 # algorithm='pca' and n_components=n_95. The returned DimReductionResult
 # exposes .transformed (list of rows), .n_components, .reconstruction_error,
@@ -310,13 +368,17 @@ print(
   [x] Built a scree plot and applied three selection criteria
   [x] Read loadings to assign business meaning to principal components
   [x] Measured reconstruction error as a compression quality metric
-  [x] Costed PCA as the right tool for nightly Shopee segmentation
+  [x] Drew a loadings heatmap to name the components
+  [x] Framed PCA for a nightly marketplace segmentation (illustrative)
 
-  KEY INSIGHT: PCA is the only linear dim-reduction method with a true
-  inverse transform. If your downstream job needs to EXPLAIN a customer
-  in the original feature space, PCA is the answer.
+  KEY INSIGHT: PCA's inverse is EXACT linear algebra: X_hat = Z V^T + mean,
+  and the only error is the variance you chose to discard. Kernel PCA and
+  UMAP offer only APPROXIMATE (learned) inverses, and t-SNE has none. If
+  your downstream job needs to EXPLAIN a customer in the original feature
+  space, PCA is the safest answer.
 
-  Next: 02_kernel_pca.py lifts this into nonlinear territory.
+  Next: 02_kernel_pca.py lifts this into nonlinear territory via the
+  kernel trick — same math, richer feature space.
 """
 )
 

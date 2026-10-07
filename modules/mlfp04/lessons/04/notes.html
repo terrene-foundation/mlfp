@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lesson 4.4 — Speaker Notes | MLFP</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../../../assets/css/textbook.css">
@@ -9,7 +10,7 @@
     .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
     .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
     .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
-    .slide-block h3 { margin: 0.2em 0 0.6em; font-size: 1.15em; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
     .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
     .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
     .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
@@ -35,240 +36,355 @@
 </h1>
 
 <p class="lead">
-  Total time: ~75 minutes &nbsp;·&nbsp; 17 slides &nbsp;·&nbsp; ~4 min per slide
+  Total time: ~75 minutes &nbsp;·&nbsp; 18 slides &nbsp;·&nbsp; ~4 min per slide average
 </p>
 
 <p>
-  This lesson is lighter on math than 4.2 and 4.3 but heavy on
-  pragmatism. The most important idea to convey is that no single
-  method is sufficient — blending beats individual methods. The second
-  most important idea is that you cannot evaluate detectors without
-  domain expertise.
+  Screening without labels — the unsupervised counterpart to M3's
+  credit model. The lesson's spine is the worked example: 20,000 real
+  credit applications with 200 injected, labelled anomalies, so
+  students can watch each method succeed and fail by type. The two
+  findings to land: LOF's masking trap (a tight fraud ring is
+  invisible at small k — AUC 0.22 at k=20 vs 0.89 at k=50), and the
+  division of labour between AnomalyDetectionEngine (unsupervised
+  screening) and EnsembleEngine (supervised second stage, only once
+  analysts label a review sample).
 </p>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
   <h3>Anomaly Detection and Ensembles</h3>
   <p>
-    Frame: "Same unsupervised problem, flipped. Instead of finding
-    groups, find the points that don't belong to any group. Fraud,
-    defective sensors, intrusions — the rare things that matter most."
+    Open with the outcome: "Today you'll screen credit applications
+    for anomalies <em>without labels</em> — Z-score, IQR, Isolation
+    Forest, LOF, and how to blend them. No ground truth to train on;
+    that's what makes this lesson different from everything in M3."
   </p>
   <div class="transition">→ "The opposite question."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Motivation</span></div>
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Opposite question</span></div>
   <h3>The opposite question</h3>
   <p>
-    Give a concrete scenario: "0.1% of financial transactions are fraud.
-    You have a few labelled fraud cases from last year, but the patterns
-    change every quarter. You cannot train a supervised classifier on
-    0.1% minorities. Anomaly detection lets you flag suspicious
-    transactions using only the shape of the data itself."
+    Invert 4.1: clustering asked "which group does this point belong
+    to?"; anomaly detection asks "which points don't belong to
+    <em>any</em> group?" Use cases: fraud, defects, sensor faults,
+    intrusions, churn precursors.
   </p>
-  <div class="transition">→ "First: what does an outlier even look like?"</div>
+  <p>
+    Read the green box — it sets the problem's shape: "Anomalies are
+    rare. If 'anomalies' are 20% of your data, you have a
+    classification problem, not an anomaly detection one — go back to
+    M3 and label some rows."
+  </p>
+  <div class="transition">→ "Not all outliers look alike."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Three types</span></div>
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Outlier types</span></div>
   <h3>Three types of outliers</h3>
   <p>
-    Walk the three red points. (A) far from everything — obvious
-    anomaly. (B) in a direction the data rarely goes — anomaly even
-    though close in Euclidean distance. (C) in a low-density gap between
-    clusters — anomaly even though "central". Different detectors catch
-    different types.
+    Walk the three red points. "Far from all" — globally distant from
+    every cluster; easy. "Rare direction" — inside the range of each
+    feature but along a combination the data never takes. "In a gap"
+    — between clusters, locally sparse.
   </p>
-  <div class="transition">→ "Simplest detector: Z-score."</div>
+  <p>
+    Read the caption: "Different methods catch different types. Keep
+    this picture in mind — the method matrix later maps directly onto
+    it."
+  </p>
+  <div class="transition">→ "The classical one-liner."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Z-score</span></div>
   <h3>Z-score: univariate, assumes normality</h3>
   <p>
-    Walk the formula. "If data is normal, about 0.27% fall outside
-    $\pm 3\sigma$ — those are your outliers. Works great for
-    normally-distributed features. Fails badly on skewed data."
+    Walk the formula: standardise, flag $|z| > 3$. Simple, fast,
+    one line.
   </p>
-  <div class="audience-cue beginner">
-    "Z-score is the 'how many standard deviations from the mean' measurement. 3 sigma is the classical threshold — anything beyond is considered rare."
-  </div>
-  <div class="transition">→ "Skewed data needs IQR."</div>
+  <p>
+    Then the two failure modes. "It breaks on right-skewed data —
+    revenue, session length — where the tail is the norm, not the
+    exception. Log-transform first. And outliers inflate $\bar{x}$
+    and $s$, hiding each other: one extreme value stretches the
+    ruler it's measured with."
+  </p>
+  <div class="transition">→ "The robust version."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>IQR</span></div>
   <h3>IQR: robust to skew</h3>
   <p>
-    Walk the rule. "Quartiles are unaffected by the extreme values —
-    IQR is a robust statistic. This is exactly what box plot whiskers
-    do. For revenue, session duration, transaction amount — use IQR
-    instead of Z-score."
+    Walk the rule: flag below $Q_1 - 1.5\,\text{IQR}$ or above
+    $Q_3 + 1.5\,\text{IQR}$. "Quartiles barely notice a few extreme
+    values — the masking problem from the z-score is gone. This is
+    what box-plot whiskers have been showing you since M1."
   </p>
-  <div class="transition">→ "But both are univariate. Real fraud is multivariate."</div>
+  <p>
+    Read the blue box: "Winsorisation — cap at the IQR bounds instead
+    of dropping rows. You keep the sample size for downstream stats
+    while taming the tails." Default univariate detector for business
+    data.
+  </p>
+  <div class="transition">→ "Where univariate methods go blind."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Univariate fails</span></div>
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Combinations</span></div>
   <h3>Univariate methods miss combinations</h3>
   <p>
-    Give the fraud example concretely: "Small transaction — normal.
-    Midnight transaction — normal. Small + midnight + new device + unusual
-    location — suspicious. No single feature is anomalous. The combination
-    is. Univariate methods cannot catch this."
+    Walk the escalation: a small transaction — normal. A midnight
+    transaction — normal. Small + midnight + new device + unusual
+    location — <em>suspicious</em>.
   </p>
-  <div class="transition">→ "Enter Isolation Forest."</div>
+  <p>
+    "Every univariate check passes; the combination is the crime.
+    That's the 'rare direction' from the types picture, and it needs
+    a multivariate method. Enter Isolation Forest."
+  </p>
+  <div class="transition">→ "Isolation Forest."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>Isolation Forest diagram</span></div>
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>IsoForest picture</span></div>
   <h3>Isolation Forest — few splits isolate anomalies</h3>
   <p>
-    Walk the diagram. "The outlier on the upper right gets isolated by
-    the first random split. The points in the dense cluster need many
-    splits to be isolated from each other. So: few splits = outlier."
+    Walk the figure: random axis-aligned splits carve the space. The
+    lone red point is cut off by the <em>first</em> split — one
+    partition and it's alone. The dense blue cluster needs split
+    after split to isolate any member.
   </p>
   <p>
-    This is a beautifully simple idea. You do not need to compute
-    densities or distances — just grow random trees and count path
-    lengths. Scales linearly in the data size.
+    "Anomalies are few and different, so random partitioning isolates
+    them quickly. Path length to isolation is the signal — short
+    paths mean anomalous. And notice: no distances, no densities —
+    which is why it survives high dimensions."
   </p>
-  <div class="audience-cue expert">
-    "Contrast with one-class SVM, which requires kernel matrix computation. Isolation Forest is $O(n \log n)$ per tree and embarrassingly parallel. It is the default for production anomaly detection."
-  </div>
-  <div class="transition">→ "The formal score."</div>
+  <div class="transition">→ "The score."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Score formula</span></div>
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>IsoForest score</span></div>
   <h3>Isolation Forest score</h3>
   <p>
-    Walk the formula. Explain $c(n)$ briefly — it normalises path
-    length so scores are comparable across sample sizes. Emphasise the
-    interpretation: 0.5 = normal, near 1 = strong anomaly.
+    Walk the formula: $s = 2^{-E(h(x))/c(n)}$ — average path length
+    across the trees, normalised by the expected path in a random
+    binary tree. "$s \approx 1$: strong anomaly. $s \approx 0.5$:
+    normal. Threshold typically around $s > 0.6$ — or use
+    contamination, coming later."
   </p>
-  <div class="transition">→ "LOF for local density anomalies."</div>
+  <div class="transition">→ "The density-based rival."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>LOF</span></div>
   <h3>LOF — local density matters</h3>
   <p>
-    Walk the formula. "LOF compares the density around your point to
-    the density around its neighbours. If your neighbours are in a
-    dense pack and you're in a sparse area relative to them, you're
-    anomalous."
+    Walk the idea: compare each point's local density to its
+    neighbours' densities. LOF ≈ 1 — same density as the
+    neighbourhood, normal. LOF > 1.5 — anomalous relative to local
+    context. "This is the right choice when clusters have
+    <em>different</em> densities — a point can be normal for a sparse
+    cluster and anomalous next to a dense one."
   </p>
   <p>
-    "LOF is the right choice when your clusters have different
-    densities — a point that is 'close' to one cluster in absolute
-    distance can still be an outlier relative to that cluster's
-    tight packing."
+    Then the blind spot — the lesson's key warning: "<strong>Masking.</strong>
+    A tight group of $\geq k$ anomalies are each other's nearest
+    neighbours — locally, the fraud ring <em>is</em> the dense
+    region, and every member scores LOF ≈ 1. Pick $k$ larger than
+    the biggest group you must catch. The worked example will show
+    this failing live."
   </p>
-  <div class="transition">→ "Which method catches which?"</div>
+  <div class="transition">→ "The full method map."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Method matrix</span></div>
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Method matrix</span></div>
   <h3>Method × outlier type matrix</h3>
   <p>
-    Walk the matrix. Key insight: no single method catches all types.
-    This is the motivation for blending.
+    Walk the table row by row. Extreme single feature: everything
+    catches it. Strange combination: univariate misses; IsoForest and
+    LOF catch. Local density anomaly: LOF's home turf; IsoForest
+    partial. Tight group — the application ring: Z-score only if far
+    out, IsoForest yes, LOF <em>fails unless $k$ exceeds the group
+    size</em> — the masking row. High-dimensional: IsoForest.
   </p>
-  <div class="transition">→ "Blend them."</div>
+  <p>
+    "There is no universal winner — which is the honest argument for
+    blending, next."
+  </p>
+  <div class="transition">→ "Blend the scores."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 11</span><span>~5 min</span><span>Blending</span></div>
-  <h3>Score blending — more robust than any single method</h3>
+  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>Score blending</span></div>
+  <h3>Score blending — often more robust, never guaranteed</h3>
   <p>
-    Walk the code. The three-step pattern: normalise to $[0, 1]$,
-    average, threshold. Emphasise that you must normalise first —
-    different methods use different ranges.
+    Walk the code: min-max normalise each detector's scores onto a
+    common scale — z-scores absolutised, Isolation Forest and LOF
+    negated so higher means more anomalous — then average and flag
+    above 0.7.
   </p>
   <p>
-    Business interpretation: "A point caught by all three is almost
-    certainly anomalous. A point caught by one method is a candidate
-    for human review. The number of methods that flagged a point is a
-    confidence gradient — you act differently at each level."
+    Read the paragraph with care: "Blending helps when detectors make
+    <em>different</em> mistakes. But a detector blind to an anomaly
+    type <em>dilutes</em> the ones that catch it — a blend can score
+    below its best member. Always compare the blend against each
+    member on a labelled review sample before trusting it."
   </p>
-  <div class="transition">→ "Kailash wraps this."</div>
+  <div class="transition">→ "The Kailash engine wraps this."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>EnsembleEngine</span></div>
-  <h3>EnsembleEngine does this with one API</h3>
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>AnomalyDetectionEngine</span></div>
+  <h3>Kailash AnomalyDetectionEngine</h3>
   <p>
-    Quick. "Four blending modes: blend (weighted sum), stack (meta-learner),
-    bag (bootstrapped), boost (sequential). For anomaly detection you
-    almost always want blend with agg='mean' or agg='max'."
+    Walk the code. <code>detect(algorithm="isolation_forest",
+    contamination=0.01)</code> returns scores in [0, 1], higher = more
+    anomalous. <code>ensemble_detect</code> with
+    <code>voting="score_average"</code> is the manual blend from the
+    previous slide in one call — normalised scores, averaged.
   </p>
-  <div class="transition">→ "Now the real example."</div>
+  <p>
+    Read the teal box: "The engine flips sklearn's sign convention —
+    higher is always more anomalous — and normalises to [0, 1]. And a
+    boundary to respect: <code>EnsembleEngine.blend()</code> /
+    <code>.stack()</code> are <em>supervised</em> classifier
+    ensembles — they need a target column. Don't blend anomaly scores
+    with them. That's the next slide's proper use."
+  </p>
+  <div class="transition">→ "When labels arrive: the supervised second stage."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Fraud example</span></div>
-  <h3>Worked example: financial fraud</h3>
+  <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Supervised second stage</span></div>
+  <h3>Once analysts label a review sample: EnsembleEngine</h3>
   <p>
-    Walk the code. Four features: amount, hour, recipient count, location.
-    Standardise. Run all three methods. Blend. Flag top percentile.
-    Point at <code>modules/mlfp04/solutions/ex_4.py</code> for the full
-    script including Venn-diagram analysis of the overlap.
+    Set the sequence: unsupervised screening produces a review queue;
+    analysts label a sample; <em>now</em> a supervised stage learns
+    which detector to trust. Walk the code: logistic regression and a
+    random forest fitted on the detector-score columns plus the
+    analyst labels, then <code>EnsembleEngine.blend</code> (soft
+    vote) and <code>.stack</code> (meta-learner) with their AUCs.
   </p>
-  <div class="transition">→ "The one tuning knob you must get right."</div>
+  <p>
+    Read the footer: "A supervised second stage: classifiers learn
+    from the detector scores which detector to trust. It needs
+    labels, so it comes <em>after</em> unsupervised screening —
+    never instead of it."
+  </p>
+  <div class="transition">→ "The benchmark."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Contamination</span></div>
+  <div class="meta"><span class="badge">Slide 14</span><span>~5 min</span><span>Worked screening</span></div>
+  <h3>Worked example: credit-application screening</h3>
+  <p>
+    Walk the code: 20,000 real applications plus 200 injected,
+    <em>labelled</em> anomalies from the ex_4 loader — the labels are
+    used only to score, never to fit. Isolation Forest and LOF at
+    contamination 0.01, both negated so higher = more anomalous, then
+    AUC against the injected truth.
+  </p>
+  <p>
+    Walk the table by anomaly type. Globals (one field 5–8σ out):
+    Z-score and LOF near-perfect at 0.995; IsoForest 0.77 — its
+    random splits waste cuts on normal features. Synthetic identity
+    (subtle combination): LOF 0.99 at both k, IsoForest 0.68,
+    Z-score useless at 0.55. The application ring — 40 tight
+    coordinated anomalies: <strong>LOF at k=20 collapses to 0.22 —
+    masked, worse than chance — while k=50 recovers to 0.89</strong>.
+    "The masking trap, live: 40 fraudsters were each other's
+    neighbourhood. $k$ must exceed the group you're hunting."
+  </p>
+  <div class="transition">→ "One knob to rule the flag count."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Contamination</span></div>
   <h3>Contamination matters</h3>
   <p>
-    This is where most students mess up. "Contamination is your prior
-    belief about how many points are anomalous. Set it to 10% when the
-    real rate is 0.1% and your top-10 flagged points are all normal."
+    Walk the bullets. Isolation Forest and LOF need
+    <code>contamination</code> — the approximate anomaly fraction.
+    Too high: false positives explode. Too low: real anomalies
+    missed. Rule of thumb: start at the real base rate, then tune by
+    inspecting the top-$k$ flagged rows.
   </p>
   <p>
-    Practical advice: start with the known base rate, inspect the top
-    $k$, adjust. There is no cross-validation here — you must have a
-    domain expert look at the flagged points.
+    Two closing truths: "Contamination only moves the cut-off — it
+    never changes the <em>ranking</em>, so AUC comparisons are
+    contamination-free. And the amber warning: without labels there
+    is no precision or recall — you must inspect manually. The
+    review queue <em>is</em> the product."
   </p>
-  <div class="transition">→ "Common mistakes."</div>
+  <div class="transition">→ "Four mistakes."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Mistakes</span></div>
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Mistakes</span></div>
   <h3>Four rookie mistakes</h3>
   <p>
-    Walk all four. #1 (contamination) is the most common by far.
+    Walk the four. One: contamination 10% when the real rate is 0.1%
+    — you flag a hundred times too many and drown the review team.
+    Two: Z-score on right-skewed data without a log transform.
+    Three: unscaled features in multivariate methods — dollars
+    dominate years again. Four: treating raw anomaly scores as
+    probabilities across methods — that's what the normalisation in
+    the blend is for.
   </p>
-  <div class="transition">→ "And how this becomes production monitoring."</div>
+  <div class="transition">→ "Production context: rows vs distributions."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>DriftMonitor</span></div>
-  <h3>Production: DriftMonitor uses this</h3>
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Production</span></div>
+  <h3>Production: rows vs distributions</h3>
   <p>
-    Preview. "Train Isolation Forest on last week's data. This week,
-    check how anomalous the new data looks compared to the reference.
-    If too many points look strange, your model's input distribution
-    has shifted and you need to retrain. This is how you close the
-    loop between analysis and production monitoring. Full coverage in
-    M5."
+    Draw the boundary precisely. "Anomaly detection flags individual
+    unusual <em>rows</em> — and the anomaly <em>rate</em> over time
+    becomes an early-warning signal. Drift monitoring compares whole
+    <em>distributions</em>: kailash-ml's DriftMonitor from M3.8 runs
+    PSI and KS tests against a reference set. It is not an anomaly
+    detector — different question, different tool."
   </p>
-  <div class="transition">→ "Recap."</div>
+  <p>
+    Walk the code: the DriftMonitor pattern is the same as M3.8 —
+    own database file, reference from the training frame,
+    <code>check_drift</code> per batch. "Exercise 4.4 plots the
+    ensemble's anomaly rate over time as the monitoring chart —
+    rows today, distributions in M3.8, both feeding the same
+    operations loop."
+  </p>
+  <div class="transition">→ "Recap and bridge."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 17</span><span>~2 min</span><span>Recap</span></div>
+  <div class="meta"><span class="badge">Slide 18</span><span>~2 min</span><span>Recap</span></div>
   <h3>What you can now do</h3>
   <p>
-    Walk the checklist. Preview 4.5: "Next we shift gears entirely —
-    association rules. Not 'which group' or 'which outlier' but 'which
-    items co-occur'. Baskets, clicks, symptoms. A classic unsupervised
-    technique that still powers retail recommendations today."
+    Walk the bullets: apply the four detectors, explain which outlier
+    type each catches, blend scores and verify the blend beats its
+    best member, use AnomalyDetectionEngine with EnsembleEngine as
+    the supervised second stage, and recognise when unsupervised
+    detection won't work. Tease 4.5: "What <em>co-occurs</em> in
+    transactional data? Association rules."
   </p>
-  <div class="transition">→ End of lesson.</div>
+  <div class="transition">→ End of Lesson 4.4. Ten-minute break.</div>
 </div>
+
+<nav class="lesson-nav">
+  <a href="../03/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    4.3 Speaker Notes
+  </a>
+  <a href="../05/notes.html" class="next">
+    <span class="label">Next →</span>
+    4.5 Speaker Notes
+  </a>
+</nav>
 
 </main>
 </body>

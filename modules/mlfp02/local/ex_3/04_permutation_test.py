@@ -56,6 +56,7 @@ from shared.mlfp02.ex_3 import (
     two_proportion_ztest,
     print_header,
 )
+from shared.mlfp02 import create_visualizer
 
 print_header("MLFP02 Exercise 3.4: Permutation Test")
 
@@ -130,8 +131,11 @@ for i in range(N_PERMUTATIONS):
     perm_treat_rate = ____
     perm_conv_diffs[i] = perm_treat_rate - perm_ctrl_rate
 
-# TODO: Compute permutation p-value = proportion of |perm_diffs| >= |observed|.
-# Hint: np.mean(np.abs(perm_conv_diffs) >= np.abs(observed_conv_diff))
+# TODO: Compute the permutation p-value with the add-one correction:
+# (number of |perm_diffs| >= |observed| + 1) / (N_PERMUTATIONS + 1).
+# The observed labelling is itself one valid permutation, so p is never 0.
+# Hint: count with np.sum(np.abs(perm_conv_diffs) >= np.abs(observed_conv_diff))
+n_extreme_conv = ____
 perm_p_conversion = ____
 
 print(f"=== Permutation Test (conversion rate) ===")
@@ -140,18 +144,21 @@ print(
     f"Permutation null: mean={perm_conv_diffs.mean():.6f}, "
     f"std={perm_conv_diffs.std():.6f}"
 )
-print(f"Permutation p-value: {perm_p_conversion:.6f}")
+print(
+    f"Permutation p-value: {perm_p_conversion:.6f} "
+    f"({n_extreme_conv} of {N_PERMUTATIONS:,} permutations as extreme)"
+)
 
 # Compare with parametric
 _, parametric_p = two_proportion_ztest(
     ctrl_conv.mean(), treat_conv.mean(), n_control, n_treatment
 )
-print(f"Parametric p-value:  {parametric_p:.6f}")
+print(f"z-test p-value:      {parametric_p:.6f}")
 agreement = (perm_p_conversion < ALPHA) == (parametric_p < ALPHA)
 print(f"Agreement: {'YES' if agreement else 'NO'}")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
-assert 0 <= perm_p_conversion <= 1, "Permutation p-value must be valid"
+assert 0 < perm_p_conversion <= 1, "Permutation p-value must be in (0, 1]"
 assert len(perm_conv_diffs) == N_PERMUTATIONS, "Should have N_PERMUTATIONS samples"
 assert (
     abs(perm_conv_diffs.mean()) < 0.01
@@ -163,8 +170,11 @@ print("\n>>> Checkpoint 2 passed -- conversion permutation test completed\n")
 # TASK 3 — Permutation test for revenue (non-Normal)
 # ════════════════════════════════════════════════════════════════════════
 # Revenue is typically right-skewed (many small purchases, few large).
-# The parametric Mann-Whitney U test is robust to this, but the
-# permutation test is even more direct -- no assumptions at all.
+# The permutation test below uses the DIFFERENCE IN MEANS, so its
+# like-for-like parametric comparison is Welch's t-test (also a mean
+# difference, relying on the CLT). Mann-Whitney U is a different,
+# NON-parametric test: it asks whether one group's values tend to be
+# larger (stochastic ordering), not whether the means differ.
 
 all_revenue = df["revenue"].to_numpy().astype(np.float64)
 
@@ -176,7 +186,8 @@ for i in range(N_PERMUTATIONS):
     perm = ____
     perm_rev_diffs[i] = ____
 
-# TODO: Compute permutation p-value for revenue.
+# TODO: Compute the add-one permutation p-value for revenue.
+n_extreme_rev = ____
 perm_p_revenue = ____
 
 print(f"=== Permutation Test (revenue) ===")
@@ -185,16 +196,22 @@ print(
     f"Permutation null: mean=${perm_rev_diffs.mean():.2f}, "
     f"std=${perm_rev_diffs.std():.2f}"
 )
-print(f"Permutation p-value: {perm_p_revenue:.6f}")
+print(
+    f"Permutation p-value: {perm_p_revenue:.6f} "
+    f"({n_extreme_rev} of {N_PERMUTATIONS:,} permutations as extreme)"
+)
 
-# Compare with Mann-Whitney U
+# Like-for-like parametric comparison: Welch's t-test on the mean difference
+_, welch_p = stats.ttest_ind(treat_rev, ctrl_rev, equal_var=False)
+print(f"Welch's t p-value:   {welch_p:.6f}")
+rev_agreement = (perm_p_revenue < ALPHA) == (welch_p < ALPHA)
+# For reference only — a different hypothesis (stochastic ordering)
 _, mwu_p = stats.mannwhitneyu(treat_rev, ctrl_rev, alternative="two-sided")
-print(f"Mann-Whitney p-value: {mwu_p:.6f}")
-rev_agreement = (perm_p_revenue < ALPHA) == (mwu_p < ALPHA)
+print(f"Mann-Whitney U p-value (non-parametric, ordering not means): {mwu_p:.6f}")
 print(f"Agreement: {'YES' if rev_agreement else 'NO'}")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
-assert 0 <= perm_p_revenue <= 1, "Revenue permutation p-value must be valid"
+assert 0 < perm_p_revenue <= 1, "Revenue permutation p-value must be in (0, 1]"
 assert len(perm_rev_diffs) == N_PERMUTATIONS, "Should have N_PERMUTATIONS samples"
 print("\n>>> Checkpoint 3 passed -- revenue permutation test completed\n")
 
@@ -204,14 +221,17 @@ print("\n>>> Checkpoint 3 passed -- revenue permutation test completed\n")
 # ════════════════════════════════════════════════════════════════════════
 
 print(f"=== Parametric vs Permutation Comparison ===")
-print(f"{'Metric':<20} {'Parametric p':>14} {'Permutation p':>15} {'Agree':>8}")
-print("-" * 60)
 print(
-    f"{'Conversion':<20} {parametric_p:>14.6f} {perm_p_conversion:>15.6f} "
+    f"{'Metric':<20} {'Parametric test':<16} {'Parametric p':>14} "
+    f"{'Permutation p':>15} {'Agree':>8}"
+)
+print("-" * 78)
+print(
+    f"{'Conversion':<20} {'z-test':<16} {parametric_p:>14.6f} {perm_p_conversion:>15.6f} "
     f"{'YES' if agreement else 'NO':>8}"
 )
 print(
-    f"{'Revenue':<20} {mwu_p:>14.6f} {perm_p_revenue:>15.6f} "
+    f"{'Revenue (mean)':<20} {'Welch t':<16} {welch_p:>14.6f} {perm_p_revenue:>15.6f} "
     f"{'YES' if rev_agreement else 'NO':>8}"
 )
 
@@ -232,7 +252,7 @@ print("\n>>> Checkpoint 4 passed -- comparison complete\n")
 
 from kailash_ml import ModelVisualizer
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # Conversion permutation null
 conv_df = pl.DataFrame({"permuted_difference": perm_conv_diffs})

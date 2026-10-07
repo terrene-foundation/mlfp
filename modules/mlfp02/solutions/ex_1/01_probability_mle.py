@@ -173,7 +173,7 @@ print(f"μ̂ = {fmt_money(mle.mean)}")
 print(f"σ̂ (MLE, ddof=0)     = {fmt_money(mle.mle_std)}")
 print(f"σ̂ (unbiased, ddof=1) = {fmt_money(mle.unbiased_std)}")
 print(f"Bias: MLE σ underestimates by ${mle.unbiased_std - mle.mle_std:,.2f}")
-print(f"\nFisher information I(μ) = {mle.fisher_information:.4f}")
+print(f"\nFisher information I(μ) = {mle.fisher_information:.3e}")
 print(f"Cramér-Rao lower bound: Var(μ̂) ≥ {mle.cramer_rao_bound:.2f}")
 print(f"MLE standard error: ${mle.standard_error:,.2f}")
 # INTERPRETATION: The standard error tells you the precision of the
@@ -266,39 +266,85 @@ print("\n✓ Checkpoint 3 passed — visualisations saved\n")
 #          "The Average"?
 # ════════════════════════════════════════════════════════════════════════
 # A property developer planning a 4-room HDB launch in Queenstown wants
-# to know the average resale price to set a competitive listing. They
-# pull data from data.gov.sg.
+# to set a competitive listing price from resale data (data.gov.sg).
 #
-# With n transactions, MLE gives μ̂ ± SE. The developer's margin is $20K
-# per unit. If SE > $20K, the estimate is not precise enough to make a
-# confident pricing decision — they need more data or a tighter segment.
+# Two different questions hide inside "how precise is the average?":
+#   1. How precisely do we know the AVERAGE Queenstown 4-room price?
+#      → standard error of the mean, SE = σ/√n (shrinks as n grows)
+#   2. How much does ONE unit's price vary around that average?
+#      → a prediction interval for a single sale (does NOT shrink with n)
+# The developer's margin is $20K per unit. Comparing the margin with the
+# SE answers question 1 — but pricing one unit is question 2. Confusing
+# the two is the classic CI-vs-prediction-interval mistake.
 
 print("=== APPLICATION: Property Developer Pricing Decision ===")
 margin = 20_000
 print(f"\nDeveloper margin per unit: {fmt_money(margin)}")
-print(f"MLE estimate: {fmt_money(mle.mean)} ± {fmt_money(mle.standard_error)}")
 
-if mle.standard_error < margin:
-    print(f"\n✓ SE ({fmt_money(mle.standard_error)}) < margin ({fmt_money(margin)})")
-    print("  → The estimate is precise enough for confident pricing.")
-    print(f"  → List at {fmt_money(mle.mean)} with {fmt_money(margin)} margin")
-    print(
-        f"    gives a range of {fmt_money(mle.mean - margin)} – {fmt_money(mle.mean + margin)}"
-    )
-else:
-    print(f"\n✗ SE ({fmt_money(mle.standard_error)}) ≥ margin ({fmt_money(margin)})")
-    print("  → Need a narrower segment or more data for confident pricing.")
-
-# How many observations would we need for SE < $5K?
-target_se = 5_000
-n_needed = int(np.ceil((mle.mle_std / target_se) ** 2))
-print(f"\nTo achieve SE < {fmt_money(target_se)}: need n ≥ {n_needed:,} transactions")
+# Price the RIGHT population — Queenstown 4-room, not the all-island mean
+queenstown = load_hdb_4room().filter(pl.col("town") == "QUEENSTOWN")
+qt_prices = queenstown["resale_price"].to_numpy().astype(np.float64)
+qt_mle = normal_mle(qt_prices)
+print(f"All-island 4-room MLE mean: {fmt_money(mle.mean)} (n={mle.n:,})")
+print(f"Queenstown 4-room MLE mean: {fmt_money(qt_mle.mean)} (n={qt_mle.n:,})")
 print(
-    f"  (currently have {mle.n:,} — {'sufficient' if mle.n >= n_needed else 'insufficient'})"
+    f"  → Pricing off the all-island mean would be off by "
+    f"{fmt_money(qt_mle.mean - mle.mean)} per unit"
 )
 
+# Question 1 — precision of the AVERAGE (confidence interval for μ)
+ci_lo = qt_mle.mean - 1.96 * qt_mle.standard_error
+ci_hi = qt_mle.mean + 1.96 * qt_mle.standard_error
+print(f"\nQ1  95% CI for the MEAN price: {fmt_money(ci_lo)} – {fmt_money(ci_hi)}")
+print(f"    (SE = {fmt_money(qt_mle.standard_error)})")
+
+# Question 2 — spread of ONE unit's price (prediction interval)
+# The Normal-theory interval μ̂ ± 1.96·σ̂·√(1 + 1/n) is distorted here: a
+# handful of implausible records (e.g. $10 and $9M sales — the dirty data
+# you cleaned in Module 1) inflate σ̂. The empirical 2.5th–97.5th
+# percentiles give a distribution-free prediction interval instead.
+pi_lo, pi_hi = np.percentile(qt_prices, [2.5, 97.5])
+median_price = float(np.median(qt_prices))
+share_within_margin = float(np.mean(np.abs(qt_prices - median_price) <= margin))
+print(f"Q2  95% prediction interval for ONE sale: {fmt_money(pi_lo)} – {fmt_money(pi_hi)}")
+print(f"    Median sale: {fmt_money(median_price)}")
+print(
+    f"    Only {share_within_margin:.0%} of Queenstown 4-room sales land within "
+    f"±{fmt_money(margin)} of the median"
+)
+
+pi_half_width = (pi_hi - pi_lo) / 2
+if pi_half_width > margin:
+    print(
+        f"\n→ The AVERAGE is known to ±{fmt_money(1.96 * qt_mle.standard_error)}, "
+        f"but a single unit varies by ±{fmt_money(pi_half_width)}."
+    )
+    print("  The town-level average alone cannot price one unit within the")
+    print("  $20K margin — segment further (storey, floor area, remaining lease)")
+    print("  before committing to a listing price.")
+else:
+    print(
+        f"\n→ Unit-level spread (±{fmt_money(pi_half_width)}) fits inside the "
+        f"margin — list near {fmt_money(median_price)}."
+    )
+
+# How many Queenstown sales would we need for SE < $5K on the MEAN?
+target_se = 5_000
+n_needed = int(np.ceil((qt_mle.mle_std / target_se) ** 2))
+print(f"\nTo achieve SE < {fmt_money(target_se)} on the mean: need n ≥ {n_needed:,}")
+print(
+    f"  (currently have {qt_mle.n:,} — "
+    f"{'sufficient' if qt_mle.n >= n_needed else 'insufficient'})"
+)
+print("  More data narrows the CI for the mean; it never narrows the")
+print("  prediction interval below the market's unit-to-unit spread.")
+
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
-assert margin > 0, "Margin must be positive"
+assert qt_mle.n > 0, "Queenstown filter returned no rows"
+assert pi_hi > pi_lo, "Prediction interval must have positive width"
+assert pi_half_width > 1.96 * qt_mle.standard_error, (
+    "A prediction interval for one sale must be wider than the CI for the mean"
+)
 assert n_needed > 0, "Required n must be positive"
 print("\n✓ Checkpoint 4 passed — business application complete\n")
 
@@ -317,8 +363,8 @@ print(
   ✓ Cross-tabulation reveals where the market volume concentrates
   ✓ MLE for Normal: μ̂ = x̄, σ̂² with ddof=0 (biased) vs ddof=1
   ✓ Cramér-Rao bound: MLE achieves minimum possible variance
-  ✓ Business framing: SE determines whether the estimate is
-    actionable for a $20K pricing margin
+  ✓ CI for the mean vs prediction interval for one unit — SE tells
+    you how well you know the average, not what one flat will fetch
 
   NEXT: In 02_bayes_theorem.py, you'll apply Bayes' theorem to
   medical testing and property valuation — learning why base rates

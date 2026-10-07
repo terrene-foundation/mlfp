@@ -125,7 +125,7 @@ identity_gap = (x_test - y_adapter).abs().max().item()
 print(f"Adapter layer: d={D_MODEL}, bottleneck={ADAPTER_BOTTLENECK}")
 print(f"  Adapter params:       {adapter_params:,}")
 print(f"  Output shape:         {tuple(y_adapter.shape)}")
-print(f"  Identity gap at init: {identity_gap:.2e} (not exactly 0 due to LayerNorm)")
+print(f"  Identity gap at init: {identity_gap:.2e} (exactly 0: the zero-init up-projection outputs 0)")
 
 expected = count_adapter_params(D_MODEL, ADAPTER_BOTTLENECK, num_layers=1)
 
@@ -192,13 +192,13 @@ print("✓ Checkpoint 3 passed — trade-off curve saved\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore multi-tenant SaaS (12 clients, one base)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore HR-tech SaaS serves 12 enterprise clients.
+# SCENARIO (illustrative): A Singapore HR-tech SaaS serves 12 enterprise clients.
 # Each client wants the shared LLM to speak "in their voice" while
-# staying tenant-isolated (rules/tenant-isolation.md).
-# LoRA pros: tiny (~65K params per tenant at r=16) and mergeable into
-# the base for zero inference overhead.
+# staying tenant-isolated.
+# LoRA pros: small (r=16 on q_proj + v_proj of a 7B base ≈ 8.4M params,
+# ~17 MB in fp16) and mergeable into the base for zero inference overhead.
 # Adapter pros: stackable at runtime, nonlinear capacity per parameter.
-# Decision: LoRA r=16 per tenant. 12 LoRAs total ~10 MB on disk,
+# Decision: LoRA r=16 per tenant. 12 LoRAs total ~200 MB on disk,
 # drops VRAM from 12 x 14 GB to 1 x 14 GB shared base.
 
 print("Singapore multi-tenant SaaS decision:")
@@ -233,7 +233,7 @@ print(
   [x] Compared LoRA vs adapters across 4 dimensions
   [x] Visualised the params-vs-capacity trade-off curve
   [x] Applied the choice to a Singapore 12-tenant SaaS
-      (S$82,800/year saving by switching to LoRA r=16)
+      (illustrative S$82,800/year saving by switching to LoRA r=16)
 
   KEY INSIGHT: LoRA dominates single-task adaptation by merging into
   the base at inference.  Adapters shine when you need to STACK
@@ -243,60 +243,3 @@ print(
   the full fine-tuning landscape.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Alignment (KL divergence from base, reward margin).
-# Secondary: Output (judge quality on paired completions), Attention
-# (layer-wise shift in target modules for LoRA).
-if False:  # scaffold — requires trained base + adapter checkpoint
-    obs = LLMObservatory(run_id="ex_2_finetune_run")
-    # Typical alignment read:
-    # for step, metrics in enumerate(training_log):
-    #     obs.alignment.log_training_step(step=step, **metrics)
-    # obs.alignment.evaluate_pair(base_responses, adapter_responses)
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Alignment  (WARNING): KL divergence from base = 0.42 nats
-#       Fix: healthy range 0.2-1.0; this is low-end — adapter barely
-#            moved. Increase LoRA rank or learning rate.
-#   [✓] Output     (HEALTHY): judge win-rate 0.58 vs base (>0.50 = good)
-#   [✓] Attention  (HEALTHY): shift concentrated in q_proj/v_proj as
-#       expected for LoRA; no drift in frozen layers.
-#   [?] Retrieval / Agent / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [ALIGNMENT LENS] KL 0.42 nats is the SIGNATURE of a cautiously-trained
-#     LoRA adapter — it diverged from the base distribution but not
-#     enough to break it. Above 2.0 nats signals over-fit; below 0.2
-#     signals the adapter barely learned. Our value is slightly under the
-#     0.5 floor we want for visible task lift.
-#     >> Prescription: raise lora_r from 8 -> 16 or train another epoch.
-#  [OUTPUT LENS] Win-rate 0.58 > 0.50 confirms the adapter is better
-#     than base on held-out prompts — tiny lift but statistically real.
-#  [ATTENTION LENS] Shift localised in the target modules = LoRA is
-#     doing what it's supposed to do (low-rank delta on attention
-#     projections, frozen MLP). If attention shifted everywhere you'd
-#     know you accidentally unfroze a module.
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

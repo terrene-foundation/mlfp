@@ -212,19 +212,21 @@ assert sample_attn_np.shape == (
 assert Path(
     "ex_4_1_attention_heatmap.html"
 ).exists(), "Attention heatmap should be saved"
-# INTERPRETATION: The heatmap shows which words attend to which. Even with
-# random embeddings, you can see structural patterns: content words attend
-# to other content words, and padding positions form their own cluster.
-# With trained embeddings, these patterns become meaningful -- "Singapore"
-# would strongly attend to "economy", "growth", and "GDP".
+# INTERPRETATION: Here Q = K = V = untrained embeddings, so each word's
+# largest score is with ITSELF (q.k = ||e||^2 / sqrt(d), several times
+# bigger than the roughly +/-1 cross-word scores): expect a bright diagonal
+# and little else. Padding tokens are zero vectors (padding_idx=0), so
+# every score in their row is 0 and they spread attention uniformly.
+# Meaningful off-diagonal structure needs TRAINED projections — that is
+# what ex_4/02's heatmaps show.
 print("\n--- Checkpoint 3 passed --- attention heatmap visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Apply: Document Similarity for a Singapore Law Firm
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Rajah & Tann, one of Singapore's largest law firms, processes
-# thousands of legal documents monthly. Lawyers need to find prior case
+# SCENARIO: A large Singapore law firm processes thousands of legal
+# documents monthly. Lawyers need to find prior case
 # precedents that are relevant to their current case. Traditional keyword
 # search misses semantic connections (e.g., "breach of fiduciary duty" is
 # related to "director's negligence" even though they share no keywords).
@@ -235,10 +237,11 @@ print("\n--- Checkpoint 3 passed --- attention heatmap visualised\n")
 # negligence, trustee misconduct, and corporate governance failures --
 # reducing precedent research from 4-6 hours to 15-30 minutes per case.
 #
-# DOLLAR IMPACT: At S$500-800/hour for senior associates, saving 3-5
-# hours per case on a firm handling ~200 commercial litigation cases/year
-# translates to S$300K-800K in recovered associate time annually.
-print("\n== Application: Document Similarity for Rajah & Tann (Singapore Law) ==")
+# DOLLAR IMPACT (illustrative assumptions): at S$500-800/hour for senior
+# associates, saving 3-5 hours per case on ~200 commercial litigation
+# cases/year would recover S$300K-800K of associate time annually — IF
+# the similarity search is good enough, which untrained embeddings are not.
+print("\n== Application: Document Similarity for a Singapore Law Firm ==")
 
 # Simulate legal document similarity using AG News headlines as a proxy.
 # In production, this would use actual legal corpora with domain-specific
@@ -300,13 +303,14 @@ assert candidate_reps.shape == (
     50,
     embed_dim,
 ), "Should have 50 candidate representations"
-# INTERPRETATION: Even with untrained embeddings, the attention mechanism
-# captures structural patterns in text that aid similarity search. With
-# trained embeddings (as in the Transformer and BERT exercises that follow),
-# the similarity becomes semantically meaningful -- "breach of fiduciary duty"
-# would cluster with "director's negligence" in the attention-weighted space.
+# INTERPRETATION: With untrained embeddings, a match is driven by SHARED
+# WORDS (identical tokens have identical vectors), not by meaning — count
+# the [correct] vs [cross-topic] markers above to see how far that gets.
+# Linking "breach of fiduciary duty" with "director's negligence" needs
+# embeddings and attention TRAINED on legal text (the Transformer and BERT
+# exercises that follow show what training adds).
 #
-# BUSINESS IMPACT for Rajah & Tann:
+# BUSINESS IMPACT (illustrative, once a trained model exists):
 #   - 200 commercial litigation cases/year
 #   - 3-5 hours saved per case on precedent research
 #   - At S$500-800/hour senior associate rate
@@ -329,8 +333,8 @@ print("\n--- Checkpoint 4 passed --- Singapore law firm application complete\n")
 # X-Ray in ex_4/02 — "which positions light up?" The demo heatmap
 # above should show a strong diagonal (each position attends to
 # itself) because Q = K = scaled identity. In ex_4/02 the trained
-# Transformer's heatmap will show OFF-DIAGONAL structure — content
-# words attending to related content words. That is the "attention
+# Transformer's heatmaps (ex_4_2_head_*.html) can show OFF-DIAGONAL
+# structure — words attending to other, related words. That is the "attention
 # has learned something" signal. If the trained model's heatmap
 # stays diagonal, the attention heads have collapsed (Prescription
 # Pad row: "attention collapse — add dropout, increase d_model, or

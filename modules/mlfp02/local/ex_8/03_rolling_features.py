@@ -7,9 +7,9 @@
 #
 # WHAT YOU'LL LEARN:
 #   - Define FeatureSchema v2 with rolling market-context features
-#   - Compute rolling statistics with Polars group_by_dynamic
+#   - Compute TRAILING rolling statistics with Polars group_by_dynamic
 #   - Understand rolling window warm-up periods and null handling
-#   - Track schema evolution from v1 to v2 with versioned FeatureStore
+#   - Track schema evolution from v1 to v2 in the FeatureStore
 #   - Apply rolling market features to Singapore town-level analytics
 #
 # PREREQUISITES: Exercise 8.1-8.2 (FeatureSchema v1, PIT retrieval)
@@ -18,9 +18,9 @@
 # TASKS:
 #   1. Theory — why rolling features capture market momentum
 #   2. Build — define schema v2 and compute rolling town statistics
-#   3. Train — register v2 and store in FeatureStore with versioning
+#   3. Train — materialise v2 into the FeatureStore and read back
 #   4. Visualise — rolling price trends and transaction volumes by town
-#   5. Apply — ERA Realty town-level investment advisory
+#   5. Apply — town-level advisory for a Singapore real-estate agency
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -32,14 +32,17 @@ import polars as pl
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+
 from shared.mlfp02.ex_8 import (
     OUTPUT_DIR,
     build_schema_v1,
     build_schema_v2,
     compute_v1_features,
     compute_v2_features,
+    create_feature_store,
     load_hdb_resale,
-    setup_feature_store,
+    materialize_features,
+    validate_v1_features,
 )
 
 
@@ -65,9 +68,12 @@ from shared.mlfp02.ex_8 import (
 #
 # Polars group_by_dynamic is the engine: it buckets transactions into
 # monthly windows per town, then rolling_mean/rolling_sum aggregates
-# across a 6-month trailing window. The first 6 months per town have
-# nulls — this is the warm-up period where the rolling window hasn't
-# filled yet.
+# across a 6-month TRAILING window. "Trailing" must mean months m-6 to
+# m-1 for a sale in month m: the current month's median contains the
+# sale's own price, so including it would leak the target into the
+# feature. The series is therefore shifted by one month before rolling.
+# The first 6 months per town (7 for the trend) have nulls — the warm-up
+# period where the window hasn't filled yet.
 #
 # Singapore context: HDB towns like Bishan, Tampines, and Woodlands
 # have very different price trajectories. A 4-room flat in Bishan
@@ -83,45 +89,72 @@ print("\n" + "=" * 70)
 print("  Exercise 8.3 — Rolling Features: Temporal Market Context")
 print("=" * 70)
 
-# --- 2a. Load and compute v1 features (baseline) ---
+# --- 2a. Load and compute validated v1 features (baseline, as in 8.1) ---
 hdb = load_hdb_resale()
-features_v1 = compute_v1_features(hdb)
+features_v1, _ = validate_v1_features(compute_v1_features(hdb))
 
 # --- 2b. Define FeatureSchema v2 ---
 property_schema_v1 = build_schema_v1()
-
 # TODO: Call the shared helper to build the v2 schema.
 # Hint: build_schema_v2() returns a FeatureSchema that extends v1
 # with three market-context fields: town_median_price,
 # town_transaction_volume, town_price_trend.
 property_schema_v2 = ____
 
-n_new = len(property_schema_v2.features) - len(property_schema_v1.features)
+n_new = len(property_schema_v2.fields) - len(property_schema_v1.fields)
 print(f"\n  === FeatureSchema v2 (+{n_new} market features) ===")
-for f in property_schema_v2.features:
-    tag = (
-        " [NEW]"
-        if f.name not in [ff.name for ff in property_schema_v1.features]
-        else ""
-    )
+for f in property_schema_v2.fields:
+    tag = " [NEW]" if f.name not in property_schema_v1.field_names else ""
     print(f"    {f.name}: {f.dtype} (nullable={f.nullable}){tag}")
 
 # --- 2c. Compute v2 features ---
-# TODO: Call compute_v2_features(hdb) to compute rolling market features.
-# Hint: compute_v2_features adds town_median_price,
-# town_transaction_volume, and town_price_trend via group_by_dynamic
-# with a 6-month rolling window per town.
+# TODO: Call compute_v2_features(hdb) to compute trailing market features.
+# Hint: compute_v2_features shifts each town's monthly series by one
+# month, then applies a 6-month rolling window per town.
 features_v2 = ____
 
 # TODO: Count how many rows have non-null market context.
-# Hint: filter for rows where town_median_price is not null, then
-# get the .height (row count).
+# Hint: filter for rows where town_median_price is not null, then .height
 n_with_market = ____
 pct_with_market = n_with_market / features_v2.height
 
 print(f"\n  Computed v2 features: {features_v2.shape}")
 print(f"  Rows with market context: {n_with_market:,} ({pct_with_market:.1%})")
 print(f"  (First 6 months per town have nulls — rolling window warm-up)")
+
+# --- 2c-bis. Leakage check: the window must exclude the current month ---
+check_town = "BISHAN"
+monthly = (
+    features_v2.filter(pl.col("town") == check_town)
+    .group_by("transaction_date")
+    .agg(
+        pl.col("resale_price").median().alias("monthly_median"),
+        pl.col("town_median_price").first(),
+    )
+    .sort("transaction_date")
+)
+row_m = monthly.filter(pl.col("town_median_price").is_not_null()).row(0, named=True)
+m_index = monthly["transaction_date"].to_list().index(row_m["transaction_date"])
+# TODO: Mean of the 6 monthly medians BEFORE month m (exclude month m).
+# Hint: slice monthly["monthly_median"] from m_index - 6 up to (not
+#   including) m_index, then .mean()
+prior_six = ____
+print(f"\n  Leakage check ({check_town}, {row_m['transaction_date']}):")
+print(f"    feature value:              ${row_m['town_median_price']:,.0f}")
+print(f"    mean of 6 PRIOR month medians: ${prior_six:,.0f}")
+
+# --- 2c-ter. Calendar features (plain Polars) ---
+features_v2 = features_v2.with_columns(
+    pl.col("transaction_date").dt.month().alias("transaction_date_month"),
+    pl.col("transaction_date").dt.quarter().alias("transaction_date_quarter"),
+)
+print("\n  Calendar features added with Polars .dt accessors: month, quarter")
+print(f"  Columns after temporal extraction: {features_v2.shape[1]}")
+
+# INTERPRETATION: Calendar features capture seasonality that rolling
+# aggregates alone miss (e.g. Q1 vs Q4 buyer behaviour). The rolling
+# market features above are domain-specific; temporal calendar features
+# are mechanical and reused across ML pipelines.
 
 # --- 2d. Show sample rolling values for a few towns ---
 sample_towns = ["ANG MO KIO", "BISHAN", "TAMPINES", "WOODLANDS"]
@@ -156,11 +189,15 @@ assert (
 assert (
     pct_with_market > 0.5
 ), f"Task 2: at least 50% of rows should have market context, got {pct_with_market:.1%}"
+assert abs(row_m["town_median_price"] - prior_six) < 1e-6, (
+    "Task 2: the rolling feature must use only the 6 months BEFORE the sale"
+)
 print("\n[ok] Checkpoint 1 passed — v2 features computed with rolling market context\n")
 
 # INTERPRETATION: The v2 schema adds three nullable columns. They're
-# nullable because the first 6 months per town can't compute a
-# trailing window — that's the warm-up period, not a data quality bug.
+# nullable because the first months per town can't fill a trailing
+# window — that's the warm-up period, not a data quality bug. The
+# leakage check confirms the feature for month m uses months m-6..m-1.
 # Downstream models must drop_nulls on these columns before training.
 
 
@@ -169,36 +206,32 @@ print("\n[ok] Checkpoint 1 passed — v2 features computed with rolling market c
 # ════════════════════════════════════════════════════════════════════════
 
 print("--- FeatureStore Schema Evolution (v1 -> v2) ---")
+# In kailash-ml 2.2.x the store keeps one backing table per schema NAME,
+# so a version that adds columns is stored under its own name
+# (hdb_property_features_v2) while carrying version=2 for lineage. v1
+# rows from 8.1 stay untouched — models trained on v1 remain reproducible.
 
-factory, fs, tracker, has_backend = asyncio.run(setup_feature_store())
-
-if has_backend:
-    try:
-
-        async def store_v2():
-            await fs.register_features(property_schema_v2)
-            return await fs.store(features_v2, property_schema_v2)
-
-        row_count = asyncio.run(store_v2())
-        print(f"  Stored {row_count:,} v2 feature rows")
-        print(f"  Schema version: {property_schema_v2.version}")
-    except Exception as e:
-        has_backend = False
-        print(f"  [Skipped: v2 store ({type(e).__name__}: {e})]")
-else:
-    print("  [Skipped: FeatureStore backend unavailable]")
-    print("  v2 features remain in-memory as Polars DataFrame")
+# TODO: Materialise the v2 features and read them back.
+# Hint: same calls as 8.1 — create_feature_store(), materialize_features(...),
+#   fs.get_features(schema) — each async call wrapped in asyncio.run
+fs = ____
+materialized_v2 = ____
+stored_v2 = ____
+print(f"  Materialised {materialized_v2['row_count']:,} v2 rows "
+      f"(schema {materialized_v2['group']} v{materialized_v2['version']})")
+print(f"  Read back: {stored_v2.height:,} rows, columns {stored_v2.columns}")
 
 print(f"\n  Schema evolution:")
-print(f"    v1: {len(property_schema_v1.features)} features (basic property)")
-print(f"    v2: {len(property_schema_v2.features)} features (+{n_new} market context)")
+print(f"    v1: {len(property_schema_v1.fields)} features (basic property)")
+print(f"    v2: {len(property_schema_v2.fields)} features (+{n_new} market context)")
 print(f"    New fields: town_median_price, town_transaction_volume, town_price_trend")
 
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert property_schema_v2.version == 2, "Task 3: v2 schema must be version 2"
-assert len(property_schema_v2.features) == 7, "Task 3: v2 must have 7 features"
-print("\n[ok] Checkpoint 2 passed — v2 schema registered and stored\n")
+assert len(property_schema_v2.fields) == 7, "Task 3: v2 must have 7 features"
+assert stored_v2.height == features_v2.height, "Task 3: every v2 row must be stored"
+print("\n[ok] Checkpoint 2 passed — v2 features materialised and read back\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -219,10 +252,7 @@ town_monthly = (
     .sort("transaction_date")
 )
 
-# TODO: Create a 2-row subplot figure showing rolling median price
-# (top) and transaction volume (bottom) for the sample towns.
-# Hint: make_subplots(rows=2, cols=1, ...) then add go.Scatter traces
-# for each town in sample_towns.
+# Plot rolling median prices for selected towns
 fig = make_subplots(
     rows=2,
     cols=1,
@@ -270,9 +300,7 @@ fig.update_yaxes(title_text="Transaction Count", row=2, col=1)
 fig.write_html(str(OUTPUT_DIR / "03_town_trends.html"))
 print(f"\n  Saved: {OUTPUT_DIR / '03_town_trends.html'}")
 
-# TODO: Create a bar chart of average price trend by town.
-# Hint: group features_v2 by town, compute mean of town_price_trend,
-# sort by avg_trend, and use go.Bar with colour conditional on sign.
+# Price trend distribution (how many towns are appreciating vs declining)
 trend_data = (
     features_v2.filter(pl.col("town_price_trend").is_not_null())
     .group_by("town")
@@ -305,33 +333,31 @@ print("\n[ok] Checkpoint 3 passed — rolling market trends visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: ERA Realty Town-Level Investment Advisory
+# TASK 5 — APPLY: Town-Level Advisory for a Real-Estate Agency
 # ════════════════════════════════════════════════════════════════════════
-# Scenario: ERA Realty advisors help HDB upgraders decide WHEN and
-# WHERE to buy. With rolling market features, advisors can identify
-# towns where prices are trending up (buy soon) vs towns where prices
-# are stagnant (negotiate harder).
+# Scenario (illustrative figures): advisors at a Singapore real-estate
+# agency help HDB upgraders decide WHEN and WHERE to buy. With rolling
+# market features they can see which towns are trending up (buy soon)
+# and which are flat (negotiate harder).
 #
-# Without rolling features: advisors rely on gut feel and last month's
-# newspaper headlines. "Bishan is always expensive" — but IS it still
-# appreciating, or has it plateaued?
+# Without rolling features: advisors rely on gut feel. "Bishan is always
+# expensive" — but IS it still appreciating, or has it plateaued?
 #
-# With rolling features: advisors see quantified 6-month trends per
-# town. "Bishan median up 3.2% vs Tampines up 7.1% — Tampines is
-# gaining ground. Buy Tampines now before the gap closes."
+# With rolling features: advisors quote each town's latest 6-month trend,
+# computed below from the data, instead of an impression.
 #
-# ERA has ~6,800 agents in Singapore. If rolling-feature-based advice
-# helps each agent close 1 additional deal per quarter (conservative),
-# at an average commission of $5,000:
-#   6,800 agents * 1 deal/quarter * $5,000 = S$34M additional revenue/year
+# Revenue framing (assumed figures): 1,000 agents, one extra deal per
+# agent per quarter, S$5,000 commission per deal.
 
-print("=== APPLY: ERA Realty Town-Level Investment Advisory ===")
+print("=== APPLY: Town-Level Advisory (Singapore real-estate agency) ===")
 
+# Rank towns by their most recent trend value
 # TODO: Rank towns by their latest price trend (descending).
-# Hint: group features_v2 by town, take .last() of each rolling
-# column, then sort by latest_trend descending.
+# Hint: sort by transaction_date BEFORE group_by so .last() is the most
+#   recent month; then sort the result by latest_trend descending.
 latest_trends = (
     features_v2.filter(pl.col("town_price_trend").is_not_null())
+    .sort(____)
     .group_by("town")
     .agg(
         pl.col("town_price_trend").last().alias("latest_trend"),
@@ -357,15 +383,21 @@ for row in latest_trends.tail(5).iter_rows(named=True):
         f"median=${row['latest_median']:>10,.0f}  volume={row['latest_volume']:>5}"
     )
 
+agents, extra_deals_per_quarter, commission = 1_000, 1, 5_000  # assumed
 print()
-print("  ERA advisory impact:")
-print("    - 6,800 agents with quantified town-level trends")
-print("    - 1 additional deal/quarter per agent (conservative)")
-print("    - S$34M additional revenue per year")
+print("  Advisory impact (assumed figures):")
+print(f"    - {agents:,} agents x {extra_deals_per_quarter} extra deal/quarter x S${commission:,}")
+print(f"    - S${agents * extra_deals_per_quarter * 4 * commission:,} additional commission per year")
+
+compare = latest_trends.filter(pl.col("town").is_in(["BISHAN", "TAMPINES"]))
 print()
-print("  Key insight: 'Bishan is expensive' is qualitative.")
-print("  'Bishan median up 3.2% vs Tampines up 7.1% over 6 months'")
-print("  is quantitative and actionable.")
+print("  Key insight: 'Bishan is expensive' is qualitative. From the data:")
+for row in compare.iter_rows(named=True):
+    print(
+        f"    {row['town']:<10} median ${row['latest_median']:,.0f}, "
+        f"latest 6-month trend {row['latest_trend']:+.1f}%"
+    )
+print("  — quantitative, current and checkable.")
 
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
@@ -383,9 +415,10 @@ print(
     """
   [ok] FeatureSchema v2: extending v1 with rolling market-context fields
   [ok] group_by_dynamic: monthly bucketing of transactions per town
-  [ok] Rolling statistics: trailing 6-month median, volume, trend
-  [ok] Warm-up periods: why the first 6 months per town have nulls
-  [ok] Schema versioning: v1 -> v2 evolution with backward compatibility
+  [ok] Rolling statistics: trailing 6-month median, volume, trend that
+       exclude the sale's own month (shift before rolling)
+  [ok] Warm-up periods: why the first months per town have nulls
+  [ok] Schema versioning: v1 -> v2 evolution with v1 left reproducible
 
   KEY INSIGHT: Rolling features transform a model from "what is this
   flat worth?" to "what is this flat worth IN THIS MARKET?" The same

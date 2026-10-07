@@ -10,6 +10,8 @@ and small statistical helpers reused across the four technique files:
     02_hypothesis_testing.py — two-proportion z-test + effect sizes
     03_multiple_testing.py   — Bonferroni + BH-FDR + FDR simulation
     04_permutation_test.py   — distribution-free alternative
+    05_parametric_bootstrap.py — resample from a fitted model vs the data
+    06_one_sample_one_tailed.py — one-sample t + directional tests
 
 Technique-specific code (the actual corrections, permutation loops, power
 formulas) does NOT belong here — each technique file owns its own logic.
@@ -17,7 +19,7 @@ formulas) does NOT belong here — each technique file owns its own logic.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import polars as pl
@@ -38,38 +40,71 @@ RANDOM_SEED: int = 42
 OUTPUT_DIR = Path("outputs") / "mlfp02_ex3_ab_testing"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# The experiment was DESIGNED with unequal allocation across four arms.
+# SRM must be tested against this design, never against a default 50/50.
+DESIGNED_ALLOCATION: dict[str, float] = {
+    "control": 0.40,
+    "treatment_a": 0.35,
+    "treatment_b": 0.15,
+    "variant_c": 0.10,
+}
+
+# Exercise 3 compares ONE treatment arm with control. Pooling several
+# different treatments into one "treatment" group would estimate a
+# meaningless mixture of effects.
+TREATMENT_ARM: str = "treatment_a"
+
+# Binary success event: a "qualifying order" — a basket of at least $50
+# (metric_value is basket value in SGD). Nearly every user has
+# metric_value > 0, so "> 0" would give a ~99% "conversion" rate.
+CONVERSION_THRESHOLD: float = 50.0
+
 
 # ════════════════════════════════════════════════════════════════════════
 # DATA LOADING — Singapore e-commerce A/B test
 # ════════════════════════════════════════════════════════════════════════
 
 
-def load_experiment() -> pl.DataFrame:
-    """Load the A/B test fixture used across Exercise 3.
+def load_experiment_all() -> pl.DataFrame:
+    """Load every arm of the experiment (control + three variants).
 
     Columns: user_id, experiment_group, metric_value, pre_metric_value,
-             revenue, timestamp, segment, platform, country.
+             revenue, timestamp, segment, platform, country, converted.
 
-    Derives a binary `converted` flag (metric_value > 0) if missing.
-    Groups are binarised into {control, treatment}: anything that isn't
-    literally "control" is treated as treatment (variant_c, treatment_a,
-    etc.). This keeps the two-group tests simple for M2 pedagogy.
+    `converted` = 1 when the user placed a qualifying order
+    (metric_value >= CONVERSION_THRESHOLD).
     """
     loader = MLFPDataLoader()
     df = loader.load("mlfp02", "experiment_data.parquet")
+    return df.with_columns(
+        (pl.col("metric_value") >= CONVERSION_THRESHOLD)
+        .cast(pl.Int8)
+        .alias("converted")
+    )
 
-    if "converted" not in df.columns:
-        df = df.with_columns(
-            (pl.col("metric_value") > 0).cast(pl.Int8).alias("converted")
-        )
 
-    df = df.with_columns(
+def designed_control_share(arm: str = TREATMENT_ARM) -> float:
+    """Designed share of control within the (control, arm) pair."""
+    c = DESIGNED_ALLOCATION["control"]
+    return c / (c + DESIGNED_ALLOCATION[arm])
+
+
+def load_experiment(arm: str = TREATMENT_ARM) -> pl.DataFrame:
+    """Control vs ONE treatment arm, with a `group` column in {control, treatment}.
+
+    Only these two arms are kept, so every downstream comparison is a
+    clean two-arm contrast. Run `srm_check_multi` on `load_experiment_all()`
+    first to confirm the arms you analyse were allocated as designed.
+    """
+    df = load_experiment_all().filter(
+        pl.col("experiment_group").is_in(["control", arm])
+    )
+    return df.with_columns(
         pl.when(pl.col("experiment_group") == "control")
         .then(pl.lit("control"))
         .otherwise(pl.lit("treatment"))
         .alias("group")
     )
-    return df
 
 
 def split_groups(df: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
@@ -101,11 +136,15 @@ def revenue_arrays(df: pl.DataFrame) -> tuple[np.ndarray, np.ndarray]:
 
 
 def srm_check(
-    n_control: int, n_treatment: int, expected_ratio: float = 0.5
+    n_control: int, n_treatment: int, expected_ratio: float
 ) -> dict[str, Any]:
-    """χ² goodness-of-fit test for Sample Ratio Mismatch.
+    """χ² goodness-of-fit test for Sample Ratio Mismatch on a two-arm pair.
 
-    Returns dict with chi2, p_value, and a plain-language verdict.
+    `expected_ratio` is the DESIGNED share of control within the pair
+    (see `designed_control_share`). There is deliberately no 50/50
+    default: testing an unequal design against 50/50 always "detects" SRM.
+
+    Returns dict with chi2, p_value, a boolean `srm`, and a verdict.
     SRM indicates randomisation bugs, bot traffic, or pipeline issues —
     if p < 0.01 do NOT trust downstream test results.
     """
@@ -118,7 +157,38 @@ def srm_check(
         if p < 0.01
         else "OK — sample split consistent"
     )
-    return {"chi2": float(chi2), "p_value": float(p), "verdict": verdict}
+    return {"chi2": float(chi2), "p_value": float(p), "srm": bool(p < 0.01), "verdict": verdict}
+
+
+def srm_check_multi(
+    counts: dict[str, int], allocation: dict[str, float] = DESIGNED_ALLOCATION
+) -> dict[str, Any]:
+    """χ² SRM test across ALL arms against the designed allocation.
+
+    Returns chi2, p_value, srm flag, and a per-arm table (observed share,
+    designed share, standardised residual) so you can see WHICH arm is
+    mis-allocated, not just that something is wrong.
+    """
+    arms = list(allocation)
+    observed = np.array([counts[a] for a in arms], dtype=np.float64)
+    n_total = observed.sum()
+    expected = np.array([allocation[a] for a in arms]) * n_total
+    chi2, p = stats.chisquare(observed, f_exp=expected)
+    per_arm = {
+        a: {
+            "observed": int(observed[i]),
+            "observed_share": float(observed[i] / n_total),
+            "designed_share": float(allocation[a]),
+            "std_residual": float((observed[i] - expected[i]) / np.sqrt(expected[i])),
+        }
+        for i, a in enumerate(arms)
+    }
+    return {
+        "chi2": float(chi2),
+        "p_value": float(p),
+        "srm": bool(p < 0.01),
+        "per_arm": per_arm,
+    }
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -165,4 +235,69 @@ def print_header(title: str) -> None:
     """Consistent banner for each technique file."""
     print("=" * 70)
     print(f"  {title}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PARAMETRIC BOOTSTRAP — resample from a FITTED model, not the data
+# ════════════════════════════════════════════════════════════════════════
+
+
+def parametric_bootstrap_statistic(
+    sampler: Callable[[np.random.Generator, int], np.ndarray],
+    n: int,
+    statistic: Callable[[np.ndarray], float],
+    n_boot: int = N_BOOTSTRAP,
+    seed: int = RANDOM_SEED,
+) -> np.ndarray:
+    """Parametric bootstrap: draw fresh size-n samples from a fitted model.
+
+    ``sampler(rng, n)`` must return n synthetic draws from the fitted
+    distribution (e.g. a Normal parameterised by the sample moments). The
+    bootstrap distribution of ``statistic`` is then computed entirely under
+    the model — powerful when the model is right, misleading when it is not.
+    """
+    rng = np.random.default_rng(seed)
+    out = np.empty(n_boot, dtype=np.float64)
+    for i in range(n_boot):
+        out[i] = statistic(sampler(rng, n))
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════
+# EXPERIMENT TRACKING — kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+
+TRACKER_STORE_URL = (
+    f"sqlite:///{(OUTPUT_DIR / 'experiments.db').resolve().as_posix()}"
+)
+
+
+def track_train_run(
+    experiment: str,
+    run_name: str,
+    params: dict[str, str],
+    metrics: dict[str, float],
+) -> str:
+    """Log one Train-phase run to ExperimentTracker (sync wrapper).
+
+    Returns the run_id. The tracker is closed in a finally block — kailash-ml
+    holds the store connection open until close() is called.
+    """
+    import asyncio
+
+    async def _log() -> str:
+        from kailash_ml import ExperimentTracker
+
+        tracker = await ExperimentTracker.create(store_url=TRACKER_STORE_URL)
+        try:
+            async with tracker.track(
+                experiment=experiment, run_name=run_name
+            ) as run:
+                await run.log_params(params)
+                await run.log_metrics(metrics)
+                return run.run_id
+        finally:
+            await tracker.close()
+
+    return asyncio.run(_log())
     print("=" * 70)

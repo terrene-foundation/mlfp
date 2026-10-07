@@ -1,167 +1,144 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Automated grader for MLFP04 Assessment Task 2 — Dim Reduction & Anomaly.
+"""Grader for MLFP04 Assessment Task 2 — Reduction, Embeddings and Anomaly
+Screening (instructor-side; not distributed to students).
 
-Usage:
-    python grader.py starter.py     # grade your attempt
-    python grader.py solution.py    # verify the reference passes
+    python grader.py submission.py [--seed N]
 
-The grader regenerates the planted sensor matrix (with the hidden anomaly flags
-it never gave the student), re-derives the PCA intrinsic dimensionality and the
-anomaly-detection ROC-AUC, and checks the submission against strict invariants.
-All ten checks must pass.
+Every input is built here with a fresh secret seed from the real
+credit-scoring file: random samples of applications with the columns in a
+random order and new ids, and two screening batches with injected anomalies
+of three known kinds (one field pushed to an extreme, identities stitched
+from different applicants, a tight ring of near-identical applications).
+PCA references are recomputed here; the embedding is scored by
+trustworthiness against the standardised fields; anomaly scores are scored
+by ROC-AUC against the injection labels, per kind.
 """
 from __future__ import annotations
 
-import argparse
-import importlib.util
-import json
 import sys
 from pathlib import Path
 
 import numpy as np
 import polars as pl
+from sklearn.manifold import trustworthiness
 from sklearn.metrics import roc_auc_score
 
-from kailash_ml.engines.dim_reduction import DimReductionEngine
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE))
+from _applications import TYPES, sample_applications, with_anomalies  # noqa: E402
+from grading_harness import Checks, finalize, load_student_module, main, uses_engine  # noqa: E402
 
-SEED = 20260402
-N_NORMAL = 975
-N_ANOM = 25
-D = 24
-K_LATENT = 3
-N_TOTAL = N_NORMAL + N_ANOM
-AUC_FLOOR = 0.85
-PRECISION_FLOOR = 0.5
-
-
-def _reference() -> tuple[pl.DataFrame, np.ndarray]:
-    """Regenerate the sensor matrix and the hidden anomaly flags (1 = anomaly)."""
-    rng = np.random.default_rng(SEED)
-    Z = rng.normal(0, 1, (N_NORMAL, K_LATENT))
-    W = rng.normal(0, 1, (K_LATENT, D)) * 3.5
-    X_normal = Z @ W + rng.normal(0, 0.5, (N_NORMAL, D))
-    X_anom = rng.normal(12.0, 4.0, (N_ANOM, D)) * rng.choice([-1, 1], (N_ANOM, D))
-    X = np.vstack([X_normal, X_anom])
-    y = np.r_[np.zeros(N_NORMAL, int), np.ones(N_ANOM, int)]
-    perm = rng.permutation(X.shape[0])
-    X, y = X[perm], y[perm]
-    cols = [f"f{i:02d}" for i in range(D)]
-    return pl.DataFrame({c: X[:, j] for j, c in enumerate(cols)}), y
+WEIGHT = 20
+TRUST_FLOOR = 0.90
+TYPE_AUC_FLOOR = 0.85
+ALL_AUC_FLOOR = 0.90
 
 
-def _reference_pca() -> tuple[int, float]:
-    """Independent PCA reference: (n_components_90, reconstruction_error)."""
-    df, _ = _reference()
-    dre = DimReductionEngine()
-    full = dre.reduce(df, algorithm="pca", n_components=df.width)
-    cum = np.cumsum(np.asarray(full.explained_variance_ratio))
+def _z(frame: pl.DataFrame) -> tuple[np.ndarray, list[str]]:
+    cols = [c for c in frame.columns if c != "application_id"]
+    X = frame.select(cols).to_numpy().astype(float)
+    return (X - X.mean(0)) / X.std(0), cols
+
+
+def ref_pca(frame: pl.DataFrame) -> dict:
+    Z, cols = _z(frame)
+    vals, vecs = np.linalg.eigh(np.cov(Z.T))
+    order = np.argsort(vals)[::-1]
+    vals, vecs = vals[order], vecs[:, order]
+    evr = vals / vals.sum()
+    cum = np.cumsum(evr)
     n90 = int(np.searchsorted(cum, 0.90) + 1)
-    recon = float(
-        dre.reduce(df, algorithm="pca", n_components=n90).reconstruction_error
-    )
-    return n90, recon
+    return {"evr": evr, "cum": cum, "n90": n90, "pc1": dict(zip(cols, vecs[:, 0]))}
 
 
-def load_student_module(path: Path):
-    spec = importlib.util.spec_from_file_location("student_t2", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
+def grade(path: Path, seed: int) -> dict:
+    checks = Checks()
     try:
-        student = load_student_module(student_path)
+        st = load_student_module(path, "student_m4_task2")
     except Exception as e:
-        score["error"] = f"Failed to import: {type(e).__name__}: {e}"
-        return score
-    if not hasattr(student, "solve"):
-        score["error"] = "Module does not define a solve() function"
-        return score
-    try:
-        r = student.solve()
-    except Exception as e:
-        score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
-        return score
+        return finalize(checks, WEIGHT, seed, f"Failed to import: {type(e).__name__}: {e}")
+    for fn in ("component_profile", "embed_2d", "anomaly_scores"):
+        if not callable(getattr(st, fn, None)):
+            return finalize(checks, WEIGHT, seed, f"Missing function: {fn}")
+    rng = np.random.default_rng(seed)
 
-    c = score["checks"]
-    c["returns_dict"] = isinstance(r, dict)
-    if not c["returns_dict"]:
-        return _finalize(score)
+    checks.add("uses_dim_reduction_engine", uses_engine(path, "DimReductionEngine"),
+               "reduction must run through kailash-ml DimReductionEngine")
+    checks.add("uses_anomaly_engine", uses_engine(path, "AnomalyDetectionEngine"),
+               "at least one detector must run through kailash-ml AnomalyDetectionEngine")
 
-    required = (
-        "n_components_90",
-        "reconstruction_error",
-        "anomaly_scores",
-        "anomaly_labels",
-        "n_anomalies",
-    )
-    c["keys_present"] = all(k in r for k in required)
-    if not c["keys_present"]:
-        return _finalize(score)
+    # ── PCA on two secret samples ─────────────────────────────────────────
+    pca_names = ["variance_spectrum", "components_for_90pct", "pc1_loadings"]
+    samples = [sample_applications(rng, int(rng.integers(1500, 4000))) for _ in range(2)]
 
-    _, y_true = _reference()
-    ref_n90, ref_recon = _reference_pca()
+    def run_pca():
+        ok = dict.fromkeys(pca_names, True)
+        notes = []
+        for s in samples:
+            out = st.component_profile(s.clone())
+            ref = ref_pca(s)
+            evr = np.asarray(out["explained_variance_ratio"], float)
+            ok["variance_spectrum"] &= evr.shape == ref["evr"].shape and bool(np.allclose(evr, ref["evr"], atol=2e-3))
+            n90 = int(out["n_components_90"])
+            borderline = abs(ref["cum"][ref["n90"] - 1] - 0.90) < 3e-3 or abs(ref["cum"][max(ref["n90"] - 2, 0)] - 0.90) < 3e-3
+            ok["components_for_90pct"] &= n90 == ref["n90"] or (borderline and abs(n90 - ref["n90"]) == 1)
+            mine = out["pc1_loadings"]
+            a = np.array([float(mine[c]) for c in ref["pc1"]])
+            b = np.array(list(ref["pc1"].values()))
+            # a direction is defined up to sign
+            ok["pc1_loadings"] &= bool(min(np.abs(a - b).max(), np.abs(a + b).max()) <= 0.02)
+            notes.append(f"reference: {ref['n90']} components, first EVR {np.round(ref['evr'][:3], 3).tolist()}; "
+                         f"yours: {n90}, {np.round(evr[:3], 3).tolist()}")
+        return {n: (ok[n], "; ".join(notes)) for n in pca_names}
 
-    c["n_components_90_correct"] = r["n_components_90"] == ref_n90
-    c["compression_is_real"] = (
-        isinstance(r["n_components_90"], int) and 0 < r["n_components_90"] < D
-    )
+    checks.guarded(pca_names, run_pca)
 
-    try:
-        re_val = float(r["reconstruction_error"])
-        c["reconstruction_error_matches"] = re_val > 0.0 and abs(
-            re_val - ref_recon
-        ) <= max(0.02, 0.02 * ref_recon)
-    except Exception:
-        c["reconstruction_error_matches"] = False
+    # ── 2-D map ───────────────────────────────────────────────────────────
+    emb_frame = sample_applications(rng, 1000)
 
-    scores = r["anomaly_scores"]
-    labels = r["anomaly_labels"]
-    c["scores_length_correct"] = isinstance(scores, list) and len(scores) == N_TOTAL
-    c["labels_length_correct"] = isinstance(labels, list) and len(labels) == N_TOTAL
-    if not (c["scores_length_correct"] and c["labels_length_correct"]):
-        return _finalize(score)
+    def run_emb():
+        E = np.asarray(st.embed_2d(emb_frame.clone()), float)
+        if E.shape != (emb_frame.height, 2) or not np.isfinite(E).all():
+            return {"embedding_preserves_neighbours": (False, f"need a finite ({emb_frame.height}, 2) array, got {E.shape}")}
+        Z, _ = _z(emb_frame)
+        t = trustworthiness(Z, E, n_neighbors=10)
+        return {"embedding_preserves_neighbours": (t >= TRUST_FLOOR, f"trustworthiness(k=10) = {t:.3f}, need >= {TRUST_FLOOR}")}
 
-    sc = np.asarray(scores, dtype=float)
-    lab = np.asarray(labels, dtype=int)
+    checks.guarded(["embedding_preserves_neighbours"], run_emb)
 
-    try:
-        auc = roc_auc_score(y_true, sc)
-        c["anomaly_auc_above_floor"] = bool(sc.std() > 0 and auc >= AUC_FLOOR)
-    except Exception:
-        c["anomaly_auc_above_floor"] = False
+    # ── anomaly screening on two secret batches ──────────────────────────
+    an_names = ["global_anomalies_found", "stitched_identities_found", "application_ring_found", "overall_ranking"]
+    batches = [with_anomalies(rng) for _ in range(2)]
 
-    flagged = lab == 1
-    c["n_anomalies_consistent"] = (
-        int(r["n_anomalies"]) == int(flagged.sum()) and 10 <= int(flagged.sum()) <= 60
-    )
+    def run_an():
+        ok = dict.fromkeys(an_names, True)
+        notes = []
+        for frame, types in batches:
+            s = np.asarray(st.anomaly_scores(frame.clone()), float)
+            if s.shape != (frame.height,) or not np.isfinite(s).all():
+                return {n: (False, f"need one finite score per row, got shape {s.shape}") for n in an_names}
+            aucs = {}
+            for t in TYPES:
+                m = (types == t) | (types == "normal")
+                aucs[t] = roc_auc_score((types[m] == t).astype(int), s[m])
+            aucs["all"] = roc_auc_score((types != "normal").astype(int), s)
+            ok["global_anomalies_found"] &= aucs["global"] >= TYPE_AUC_FLOOR
+            ok["stitched_identities_found"] &= aucs["dependency"] >= TYPE_AUC_FLOOR
+            ok["application_ring_found"] &= aucs["clustered"] >= TYPE_AUC_FLOOR
+            ok["overall_ranking"] &= aucs["all"] >= ALL_AUC_FLOOR
+            notes.append("AUC " + ", ".join(f"{k} {v:.3f}" for k, v in aucs.items()))
+        return {n: (ok[n], "; ".join(notes)) for n in an_names}
 
-    try:
-        prec = float(y_true[flagged].mean()) if flagged.sum() else 0.0
-        c["flagged_precision_above_floor"] = prec >= PRECISION_FLOOR
-    except Exception:
-        c["flagged_precision_above_floor"] = False
-
-    return _finalize(score)
-
-
-def _finalize(score: dict) -> dict:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
-    return score
+    checks.guarded(an_names, run_an)
+    checks.require(["global_anomalies_found", "stitched_identities_found", "application_ring_found", "overall_ranking"],
+                   ["uses_anomaly_engine"])
+    checks.require(["variance_spectrum", "components_for_90pct", "embedding_preserves_neighbours"],
+                   ["uses_dim_reduction_engine"])
+    return finalize(checks, WEIGHT, seed)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("student", type=Path)
-    args = parser.parse_args()
-    result = grade(args.student)
-    print(json.dumps(result, indent=2))
-    sys.exit(0 if result["passed"] else 1)
+    main(grade)

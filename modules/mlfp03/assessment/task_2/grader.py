@@ -1,211 +1,208 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Automated grader for MLFP03 Assessment Task 2 — The Model Zoo.
+"""Grader for MLFP03 Assessment Task 2 — Model Selection You Can Defend
+(instructor-side; not distributed to students).
 
-Usage:
-    python grader.py starter.py
-    python grader.py solution.py
+    python grader.py submission.py [--seed N]
 
-The grader runs the submission's solve(), then independently re-trains one
-reference model through the same TrainingPipeline to tie the reported table to
-reality. A stub returning a fabricated table fails the re-derivation check.
+``select_and_fit`` is called twice per run:
+
+A. a secret sample of 4,000 labelled rows of the credit file;
+B. a secret sample of only 500 rows, with 40 extra numeric "bureau" fields
+   appended that carry no information about default.
+
+Both fitted models are scored on fresh applications drawn from the dataset's
+generating process with a secret seed (the same extra fields are appended for
+B). References are the grader's own: an L2 logistic regression on every
+legitimate numeric field (A), the same with a cross-validated penalty (B), and
+the TRUE default probabilities, whose AUC is the ceiling no honest
+out-of-sample estimate can clear.
 """
 from __future__ import annotations
 
-import argparse
-import asyncio
-import importlib.util
-import json
 import sys
 import warnings
 from pathlib import Path
 
 import numpy as np
 import polars as pl
+from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
+from sklearn.preprocessing import StandardScaler
 
-from shared import MLFPDataLoader
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _solution_heldout import (  # noqa: E402
+    ID_COLUMN,
+    LEAK_COLUMN,
+    TARGET,
+    TRUE_PROBABILITY,
+    as_submitted,
+    auc,
+    fresh_applications,
+    sample_history,
+)
+from grading_harness import Checks, finalize, load_student_module, main  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
-N_ROWS = 10_000
-SEED = 42
-TARGET = "premium_response"
-EXPECTED_COLUMNS = ["model", "accuracy", "f1", "auc"]
-REQUIRED_MODELS = {
-    "logistic_regression",
-    "naive_bayes",
-    "decision_tree",
-    "random_forest",
-    "extra_trees",
-    "lightgbm",
-}
-ENSEMBLES = {"random_forest", "extra_trees", "lightgbm", "gradient_boosting"}
-BASE_FEATURES = [
-    "satisfaction_score",
-    "avg_order_value",
-    "num_returns",
-    "order_count",
-    "loyalty_int",
-    "total_revenue",
-    "days_since_last_order",
-    "customer_tenure_days",
+WEIGHT = 20
+FAMILIES = {"logistic_regression", "svm", "knn", "naive_bayes", "decision_tree", "random_forest", "gradient_boosting"}
+REQUIRED = {"logistic_regression", "random_forest", "gradient_boosting"}
+N_A, N_B, N_FRESH, N_NOISE = 4_000, 500, 10_000, 40
+MARGIN_A, MARGIN_B = 0.015, 0.03
+HONEST_TOL = 0.03
+GATE = "well_formed_result"
+NAMES = [
+    GATE,
+    "comparison_covers_the_model_zoo",
+    "chosen_model_is_best_by_validation",
+    "comparison_scores_are_out_of_sample",
+    "estimate_matches_unseen_performance",
+    "predictions_follow_the_applicant",
+    "generalises_on_the_full_sample",
+    "generalises_when_data_is_scarce",
 ]
 
 
-def _model_frame() -> pl.DataFrame:
-    df = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
-    df = df.sort("customer_id").head(N_ROWS)
-    rng = np.random.default_rng(SEED)
+def _add_noise(df: pl.DataFrame, rng) -> pl.DataFrame:
+    cols = {f"bureau_attr_{i:02d}": rng.normal(size=df.height).round(3) for i in range(1, N_NOISE + 1)}
+    return df.with_columns([pl.Series(k, v) for k, v in cols.items()])
 
-    def z(col: str) -> np.ndarray:
-        a = df[col].to_numpy().astype(float)
-        return (a - a.mean()) / (a.std() + 1e-9)
 
-    loyal = df["loyalty_member"].cast(pl.Int64).to_numpy().astype(float)
-    sat_high = (df["satisfaction_score"] >= 4).cast(pl.Int64).to_numpy().astype(float)
-    logit = (
-        1.0 * z("satisfaction_score")
-        + 0.9 * loyal
-        + 0.8 * z("avg_order_value")
-        - 0.7 * z("num_returns")
-        + 0.5 * z("order_count")
-        + 1.4 * (loyal * sat_high)
-        + rng.normal(0.0, 1.3, size=df.height)
+def _reference_auc(train: pl.DataFrame, fresh: pl.DataFrame, cv: bool) -> float:
+    cols = [c for c, t in train.schema.items() if t.is_numeric() and c not in (TARGET, LEAK_COLUMN)]
+    med = {c: train[c].median() for c in cols}
+
+    def mat(df):
+        return df.select([pl.col(c).cast(pl.Float64).fill_null(med[c]) for c in cols]).to_numpy()
+
+    sc = StandardScaler().fit(mat(train))
+    model = (
+        LogisticRegressionCV(Cs=np.logspace(-3, 1, 9), cv=5, scoring="roc_auc", max_iter=3000)
+        if cv
+        else LogisticRegression(max_iter=3000)
     )
-    df = df.with_columns(
-        [
-            pl.col("loyalty_member").cast(pl.Int64).alias("loyalty_int"),
-            pl.Series(TARGET, (logit > 2.0).astype(np.int64)),
-            pl.int_range(0, df.height, dtype=pl.Int64).alias("row_id"),
-        ]
-    )
-    return df.select(BASE_FEATURES + ["row_id", TARGET])
+    model.fit(sc.transform(mat(train)), train[TARGET].to_numpy())
+    return auc(fresh[TARGET].to_numpy(), model.predict_proba(sc.transform(mat(fresh)))[:, 1])
 
 
-async def _reference_rf_auc() -> float:
-    """Independently re-train random_forest via the same pipeline."""
-    from kailash.db import ConnectionManager
-    from kailash_ml import ModelRegistry, TrainingPipeline
-    from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
-    from kailash_ml.types import FeatureField, FeatureSchema
+def _probabilities(fn, apps: pl.DataFrame) -> np.ndarray:
+    p = np.asarray(fn(apps.clone()), dtype=float).reshape(-1)
+    if p.shape != (apps.height,):
+        raise ValueError(f"predict_proba returned {p.shape[0]} values for {apps.height} applications")
+    if not np.all(np.isfinite(p)) or p.min() < 0 or p.max() > 1:
+        raise ValueError("predict_proba must return finite probabilities in [0, 1]")
+    return p
 
-    frame = _model_frame()
-    schema = FeatureSchema(
-        name="premium_zoo",
-        features=[FeatureField(name=f, dtype="float64") for f in BASE_FEATURES],
-        entity_id_column="row_id",
-    )
-    conn = ConnectionManager("sqlite:///:memory:")
-    await conn.initialize()
+
+def _valid(out) -> str | None:
+    if not isinstance(out, dict) or not {"cv_auc", "chosen", "estimated_auc", "predict_proba"} <= set(out):
+        return "return a dict with keys 'cv_auc', 'chosen', 'estimated_auc', 'predict_proba'"
+    if not isinstance(out["cv_auc"], dict) or not out["cv_auc"]:
+        return "'cv_auc' must be a non-empty dict"
     try:
-        pipeline = TrainingPipeline(feature_store=None, registry=ModelRegistry(conn))
-        result = await pipeline.train(
-            data=frame,
-            schema=schema,
-            model_spec=ModelSpec(
-                model_class="sklearn.ensemble.RandomForestClassifier",
-                framework="sklearn",
-                hyperparameters={"n_estimators": 150, "random_state": SEED, "n_jobs": -1},
-            ),
-            eval_spec=EvalSpec(
-                metrics=["accuracy", "f1", "auc"],
-                split_strategy="holdout",
-                test_size=0.25,
-            ),
-            experiment_name="ref_rf",
-        )
-        return float(result.metrics["auc"])
-    finally:
-        await conn.close()
+        vals = [float(v) for v in out["cv_auc"].values()] + [float(out["estimated_auc"])]
+    except (TypeError, ValueError):
+        return "'cv_auc' values and 'estimated_auc' must be numbers"
+    if not all(np.isfinite(vals)):
+        return "non-finite scores"
+    if not callable(out["predict_proba"]):
+        return "'predict_proba' is not callable"
+    return None
 
 
-def load_student_module(path: Path):
-    spec = importlib.util.spec_from_file_location("student_t2", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
+def grade(path: Path, seed: int) -> dict:
+    checks = Checks()
     try:
-        student = load_student_module(student_path)
+        st = load_student_module(path, "student_task2")
     except Exception as e:
-        score["error"] = f"Failed to import: {type(e).__name__}: {e}"
-        return score
-    if not hasattr(student, "solve"):
-        score["error"] = "Module does not define a solve() function"
-        return score
-    try:
-        r = student.solve()
-    except Exception as e:
-        score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
-        return score
+        return finalize(checks, WEIGHT, seed, f"Failed to import: {type(e).__name__}: {e}")
+    if not callable(getattr(st, "select_and_fit", None)):
+        return finalize(checks, WEIGHT, seed, "Missing function: select_and_fit")
 
-    c = score["checks"]
-    c["returns_dataframe"] = isinstance(r, pl.DataFrame)
-    if not c["returns_dataframe"]:
-        return _finalize(score)
+    rng = np.random.default_rng(seed)
+    train_a = sample_history(N_A, int(rng.integers(1 << 31)))
+    fresh = fresh_applications(N_FRESH, int(rng.integers(1 << 31)))
+    apps = as_submitted(fresh)
+    y = fresh[TARGET].to_numpy()
+    ceiling = auc(y, fresh[TRUE_PROBABILITY].to_numpy())
+    state: dict = {}
 
-    c["columns_exact"] = r.columns == EXPECTED_COLUMNS
-    if not c["columns_exact"]:
-        return _finalize(score)
+    def gate():
+        out = st.select_and_fit(train_a.clone())
+        why = _valid(out)
+        if why:
+            return {GATE: (False, why)}
+        state["out"] = out
+        state["p"] = _probabilities(out["predict_proba"], apps)
+        if np.std(state["p"]) == 0:
+            return {GATE: (False, "predict_proba returns the same value for every applicant")}
+        return {GATE: (True, "")}
 
-    names = r["model"].to_list()
-    c["at_least_six_models"] = r.height >= 6
-    c["no_duplicate_models"] = len(set(names)) == len(names)
-    c["required_models_present"] = REQUIRED_MODELS.issubset(set(names))
+    checks.guarded([GATE], gate)
+    if not checks.results[GATE]:
+        for n in NAMES[1:]:
+            checks.add(n, False, "gate failed")
+        return finalize(checks, WEIGHT, seed)
+    out, p = state["out"], state["p"]
+    cv = {str(k): float(v) for k, v in out["cv_auc"].items()}
+    got_a = auc(y, p)
 
-    # metric ranges
-    try:
-        for col in ("accuracy", "f1", "auc"):
-            vals = r[col].to_numpy().astype(float)
-            assert np.all((vals >= 0.0) & (vals <= 1.0))
-        c["metrics_in_range"] = True
-    except Exception:
-        c["metrics_in_range"] = False
-
-    aucs = r["auc"].to_numpy().astype(float)
-    f1s = r["f1"].to_numpy().astype(float)
-    has_rows = aucs.size > 0 and f1s.size > 0
-    c["all_models_beat_floor"] = bool(has_rows and np.all(aucs > 0.82))
-    c["best_auc_above_target"] = bool(has_rows and np.max(aucs) >= 0.88)
-    c["best_f1_above_target"] = bool(has_rows and np.max(f1s) >= 0.80)
-
-    # sorted by auc descending
-    c["sorted_by_auc_desc"] = bool(has_rows and np.all(np.diff(aucs) <= 1e-9))
-
-    # an ensemble in the top-3 by auc
-    top3 = set(r.sort("auc", descending=True).head(3)["model"].to_list())
-    c["ensemble_in_top3"] = len(ENSEMBLES.intersection(top3)) >= 1
-
-    # anti-stub: reported random_forest auc must match an independent re-train
-    try:
-        reported = r.filter(pl.col("model") == "random_forest")["auc"]
-        ref_auc = asyncio.run(_reference_rf_auc())
-        c["random_forest_auc_matches"] = (
-            reported.len() == 1 and abs(float(reported[0]) - ref_auc) < 0.02
+    def comparison():
+        fams = set(cv) & FAMILIES
+        unknown = sorted(set(cv) - FAMILIES)
+        ok = len(fams) >= 5 and REQUIRED <= fams and not unknown
+        res = {"comparison_covers_the_model_zoo": (ok, f"families {sorted(cv)}; need >= 5 from {sorted(FAMILIES)} incl. {sorted(REQUIRED)}")}
+        chosen = out["chosen"]
+        best = max(cv.values())
+        res["chosen_model_is_best_by_validation"] = (
+            chosen in cv and cv[chosen] >= best - 0.005,
+            f"chosen {chosen!r} ({cv.get(chosen)}) vs best validated score {best:.4f}",
         )
-    except Exception:
-        c["random_forest_auc_matches"] = False
+        top = max(cv.values())
+        res["comparison_scores_are_out_of_sample"] = (
+            top <= ceiling + HONEST_TOL and min(cv.values()) >= 0.4,
+            f"best reported score {top:.4f}, but even the true default probabilities only reach {ceiling:.4f} on unseen applicants",
+        )
+        est = float(out["estimated_auc"])
+        res["estimate_matches_unseen_performance"] = (
+            abs(est - got_a) <= HONEST_TOL,
+            f"estimated {est:.4f}, measured {got_a:.4f} on unseen applicants (tolerance {HONEST_TOL})",
+        )
+        return res
 
-    return _finalize(score)
+    def alignment():
+        perm = rng.permutation(apps.height)[:2000]
+        q = _probabilities(out["predict_proba"], apps[perm.tolist()])
+        moved = float(np.max(np.abs(q - p[perm])))
+        return {"predictions_follow_the_applicant": (moved < 1e-9, f"shuffling the applications changed predictions by {moved:.3g}")}
 
+    def full_sample():
+        ref = _reference_auc(train_a, fresh, cv=False)
+        return {"generalises_on_the_full_sample": (got_a >= ref - MARGIN_A, f"AUC {got_a:.4f} on unseen applicants; reference {ref:.4f}; need >= {ref - MARGIN_A:.4f}")}
 
-def _finalize(score: dict) -> dict:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
-    return score
+    def scarce():
+        noise_rng = np.random.default_rng(seed + 99)
+        train_b = _add_noise(sample_history(N_B, int(rng.integers(1 << 31))), noise_rng)
+        fresh_b = _add_noise(fresh, noise_rng)
+        out_b = st.select_and_fit(train_b.clone())
+        why = _valid(out_b)
+        if why:
+            return {"generalises_when_data_is_scarce": (False, why)}
+        got = auc(y, _probabilities(out_b["predict_proba"], as_submitted(fresh_b)))
+        ref = _reference_auc(train_b, fresh_b, cv=True)
+        return {"generalises_when_data_is_scarce": (got >= ref - MARGIN_B, f"AUC {got:.4f} on unseen applicants; reference {ref:.4f}; need >= {ref - MARGIN_B:.4f}")}
+
+    checks.guarded(
+        ["comparison_covers_the_model_zoo", "chosen_model_is_best_by_validation",
+         "comparison_scores_are_out_of_sample", "estimate_matches_unseen_performance"],
+        comparison,
+    )  # fmt: skip
+    checks.guarded(["predictions_follow_the_applicant"], alignment)
+    checks.guarded(["generalises_on_the_full_sample"], full_sample)
+    checks.guarded(["generalises_when_data_is_scarce"], scarce)
+    return finalize(checks, WEIGHT, seed)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("student", type=Path)
-    args = parser.parse_args()
-    result = grade(args.student)
-    print(json.dumps(result, indent=2))
-    sys.exit(0 if result["passed"] else 1)
+    main(grade)

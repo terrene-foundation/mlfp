@@ -6,13 +6,13 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Fit a GaussianMixture through kailash-ml's sklearn bridge
-#   - Verify the library result matches the from-scratch EM from 2.1
+#   - Fit sklearn's GaussianMixture (2.1 checked it against your own EM),
+#     then the same model through kailash-ml's ClusteringEngine
 #   - Sweep K using BIC and AIC to select the number of components
 #   - Explain WHY BIC is more conservative than AIC (different penalties)
 #   - Read a BIC/AIC curve and recognise the elbow
 #
-# PREREQUISITES: 01_em_from_scratch.py
+# PREREQUISITES: 01_em_from_scratch.py (so students trust the library)
 #
 # ESTIMATED TIME: ~30 min
 #
@@ -21,7 +21,7 @@
 #   2. Build — fit_sklearn_gmm helper + bic_aic_sweep
 #   3. Train — fit K=2..8 on Singapore e-commerce customers
 #   4. Visualise — BIC/AIC curves + silhouette overlay
-#   5. Apply — Shopee SEA customer segmentation at enterprise scale
+#   5. Apply — Southeast Asian marketplace customer segmentation at scale
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -34,6 +34,7 @@ from kailash_ml import ModelVisualizer
 # Cross-exercise import: tracker helpers live in ex_1.shared so every M4
 # unsupervised technique logs to the same `m4_clustering_zoo` experiment.
 from shared.mlfp04.ex_1 import setup_engines, teardown_engines, track_run
+from shared.mlfp04 import create_visualizer
 from shared.mlfp04.ex_2 import (
     load_customers_scaled,
     out_path,
@@ -143,7 +144,7 @@ print("\n[ok] Checkpoint 1 passed — BIC/AIC sweep produced a usable ranking")
 # TASK 4 — VISUALISE: BIC/AIC curves + silhouette overlay
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 comparison = {
     f"K={k}": {"BIC": v["bic"], "AIC": v["aic"], "silhouette": v["silhouette"]}
     for k, v in sweep.items()
@@ -160,10 +161,10 @@ print("[ok] Checkpoint 2 passed — BIC/AIC visualisation written")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Shopee SEA customer segmentation at scale
+# TASK 5 — APPLY: Southeast Asian marketplace segmentation at scale
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Shopee (Sea Group, Singapore-HQ) runs the largest e-commerce
-# platform in SEA — ~80M monthly actives across 7 countries. The growth
+# SCENARIO: A Singapore-headquartered marketplace runs a large e-commerce
+# platform in SEA — assume ~80M monthly actives across 7 countries. The growth
 # team segments customers for lifecycle campaigns: welcome, re-engagement,
 # win-back, retention.
 #
@@ -172,10 +173,10 @@ print("[ok] Checkpoint 2 passed — BIC/AIC visualisation written")
 #   buyers and creative targeted to the merged segment misfires on half
 #   the members.
 #
-# BUSINESS IMPACT (from a Lazada 2024 study on SEA marketplaces):
+# BUSINESS IMPACT (illustrative assumptions, not reported figures):
 #   - Monthly campaign spend: ~S$420,000
 #   - Baseline open rate with K=4: ~18%
-#   - BIC-selected K=6 lifted campaign engagement by ~23%
+#   - Suppose a BIC-selected K lifts campaign engagement by ~23%
 #   - 23% uplift on S$420K already-paid spend = S$97K/month = S$1.16M/year
 #     in recovered ROI, zero extra infra cost.
 
@@ -184,7 +185,7 @@ best_gmm = ____
 segment_weights = best_gmm.weights_
 
 print("\n" + "=" * 70)
-print(f"  APPLY — Shopee SEA segmentation (BIC-optimal K={best_k_bic})")
+print(f"  APPLY — Marketplace segmentation (BIC-optimal K={best_k_bic})")
 print("=" * 70)
 for k, w in enumerate(segment_weights):
     print(f"  Segment {k}: weight={w:.3f}  (~{w * 100:.1f}% of customers)")
@@ -239,7 +240,7 @@ print(f"  [tracked] BIC/AIC sweep logged to {exp_name}\n")
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='gmm')
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1 wraps sklearn's GaussianMixture in ClusteringEngine.
+# kailash-ml wraps sklearn's GaussianMixture in ClusteringEngine.
 # The sweep + BIC selection itself is not yet exposed at engine level —
 # you still drive K via BIC by hand, then hand the chosen K to the engine
 # for the production fit.
@@ -276,10 +277,17 @@ print(
     f"""
   [x] Fit sklearn GaussianMixture as a drop-in for your from-scratch EM
   [x] Compute BIC and AIC to penalise model complexity
+  [x] Explain why BIC is more conservative than AIC at large n
   [x] Select K by the BIC elbow (here: K={best_k_bic})
-  [x] Shopee SEA scenario: BIC-guided K turns into S$1.16M/year in ROI
+  [x] Marketplace scenario: BIC-guided K turns into an illustrative
+      S$1.16M/year in recovered campaign ROI, no extra spend required
 
-  Next: 03_covariance_types.py — same K, four cluster shapes, BIC picks.
+  KEY INSIGHT: BIC is not a magic oracle — it's a trade-off between
+  fit and parsimony. When BIC picks a K that is business-implausible
+  (e.g. K=1 or K=15), the features are wrong, not the score.
+
+  Next: 03_covariance_types.py — the same K but four different shapes
+  of cluster. BIC will pick a winner automatically.
 """
 )
 

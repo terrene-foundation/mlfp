@@ -10,3 +10,17 @@ its own submodule:
 
 Available after `uv sync` from any directory.
 """
+
+# Re-export the canonical factory (shared/kailash_helpers.py).
+from shared.kailash_helpers import create_visualizer
+
+# umap-learn nags "n_jobs value 1 overridden to 1 by setting random_state"
+# whenever a seed is set — seeding is the DELIBERATE deterministic-teaching
+# choice in ex_3, not an oversight. Message-matched acknowledgement so the
+# strict gate keeps everything else fatal.
+import warnings as _warnings
+
+_warnings.filterwarnings(
+    "ignore", message=r".*n_jobs value 1 overridden.*", category=UserWarning
+)
+

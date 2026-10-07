@@ -35,7 +35,7 @@
   Window Functions and Trends
 </h1>
 
-<p class="lead">Total time: ~55 minutes · 13 slides · ~4 min average</p>
+<p class="lead">Total time: ~55 minutes · 16 slides · ~3.5 min average</p>
 
 <p>
   This lesson introduces window functions — the second-most-important
@@ -92,11 +92,43 @@
     <strong>For beginners:</strong> "group_by makes a summary table. Window
     adds a summary column. Different tools for different questions."
   </div>
+  <div class="transition">→ "First, the series itself — built on a complete calendar."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>Complete the calendar</span></div>
+  <h3>Build the monthly series — on a complete calendar</h3>
+  <p>
+    Walk the code in two stages. Stage one: parse the month text into a real
+    date, derive price per square metre, and aggregate to one median per
+    town per month. Stage two is the discipline this lesson exists to
+    teach: "Windows count ROWS. So before any rolling or shifting, give
+    every town every month."
+  </p>
+  <p>
+    Give the real numbers: "27 towns × 120 months = 3,240 cells. Only
+    3,236 have sales — BUKIT TIMAH is missing 2015-10, 2017-02 and 2022-07,
+    CENTRAL AREA 2015-08. The grid join fills those four cells with nulls.
+    Without it, '12 rows back' is not '12 months back' in those towns —
+    and the error is silent."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "A cross join makes every combination of
+    town and month — like writing out a blank timetable. Then we left-join
+    the real sales onto it. Empty cells become null, which is honest,
+    instead of pretending the previous month was last month."
+  </div>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> the alternative is a self-join on
+    <code>transaction_date.dt.offset_by("-12mo")</code> for YoY — same
+    correctness without materialising the grid. The grid is taught because
+    rolling windows need it too.
+  </div>
   <div class="transition">→ "The Polars syntax."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>.over syntax</span></div>
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>.over syntax</span></div>
   <h3>The <code>.over</code> modifier</h3>
   <p>
     Walk the code. Read the chain aloud: "pl.col picks the column.
@@ -108,11 +140,35 @@
     (insufficient history) and the real values that follow. Make sure they
     see the null — tell them it's expected.
   </p>
+  <div class="transition">→ "Watch the window slide, one row at a time."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Sliding window animation</span></div>
+  <h3>How a rolling window slides</h3>
+  <p>
+    Step through the animation frame by frame. "Window size 3. Position 1:
+    only one point in the window — null. Position 2: two points — null.
+    Position 3: three points — finally an average, (100 + 105 + 98) / 3 =
+    101.0. Then the bracket slides one row and recomputes: 104.3, then
+    105.0."
+  </p>
+  <p>
+    Two things to land. First: "The first window_size − 1 rows are always
+    null. That is not a bug — it is the honest answer to 'what is the
+    3-month average when only 1 month exists?'" Second: "Every position
+    recomputes from raw values — there is no running total to drift."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> trace one more step on the whiteboard
+    with their suggested numbers. The mechanic must be physical before it
+    is code.
+  </div>
   <div class="transition">→ "The math behind rolling_mean."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Rolling mean formula</span></div>
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Rolling mean formula</span></div>
   <h3>Rolling mean formula</h3>
   <p>
     Walk the formula. Unweighted mean of the last w observations. The sum
@@ -126,7 +182,7 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Window trade-off table</span></div>
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Window trade-off table</span></div>
   <h3>Window size trade-off</h3>
   <p>
     Walk the table. Short windows are reactive but noisy. Long windows are
@@ -149,7 +205,7 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>shift</span></div>
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>shift</span></div>
   <h3><code>shift</code> — lag features</h3>
   <p>
     Run it live. Show that shift(12) pushes the value from 12 rows earlier
@@ -160,21 +216,29 @@
     pull the last 12 rows of Bishan into Jurong's first 12 rows. Always
     partition when you have groups.
   </p>
+  <p>
+    And reconnect to the calendar: "12 rows back equals 'same month last
+    year' <em>only</em> because we completed the grid. Without it, 40 rows
+    compare against the wrong month — CENTRAL AREA 2016-03 would line up
+    with 2015-02. Wrong answers, not nulls."
+  </p>
   <div class="transition">→ "Combining them — YoY."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>YoY formula</span></div>
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>YoY formula</span></div>
   <h3>Year-over-year change</h3>
   <p>
     Walk the formula. Current minus 12 months ago, divided by 12 months
     ago, times 100. Standard percent change, applied to the shifted column.
   </p>
   <p>
-    The seasonality argument is the key teaching moment. "Month over month
-    is dominated by calendar effects — Chinese New Year suppresses
-    transactions, year-end pushes them up. Year over year compares March
-    to March, so those effects cancel."
+    The seasonality argument is the key teaching moment — frame it as the
+    general principle, not a claim about this dataset: "Month over month
+    can be dominated by calendar effects in markets that have them. Year
+    over year compares March to March, so seasonal effects cancel. Whether
+    <em>this</em> market has seasonality at all is a question we test two
+    slides from now — we do not assume it."
   </p>
   <div class="audience-cue beginner">
     <strong>For beginners:</strong> "If you want to know whether your
@@ -185,22 +249,48 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Ranking code</span></div>
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Ranking code</span></div>
   <h3>Ranking the hottest districts</h3>
   <p>
     Walk the code. Filter to the latest date. Drop rows with null YoY (no
     history). Sort by YoY descending. Print top 5, bottom 5.
   </p>
   <p>
-    Run it live. Show the results. Ask which towns they expected to see at
-    the top — usually the central/mature estates. Sometimes there are
-    surprises.
+    Run it live and read the output with appropriate caution: on this
+    synthetic dataset prices have no real trend, so the ranking shows
+    which towns happened to wobble up versus down — noise, ranked. The
+    <em>method</em> is the lesson: with real data, this exact code is how
+    you would find genuine movers.
   </p>
+  <div class="transition">→ "One more test before we believe any pattern."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Seasonality test</span></div>
+  <h3>Trend or seasonality? Test it</h3>
+  <p>
+    Walk the code: extract the calendar month, group by it, average. Twelve
+    rows come back — one average per calendar month — and the claim to
+    check is whether any month stands out.
+  </p>
+  <p>
+    Report the honest result: "On the course's synthetic HDB data the
+    answer is no. Yearly medians stay within 2% of each other (839k–853k),
+    and the twelve calendar-month averages within 1%. No trend, and no
+    seasonal dip. A 'holiday-month dip' is a hypothesis — you claim it
+    only when a table like this one shows it. With real data, this is the
+    exact code that would show it."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> a proper decomposition (trend + seasonal +
+    residual, additive or multiplicative) arrives in Module 2 — this
+    group-by is the quick falsification test you run first.
+  </div>
   <div class="transition">→ "The production-speed version — lazy frames."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Lazy frames diagram</span></div>
+  <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Lazy frames diagram</span></div>
   <h3>🟣 Lazy frames — global optimisation</h3>
   <p>
     Walk the before/after. Left side (eager): each step materialises a
@@ -211,8 +301,8 @@
   <p>
     The killer optimisation: filter pushdown. "If your chain filters to
     year ≥ 2020, lazy can push that filter into the parquet scan — it
-    never even loads the rows before 2020. Eager would load all 500,000
-    rows, then throw 320,000 away."
+    never even loads the rows before 2020. Eager would load all 50,150
+    rows, then throw half of them away."
   </p>
   <div class="audience-cue expert">
     <strong>For experts:</strong> "Polars uses a rule-based optimiser
@@ -224,7 +314,7 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Lazy code</span></div>
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Lazy code</span></div>
   <h3>Lazy pipeline in code</h3>
   <p>
     Walk the code. Point out the two key differences from eager: start
@@ -245,11 +335,13 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Traps</span></div>
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Traps</span></div>
   <h3>Four traps</h3>
   <p>
-    Walk each. The sort trap is the most common — show it live by
-    computing a rolling mean on unsorted data and pointing at the mess.
+    Walk each. The sort/calendar trap is the most common — show it live by
+    computing a rolling mean on unsorted data and pointing at the mess,
+    then recall the four gap months: without the grid, even sorted windows
+    silently span the wrong months in two towns.
   </p>
   <p>
     The <code>over</code> trap is easy to miss if they don't have Polars
@@ -265,7 +357,7 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Reflection</span></div>
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Reflection</span></div>
   <h3>What you can now do</h3>
   <p>
     Walk the bullets. Pause on each. Ask for a mental "yes".

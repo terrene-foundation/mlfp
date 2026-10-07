@@ -1,24 +1,288 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>Lesson 6.8 — Speaker Notes | MLFP</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="../../../assets/css/textbook.css"><style>.slide-block{margin:1.5em 0;padding:18px 22px;background:var(--mlfp-bg-alt);border-left:4px solid var(--mlfp-primary);border-radius:6px}.slide-block .meta{font-size:.85em;color:var(--mlfp-text-muted);display:flex;gap:16px;margin-bottom:8px}.slide-block .meta .badge{background:var(--mlfp-primary);color:white;padding:2px 10px;border-radius:12px;font-weight:600}.slide-block h3{margin:.2em 0 .6em;font-size:1.15em}.audience-cue{margin-top:12px;padding:8px 14px;font-size:.92em;border-radius:4px}.audience-cue.beginner{background:rgba(34,197,94,.08);border-left:3px solid var(--mlfp-foundations)}.transition{margin-top:12px;padding-top:10px;border-top:1px dashed var(--mlfp-border);font-style:italic;color:var(--mlfp-text-muted);font-size:.92em}</style></head>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.8 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
 <body>
-<nav class="top-nav"><span class="brand">MLFP — Module 6 — Speaker Notes</span><span><a href="../../index.html">Module Index</a> <a href="textbook.html">Textbook</a> <a href="slides.html">Slides</a></span></nav>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
 <main class="textbook">
-<h1 class="lesson-title"><span class="lesson-number">Speaker Notes — Lesson 6.8</span>Capstone — Full Production Platform</h1>
-<p class="lead">Total time: ~120 minutes &nbsp;·&nbsp; 10 slides &nbsp;·&nbsp; ~12 min per slide (integration demo)</p>
-<p>This is the final lesson of the entire programme. The mood should be celebratory but technically rigorous. Students deploy a real system and test it end-to-end. The six-module journey table (Slide 8) is the emotional anchor — walk it slowly and let them feel the distance they have covered. The final slide is a celebration, not a teaser for more content.</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 1</span><span>~5 min</span><span>Title</span></div><h3>Capstone — Full Production Platform</h3><p>Set the scene: "This is the last lesson. In Lesson 1.1, you wrote your first line of Python against Singapore weather data. Today, you deploy a governed, multi-channel AI system. Let's make it count." Take a moment to acknowledge how far they have come. Some started with zero coding experience.</p><div class="transition">→ "The complete stack."</div></div>
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 6.8</span>
+  Capstone — Full Production Platform
+</h1>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 2–3</span><span>~15 min</span><span>Stack and Nexus</span></div><h3>The stack and Nexus deployment</h3><p>Walk the pipeline diagram: "Train a model with TrainingPipeline. Persist with DataFlow. Wrap in a Kaizen agent. Govern with PACT. Deploy with Nexus. Monitor with DriftMonitor. Six packages, one pipeline." Then the Nexus code: "Four lines: create the app, add auth, add rate limiting, register the service, serve. Three channels — API, CLI, MCP — from one codebase."</p><div class="transition">→ "Authentication."</div></div>
+<p class="lead">
+  Total time: ~120 minutes &nbsp;·&nbsp; 11 slides &nbsp;·&nbsp; ~11 min per slide average
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 4–5</span><span>~15 min</span><span>RBAC and DriftMonitor</span></div><h3>Auth and monitoring</h3><p>Walk the role table: "Admin deploys. Analyst queries. Viewer reads. Unauthenticated → 401. Wrong role → 403." Then DriftMonitor: "You trained the model on 2024 data. It is now 2026. The distribution has shifted. DriftMonitor detects this and alerts your team before the predictions go stale."</p><div class="transition">→ "End-to-end verification."</div></div>
+<p>
+  The culmination of the entire programme: a governed AI system served
+  on three channels. Two hours, mostly on the code — the Nexus
+  deployment, the role-tier table, drift monitoring, and the
+  end-to-end verification that proves auth, governance, and prediction
+  in one test run. The security facts to land precisely: middleware
+  order (rate limit → JWT → handler → PACT), the role comes from the
+  signed token and nothing else, and a valid token with no tier gets
+  <code>{"blocked": true}</code> inside the handler — not a 403.
+</p>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slide 6</span><span>~15 min</span><span>E2E test</span></div><h3>End-to-end verification</h3><p>Walk the three tests. "Test 1: authenticated request succeeds with a prediction. Test 2: unauthenticated request is rejected with 401. Test 3: analyst trying to access admin endpoint is rejected with 403. These three tests prove the system works, the auth works, and the governance works."</p><div class="audience-cue beginner"><strong>If anyone asks 'why test this?':</strong> "Because untested deployment is a liability. In Singapore's regulated environment (MAS, PDPA), you need to demonstrate that your system rejects unauthorised access. These tests are your evidence."</div><div class="transition">→ "The journey."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Capstone — Full Production Platform</h3>
+  <p>
+    Open with the outcome: "Deploy a governed AI system accessible via
+    API, CLI, and MCP. Everything from six modules lands in this
+    lesson — and at the end, you'll have run the whole thing against
+    real HTTP."
+  </p>
+  <div class="transition">→ "The stack, layered."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 7–8</span><span>~10 min</span><span>Journey table</span></div><h3>The six-module journey</h3><p>Walk the table slowly. Pause at each module. "M1: you could not write Python. M2: you understood statistics. M3: you built production ML pipelines. M4: you discovered the pivot — optimisation creates features. M5: you implemented every DL architecture. M6: you deployed a governed AI system." Let the weight of the journey sink in.</p><div class="transition">→ "What you can do."</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~10 min</span><span>Stack architecture</span></div>
+  <h3>The complete Kailash stack — layered architecture</h3>
+  <p>
+    Walk the layered diagram bottom to top: the Core SDK's workflow
+    engine; DataFlow for persistence; kailash-ml's lifecycle engines;
+    Kaizen for agents; PACT for governance; MCP for tools; Nexus on
+    top serving every channel. "Six packages, one platform. Every
+    layer is one you used in isolation in an earlier lesson — today
+    they're one system."
+  </p>
+  <div class="transition">→ "Nexus: three channels."</div>
+</div>
 
-<div class="slide-block"><div class="meta"><span class="badge">Slides 9–10</span><span>~10 min</span><span>Recap and celebration</span></div><h3>Congratulations</h3><p>Run through the final checklist. Then the celebration: "From print('Hello') to production ML platform. Six modules. 48 lessons. Zero to practitioner." Pause. Let them feel it. "The Kailash platform is your toolkit. Singapore is your testing ground. Go build something that matters."</p><p>Close with: "Take five minutes to write down one thing you want to build with what you have learned. Share it with your neighbour. That is your next project."</p><div class="transition">→ End of the MLFP programme.</div></div>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~14 min</span><span>Nexus deployment</span></div>
+  <h3>Nexus: three channels, one codebase</h3>
+  <p>
+    Walk the code. The JWT config: HS256 with the secret from
+    <code>MLFP_JWT_SECRET</code> — "from the environment, never in
+    source; the <code>secrets.token_urlsafe(48)</code> fallback is
+    for local runs." The Nexus app with its one allowed CORS origin.
+    The <code>NexusAuthPlugin</code> bundling JWT with a rate limit —
+    10 requests/minute, burst 5.
+  </p>
+  <p>
+    Then the handler: <code>serve_qa</code> reads
+    <code>request.state.user.roles</code> — "from the <em>verified</em>
+    token, not the request" — and dispatches to the governed tier.
+    One <code>handler_extract</code> call publishes it on all three
+    channels: API, CLI, MCP.
+  </p>
+  <p>
+    Read the footer slowly — the order is the security model:
+    "Middleware runs outermost first: <strong>rate limit (429) → JWT
+    (401) → handler → PACT governance</strong>. Cheap rejections at
+    the edge, expensive governance only for verified callers. CORS
+    answers only the allowed origin."
+  </p>
+  <div class="transition">→ "The token picks the tier."</div>
+</div>
 
-<nav class="lesson-nav"><a href="../07/notes.html" class="prev"><span class="label">← Previous</span>6.7 Speaker Notes</a><a href="../../index.html" class="next"><span class="label">Up →</span>Module 6 Index</a></nav>
-</main></body></html>
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~12 min</span><span>Role tiers</span></div>
+  <h3>Role-based access: the token picks the tier</h3>
+  <p>
+    Walk the tier table — it's the capstone's RBAC in one view.
+    <code>qa</code>: retail-facing QA, $1 budget, public clearance,
+    two tools. <code>admin</code>: model operations, $10,
+    confidential, plus update_model, view_metrics, monitor_drift.
+    <code>audit</code>: compliance audit, $50, secret, plus
+    access_audit_log and generate_report.
+  </p>
+  <p>
+    Walk the three bullets as the failure taxonomy. Missing, forged,
+    or expired token: 401 at the JWT layer — it never reaches the
+    handler. Too many requests: 429 at the rate limiter. Valid token
+    but a role with no tier — <code>guest</code>: "PACT refuses
+    <em>inside the handler</em>: the response is
+    <code>{"blocked": true}</code>, not a 403. The HTTP layer
+    succeeded; governance said no."
+  </p>
+  <p>
+    And the last bullet — read it twice: "The role comes from the
+    <em>signed token</em>. A <code>"role": "audit"</code> field in
+    the request body changes nothing. Authority is what you can prove,
+    never what you claim."
+  </p>
+  <div class="transition">→ "Watch the traffic: drift."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~11 min</span><span>DriftMonitor integration</span></div>
+  <h3>DriftMonitor integration</h3>
+  <p>
+    Walk the code — M3.8's pattern in the new system. Its own SQLite
+    file, tenant <code>mlfp_demo</code>, PSI threshold 0.2. Reference
+    data: validated traffic with one numeric feature per question —
+    <code>question_length</code>. Then <code>check_drift</code> per
+    window of new traffic; when
+    <code>overall_drift_detected</code> fires, print the severity and
+    the PSI.
+  </p>
+  <p>
+    Read the footer: "Exercise 8.4 measures PSI on real traffic —
+    SQuAD questions against a window that mixes in MMLU exam
+    questions. PSI below 0.1: safe. 0.1–0.2: investigate. Above 0.2:
+    alert. The exam-style questions are longer and more uniform — the
+    monitor catches the shift without knowing anything about the
+    content."
+  </p>
+  <div class="transition">→ "Prove the whole thing works."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~13 min</span><span>E2E verification</span></div>
+  <h3>End-to-end verification</h3>
+  <p>
+    Walk the test. <code>httpx.ASGITransport(app=app.fastapi_app)</code>
+    — "real HTTP through the full middleware stack, no port, no
+    server process." Three assertions:
+  </p>
+  <p>
+    Happy path: POST with the qa bearer token → 200, and the
+    handler's role is "qa". Auth: the same POST with no token and
+    with a forged token → 401 at the edge. Governance: the guest
+    token — valid signature, no tier →
+    <code>outputs.handler.blocked</code> is True.
+  </p>
+  <p>
+    "One test run proves the three layers independently: the edge
+    rejects the unauthenticated, the handler serves the authorised,
+    and governance refuses the out-of-tier. This is the definition of
+    done for the capstone — not 'it started', but these assertions,
+    green."
+  </p>
+  <div class="transition">→ "Debug the agents inside it."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~11 min</span><span>Debugging agents</span></div>
+  <h3>Debugging and testing agents</h3>
+  <p>
+    Walk the observatory code: <code>capture_run</code> records the
+    agent's full trace; <code>tool_usage</code> prints one row per
+    tool call, in order; <code>detect_loops</code> flags the same
+    call repeated — a stuck agent; <code>plot_trace</code> renders
+    the reasoning timeline. "The Delegate from 6.5 runs inside this
+    platform too — and this is how you see what it's doing."
+  </p>
+  <p>
+    Then the testing principle: "<strong>Test structure, not
+    wording</strong> — the right tool was called, typed fields are
+    present, governance verdicts match. LLM text varies run to run;
+    structure doesn't." And the two awareness notes: serving at
+    scale — KV-cache reuse, flash attention, continuous-batching
+    servers like vLLM cut latency per token; multimodal —
+    vision-language models like the open LLaVA family take images and
+    text through the same agent patterns.
+  </p>
+  <div class="transition">→ "The stack, live."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~9 min</span><span>Stack in production</span></div>
+  <h3>The complete Kailash stack in production</h3>
+  <p>
+    Walk the production figure: the governed handler serving three
+    channels, PACT enforcing on every call, the registry holding
+    model and adapter versions, DriftMonitor watching traffic,
+    DataFlow persisting everything, the audit trail hash-chained
+    underneath. "Every box on this diagram is code you've run. The
+    production system isn't a new thing — it's the six lessons of M6
+    composed."
+  </p>
+  <div class="transition">→ "Look how far you've come."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~8 min</span><span>Six-module journey</span></div>
+  <h3>The six-module journey</h3>
+  <p>
+    Walk the table slowly — let the arc land. M1: Python, Polars,
+    data pipelines, visualisation. M2: statistics, regression,
+    hypothesis testing, Bayesian thinking. M3: supervised ML,
+    ensembles, production pipeline, drift monitoring. M4:
+    unsupervised ML, NLP, recommenders, THE PIVOT, DL foundations.
+    M5: every DL architecture — AE, CNN, RNN, Transformer, GAN, GNN,
+    RL. M6: LLMs, fine-tuning, RAG, agents, governance, production
+    deployment.
+  </p>
+  <p>
+    "Six modules, each building exactly on the last. The PIVOT in M4
+    said optimisation drives feature discovery; everything since has
+    been that sentence at larger scale."
+  </p>
+  <div class="transition">→ "The final checklist."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~7 min</span><span>Final checklist</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the final checklist: deploy a complete AI system with Nexus
+    across API + CLI + MCP; implement authentication and
+    authorisation; integrate all Kailash packages into a production
+    pipeline; monitor deployed models for drift; debug agent
+    reasoning from captured traces; and test end-to-end — auth,
+    governance, predictions, channels.
+  </p>
+  <div class="transition">→ "Close the programme."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~5 min</span><span>Congratulations</span></div>
+  <h3>Congratulations</h3>
+  <p>
+    Read the slide as written — it earns the moment:
+    "From <code>print("Hello")</code> in Lesson 1.1 to a governed,
+    multi-channel production AI platform in Lesson 6.8. Six modules.
+    48 lessons. Zero to production."
+  </p>
+  <p>
+    Read the green box, then close the room: "You are now an ML
+    practitioner. The Kailash platform is your toolkit. Singapore is
+    your testing ground. Go build something that matters."
+  </p>
+  <div class="transition">→ End of Lesson 6.8 — end of Module 6 — end of the programme.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../07/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    6.7 Speaker Notes
+  </a>
+  <a href="../../index.html" class="next">
+    <span class="label">Module →</span>
+    Module 6 Index
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

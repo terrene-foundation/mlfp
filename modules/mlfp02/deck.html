@@ -104,28 +104,28 @@
     <div class="col">
       <div class="kailash-bridge">
         <h3>ExperimentTracker</h3>
-        <p>Design A/B tests, track experiment metadata, analyse results with statistical rigour.</p>
+        <p>Your lab notebook: logs each run&rsquo;s parameters, metrics and decision. You compute; it records.</p>
       </div>
       <div class="kailash-bridge" style="margin-top:12px;">
         <h3>FeatureEngineer</h3>
-        <p>Generate interaction terms, polynomial features, temporal features automatically.</p>
+        <p>Builds interaction, polynomial, binned and temporal candidates, then selects the best.</p>
       </div>
       <div class="kailash-bridge" style="margin-top:12px;">
         <h3>FeatureStore</h3>
-        <p>Store and retrieve features with point-in-time correctness and data lineage.</p>
+        <p>Stores typed features and returns them as of a point in time, with a lineage hash.</p>
       </div>
     </div>
     <div class="col">
       <div class="kailash-bridge">
         <h3>TrainingPipeline</h3>
-        <p>Fit regression and classification models with built-in cross-validation.</p>
+        <p>Trains and registers models from a feature schema (M3). Reports metrics, not coefficient p-values.</p>
       </div>
       <div class="kailash-bridge" style="margin-top:12px;">
         <h3>ModelVisualizer</h3>
-        <p>Residual plots, coefficient charts, ROC curves &mdash; Polars-native.</p>
+        <p>Histograms, residual, ROC, calibration and confusion-matrix plots (Plotly).</p>
       </div>
       <div class="callout callout-foundations" style="margin-top:12px;">
-        <strong>Pattern:</strong> Learn the statistics manually first, then see how the engines automate it. Understanding both means you can debug when results surprise you.
+        <strong>Pattern:</strong> Learn the statistics by hand first, then let the engines record, store and plot. Knowing both lets you debug surprises.
       </div>
     </div>
   </div>
@@ -133,7 +133,7 @@
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Emphasise that Kailash engines appear at the end of each lesson in a "Kailash Bridge" slide. The manual statistics come first so students understand what the engines compute under the hood. If beginners confused: "The engines are your power tools. We teach you the hand tools first." If experts bored: "FeatureStore implements point-in-time correctness, which prevents a very common data leakage bug."
+    Timing: 2 min. Emphasise that Kailash engines appear at the end of each lesson in a "Kailash Bridge" slide. In M2 the statistics are computed by hand (numpy, scipy, polars); the engines record runs, build and store features, and plot results. None of them runs a t-test or CUPED for you. If beginners confused: "The engines are your power tools. We teach you the hand tools first." If experts bored: "FeatureStore implements point-in-time retrieval, which prevents a very common data leakage bug."
   </aside>
 </section>
 
@@ -403,7 +403,7 @@
     <div class="col">
       <h3>HDB Price Example</h3>
       <ul>
-        <li>Prior belief: mean HDB resale price is $\text{Beta}$ distributed around $500K (weak prior)</li>
+        <li>Prior belief: mean HDB resale price $\mu \sim N(\mu_0, \sigma_0^2)$ with $\mu_0$ = <span class="nomath">$500K</span>, $\sigma_0$ = <span class="nomath">$25K</span> (Normal-Normal)</li>
         <li>Observe 50 transactions</li>
         <li>Posterior shifts toward the observed mean, weighted by how much data we have vs how strong our prior was</li>
       </ul>
@@ -452,35 +452,40 @@
 </section>
 
 <!-- SLIDE 14: 2.1 Kailash Bridge -->
-<section>
+<section class="code-fit">
   <h2>Kailash Bridge: Probability in Practice</h2>
   <div class="kailash-bridge">
-    <h3>ExperimentTracker &mdash; Bayesian A/B Testing</h3>
+    <h3>ExperimentTracker &mdash; Record Every Bayesian Run</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Compute Bayes' theorem, build truth tables, choose priors</div>
+      <div><strong>Manual:</strong> Choose the prior, compute the Normal-Normal posterior and its credible interval (numpy)</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> ExperimentTracker computes posterior probabilities for experiment variants automatically</div>
+      <div><strong>Engine:</strong> ExperimentTracker logs the prior, posterior and interval so the run is reproducible. It records; it does not compute posteriors.</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import ExperimentTracker
+  <pre style="font-size: 0.5em;"><code class="language-python">import asyncio
+from kailash_ml import ExperimentTracker
 
-tracker = ExperimentTracker()
-tracker.create_experiment(
-    name="hdb_price_bayesian",
-    hypothesis="Bayesian estimation gives tighter CI than frequentist",
-    metrics=["posterior_mean", "credible_interval_width"]
-)
-# Log prior, likelihood, and posterior for each iteration
-tracker.log_metric("posterior_mean", posterior.mean())
-tracker.log_metric("ci_width", ci_upper - ci_lower)</code></pre>
+async def log_posterior(post_mean, ci_lo, ci_hi):
+    tracker = await ExperimentTracker.create(
+        store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_hdb_bayes",
+                             run_name="normal_normal") as run:
+        await run.log_params({"prior_mu": 500_000,
+                              "prior_sigma": 25_000})
+        await run.log_metrics({"posterior_mean": post_mean,
+                               "ci_width": ci_hi - ci_lo})
+    await tracker.close()
+
+# post_mean, ci_lo, ci_hi come from your own update
+asyncio.run(log_posterior(post_mean, ci_lo, ci_hi))</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Bayesian estimation on HDB prices &mdash; compute posterior distribution of mean price given prior beliefs and observed data. Visualise prior, likelihood, and posterior.
+    <strong>Exercise 1 preview:</strong> Bayes' theorem on test results, Normal-Normal and Beta-Binomial updates on HDB prices (with prior sensitivity), credible vs confidence intervals.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show how ExperimentTracker logs the Bayesian workflow. Emphasise: the engine does not replace understanding. You must choose the prior and interpret the posterior. The engine tracks the experiment metadata. If beginners confused: "The engine is your lab notebook. It records what you tried and what happened." If experts bored: "ExperimentTracker supports both frequentist and Bayesian experiment analysis."
+    Timing: 2 min. Every tracker call is async: create the tracker with await, open a run with "async with tracker.track(...)", await each log call, then close it. The posterior itself is computed in your own numpy code; the tracker only stores what you computed, so the run can be compared and reproduced later. Emphasise: the engine does not replace understanding. You must choose the prior and interpret the posterior. If beginners confused: "The engine is your lab notebook. It records what you tried and what happened." If experts bored: "Because each run stores its parameters, you can compare prior choices side by side: a cheap sensitivity analysis."
   </aside>
 </section>
 
@@ -722,33 +727,41 @@ tracker.log_metric("ci_width", ci_upper - ci_lower)</code></pre>
 </section>
 
 <!-- SLIDE 22: 2.2 Kailash Bridge -->
-<section>
+<section class="code-fit">
   <h2>Kailash Bridge: Parameter Estimation</h2>
   <div class="kailash-bridge">
-    <h3>TrainingPipeline &mdash; Automated Model Fitting</h3>
+    <h3>ModelVisualizer &mdash; See the Distribution You Fitted</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Write log-likelihood, optimise, compute CIs</div>
+      <div><strong>Manual:</strong> Write the log-likelihood and maximise it with scipy</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> TrainingPipeline fits distributions and models with built-in parameter estimation</div>
+      <div><strong>Engine:</strong> ModelVisualizer plots the data so you can judge whether the fitted Normal is plausible</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import TrainingPipeline, ModelVisualizer
+  <pre style="font-size: 0.5em;"><code class="language-python">import numpy as np
+from scipy import optimize, stats
+from kailash_ml import ModelVisualizer
+from shared import MLFPDataLoader
 
-pipeline = TrainingPipeline()
-# Fit a model with automatic parameter estimation
-pipeline.fit(df, target="resale_price", features=["floor_area_sqm", "remaining_lease"])
+econ = MLFPDataLoader().load("mlfp01", "economic_indicators.csv")
+g = econ["gdp_growth_pct"].drop_nulls().to_numpy()
 
-# Inspect fitted parameters and their confidence intervals
-params = pipeline.get_coefficients()
-print(params)  # Shows estimate, std_error, t_stat, p_value, ci_lower, ci_upper</code></pre>
+def nll(p):  # p = (mu, log_sigma): sigma stays positive
+    return -stats.norm.logpdf(g, p[0], np.exp(p[1])).sum()
+
+res = optimize.minimize(nll, x0=[0.0, 0.0], method="BFGS")
+mu_hat, sigma_hat = res.x[0], np.exp(res.x[1])  # 3.90, 4.07
+
+fig = ModelVisualizer().histogram(
+    econ, "gdp_growth_pct", bins=30,
+    title=f"GDP growth (MLE mu={mu_hat:.2f}, sigma={sigma_hat:.2f})")</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Fit Normal and Exponential distributions to Singapore economic data. Implement MLE from scratch. Compare MLE vs MAP estimates.
+    <strong>Exercise 2 preview:</strong> Singapore economic indicators &mdash; CLT and Bessel's correction, MLE with Fisher-information and profile-likelihood CIs, MAP shrinkage, MLE failure modes, AIC/BIC across distribution families.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show the Kailash Bridge. Emphasise: the engine does MLE under the hood. You must understand what it is doing so you can interpret the output (t-stats, p-values, CIs). If beginners confused: "The engine automates the math, but you need to understand the output." If experts bored: "TrainingPipeline supports custom loss functions for non-standard estimation."
+    Timing: 2 min. The estimation is yours: the log-likelihood and the optimiser are plain scipy. On the 101 quarterly GDP growth values the MLE gives mu = 3.90 (the sample mean) and sigma = 4.07 (the divide-by-n standard deviation), exactly as the derivation predicts. ModelVisualizer's job is to show the data so you can see whether a Normal is a sensible model. If beginners confused: "The code finds the bell curve that fits best; the chart lets you check it actually looks like the data." If experts bored: "The log-sigma reparameterisation removes the positivity constraint; Exercise 2 shows the profile-likelihood CI is invariant to it while the Wald CI is not."
   </aside>
 </section>
 
@@ -844,6 +857,46 @@ print(params)  # Shows estimate, std_error, t_stat, p_value, ci_lower, ci_upper<
   </aside>
 </section>
 
+<!-- SLIDE 25b: 2.3 ADVANCED - BCa Intervals -->
+<section>
+  <h2>BCa Intervals: Fixing the Percentile Method</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Two Corrections</h3>
+      <ul>
+        <li><strong>Bias $\hat{z}_0$:</strong> is the bootstrap distribution centred on $\hat{\theta}$? $\hat{z}_0 = \Phi^{-1}$(share of replicates below $\hat{\theta}$)</li>
+        <li><strong>Acceleration $\hat{a}$:</strong> does the standard error change with $\theta$? Estimated by the jackknife</li>
+      </ul>
+      <div class="equation-box" style="margin-top: 12px; font-size: 0.85em;">
+        $$\alpha_{\text{adj}} = \Phi\!\left(\hat{z}_0 + \frac{\hat{z}_0 + z_{\alpha}}{1 - \hat{a}(\hat{z}_0 + z_{\alpha})}\right)$$
+        <div class="annotation">Read the CI at the adjusted percentiles instead of $\alpha/2$ and $1-\alpha/2$</div>
+      </div>
+    </div>
+    <div class="col">
+      <pre style="font-size: 0.5em;"><code class="language-python">import numpy as np
+from scipy.stats import bootstrap
+from shared import MLFPDataLoader
+
+prices = (MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+          .sample(n=200, seed=42)["resale_price"].to_numpy())
+res = bootstrap((prices,), np.median, method="BCa",
+                confidence_level=0.95, n_resamples=10_000,
+                random_state=42)
+print(res.confidence_interval)</code></pre>
+      <div class="callout callout-advanced" style="margin-top: 8px;">
+        <strong>When it matters:</strong> skewed statistics (median, ratios, variances) and small samples. With $\hat{z}_0 = \hat{a} = 0$, BCa reduces to the percentile interval.
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Timing: 3 min. Advanced slide. The percentile interval assumes the bootstrap distribution is centred on the estimate and equally spread on both sides; BCa corrects for median bias (z0) and for a standard error that changes with the parameter (a). On a 200-sale HDB sample the median is about 851K; the percentile and BCa intervals differ only slightly at the lower end (roughly 799K vs 797K), because a median of 200 prices is not very skewed. The gap grows with skew and with smaller n. Exercise 3.1 computes percentile, normal and BCa intervals side by side. If beginners confused: "BCa is the percentile interval with two automatic corrections; scipy does the arithmetic." If experts bored: "The acceleration comes from the jackknife skewness of the influence values (Efron, 1987)."
+  </aside>
+</section>
+
 <!-- SLIDE 26: 2.3 THEORY - Hypothesis Testing -->
 <section>
   <h2>Hypothesis Testing: Making Decisions</h2>
@@ -868,7 +921,7 @@ print(params)  # Shows estimate, std_error, t_stat, p_value, ci_lower, ci_upper<
           <tr><td>0.10</td><td>Lenient</td><td>Exploratory research</td></tr>
           <tr><td>0.05</td><td>Standard</td><td>Social science, business</td></tr>
           <tr><td>0.01</td><td>Strict</td><td>Medical, regulatory</td></tr>
-          <tr><td>0.0005</td><td>5-sigma</td><td>Particle physics</td></tr>
+          <tr><td>0.0005</td><td>Very strict</td><td>Hard sciences (5-sigma is stricter still, about 3 &times; 10<sup>&minus;7</sup>)</td></tr>
         </tbody>
       </table>
       <div class="callout callout-foundations" style="margin-top: 8px;">
@@ -1000,35 +1053,36 @@ print(params)  # Shows estimate, std_error, t_stat, p_value, ci_lower, ci_upper<
 <section class="code-fit">
   <h2>Kailash Bridge: Bootstrap and Testing</h2>
   <div class="kailash-bridge">
-    <h3>ExperimentTracker &mdash; Automated Hypothesis Testing</h3>
+    <h3>ModelVisualizer &mdash; Show the Bootstrap Distribution</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Write bootstrap loop, compute CI, run permutation test</div>
+      <div><strong>Manual:</strong> Write the resampling loop and read the CI off its percentiles</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> ExperimentTracker runs bootstrap, permutation, and power analysis in one call</div>
+      <div><strong>Engine:</strong> ModelVisualizer plots the bootstrap distribution so stakeholders see the uncertainty, not just a number</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import ExperimentTracker
+  <pre style="font-size: 0.5em;"><code class="language-python">import numpy as np
+import polars as pl
+from kailash_ml import ModelVisualizer
+from shared import MLFPDataLoader
 
-tracker = ExperimentTracker()
-experiment = tracker.create_experiment(
-    name="conversion_ab_test",
-    hypothesis="New checkout flow increases conversion rate",
-    metrics=["conversion_rate", "revenue_per_user"]
-)
-# Built-in bootstrap CI and permutation test
-results = tracker.analyze(
-    control=control_data, treatment=treatment_data,
-    method="permutation", n_bootstrap=10000, alpha=0.05
-)
-print(results.p_value, results.bootstrap_ci, results.power)</code></pre>
+df = MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
+rev = {g: df.filter(pl.col("experiment_group") == g)["revenue"].to_numpy() for g in ["control", "treatment_a"]}
+
+rng = np.random.default_rng(42)
+reps = np.array([rng.choice(rev["treatment_a"], len(rev["treatment_a"])).mean()
+                 - rng.choice(rev["control"], len(rev["control"])).mean() for _ in range(1_000)])
+lo, hi = np.percentile(reps, [2.5, 97.5])  # about [2.84, 3.50]
+
+fig = ModelVisualizer().histogram(pl.DataFrame({"lift": reps}), "lift",
+                                  title=f"Bootstrap revenue lift, 95% CI [{lo:.2f}, {hi:.2f}]")</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> A/B test analysis with multiple corrections. Bootstrap CI for conversion rate difference. Permutation test for significance.
+    <strong>Exercise 3 preview:</strong> Percentile and BCa bootstrap CIs, power and MDE, z / Welch / Mann-Whitney tests with effect sizes, Bonferroni vs BH-FDR, a permutation test.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show how ExperimentTracker automates the bootstrap and permutation test workflow. The engine handles resampling, CI computation, and p-value calculation. You must understand the methods to interpret the output. If beginners confused: "The engine runs 10,000 resamples in seconds. You interpret the result." If experts bored: "ExperimentTracker supports sequential testing and always-valid p-values for peeking-safe experiments."
+    Timing: 2 min. The course experiment has four arms designed 40/35/15/10; we compare control with treatment_a, a pair that passes its own SRM check against the designed 40:35 ratio (p about 0.62). The bootstrap loop is yours; on this data the revenue lift is about 3.16 per user with a 95% percentile CI of roughly [2.84, 3.50]. ModelVisualizer turns the 1,000 replicates into a histogram you can show a stakeholder. If beginners confused: "Each bar is how often a resampled experiment gave that lift. The middle 95% is the CI." If experts bored: "Exercise 3 adds BCa, which corrects the percentile interval for bias and skew."
   </aside>
 </section>
 
@@ -1168,7 +1222,7 @@ print(results.p_value, results.bootstrap_ci, results.power)</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. SRM is the first check in any A/B test analysis. If the split is off, stop &mdash; your results are unreliable. Walk through the chi-squared calculation step by step. If beginners confused: "If you ordered 50 red balls and 50 blue balls but received 52 red and 48 blue, is that the factory's fault or just random? The chi-squared test answers this." If experts bored: "Microsoft runs SRM checks on every experiment. Kohavi et al. (2020) 'Trustworthy Online Controlled Experiments' is the reference."
+    Timing: 3 min. SRM is the first check in any A/B test analysis. If the split is off, stop &mdash; your results are unreliable. Walk through the chi-squared calculation step by step. If beginners confused: "If you ordered 50 red balls and 50 blue balls but received 52 red and 48 blue, is that the factory's fault or just random? The chi-squared test answers this." If experts bored: "Mature experimentation platforms run an SRM check on every experiment. Kohavi et al. (2020) 'Trustworthy Online Controlled Experiments' is the reference."
   </aside>
 </section>
 
@@ -1208,7 +1262,7 @@ print(results.p_value, results.bootstrap_ci, results.power)</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Walk through each pitfall with a concrete example. Peeking: "If you check your experiment every day and stop when it looks significant, your false positive rate is not 5% but closer to 30%." If beginners confused: "These are the ways experiments can give you wrong answers even when the math is correct." If experts bored: "Sequential testing (always-valid p-values) solves the peeking problem. Interaction effects require multi-armed bandit approaches."
+    Timing: 3 min. Walk through each pitfall with a concrete example. Peeking: "If you check your experiment every day and stop when it looks significant, your false positive rate is not 5%: with 20 daily looks it is roughly 25% (Exercise 7.3 simulates this)." If beginners confused: "These are the ways experiments can give you wrong answers even when the math is correct." If experts bored: "Sequential testing (always-valid p-values) solves the peeking problem. Overlapping experiments need interaction checks or mutually exclusive traffic layers."
   </aside>
 </section>
 
@@ -1216,35 +1270,39 @@ print(results.p_value, results.bootstrap_ci, results.power)</code></pre>
 <section class="code-fit">
   <h2>Kailash Bridge: Experiment Design</h2>
   <div class="kailash-bridge">
-    <h3>ExperimentTracker &mdash; End-to-End Experiment Management</h3>
+    <h3>ExperimentTracker &mdash; Log the Design, the SRM Check and the Decision</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Randomise, collect, check SRM, analyse, report</div>
+      <div><strong>Manual:</strong> Size the test, check SRM against the designed split, decide</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> ExperimentTracker manages the full experiment lifecycle with built-in SRM detection</div>
+      <div><strong>Engine:</strong> ExperimentTracker stores the plan, the check and the decision as one auditable run</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import ExperimentTracker
+  <pre style="font-size: 0.48em;"><code class="language-python">import asyncio
+from scipy import stats
+from kailash_ml import ExperimentTracker
 
-tracker = ExperimentTracker()
-experiment = tracker.create_experiment(
-    name="hawker_price_test",
-    hypothesis="$0.50 increase does not reduce daily revenue",
-    variants=["control_price", "new_price"],
-    allocation=[0.5, 0.5],
-    primary_metric="daily_revenue",
-    power=0.80, alpha=0.05, mde=0.05
-)
-# SRM check runs automatically at analysis time
-results = tracker.analyze(experiment_id=experiment.id)
-print(results.srm_check)  # Pass/Fail with chi-squared p-value</code></pre>
+n_c, n_t = 188_732, 165_413      # control, treatment_a
+w_c = 0.40 / (0.40 + 0.35)       # DESIGNED share, not 50/50
+exp = [w_c * (n_c + n_t), (1 - w_c) * (n_c + n_t)]
+p_srm = stats.chisquare([n_c, n_t], f_exp=exp).pvalue  # about 0.62
+decision = "STOP: investigate SRM" if p_srm < 0.01 else "analyse"
+
+async def log_design():
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_ab", run_name="design_and_srm") as run:
+        await run.log_params({"alpha": 0.05, "power": 0.80, "decision": decision})
+        await run.log_metrics({"srm_p": float(p_srm)})
+    await tracker.close()
+
+asyncio.run(log_design())</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Design and analyse a complete A/B experiment. Create data collection plan. Detect SRM. Report results with business recommendation.
+    <strong>Exercise 4 preview:</strong> Pre-registered design and power curve, SRM (overall and per segment), Welch's t-test with CIs, validity checks, a report logged to ExperimentTracker.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. ExperimentTracker automates the experiment lifecycle: design, allocation, SRM detection, analysis, reporting. Emphasise: the engine enforces best practices (power analysis before launch, SRM check before analysis). If beginners confused: "The engine is your experiment checklist. It will not let you skip important steps." If experts bored: "ExperimentTracker supports multi-armed bandits, sequential testing, and interaction detection."
+    Timing: 2 min. The course experiment was designed 40/35/15/10 across four arms, so SRM must be tested against that design, never against 50/50. Across all four arms SRM fires (variant_c is over-allocated); the control vs treatment_a pair matches its designed 40:35 ratio (p about 0.62), so that pair is safe to analyse. A failed SRM check means "do not ship, investigate", whatever the effect estimate says. The tracker does not run these checks; it stores your plan, your check and your decision so the run is auditable. If beginners confused: "The engine is your experiment logbook. You do the checks; it keeps the receipt." If experts bored: "Log the pre-registration parameters before you look at outcomes, so the record proves they were not chosen after the fact."
   </aside>
 </section>
 
@@ -1369,13 +1427,13 @@ print(results.srm_check)  # Pass/Fail with chi-squared p-value</code></pre>
       <table>
         <thead><tr><th>Confidence</th><th>$|t|$ Cutoff</th><th>Stars</th></tr></thead>
         <tbody>
-          <tr><td>90%</td><td>&gt; 1.6</td><td>*</td></tr>
-          <tr><td>95%</td><td>&gt; 1.8</td><td>**</td></tr>
-          <tr><td>99%</td><td>&gt; 1.97</td><td>***</td></tr>
+          <tr><td>90%</td><td>&gt; 1.645</td><td>*</td></tr>
+          <tr><td>95%</td><td>&gt; 1.960</td><td>**</td></tr>
+          <tr><td>99%</td><td>&gt; 2.576</td><td>***</td></tr>
         </tbody>
       </table>
       <div class="callout callout-theory" style="margin-top: 12px;">
-        <strong>Interpretation:</strong> If $\hat{\beta}_{\text{area}} = 5200$ with $t = 12.3$ and $p < 0.001$, it means: "Each additional square metre is associated with a $5,200 increase in resale price, and this is highly statistically significant."
+        <strong>Interpretation:</strong> If $\hat{\beta}_{\text{area}} = 5200$ with $t = 12.3$ and $p < 0.001$, it means: "Each additional square metre is associated with a <span class="nomath">$5,200</span> increase in resale price, and this is highly statistically significant."
       </div>
     </div>
   </div>
@@ -1424,7 +1482,7 @@ print(results.srm_check)  # Pass/Fail with chi-squared p-value</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 4 min. Walk through with the HDB example: "Our model explains 82% of price variance (R^2 = 0.82). The F-statistic is 450 with p < 0.001, meaning the model as a whole is highly significant." If beginners confused: "R-squared is the percentage of the data's variation that your model captures. Higher is better. F-statistic tells you if the model is better than just guessing the average." If experts bored: "Adjusted R-squared = 1 - (1 - R^2)(n - 1)/(n - k - 1). It can decrease when you add a useless predictor. Always report adjusted R^2 for multivariate models."
+    Timing: 4 min. Walk through with the HDB example: on the course data (sentinel prices removed, about 49,900 sales), floor area and building age together explain about 83% of price variance (R^2 = 0.83); the F-statistic is about 120,000 with p < 0.001, so the model as a whole is highly significant. With n this large, almost any F is significant, which is why R^2 and effect sizes matter. If beginners confused: "R-squared is the percentage of the data's variation that your model captures. Higher is better. F-statistic tells you if the model is better than just guessing the average." If experts bored: "Adjusted R-squared = 1 - (1 - R^2)(n - 1)/(n - k - 1). It can decrease when you add a useless predictor. Always report adjusted R^2 for multivariate models."
   </aside>
 </section>
 
@@ -1496,7 +1554,7 @@ print(results.srm_check)  # Pass/Fail with chi-squared p-value</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Key insight: "linear regression" is linear in the coefficients, not the features. You can model curves and interactions. Walk through the area-times-central interaction. If beginners confused: "An interaction term says: the effect of one feature depends on the value of another feature. Living in the centre makes each square metre worth more." If experts bored: "Feature engineering with polynomial and interaction terms is a preview of M3.1 FeatureEngineer. In M3 we automate this."
+    Timing: 3 min. Key insight: "linear regression" is linear in the coefficients, not the features. You can model curves and interactions. Walk through the area-times-central interaction. If beginners confused: "An interaction term says: the effect of one feature depends on the value of another feature. Living in the centre makes each square metre worth more." If experts bored: "FeatureEngineer.generate creates these polynomial and interaction terms from a schema (Lesson 2.8); M3.1 goes deeper into feature selection."
   </aside>
 </section>
 
@@ -1516,7 +1574,7 @@ print(results.srm_check)  # Pass/Fail with chi-squared p-value</code></pre>
     <div class="col">
       <h3>Simpson's Paradox Warning</h3>
       <div class="callout callout-advanced">
-        <strong>Example:</strong> A simple regression shows area has a <em>negative</em> coefficient for price (larger flats cost less). But when you add "town" to the model, the coefficient flips to positive. Why? Larger flats are in cheaper towns. Town confounds the area-price relationship.
+        <strong>Hypothetical example:</strong> suppose a simple regression gave area a <em>negative</em> coefficient (larger flats cost less), and adding "town" flipped it to positive, because larger flats sit in cheaper towns. Town would be confounding the area-price relationship. (In the course data the raw area-price correlation is positive, about 0.47.)
       </div>
       <p style="font-size: 0.85em; margin-top: 8px;">Multivariate regression "controls for" confounders, but only the ones you include. Omitted variable bias is always a risk.</p>
     </div>
@@ -1525,7 +1583,7 @@ print(results.srm_check)  # Pass/Fail with chi-squared p-value</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Advanced slide. Simpson's paradox is a powerful teaching moment. Use the HDB example: larger flats tend to be in suburban towns (Woodlands, Jurong) where prices are lower. A simple regression attributes the low price to large area. Multivariate regression separates area from town. If beginners confused: "Multivariate regression lets you ask: what is the effect of size ALONE, separate from location?" If experts bored: "Omitted variable bias formally: E[b] = beta + (X^T X)^{-1} X^T Z gamma, where Z is the omitted variable and gamma is its true coefficient."
+    Timing: 3 min. Advanced slide. Simpson's paradox is a powerful teaching moment. Present the example as hypothetical: if larger flats were concentrated in cheaper towns, a simple regression would blame the low prices on large area, and multivariate regression would separate area from town. Students who check the course data will find the raw area-price correlation is positive (about 0.47), so do not present the reversal as an HDB fact. If beginners confused: "Multivariate regression lets you ask: what is the effect of size ALONE, separate from location?" If experts bored: "Omitted variable bias formally: E[b] = beta + (X^T X)^{-1} X^T Z gamma, where Z is the omitted variable and gamma is its true coefficient."
   </aside>
 </section>
 
@@ -1533,38 +1591,40 @@ print(results.srm_check)  # Pass/Fail with chi-squared p-value</code></pre>
 <section class="code-fit">
   <h2>Kailash Bridge: Linear Regression</h2>
   <div class="kailash-bridge">
-    <h3>TrainingPipeline + ModelVisualizer &mdash; Regression Modelling</h3>
+    <h3>FeatureEngineer + ModelVisualizer &mdash; Regression Modelling</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> OLS formula, t-stats, R-squared, residual plots</div>
+      <div><strong>Manual:</strong> Solve the normal equations; compute t-stats, R-squared, F</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> TrainingPipeline fits models; ModelVisualizer creates diagnostic plots</div>
+      <div><strong>Engine:</strong> FeatureEngineer builds the extra terms; ModelVisualizer plots residuals</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import TrainingPipeline, ModelVisualizer, FeatureEngineer
+  <pre style="font-size: 0.45em;"><code class="language-python">import numpy as np
+import polars as pl
+from kailash_ml import FeatureEngineer, FeatureField, FeatureSchema, ModelVisualizer
+from shared import MLFPDataLoader
 
-# Engineer features: lat/lon, interaction terms
-fe = FeatureEngineer()
-df = fe.add_polynomial(df, columns=["floor_area_sqm"], degree=2)
-df = fe.add_interaction(df, col_a="floor_area_sqm", col_b="is_central")
+df = (MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+      .filter(pl.col("resale_price").is_between(100_000, 2_000_000))
+      .with_row_index("txn_id")
+      .with_columns(age=pl.col("month").str.slice(0, 4).cast(pl.Float64)
+                        - pl.col("lease_commence_date")))
+schema = FeatureSchema(name="hdb", entity_id_column="txn_id", features=[
+    FeatureField("floor_area_sqm", "float64"), FeatureField("age", "float64")])
+gen = FeatureEngineer().generate(df, schema, strategies=["interactions", "polynomial"])
 
-# Fit regression
-pipeline = TrainingPipeline()
-pipeline.fit(df, target="resale_price", model="linear_regression")
-
-# Evaluate: coefficients, t-stats, R-squared, F-statistic
-print(pipeline.summary())
-
-# Visualise residuals
-viz = ModelVisualizer()
-viz.residual_plot(pipeline)</code></pre>
+cols = ["floor_area_sqm", "age", "floor_area_sqm_squared", "floor_area_sqm_x_age"]
+X = np.column_stack([np.ones(gen.data.height), gen.data.select(cols).to_numpy()])
+y = gen.data["resale_price"].to_numpy().astype(float)
+beta = np.linalg.solve(X.T @ X, X.T @ y)  # OLS normal equations
+fig = ModelVisualizer().residuals(y, X @ beta)</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Build HDB price prediction model. Engineer lat/lon features. Interpret coefficients. Test significance. Add interaction terms and compare.
+    <strong>Exercise 5 preview:</strong> OLS from scratch (t, R&sup2;, F), diagnostics (VIF, Breusch-Pagan), weighted least squares, then polynomial, interaction and dummy terms judged on a held-out test set.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show the Kailash workflow: FeatureEngineer creates polynomial and interaction terms, TrainingPipeline fits the model, ModelVisualizer creates residual plots. The summary() output shows the same numbers you learned to compute manually. If beginners confused: "The engine does the math. You interpret the results using what you learned today." If experts bored: "FeatureEngineer can also geocode addresses to lat/lon, enabling spatial features."
+    Timing: 2 min. FeatureEngineer.generate takes a FeatureSchema and returns candidate columns (here area squared, age squared and area times age); the regression itself is the normal-equations solve you derived, so the coefficients, standard errors and t-statistics are yours to compute. ModelVisualizer.residuals draws predicted-vs-actual and the residual histogram. The filter drops sentinel prices in the raw file (a 10-dollar sale, a 9-million-dollar sale); without it the fit is meaningless. On this data the model explains about 83% of price variance. If beginners confused: "The engine builds the extra columns. You fit the line and interpret it." If experts bored: "FeatureEngineer.select ranks the candidates against the target, a first taste of the feature selection you do properly in M3."
   </aside>
 </section>
 
@@ -1794,7 +1854,7 @@ viz.residual_plot(pipeline)</code></pre>
       <h3>Singapore HDB Example</h3>
       <ul>
         <li>Compare resale prices across flat types: 3-room, 4-room, 5-room, executive</li>
-        <li>$F = 342.5$, $p < 0.001$ &rarr; prices differ significantly across flat types</li>
+        <li>On the course data $F$ runs into the thousands, $p < 0.001$ &rarr; prices differ significantly across flat types</li>
         <li>But <em>which</em> types differ? ANOVA does not tell you</li>
       </ul>
       <h3 style="margin-top: 12px;">Post-Hoc Tests</h3>
@@ -1843,35 +1903,41 @@ viz.residual_plot(pipeline)</code></pre>
 <section class="code-fit">
   <h2>Kailash Bridge: Classification and ANOVA</h2>
   <div class="kailash-bridge">
-    <h3>TrainingPipeline + ModelVisualizer &mdash; Classification Modelling</h3>
+    <h3>ModelVisualizer &mdash; ROC Curve and Confusion Matrix</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Sigmoid, log-odds, MLE, ANOVA F-test</div>
+      <div><strong>Manual:</strong> sigmoid, Bernoulli MLE, odds ratios</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> TrainingPipeline fits logistic models; ModelVisualizer plots ROC curves and confusion matrices</div>
+      <div><strong>Engine:</strong> ModelVisualizer draws the ROC and confusion matrix</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import TrainingPipeline, ModelVisualizer
+  <pre style="font-size: 0.45em;"><code class="language-python">import numpy as np
+import polars as pl
+from scipy.optimize import minimize
+from scipy.special import expit
+from kailash_ml import ModelVisualizer
+from shared import MLFPDataLoader
 
-pipeline = TrainingPipeline()
-pipeline.fit(df, target="attrition", model="logistic_regression")
+df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet").filter(pl.col("month") >= "2020-01")
+y = (df["resale_price"] > df["resale_price"].median()).cast(pl.Int8).to_numpy()
+area = df["floor_area_sqm"].to_numpy()
+X = np.column_stack([np.ones(len(y)), (area - area.mean()) / area.std()])
 
-# Odds ratios for each feature
-coeffs = pipeline.get_coefficients()
-coeffs["odds_ratio"] = coeffs["estimate"].apply(lambda b: math.exp(b))
-print(coeffs[["feature", "estimate", "odds_ratio", "p_value"]])
-
-# Confusion matrix and ROC curve
+def nll(b):  # Bernoulli negative log-likelihood
+    p = np.clip(expit(X @ b), 1e-12, 1 - 1e-12)
+    return -np.sum(y * np.log(p) + (1 - y) * np.log(1 - p))
+beta = minimize(nll, np.zeros(2), method="BFGS").x
+odds_ratio = np.exp(beta[1])  # per 1 SD of floor area
+p_hat = expit(X @ beta)
 viz = ModelVisualizer()
-viz.confusion_matrix(pipeline)
-viz.roc_curve(pipeline)</code></pre>
+fig_roc, fig_cm = viz.roc_curve(y, p_hat), viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Build logistic regression for employee attrition. Interpret odds ratios. Perform ANOVA on HDB prices across flat types. Apply Tukey's HSD.
+    <strong>Exercise 6 preview:</strong> Logistic regression from scratch on HDB "above-median price", odds ratios and cost-based thresholds, ROC/PR curves, calibration, one-way ANOVA with Tukey's HSD.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show the Kailash workflow for logistic regression. Emphasise odds ratio interpretation. ModelVisualizer creates publication-quality confusion matrices and ROC curves. If beginners confused: "The engine fits the model. You interpret the odds ratios to explain which features drive attrition." If experts bored: "TrainingPipeline supports regularised logistic regression (L1/L2), which connects to MAP estimation from Lesson 2.2."
+    Timing: 2 min. The lesson's case is employee attrition; the exercise applies the same model to a target the course data supports: is an HDB resale (2020 onwards) priced above the median? The fit is your own MLE; ModelVisualizer only draws the ROC curve and confusion matrix from your y and predicted probabilities. Because floor area is standardised, exp(beta) is the odds ratio per one standard deviation (about 27 sqm), not per square metre. If beginners confused: "You fit the model; the engine draws the pictures that show how well it separates the two classes." If experts bored: "Exercise 6 re-optimises the threshold for each cost matrix: the cost-optimal threshold depends on what a false positive and a false negative cost."
   </aside>
 </section>
 
@@ -1897,7 +1963,7 @@ viz.roc_curve(pipeline)</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Bridge: "In 2.4 you designed A/B tests. In 2.5 you learned regression. Now we combine both: CUPED uses regression to make your experiments more powerful, and DiD uses regression to draw causal conclusions from observational data." If beginners confused: "This lesson is about making your experiments better and finding causes even when you cannot run an experiment." If experts bored: "CUPED is the single most impactful A/B test technique. Every major tech company uses it."
+    Timing: 1 min. Bridge: "In 2.4 you designed A/B tests. In 2.5 you learned regression. Now we combine both: CUPED uses regression to make your experiments more powerful, and DiD uses regression to draw causal conclusions from observational data." If beginners confused: "This lesson is about making your experiments better and finding causes even when you cannot run an experiment." If experts bored: "CUPED is one of the highest-leverage A/B test techniques: free variance reduction whenever a strong pre-period covariate exists."
   </aside>
 </section>
 
@@ -1922,14 +1988,14 @@ viz.roc_curve(pipeline)</code></pre>
       <div class="callout callout-foundations">
         <strong>CUPED solution:</strong> You have pre-experiment data &mdash; each user's revenue last month. Adjust the post-experiment metric using the pre-experiment metric. The noise drops, the signal emerges, and now $p = 0.03$.
       </div>
-      <p style="font-size: 0.85em; margin-top: 12px; color: #64748B;">CUPED = <strong>C</strong>ontrolled-experiment <strong>U</strong>sing <strong>P</strong>re-<strong>E</strong>xperiment <strong>D</strong>ata. Introduced by Microsoft (Deng et al., 2013).</p>
+      <p style="font-size: 0.85em; margin-top: 12px; color: #64748B;">CUPED = <strong>C</strong>ontrolled-experiment <strong>U</strong>sing <strong>P</strong>re-<strong>E</strong>xperiment <strong>D</strong>ata. Introduced by Deng et al. (2013).</p>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. This case motivates CUPED with a tangible business scenario. The 2% lift is real but hidden in noise. CUPED reveals it without extending the experiment. Ask: "What if you could make your experiment twice as powerful without collecting more data?" If beginners confused: "Imagine your experiment has static noise. CUPED removes that noise by looking at how each person behaved BEFORE the experiment." If experts bored: "CUPED typically reduces variance by 30-50%, which is equivalent to doubling sample size."
+    Timing: 3 min. This case motivates CUPED with a tangible business scenario. The 2% lift is real but hidden in noise. CUPED reveals it without extending the experiment. Ask: "What if you could make your experiment twice as powerful without collecting more data?" If beginners confused: "Imagine your experiment has static noise. CUPED removes that noise by looking at how each person behaved BEFORE the experiment." If experts bored: "The reduction is rho squared: rho = 0.7 removes 49% of the variance, roughly the same as doubling the sample size."
   </aside>
 </section>
 
@@ -1945,8 +2011,8 @@ viz.roc_curve(pipeline)</code></pre>
         <div class="annotation">$\rho$ = correlation between pre- and post-experiment metrics</div>
       </div>
       <ul style="margin-top: 12px; font-size: 0.85em;">
-        <li>If $\rho = 0.7$, variance reduction = $1 - 0.49 = 51\%$</li>
-        <li>If $\rho = 0.5$, variance reduction = $1 - 0.25 = 75\%$ remaining (25% reduction)</li>
+        <li>If $\rho = 0.7$: remaining variance $= 1 - 0.49 = 51\%$ (a 49% reduction)</li>
+        <li>If $\rho = 0.5$: remaining variance $= 1 - 0.25 = 75\%$ (a 25% reduction)</li>
         <li>Higher correlation = more variance removed</li>
       </ul>
     </div>
@@ -1982,8 +2048,8 @@ viz.roc_curve(pipeline)</code></pre>
       <table>
         <thead><tr><th>Scenario</th><th>$\rho$</th><th>Variance Reduction</th></tr></thead>
         <tbody>
-          <tr><td>Revenue: last month vs this month</td><td>0.7&ndash;0.9</td><td>50&ndash;80%</td></tr>
-          <tr><td>Session count: last week vs this week</td><td>0.6&ndash;0.8</td><td>35&ndash;65%</td></tr>
+          <tr><td>Revenue: last month vs this month</td><td>0.7&ndash;0.9</td><td>49&ndash;81%</td></tr>
+          <tr><td>Session count: last week vs this week</td><td>0.6&ndash;0.8</td><td>36&ndash;64%</td></tr>
           <tr><td>New feature adoption (no history)</td><td>0.0&ndash;0.2</td><td>0&ndash;4%</td></tr>
         </tbody>
       </table>
@@ -2025,9 +2091,9 @@ viz.roc_curve(pipeline)</code></pre>
     <div class="col">
       <h3>Singapore Cooling Measures</h3>
       <ul>
-        <li><strong>Treatment:</strong> HDB resale market (ABSD applied)</li>
-        <li><strong>Control:</strong> Comparable market without the policy change</li>
-        <li>Compare price trends before/after the cooling measure</li>
+        <li><strong>Treatment:</strong> Central-region flats, subject to a (hypothetical) cooling measure</li>
+        <li><strong>Control:</strong> Non-Central flats, not subject to it</li>
+        <li>Compare price changes before/after the measure (Exercise 7.4 simulates this panel)</li>
         <li>The "second difference" removes confounders that affect both groups equally</li>
       </ul>
       <div class="callout callout-warning" style="margin-top: 8px;">
@@ -2039,7 +2105,7 @@ viz.roc_curve(pipeline)</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 4 min. DiD is the workhorse of policy evaluation. Walk through the cooling measures example. The ATT formula computes two differences: treatment group change minus control group change. If both groups were trending the same way before the policy, then the "extra" change in the treatment group is attributable to the policy. If beginners confused: "DiD compares two groups over time. If both were on the same path, and then one group got a policy change, the difference in their paths IS the policy effect." If experts bored: "Parallel trends can be tested with pre-period event-study plots. Violations require synthetic control methods."
+    Timing: 4 min. DiD is the workhorse of policy evaluation. Walk through the cooling measures example; it is a hypothetical measure on simulated data, not an evaluation of a real policy. The ATT formula computes two differences: treatment group change minus control group change. If both groups were trending the same way before the policy, then the "extra" change in the treatment group is attributable to the policy. If beginners confused: "DiD compares two groups over time. If both were on the same path, and then one group got a policy change, the difference in their paths IS the policy effect." If experts bored: "Parallel trends can be tested with pre-period event-study plots. Violations require synthetic control methods."
   </aside>
 </section>
 
@@ -2081,44 +2147,44 @@ viz.roc_curve(pipeline)</code></pre>
 </section>
 
 <!-- SLIDE 61: 2.7 Kailash Bridge -->
-<section class="code-dense">
+<section class="code-fit">
   <h2>Kailash Bridge: CUPED and Causal Inference</h2>
   <div class="kailash-bridge">
-    <h3>ExperimentTracker &mdash; CUPED and DiD Analysis</h3>
+    <h3>ExperimentTracker &mdash; Record the Adjustment You Computed</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Compute theta, adjust metrics, test parallel trends</div>
+      <div><strong>Manual:</strong> theta from a pre-period covariate</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> ExperimentTracker applies CUPED adjustment and runs DiD analysis automatically</div>
+      <div><strong>Engine:</strong> the tracker logs theta and the reduction</div>
     </div>
   </div>
-  <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from kailash_ml import ExperimentTracker
+  <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
+import numpy as np
+import polars as pl
+from kailash_ml import ExperimentTracker
+from shared import MLFPDataLoader
 
-tracker = ExperimentTracker()
+df = (MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
+      .filter(pl.col("experiment_group").is_in(["control", "treatment_a"])))
+y, x = df["revenue"].to_numpy(), df["pre_metric_value"].to_numpy()  # x measured BEFORE the experiment
+theta = np.cov(y, x)[0, 1] / np.var(x, ddof=1)
+y_adj = y - theta * (x - x.mean())
+reduction = 1 - np.var(y_adj, ddof=1) / np.var(y, ddof=1)  # = rho^2
 
-# CUPED analysis
-results = tracker.analyze(
-    control=control_data, treatment=treatment_data,
-    pre_experiment_covariate="revenue_last_month",
-    method="cuped"
-)
-print(f"Variance reduction: {results.variance_reduction_pct:.1f}%")
-print(f"Adjusted p-value: {results.p_value:.4f}")
+async def log_cuped():
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_cuped", run_name="control_vs_treatment_a") as run:
+        await run.log_metrics({"theta": float(theta), "variance_reduction": float(reduction)})
+    await tracker.close()
 
-# DiD analysis
-did_results = tracker.did_analysis(
-    treatment=hdb_treated, control=hdb_control,
-    pre_period="2019-01-01:2020-06-30",
-    post_period="2020-07-01:2021-12-31"
-)
-print(f"ATT: {did_results.att:.2f}, p-value: {did_results.p_value:.4f}")</code></pre>
+asyncio.run(log_cuped())</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Implement CUPED on experiment data. Compare variance with and without CUPED. DiD analysis on Singapore cooling measures policy.
+    <strong>Exercise 7 preview:</strong> CUPED with pre-experiment covariates only, Bayesian A/B (expected loss), sequential testing (mSPRT), DiD on a simulated cooling-measure panel with a pre-trend test.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show the Kailash workflow for CUPED and DiD. ExperimentTracker handles the covariate adjustment, variance computation, and parallel trends testing. If beginners confused: "The engine does the adjustment math. You interpret the results: how much did variance decrease? Is the treatment effect significant now?" If experts bored: "ExperimentTracker's CUPED implementation supports multiple covariates and automatic theta optimisation."
+    Timing: 2 min. There is no CUPED or DiD button: theta, the adjusted metric and the DiD estimate are computed in your code, and the tracker records them. Be honest about this dataset: pre_metric_value correlates only weakly with revenue (rho about 0.21), so CUPED removes about 4% of the variance. That is the formula working as stated: reduction = rho squared. CUPED only pays off when the pre-period covariate predicts the outcome strongly. Never add a covariate measured after randomisation: it can absorb the treatment effect itself. If beginners confused: "CUPED subtracts the part of each user's spend that their past behaviour already predicts." If experts bored: "With several pre-period covariates, theta becomes a regression coefficient vector, which Exercise 7 implements."
   </aside>
 </section>
 
@@ -2144,7 +2210,7 @@ print(f"ATT: {did_results.att:.2f}, p-value: {did_results.p_value:.4f}")</code><
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. This is the integration lesson. Students apply everything from M2 in a single project. Emphasise: this is the assessment. Quality matters. If beginners confused: "This lesson ties everything together. You choose a project and apply all the tools from the module." If experts bored: "The capstone includes FeatureStore integration with point-in-time correctness, which is a production-grade concern."
+    Timing: 1 min. This is the integration lesson. Students apply everything from M2 in a single project. Quality matters: the project is where you practise the end-to-end workflow the module assessment then tests task by task. If beginners confused: "This lesson ties everything together. You choose a project and apply all the tools from the module." If experts bored: "The capstone includes FeatureStore integration with point-in-time correctness, which is a production-grade concern."
   </aside>
 </section>
 
@@ -2168,13 +2234,13 @@ print(f"ATT: {did_results.att:.2f}, p-value: {did_results.p_value:.4f}")</code><
     <div class="col">
       <h3>Project Options</h3>
       <div class="callout callout-foundations">
-        <strong>Option A:</strong> Wine Quality Analysis &mdash; predict quality from chemical properties. Regression + feature engineering.
+        <strong>Option A:</strong> HDB Resale Valuation &mdash; typed features, point-in-time retrieval, regression with lineage (<code>hdb_resale.parquet</code>; the guided path in Exercise 8).
       </div>
       <div class="callout callout-theory" style="margin-top: 8px;">
-        <strong>Option B:</strong> Singapore Economic Indicators &mdash; model GDP growth from trade, employment, and inflation data.
+        <strong>Option B:</strong> Singapore Economic Indicators &mdash; model GDP growth from trade balance, unemployment and inflation (<code>economic_indicators.csv</code>).
       </div>
       <div class="callout callout-advanced" style="margin-top: 8px;">
-        <strong>Option C:</strong> Experiment Design &amp; Analysis &mdash; design, run, and analyse a complete A/B experiment with CUPED.
+        <strong>Option C:</strong> Experiment Design &amp; Analysis &mdash; SRM against the designed split, CUPED and a ship decision (<code>experiment_data.parquet</code>).
       </div>
     </div>
   </div>
@@ -2182,7 +2248,7 @@ print(f"ATT: {did_results.att:.2f}, p-value: {did_results.p_value:.4f}")</code><
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Present the three project options. Let students choose based on interest and confidence. Option A is the most structured. Option C is the most advanced. All three require the full pipeline. If beginners confused: "Option A has the most guidance. Start there if you feel uncertain." If experts bored: "Option C requires you to design the experiment, not just analyse given data. It is the closest to industry practice."
+    Timing: 3 min. Present the three project options; every one uses a dataset already in the course data folder. Option A follows Exercise 8 step by step, so it is the most structured. Option C is the most advanced. All three require the full pipeline. If beginners confused: "Option A has the most guidance: Exercise 8 walks you through it. Start there if you feel uncertain." If experts bored: "Option C asks you to defend a ship or no-ship decision from a four-arm experiment with a broken arm. It is the closest to industry practice."
   </aside>
 </section>
 
@@ -2195,38 +2261,45 @@ print(f"ATT: {did_results.att:.2f}, p-value: {did_results.p_value:.4f}")</code><
       <h3>What Is Feature Engineering?</h3>
       <ul>
         <li><strong>Features</strong> are the inputs to your model</li>
-        <li><strong>Feature engineering</strong> is creating new, more informative features from raw data</li>
-        <li>Good features matter more than complex models</li>
+        <li><strong>Feature engineering</strong> derives better ones</li>
+        <li>Good features beat complex models</li>
       </ul>
       <h3 style="margin-top: 12px;">Types of Engineered Features</h3>
       <ul>
-        <li><strong>Temporal:</strong> Day of week, month, quarter, time since last event</li>
+        <li><strong>Temporal:</strong> month, day of week, recency</li>
         <li><strong>Interaction:</strong> area &times; town, age &times; income</li>
-        <li><strong>Polynomial:</strong> $x^2$, $x^3$ for non-linear relationships</li>
+        <li><strong>Polynomial:</strong> $x^2$, $x^3$ for curvature</li>
         <li><strong>Aggregation:</strong> Rolling means, counts, ratios</li>
       </ul>
+      <div class="callout callout-foundations" style="margin-top: 8px;">
+        <strong>Domain knowledge drives feature engineering.</strong> Knowing HDB prices depend on lease, location and area beats any algorithm.
+      </div>
     </div>
     <div class="col">
-      <div class="callout callout-foundations">
-        <strong>Domain knowledge drives feature engineering.</strong> Knowing that HDB prices depend on remaining lease, proximity to MRT, and school zones is more valuable than any algorithm.
-      </div>
-      <pre style="margin-top: 12px;"><code class="language-python">from kailash_ml import FeatureEngineer
+      <pre style="font-size: 0.45em;"><code class="language-python">import polars as pl
+from kailash_ml import FeatureEngineer, FeatureField, FeatureSchema
+from shared.mlfp02.ex_8 import load_hdb_resale
 
-fe = FeatureEngineer()
-df = fe.add_temporal(df, date_col="transaction_date")
-# Creates: day_of_week, month, quarter,
-# year, is_weekend, days_since_epoch
-df = fe.add_interaction(
-    df, col_a="floor_area", col_b="storey"
-)
-# Creates: floor_area_x_storey</code></pre>
+df = load_hdb_resale().with_row_index("id").with_columns(
+    pl.col("transaction_date").cast(pl.Datetime))
+schema = FeatureSchema(
+    name="hdb", entity_id_column="id",
+    features=[
+        FeatureField("floor_area_sqm", "float64"),
+        FeatureField("lease_commence_date", "int64"),
+        FeatureField("transaction_date", "datetime")])
+fe = FeatureEngineer(max_features=10)
+gen = fe.generate(df, schema, strategies=["temporal", "interactions"])
+# + transaction_date_month / _dow / _hour,
+#   floor_area_sqm_x_lease_commence_date
+best = fe.select(gen.data, gen, target="resale_price", top_k=3)</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Feature engineering is the bridge to M3. Emphasise: this is a preview. M3.1 goes deep into FeatureEngineer. For now, show the concept and the Kailash engine. If beginners confused: "Feature engineering is adding columns that help the model make better predictions. We create new information from existing data." If experts bored: "FeatureEngineer also supports automated feature selection using mutual information and variance thresholds."
+    Timing: 3 min. Feature engineering is the bridge to M3. Emphasise: this is a preview; M3.1 goes deep. FeatureEngineer has two calls: generate() builds candidate columns from the fields declared in a FeatureSchema (strategies: interactions, polynomial, binning, temporal), and select() ranks the candidates against the target and keeps the top_k. Note that the schema here is the top-level kailash_ml.FeatureSchema; the FeatureStore uses its own schema class from kailash_ml.features (next slide). If beginners confused: "Feature engineering is adding columns that help the model make better predictions. We create new information from existing data." If experts bored: "select() uses tree-based importance by default, so it can favour features a linear model cannot use. Always sanity-check the ranking with domain knowledge."
   </aside>
 </section>
 
@@ -2249,37 +2322,45 @@ df = fe.add_interaction(
     <div class="col">
       <h3>FeatureStore Lifecycle</h3>
       <ul>
-        <li><strong>Register:</strong> Define features with their computation logic and timestamp</li>
-        <li><strong>Store:</strong> Versioned, timestamped feature values</li>
-        <li><strong>Retrieve:</strong> Get features as-of a specific point in time</li>
-        <li><strong>Lineage:</strong> Track where each feature came from</li>
+        <li><strong>Define:</strong> a typed <code>FeatureSchema</code></li>
+        <li><strong>Materialise:</strong> write rows; get a lineage hash</li>
+        <li><strong>Retrieve:</strong> <code>get_features(schema, timestamp=T)</code></li>
       </ul>
-      <pre style="margin-top: 8px;"><code class="language-python">from kailash_ml import FeatureStore
+      <pre style="margin-top: 8px; font-size: 0.45em;"><code class="language-python">import asyncio
+from datetime import datetime
+from pathlib import Path
+from dataflow import DataFlow
+from kailash_ml.features import (FeatureField,
+    FeatureGroup, FeatureSchema, FeatureStore)
 
-store = FeatureStore()
-store.register_feature(
-    name="avg_monthly_revenue",
-    entity="user_id",
-    timestamp_col="as_of_date"
-)
-# Retrieve point-in-time correct features
-features = store.get_features(
-    entity_ids=user_ids,
-    as_of="2024-01-01"
-)</code></pre>
+schema = FeatureSchema(name="hdb_features",
+    fields=(FeatureField("floor_area_sqm", "float64"),),
+    entity_id_column="transaction_id",
+    timestamp_column="transaction_date")
+
+async def as_of(features, when):
+    store = FeatureStore(DataFlow(f"sqlite:///{Path('hdb.db').resolve()}"),
+                         default_tenant_id="_single")
+    await store.materialize(
+        FeatureGroup(schema, dataflow=store.dataflow),
+        features)
+    return await store.get_features(schema, timestamp=when)
+
+# rows stamped after 1 Jan 2023 never come back
+snap = asyncio.run(as_of(features, datetime(2023, 1, 1)))</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Point-in-time correctness is a production concern that students must understand early. Walk through the leakage example. If beginners confused: "When predicting the future, you cannot use future data. FeatureStore enforces this by only giving you data that existed at the time you are predicting." If experts bored: "FeatureStore supports offline and online serving, entity-based retrieval, and automatic feature drift detection."
+    Timing: 3 min. Point-in-time correctness is a production concern that students must understand early. Walk through the leakage example. The store persists features through DataFlow; materialize() writes them (an idempotent upsert keyed by entity id and timestamp) and get_features(schema, timestamp=T) returns only values stamped at or before T. The features frame needs an integer transaction_id, a Datetime transaction_date and the schema's fields; Exercise 8 builds it for you. Use the schema class from kailash_ml.features: the top-level kailash_ml.FeatureSchema is a different class that the store rejects. If beginners confused: "When predicting the future, you cannot use future data. FeatureStore enforces this by only giving you data that existed at the time you are predicting." If experts bored: "The timestamp filter only protects you if the timestamps are honest: a feature computed later but stamped earlier still leaks."
   </aside>
 </section>
 
 <!-- SLIDE 66: 2.8 FOUNDATIONS - Assessment Criteria -->
 <section>
-  <h2>Capstone Assessment Criteria</h2>
+  <h2>Capstone Project Rubric</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <table>
     <thead>
@@ -2301,7 +2382,7 @@ features = store.get_features(
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Walk through each criterion. Emphasise: communication is 15% of the grade. A technically perfect analysis that cannot be explained to a non-technical audience is incomplete. If beginners confused: "Focus on the pipeline and interpretation. Get the basics right. The FeatureStore portion is a stretch goal." If experts bored: "The assessment is deliberately weighted toward interpretation and communication, not just code."
+    Timing: 2 min. This rubric is for the capstone project. The graded end-of-module assessment is separate: auto-graded coding tasks in the module's assessment folder (see the last slide). Walk through each criterion. Emphasise: communication is 15% of the project mark. A technically perfect analysis that cannot be explained to a non-technical audience is incomplete. If beginners confused: "Focus on the pipeline and interpretation. Get the basics right. The FeatureStore portion is a stretch goal." If experts bored: "The assessment is deliberately weighted toward interpretation and communication, not just code."
   </aside>
 </section>
 
@@ -2309,44 +2390,48 @@ features = store.get_features(
 <section class="code-fit">
   <h2>Capstone Workflow: Putting It All Together</h2>
   <span class="marker marker-theory">THEORY</span>
-  <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">from kailash_ml import (
-    DataExplorer, FeatureEngineer, FeatureStore,
-    TrainingPipeline, ModelVisualizer, ExperimentTracker
-)
+  <pre style="font-size: 0.45em; line-height: 1.25"><code class="language-python">import asyncio
+import numpy as np
 import polars as pl
+from scipy import stats
+from kailash_ml import ExperimentTracker, ModelVisualizer
+from shared import run_profile
+from shared.mlfp02.ex_8 import load_hdb_resale
 
-# Step 1: Load
-df = pl.read_csv("data/wine_quality.csv")
+# 1 Load: HDB resales (Option A), sentinel prices dropped
+df = load_hdb_resale().filter(
+    pl.col("resale_price").is_between(100_000, 2_000_000))
+# 2 Describe
+profile = run_profile(df)
+# 3 Hypothesise: H0 "floor area has no effect on price"
+# 4-5 Test and model: OLS by the normal equations (Lesson 2.5)
+X = np.column_stack([np.ones(df.height), df["floor_area_sqm"].to_numpy()])
+y = df["resale_price"].to_numpy().astype(float)
+XtX_inv = np.linalg.inv(X.T @ X)
+beta = XtX_inv @ X.T @ y
+e = y - X @ beta
+se = np.sqrt(e @ e / (len(y) - 2) * np.diag(XtX_inv))
+t_area = beta[1] / se[1]
+p_area = 2 * stats.t.sf(abs(t_area), df=len(y) - 2)
+# 6 Interpret: check the residuals
+fig = ModelVisualizer().residuals(y, X @ beta)
 
-# Step 2: Describe
-explorer = DataExplorer()
-profile = explorer.profile(df)
+# 7 Report: log the run so every number is auditable
+async def log_run():
+    tracker = await ExperimentTracker.create(
+        store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_capstone",
+                             run_name="hdb_ols_area") as run:
+        await run.log_metrics({"beta_area": float(beta[1]),
+                               "t_area": float(t_area)})
+    await tracker.close()
 
-# Step 3-4: Hypothesise and Test
-tracker = ExperimentTracker()
-tracker.create_experiment(name="wine_quality_analysis",
-    hypothesis="Alcohol content positively affects quality")
-
-# Step 5: Engineer and Store Features
-fe = FeatureEngineer()
-df = fe.add_interaction(df, col_a="alcohol", col_b="volatile_acidity")
-store = FeatureStore()
-store.store_features(df, entity="wine_id", timestamp="analysis_date")
-
-# Step 6: Model
-pipeline = TrainingPipeline()
-pipeline.fit(df, target="quality", model="linear_regression")
-
-# Step 7: Interpret and Report
-print(pipeline.summary())
-viz = ModelVisualizer()
-viz.residual_plot(pipeline)
-viz.coefficient_plot(pipeline)</code></pre>
+asyncio.run(log_run())</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Walk through the complete workflow using the wine quality example. Each step maps to a Kailash engine. This is what the capstone submission looks like in code. If beginners confused: "This is the recipe. Follow it step by step with your chosen dataset." If experts bored: "The real challenge is the interpretation and business recommendation, not the code. Anyone can fit a model; explaining it is the hard part."
+    Timing: 3 min. Walk through the complete workflow using Option A (HDB resale valuation). On the cleaned data the slope is about 9,091 dollars per square metre with t of about 490: overwhelming evidence against H0, which is why the report must lead with the effect size, not the p-value. The feature engineering and FeatureStore steps from the previous two slides slot in between steps 2 and 4; Exercise 8 does the full version with point-in-time features and lineage. If beginners confused: "This is the recipe. Follow it step by step with your chosen dataset." If experts bored: "The real challenge is the interpretation and business recommendation, not the code. Anyone can fit a model; explaining it is the hard part."
   </aside>
 </section>
 
@@ -2360,14 +2445,14 @@ viz.coefficient_plot(pipeline)</code></pre>
         <table>
           <thead><tr><th>Lesson</th><th>Kailash Engine</th></tr></thead>
           <tbody>
-            <tr><td>2.1 Probability</td><td>ExperimentTracker (Bayesian)</td></tr>
-            <tr><td>2.2 Estimation</td><td>TrainingPipeline (MLE)</td></tr>
-            <tr><td>2.3 Bootstrap</td><td>ExperimentTracker (resampling)</td></tr>
-            <tr><td>2.4 A/B Testing</td><td>ExperimentTracker (lifecycle)</td></tr>
-            <tr><td>2.5 Linear Regression</td><td>TrainingPipeline + ModelVisualizer</td></tr>
-            <tr><td>2.6 Logistic Regression</td><td>TrainingPipeline + ModelVisualizer</td></tr>
-            <tr><td>2.7 CUPED / DiD</td><td>ExperimentTracker (CUPED)</td></tr>
-            <tr><td>2.8 Capstone</td><td>FeatureEngineer + FeatureStore</td></tr>
+            <tr><td>2.1 Probability</td><td>ExperimentTracker (log the posterior)</td></tr>
+            <tr><td>2.2 Estimation</td><td>ModelVisualizer (check the fit)</td></tr>
+            <tr><td>2.3 Bootstrap</td><td>ModelVisualizer (bootstrap histogram)</td></tr>
+            <tr><td>2.4 A/B Testing</td><td>ExperimentTracker (design, SRM, decision)</td></tr>
+            <tr><td>2.5 Linear Regression</td><td>FeatureEngineer + ModelVisualizer</td></tr>
+            <tr><td>2.6 Logistic Regression</td><td>ModelVisualizer (ROC, confusion matrix)</td></tr>
+            <tr><td>2.7 CUPED / DiD</td><td>ExperimentTracker (log the adjustment)</td></tr>
+            <tr><td>2.8 Capstone</td><td>FeatureEngineer + FeatureStore + ExperimentTracker</td></tr>
           </tbody>
         </table>
       </div>
@@ -2379,7 +2464,7 @@ viz.coefficient_plot(pipeline)</code></pre>
       <div class="callout callout-theory" style="margin-top: 12px;">
         <strong>Key engines in M3:</strong>
         <ul style="font-size: 0.85em; margin-top: 4px;">
-          <li>TrainingPipeline (expanded)</li>
+          <li>TrainingPipeline</li>
           <li>HyperparameterSearch</li>
           <li>ModelRegistry</li>
           <li>PreprocessingPipeline</li>
@@ -2391,7 +2476,7 @@ viz.coefficient_plot(pipeline)</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Recap the full lesson-to-engine mapping. Show students that every lesson connects to a Kailash engine. Preview M3 to build anticipation. If beginners confused: "This table is your cheat sheet. Each lesson taught you a concept; each engine automates it." If experts bored: "M3 introduces the ML pipeline pattern: preprocessing, feature engineering, model selection, hyperparameter tuning, evaluation, and deployment."
+    Timing: 2 min. Recap the full lesson-to-engine mapping. Show students that every lesson connects to a Kailash engine, and be precise about the division of labour: in M2 you compute the statistics; the engines log runs, build and store features, and draw plots. TrainingPipeline, which trains and registers ML models, takes centre stage in M3. Preview M3 to build anticipation. If beginners confused: "This table is your cheat sheet. Each lesson taught you a concept; each engine is the tool you pair it with." If experts bored: "M3 introduces the ML pipeline pattern: preprocessing, feature engineering, model selection, hyperparameter tuning, evaluation, and deployment."
   </aside>
 </section>
 
@@ -2752,18 +2837,18 @@ viz.coefficient_plot(pipeline)</code></pre>
       <h3>Hawker Centre A/B Test</h3>
       <ul>
         <li><strong>MDE ($\delta$):</strong> 5% drop in revenue (<span class="nomath">$0.50</span> on <span class="nomath">$10</span> avg)</li>
-        <li><strong>$\sigma$:</strong> $4.00 (estimated from historical data)</li>
+        <li><strong>$\sigma$:</strong> <span class="nomath">$4.00</span> (estimated from historical data)</li>
         <li><strong>$\alpha$:</strong> 0.05</li>
         <li><strong>Power ($1-\beta$):</strong> 0.80 &rarr; $z_\beta = 0.84$</li>
       </ul>
     </div>
     <div class="col">
       <div class="equation-box" style="font-size: 0.82em;">
-        $$n = \frac{(1.96 + 0.84)^2 \times 2 \times 16}{0.25} = \frac{7.84 \times 32}{0.25} = 1,003$$
-        <div class="annotation">~1,003 customers per group, ~2,006 total</div>
+        $$n = \frac{(1.96 + 0.84)^2 \times 2 \times 16}{0.25} = \frac{7.84 \times 32}{0.25} = 1{,}003.5$$
+        <div class="annotation">Always round up: 1,004 customers per group, 2,008 total</div>
       </div>
       <div class="callout callout-warning" style="margin-top: 12px;">
-        <strong>At 100 customers/day:</strong> you need ~20 days of data. Running for only 1 week (700 customers total) would be underpowered.
+        <strong>At 100 customers/day:</strong> you need about 21 days of data. Running for only 1 week (700 customers total) would be underpowered.
       </div>
     </div>
   </div>
@@ -2793,13 +2878,13 @@ viz.coefficient_plot(pipeline)</code></pre>
     </tbody>
   </table>
   <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Reading this table:</strong> Each sqm adds <span class="nomath">$5,200</span> to the price. Each additional km from MRT <em>reduces</em> price by <span class="nomath">$18,500</span>. Mature estates command a <span class="nomath">$42,000</span> premium. All coefficients are highly significant ($p < 0.001$). $R^2 = 0.82$, $F = 450$ ($p < 0.001$).
+    <strong>Reading this table (illustrative numbers, not fitted on the course data):</strong> Each sqm adds <span class="nomath">$5,200</span> to the price. Each additional km from MRT <em>reduces</em> price by <span class="nomath">$18,500</span>. Mature estates command a <span class="nomath">$42,000</span> premium. All coefficients are highly significant ($p < 0.001$). $R^2 = 0.82$, $F = 450$ ($p < 0.001$).
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. This is the most practical slide in Lesson 2.5. Walk through each row. Ask: "Which feature has the strongest effect on price?" (Mature estate at $42K, but per-unit it is dist_to_mrt at -$18.5K/km). Emphasise: the sign tells direction, magnitude tells size, p-value tells confidence. If beginners confused: "Read it column by column: coefficient = how much, t-stat = how sure, p-value = how surprised." If experts bored: "Discuss practical vs statistical significance. A $10 coefficient with p < 0.001 is significant but irrelevant."
+    Timing: 3 min. This is the most practical slide in Lesson 2.5. The table is an invented teaching example (the course HDB file has no MRT-distance or mature-estate columns); students produce a real one in Exercise 5.1. Walk through each row. Ask: "Which feature has the strongest effect on price?" (Mature estate at $42K, but per-unit it is dist_to_mrt at -$18.5K/km). Emphasise: the sign tells direction, magnitude tells size, p-value tells confidence. If beginners confused: "Read it column by column: coefficient = how much, t-stat = how sure, p-value = how surprised." If experts bored: "Discuss practical vs statistical significance. A $10 coefficient with p < 0.001 is significant but irrelevant."
   </aside>
 </section>
 
@@ -2822,7 +2907,7 @@ viz.coefficient_plot(pipeline)</code></pre>
         <strong>Heteroscedasticity:</strong> If the residual spread increases with the predicted value (funnel shape), your standard errors are wrong and t-statistics are unreliable. Fix: use robust standard errors or transform the target ($\log y$).
       </div>
       <div class="callout callout-theory" style="margin-top: 12px;">
-        <strong>ModelVisualizer automates this:</strong> <code>viz.residual_plot(pipeline)</code> creates residuals vs fitted, Q-Q, and scale-location plots in one call.
+        <strong>ModelVisualizer helps:</strong> <code>viz.residuals(y_true, y_pred)</code> draws predicted-vs-actual and the residual histogram. The residuals-vs-fitted and Q-Q plots you build yourself in Exercise 5.2.
       </div>
     </div>
   </div>
@@ -2921,28 +3006,27 @@ viz.coefficient_plot(pipeline)</code></pre>
       </ol>
     </div>
     <div class="col">
-      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import polars as pl
-import numpy as np
+      <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
 
-# Compute theta (regression coefficient)
-cov = df.select(
-    pl.corr("revenue_post", "revenue_pre")
-    * pl.col("revenue_post").std()
-    * pl.col("revenue_pre").std()
-).item()
-var_pre = df["revenue_pre"].var()
-theta = cov / var_pre
+df = (MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
+      .filter(pl.col("experiment_group")
+              .is_in(["control", "treatment_a"])))
 
-# Adjust metric
-mean_pre = df["revenue_pre"].mean()
+# theta = Cov(Y, X_pre) / Var(X_pre), pooled over both arms
+theta = df.select(
+    pl.cov("revenue", "pre_metric_value")
+    / pl.col("pre_metric_value").var()).item()
+
+# Adjust the metric
+mean_pre = df["pre_metric_value"].mean()
 df = df.with_columns(
-    (pl.col("revenue_post")
-     - theta * (pl.col("revenue_pre") - mean_pre)
-    ).alias("revenue_adj")
-)
+    (pl.col("revenue")
+     - theta * (pl.col("pre_metric_value") - mean_pre)
+    ).alias("revenue_adj"))
 
-# Variance reduction
-print(f"Original var: {df['revenue_post'].var():.2f}")
+# Variance reduction (= rho^2, about 4% here)
+print(f"Original var: {df['revenue'].var():.2f}")
 print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     </div>
   </div>
@@ -2950,7 +3034,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Walk through the code step by step. This is what students will implement in the exercise. Emphasise: theta is just the OLS slope from Lesson 2.5. CUPED is regression applied to experiments. If beginners confused: "We compute one number (theta), use it to adjust the metric, and then run the same test we already know." If experts bored: "The code uses Polars expressions for efficiency. In production, this runs on millions of users."
+    Timing: 3 min. Walk through the code step by step. This is what students will implement in the exercise. Emphasise: theta is just the OLS slope from Lesson 2.5. CUPED is regression applied to experiments. On the course experiment (control vs treatment_a) pre_metric_value is only weakly correlated with revenue (rho about 0.21), so the variance falls by about 4%: an honest demonstration that CUPED is only as good as its covariate. If beginners confused: "We compute one number (theta), use it to adjust the metric, and then run the same test we already know." If experts bored: "Theta is estimated on both arms pooled; because the covariate is pre-experiment, the adjustment cannot absorb the treatment effect."
   </aside>
 </section>
 
@@ -3127,7 +3211,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Walk through each cause with a concrete example. SRM is a data engineering problem, not a statistics problem. If beginners confused: "SRM means your groups are not balanced. Something in the system is sending more users to one group than the other." If experts bored: "Microsoft's experimentation platform (ExP) automatically halts experiments with SRM. Kohavi et al. catalog 20+ SRM causes."
+    Timing: 2 min. Walk through each cause with a concrete example. SRM is a data engineering problem, not a statistics problem. If beginners confused: "SRM means your groups are not balanced. Something in the system is sending more users to one group than the other." If experts bored: "Well-run experimentation platforms halt or flag experiments automatically when SRM fires. Kohavi et al. catalog 20+ SRM causes."
   </aside>
 </section>
 
@@ -3231,7 +3315,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
         <strong>FeatureStore enforces this:</strong> When you request features "as of January 1, 2025", the store only returns feature values that were computed and available on that date. No future data leaks in.
       </div>
       <div class="callout callout-error" style="margin-top: 12px;">
-        <strong>Real-world consequence:</strong> A model with data leakage shows $R^2 = 0.95$ in backtesting but $R^2 = 0.40$ in production. The gap is the leaked signal.
+        <strong>Typical consequence (illustrative):</strong> a leaky model can show $R^2 = 0.95$ in backtesting but $R^2 = 0.40$ in production. The gap is the leaked signal.
       </div>
     </div>
   </div>
@@ -3239,7 +3323,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Advanced slide on a production-critical topic. Point-in-time correctness is one of the hardest bugs to catch because the model looks great in backtesting. If beginners confused: "When predicting the past, make sure your features only use data that was actually available at that past time. FeatureStore does this for you." If experts bored: "Uber, Airbnb, and Stripe all use feature stores with point-in-time retrieval. This is the state of the art in ML infrastructure."
+    Timing: 3 min. Advanced slide on a production-critical topic. Point-in-time correctness is one of the hardest bugs to catch because the model looks great in backtesting. If beginners confused: "When predicting the past, make sure your features only use data that was actually available at that past time. FeatureStore does this for you." If experts bored: "Point-in-time retrieval is a standard feature of production feature stores; building the training set any other way invites leakage."
   </aside>
 </section>
 
@@ -3310,10 +3394,10 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <div class="col">
       <h3>The Problem</h3>
       <ul>
-        <li>Marketing tracks clicks in Google Analytics</li>
-        <li>Sales tracks revenue in Salesforce</li>
-        <li>Product tracks usage in Mixpanel</li>
-        <li>Finance tracks costs in SAP</li>
+        <li>Marketing tracks clicks in a web-analytics tool</li>
+        <li>Sales tracks revenue in a CRM</li>
+        <li>Product tracks usage in a product-analytics tool</li>
+        <li>Finance tracks costs in an ERP system</li>
         <li><strong>Nobody can join these datasets</strong> without manual export/import</li>
       </ul>
     </div>
@@ -3334,7 +3418,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Advanced slide on DataOps. Most experiment failures are data engineering failures, not statistics failures. If beginners confused: "Before you can do statistics, you need clean, unified data. This slide is about getting the data house in order." If experts bored: "DataFlow integrates with FeatureStore for automated feature computation pipelines. The modern data stack: ingestion, transformation, serving."
+    Timing: 2 min. Advanced slide on DataOps. Most experiment failures are data engineering failures, not statistics failures. If beginners confused: "Before you can do statistics, you need clean, unified data. This slide is about getting the data house in order." If experts bored: "FeatureStore persists its feature tables through DataFlow: the FeatureStore(DataFlow(...)) call in Lesson 2.8. The modern data stack: ingestion, transformation, serving."
   </aside>
 </section>
 
@@ -3402,14 +3486,14 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <div class="col">
       <h3>M3: Supervised ML &mdash; Theory to Production</h3>
       <ul>
-        <li><strong>3.1</strong> Feature Engineering (deep dive with FeatureEngineer)</li>
-        <li><strong>3.2</strong> Cross-Validation and Model Selection</li>
-        <li><strong>3.3</strong> Decision Trees and Random Forests</li>
-        <li><strong>3.4</strong> Gradient Boosting (XGBoost, LightGBM)</li>
-        <li><strong>3.5</strong> Classification Metrics and Evaluation</li>
-        <li><strong>3.6</strong> Hyperparameter Tuning</li>
-        <li><strong>3.7</strong> Model Registry and Deployment</li>
-        <li><strong>3.8</strong> Capstone: Full ML Pipeline</li>
+        <li><strong>3.1</strong> Feature Engineering, ML Pipeline, and Feature Selection</li>
+        <li><strong>3.2</strong> Bias-Variance, Regularisation, and Cross-Validation</li>
+        <li><strong>3.3</strong> The Complete Supervised Model Zoo</li>
+        <li><strong>3.4</strong> Gradient Boosting Deep Dive</li>
+        <li><strong>3.5</strong> Model Evaluation, Imbalance, and Calibration</li>
+        <li><strong>3.6</strong> Interpretability and Fairness</li>
+        <li><strong>3.7</strong> Workflow Orchestration, Model Registry, and Hyperparameter Search</li>
+        <li><strong>3.8</strong> Production Pipeline &mdash; DataFlow, Drift, and Deployment</li>
       </ul>
     </div>
     <div class="col">
@@ -3439,12 +3523,12 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
   <h2>End of Module Assessment</h2>
   <div class="columns">
     <div class="col">
-      <h3>Quiz (Individual)</h3>
+      <h3>Module Assessment (Individual)</h3>
       <ul>
-        <li>Covers all 8 lessons</li>
-        <li>Mix of conceptual and computational questions</li>
-        <li>Expect: Bayes' theorem calculation, CI interpretation, p-value interpretation, regression output reading, odds ratio computation</li>
-        <li>No code required, but understanding of Kailash engine outputs</li>
+        <li>Practical <strong>coding tasks</strong> on the course datasets &mdash; no multiple choice</li>
+        <li>Auto-graded on outcomes: exact answers and strict numeric tolerances</li>
+        <li>Expect: Bayes and SRM, bootstrap CIs and multiple-testing corrections, CUPED, OLS and logistic inference, a point-in-time feature table</li>
+        <li>Open book; AI assistants not allowed. Details in the module's <code>assessment/README.md</code></li>
       </ul>
     </div>
     <div class="col">
@@ -3453,7 +3537,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
         <li>5-minute presentation of capstone findings</li>
         <li>Audience: non-technical stakeholders</li>
         <li>Must include: business question, methodology summary, key findings, recommendations, limitations</li>
-        <li>Rubric: technical correctness (40%), communication clarity (30%), code quality (20%), FeatureStore usage (10%)</li>
+        <li>Marked with the capstone project rubric from Lesson 2.8</li>
       </ul>
     </div>
   </div>
@@ -3461,7 +3545,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Set expectations for the assessment. Emphasise: the quiz tests understanding, not memorisation. The capstone tests application and communication. If beginners confused: "The quiz checks that you understand the concepts. The capstone checks that you can apply them." If experts bored: "The presentation component is where you differentiate yourself. Technical people who can communicate clearly are rare and valuable."
+    Timing: 2 min. Set expectations for the assessment. The module assessment is a set of auto-graded coding tasks: the grader checks the numbers a correct analysis produces, so choosing the right population, covariate and correction matters more than syntax. The capstone tests application and communication. If beginners confused: "The coding tasks check that you can do the statistics correctly. The capstone checks that you can apply them and explain them." If experts bored: "The presentation component is where you differentiate yourself. Technical people who can communicate clearly are rare and valuable."
   </aside>
 </section>
 
@@ -3482,7 +3566,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Thank the class. Remind them of the capstone deadline and the quiz date. Point to the M3 preview. If beginners confused: "You just completed a formula-heavy statistics module. Well done." If experts bored: "The exercises have stretch goals. Push yourself on 2.7 (CUPED implementation) and 2.8 (FeatureStore integration)."
+    Timing: 1 min. Thank the class. Remind them of the capstone deadline and the assessment date. Point to the M3 preview. If beginners confused: "You just completed a formula-heavy statistics module. Well done." If experts bored: "The exercises have stretch goals. Push yourself on 2.7 (CUPED implementation) and 2.8 (FeatureStore integration)."
   </aside>
 </section>
 

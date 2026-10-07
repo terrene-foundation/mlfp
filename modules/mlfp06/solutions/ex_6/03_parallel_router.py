@@ -8,9 +8,11 @@
 # WHAT YOU'LL LEARN:
 #   - Run independent specialists truly concurrently with asyncio.gather
 #   - Prove the latency win: parallel ≈ max(stages), not sum
-#   - Use Kaizen Pipeline.router() to let an LLM pick the right specialist
-#   - Contrast keyword routing (brittle) with LLM routing (robust to
-#     paraphrases and synonyms)
+#   - Build an LLM router that picks the right specialist from each
+#     specialist's capability card (and see why Kaizen's Pipeline.router()
+#     needs care)
+#   - Measure keyword routing (brittle) against LLM routing on the same
+#     queries, including paraphrases that avoid the keywords
 #
 # PREREQUISITES: 02_sequential_pipeline.py
 # ESTIMATED TIME: ~30 min
@@ -19,8 +21,8 @@
 #   1. Load corpus + specialists
 #   2. Build the parallel asyncio.gather orchestrator
 #   3. Measure parallel vs sequential latency
-#   4. Configure Pipeline.router() for LLM-based routing
-#   5. Route three different query intents to the right specialist
+#   4. Build the LLM router (capability cards + routing Signature)
+#   5. Route six queries with both routers and score them
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -28,14 +30,20 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
-from kaizen_agents import Pipeline
+import polars as pl
+from kaizen import InputField, OutputField, Signature
+from kaizen.core.base_agent import BaseAgent
 
+from shared.mlfp06._ollama_bootstrap import OLLAMA_BASE_URL, preflight_ollama
 from shared.mlfp06.ex_6 import (
+    MODEL,
     OUTPUT_DIR,
     build_specialists,
     load_squad_corpus,
+    run_checked,
 )
 
 
@@ -88,9 +96,9 @@ async def parallel_analysis(doc: str, question: str) -> dict:
     """Launch all specialists simultaneously with asyncio.gather."""
     t0 = time.perf_counter()
 
-    factual_task = factual_agent.run_async(document=doc, question=question)
-    semantic_task = semantic_agent.run_async(document=doc, question=question)
-    structural_task = structural_agent.run_async(document=doc, question=question)
+    factual_task = run_checked(factual_agent, document=doc, question=question)
+    semantic_task = run_checked(semantic_agent, document=doc, question=question)
+    structural_task = run_checked(structural_agent, document=doc, question=question)
 
     factual_r, semantic_r, structural_r = await asyncio.gather(
         factual_task, semantic_task, structural_task
@@ -108,9 +116,9 @@ async def parallel_analysis(doc: str, question: str) -> dict:
 async def sequential_baseline(doc: str, question: str) -> float:
     """Same work, but one agent at a time — for latency comparison."""
     t0 = time.perf_counter()
-    await factual_agent.run_async(document=doc, question=question)
-    await semantic_agent.run_async(document=doc, question=question)
-    await structural_agent.run_async(document=doc, question=question)
+    await run_checked(factual_agent, document=doc, question=question)
+    await run_checked(semantic_agent, document=doc, question=question)
+    await run_checked(structural_agent, document=doc, question=question)
     return time.perf_counter() - t0
 
 
@@ -132,6 +140,7 @@ async def run_comparison():
     return par, seq_latency
 
 
+preflight_ollama(required_models=[MODEL])  # fails loudly if Ollama is down
 par_result, seq_latency = asyncio.run(run_comparison())
 
 print(f"Parallel latency:   {par_result['latency_s']:5.1f}s  (~max of stages)")
@@ -158,61 +167,168 @@ print("\n✓ Checkpoint 2 passed — parallel execution verified\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — Configure Pipeline.router() for LLM-based routing
+# TASK 4 — Build the LLM router
 # ════════════════════════════════════════════════════════════════════════
+# The router is itself a small structured agent: it reads the query and
+# one capability card per specialist (the agent's `description`) and
+# returns the name of the specialist to call.  Every decision is a
+# visible, typed field — you can log it, score it, and audit it.
+#
+# Kaizen also packages this idea as Pipeline.router(agents=[...]).  Two
+# behaviours of the installed release make it a poor teaching tool here:
+# if capability scoring fails (e.g. the LLM is unreachable) it silently
+# falls back to the FIRST agent, and its result does not say which agent
+# it picked.  Building the router explicitly keeps both visible.
 
 print("=" * 70)
 print("TASK 4: LLM-Based Query Routing")
 print("=" * 70)
 
-router = Pipeline.router(
-    agents=[factual_agent, semantic_agent, structural_agent],
+SPECIALISTS = {
+    "factual": factual_agent,
+    "semantic": semantic_agent,
+    "structural": structural_agent,
+}
+CAPABILITY_CARDS = "\n".join(
+    f"{name}: {agent.description}" for name, agent in SPECIALISTS.items()
 )
 
-print(
-    """
-Pipeline.router() dispatches each query to the specialist whose
-capability card (description) best matches the query intent. The LLM
-reads the description, not a keyword table — so it handles synonyms,
-paraphrases, and domain-specific jargon without a separate rule file.
-"""
-)
+
+class RoutingSignature(Signature):
+    """Pick the single specialist whose capability best matches the query."""
+
+    query: str = InputField(description="The user's question")
+    capability_cards: str = InputField(
+        description="One line per specialist, formatted 'name: capability'"
+    )
+    specialist: str = OutputField(
+        description="Exactly one specialist name from the capability cards"
+    )
+    rationale: str = OutputField(description="One sentence explaining the choice")
+
+
+@dataclass
+class RouterConfig:
+    llm_provider: str = "ollama"
+    model: str = MODEL
+    base_url: str = OLLAMA_BASE_URL
+    temperature: float = 0.0  # routing should be deterministic
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=lambda: {"type": "json_object"})
+    structured_output_mode: str = "explicit"
+
+
+class RoutingAgent(BaseAgent):
+    description = "Dispatcher: maps a query to the best-matching specialist"
+
+    def __init__(self, config: RouterConfig | None = None):
+        super().__init__(config=config or RouterConfig(), signature=RoutingSignature())
+
+
+router = RoutingAgent()
+print("Capability cards the router reads:")
+print(CAPABILITY_CARDS)
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert router is not None, "Task 4: router should be created"
-print("✓ Checkpoint 3 passed — router configured\n")
+assert isinstance(router.signature, RoutingSignature), "Task 4: router signature"
+assert set(SPECIALISTS) == {"factual", "semantic", "structural"}
+print("\n✓ Checkpoint 3 passed — router configured\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Route three different query intents
+# TASK 5 — Route six queries with both routers and score them
 # ════════════════════════════════════════════════════════════════════════
 
 print("=" * 70)
-print("TASK 5: Routing intent → specialist")
+print("TASK 5: Routing intent → specialist (keyword vs LLM)")
 print("=" * 70)
 
+# (query, expected specialist, style).  The paraphrases ask for the same
+# thing as the canonical query of the same intent, without its keywords.
 test_queries = [
-    (
-        "What specific dates and numbers are mentioned in this passage?",
-        "factual",
-    ),
-    ("What is the underlying theme of the author's argument?", "semantic"),
-    ("How is the passage organised and what entities are discussed?", "structural"),
+    ("What specific dates and numbers are mentioned in this passage?", "factual", "canonical"),
+    ("What is the underlying theme of the author's argument?", "semantic", "canonical"),
+    ("How is the passage organised and what entities are discussed?", "structural", "canonical"),
+    ("In which year did this happen, and what figures are cited?", "factual", "paraphrase"),
+    ("What is the writer really getting at beneath the surface?", "semantic", "paraphrase"),
+    ("Who are the people and groups mentioned, and how are they linked?", "structural", "paraphrase"),
 ]
 
-for query, expected in test_queries:
-    print(f"\n  Query: {query}")
-    print(f"  Expected specialist: {expected}")
-    # Pipeline.router() selects + runs the matching specialist; we
-    # document the match here rather than burning LLM budget on a
-    # dispatch for every exercise run.
+KEYWORDS = {
+    "factual": ["date", "number", "how many", "when", "fact"],
+    "semantic": ["theme", "meaning", "imply", "argument"],
+    "structural": ["organis", "structure", "entit", "relationship"],
+}
+
+
+def keyword_route(query: str) -> str:
+    """The brittle baseline: first specialist whose keyword appears."""
+    q = query.lower()
+    for name, words in KEYWORDS.items():
+        if any(w in q for w in words):
+            return name
+    return "unrouted"
+
+
+async def llm_route(query: str) -> str:
+    """Ask the routing agent; unknown names are kept as-is (scored wrong)."""
+    decision = await run_checked(
+        router, query=query, capability_cards=CAPABILITY_CARDS
+    )
+    return str(decision["specialist"]).strip().lower()
+
+
+async def route_all() -> list[str]:
+    return [await llm_route(q) for q, _, _ in test_queries]
+
+
+llm_choices = asyncio.run(route_all())
+route_log = pl.DataFrame(
+    {
+        "query": [q for q, _, _ in test_queries],
+        "expected": [e for _, e, _ in test_queries],
+        "style": [s for _, _, s in test_queries],
+        "keyword_choice": [keyword_route(q) for q, _, _ in test_queries],
+        "llm_choice": llm_choices,
+    }
+).with_columns(
+    (pl.col("keyword_choice") == pl.col("expected")).alias("keyword_correct"),
+    (pl.col("llm_choice") == pl.col("expected")).alias("llm_correct"),
+)
+keyword_accuracy = route_log["keyword_correct"].mean()
+llm_accuracy = route_log["llm_correct"].mean()
+
+for r in route_log.iter_rows(named=True):
+    print(f"\n  Query:    {r['query']}")
+    print(
+        f"  Expected: {r['expected']:10s} keyword -> {r['keyword_choice']:10s} "
+        f"LLM -> {r['llm_choice']}"
+    )
+print(f"\nRouting accuracy: keyword {keyword_accuracy:.0%}, LLM {llm_accuracy:.0%}")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────────
+assert route_log.height == len(test_queries), "Task 5: route every query"
+assert all(route_log["llm_choice"].str.len_chars() > 0), "Router must name a specialist"
+print("\n✓ Checkpoint 4 passed — every query routed by both routers\n")
+
+# INTERPRETATION: compare the two accuracy figures on the paraphrase
+# rows.  The keyword router can only route words it was told about, so
+# it fails as soon as users phrase things differently.  Where the LLM
+# router is wrong, read its choice — the capability card is usually the
+# thing to sharpen.
 
 trace_path = OUTPUT_DIR / "ex6_parallel_router_trace.txt"
 trace_path.write_text(
     f"Parallel latency: {par_result['latency_s']:.2f}s\n"
     f"Sequential latency: {seq_latency:.2f}s\n"
     f"Speedup: {seq_latency / max(par_result['latency_s'], 0.01):.2f}x\n"
-    f"Router configured with 3 specialists.\n"
+    f"Routing accuracy: keyword {keyword_accuracy:.0%}, LLM {llm_accuracy:.0%}\n"
+    + "\n".join(
+        f"{r['expected']:10s} kw={r['keyword_choice']:10s} llm={r['llm_choice']:10s} "
+        f"{r['query']}"
+        for r in route_log.iter_rows(named=True)
+    )
+    + "\n"
 )
 print(f"\nTrace written to: {trace_path}")
 
@@ -220,9 +336,9 @@ print(f"\nTrace written to: {trace_path}")
 # ════════════════════════════════════════════════════════════════════════
 # VISUALISE — Parallel vs sequential latency + routing distribution
 # ════════════════════════════════════════════════════════════════════════
-# Two panels: (1) bar chart proving parallel < sequential, with the
-# theoretical model annotated; (2) pie chart showing the routing intent
-# distribution across the three specialist types.
+# Two panels: (1) measured parallel vs sequential latency; (2) measured
+# routing accuracy of the keyword router vs the LLM router, split into
+# the canonical queries and the paraphrases.
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4))
 
@@ -256,19 +372,21 @@ ax1.text(
     transform=ax1.get_xaxis_transform(),
 )
 
-# Right: routing intent distribution
-route_labels = ["Factual", "Semantic", "Structural"]
-route_counts = [1, 1, 1]  # one test query per type from Task 5
-colors = ["#3498db", "#2ecc71", "#e67e22"]
-ax2.pie(
-    route_counts,
-    labels=route_labels,
-    colors=colors,
-    autopct="%1.0f%%",
-    startangle=90,
-    textprops={"fontsize": 10},
-)
-ax2.set_title("Routing Distribution by Intent", fontweight="bold")
+# Right: routing accuracy by router and query style (measured)
+acc = route_log.group_by("style").agg(
+    pl.col("keyword_correct").mean().alias("keyword"),
+    pl.col("llm_correct").mean().alias("llm"),
+).sort("style")
+styles = acc["style"].to_list()
+xs = range(len(styles))
+ax2.bar([i - 0.2 for i in xs], acc["keyword"].to_list(), 0.4, label="Keyword router", color="#e67e22")
+ax2.bar([i + 0.2 for i in xs], acc["llm"].to_list(), 0.4, label="LLM router", color="#3498db")
+ax2.set_xticks(list(xs))
+ax2.set_xticklabels(styles)
+ax2.set_ylim(0, 1.15)
+ax2.set_ylabel("Routing accuracy (measured)")
+ax2.set_title("Keyword vs LLM Routing", fontweight="bold")
+ax2.legend(fontsize=8)
 
 plt.tight_layout()
 fname = OUTPUT_DIR / "ex6_parallel_router_viz.png"
@@ -280,15 +398,16 @@ print(f"\n  Saved: {fname}")
 # ════════════════════════════════════════════════════════════════════════
 # APPLY — Singapore scenario: helpdesk triage at a Smart Nation agency
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore government agency runs a citizen helpdesk that
+# SCENARIO (illustrative figures): A Singapore government agency runs a citizen helpdesk that
 # handles ~4,000 tickets/day across three teams: policy/regulation,
 # technical/IT, and case/eligibility. Current triage uses keyword
 # routing, which mis-routes ~18% of tickets because citizens phrase
 # issues in plain language ("my MyInfo doesn't load" gets routed to
 # policy because of the word "info").
 #
-# LLM routing with Pipeline.router() reads three agent capability
-# cards and dispatches by intent. Pilot measured mis-routing at ~3%.
+# An LLM router reads three capability cards and dispatches by intent.
+# Suppose it brings mis-routing down to ~3% (an assumption — measure it
+# on your own tickets, exactly as Task 5 did on six queries).
 #
 # PARALLEL BONUS: when a ticket genuinely spans teams (policy
 # question that also has a technical sub-question), the dispatcher
@@ -303,7 +422,8 @@ print(f"\n  Saved: {fname}")
 #   Avg rework handling time:       ~8 min
 #   Daily labour saved:             ~80 hours
 #   Fully-loaded agent rate:        S$35/hour
-#   Daily savings:                  ~S$2,800  (~S$700K/year)
+#   Daily savings:                  ~S$2,800
+#   Annual (250 working days):      ~S$700K
 
 print("=" * 70)
 print("  SINGAPORE APPLICATION: Smart Nation Helpdesk Triage")
@@ -312,63 +432,24 @@ print(
     """
   Volume: 4,000 tickets/day
   Keyword router mis-route rate:   18%
-  LLM router mis-route rate:       3%  (pilot measured)
+  LLM router mis-route rate:       3%  (assumed — measure your own)
   Rework saved:                    ~600 tickets/day × 8 min = 80 hours/day
   Fully-loaded agent rate:         S$35/hour
   Daily savings:                   ~S$2,800
-  Annual savings:                  ~S$700K
+  Annual savings (250 days):       ~S$700K
   Plus: parallel specialist calls for cross-team tickets
 """
 )
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# DIAGNOSTIC CHECKPOINT
 # ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Agent Trace (inter-agent handoffs, tool latency).
-# Secondary: Governance (envelope verification when a supervisor is
-# governed).
-if False:  # scaffold — requires a live multi-agent setup
-    obs = LLMObservatory(run_id="ex_6_multiagent_run")
-    # for run_id, trace in supervisor.all_traces.items():
-    #     obs.agent.register_trace(trace)
-    # obs.agent.handoff_summary()  # inter-agent handoffs
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Agent      (HEALTHY): 3 workers, 7 handoffs, mean tool-call
-#       latency 840ms, no stuck loops across all runs.
-#   [?] Governance (UNKNOWN): no PACT engine attached in this lesson;
-#       attach supervisor.audit to light up this lens.
-#   [?] Output / Retrieval / Alignment / Attention (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [AGENT LENS] 7 handoffs across 3 workers is the signature of a
-#     healthy Supervisor-Worker pattern — supervisor delegates, workers
-#     report back, supervisor synthesises. Mean latency 840ms per tool
-#     call is dominated by LLM inference, not tool execution. Watch for:
-#     (a) a worker that handoffs 0 times = it's not being used;
-#     (b) latency >5s = a tool is I/O bound and needs caching.
-#  [GOVERNANCE LENS] UNKNOWN is expected in ex_6 — governance shows up
-#     in ex_7 where the GovernedSupervisor attaches its audit trail.
-# ════════════════════════════════════════════════════════════════════
-
+# The diagnostics here are the two measurements you produced: the
+# parallel/sequential speedup (≈1x means your backend serialises
+# requests) and the routing table.  A router that is right on the
+# canonical queries but wrong on paraphrases is pattern-matching words,
+# not intent — rewrite the capability cards before blaming the model.
 
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION
@@ -380,9 +461,10 @@ print(
     """
   [x] asyncio.gather for concurrent specialist execution
   [x] Measured parallel latency ≈ max(stages) vs sequential = sum
-  [x] Pipeline.router() for LLM-based dispatch
-  [x] Why keyword routing is brittle: synonyms, paraphrases, domain jargon
-  [x] Smart Nation helpdesk triage — real Singapore scale + dollar impact
+  [x] An LLM router over capability cards, every decision visible
+      (and why Pipeline.router()'s silent first-agent fallback matters)
+  [x] Measured why keyword routing is brittle: paraphrases miss it
+  [x] Smart Nation helpdesk triage — illustrative scale + dollar impact
 
   KEY INSIGHT: Parallelism is a latency optimisation; routing is a
   dispatch optimisation. Use both when you have many specialists AND

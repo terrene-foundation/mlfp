@@ -6,13 +6,23 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Lazy (instance-based) learning with no training phase
-#   - k sweep + distance metric comparison
-#   - Curse of dimensionality and why scaling matters
-#   - Jagged 2D decision boundaries
-#   - Cold-start churn for a new Singapore marketplace
+#   - Understand instance-based (lazy) learning: no training phase
+#   - Sweep k and compare Euclidean / Manhattan / Cosine distance metrics
+#   - Recognise the curse of dimensionality and why scaling matters
+#   - Visualise the jagged KNN decision boundary in 2D PCA space
+#   - Apply KNN to a cold-start e-commerce churn scenario
+#
+# PREREQUISITES: 01_svm.py (shared preprocessing pipeline, CV AUC,
+#   majority-class baseline)
 #
 # ESTIMATED TIME: ~25 min
+#
+# TASKS:
+#   1. Theory — lazy learning, distance metrics, curse of dimensionality
+#   2. Build — k sweep, distance metric comparison (scored by CV AUC)
+#   3. Train — final KNN with the best (k, metric) pair
+#   4. Visualise — k-sweep curve + 2D decision boundary (jagged)
+#   5. Apply — cold-start churn flagging for a new marketplace
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -24,13 +34,14 @@ from sklearn.neighbors import KNeighborsClassifier
 from shared.mlfp03.ex_3 import (
     build_train_test_split,
     churn_saved_dollars,
-    cv_accuracy_f1,
+    cv_scores,
     decision_boundary_mesh,
     fit_and_evaluate,
-    get_visualizer,
     OUTPUT_DIR,
     print_classification_report,
     project_2d,
+    save_decision_boundaries,
+    save_sweep_plot,
 )
 
 load_dotenv()
@@ -38,10 +49,28 @@ load_dotenv()
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Lazy Learning and Distance
 # ════════════════════════════════════════════════════════════════════════
-# KNN memorises the training set. Prediction = majority vote over the k
-# closest neighbors. Scaling is mandatory (z-score already applied by
-# the shared pipeline). Euclidean / Manhattan / Cosine are the standard
-# metric choices.
+# KNN has NO training phase. Fit() just memorises the training set.
+# Predict() searches the k closest training points and takes a majority
+# vote (predict_proba = the fraction of the k neighbours that churned).
+#
+#   Prediction: y_hat = mode({y_j : j in k nearest neighbors of x})
+#
+# Distance metrics:
+#     Euclidean  = sqrt(Σ (x_i - y_i)²)        — sphere of influence
+#     Manhattan  = Σ |x_i - y_i|                — axis-aligned grid
+#     Cosine     = 1 - (x . y) / (||x|| ||y||)  — direction, not magnitude
+#
+# CURSE OF DIMENSIONALITY: as the feature count grows, ALL pairs of
+# points become roughly equidistant — the notion of "nearest" breaks
+# down. KNN is therefore strong on small, low-dimensional data and
+# weak once you pass ~50 features.
+#
+# SCALING IS MANDATORY: a feature with range [0, 100000] will dominate
+# every distance computation. The shared preprocessing pipeline already
+# applies z-score normalisation before we see the data.
+#
+# k IS A BIAS-VARIANCE KNOB: k=1 memorises every training point (high
+# variance); very large k averages over half the dataset (high bias).
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -57,117 +86,177 @@ X_train, X_test = data["X_train"], data["X_test"]
 y_train, y_test = data["y_train"], data["y_test"]
 cv = data["cv"]
 
-K_VALUES = [1, 3, 5, 7, 11, 15, 21, 31]
+print(f"\nTrain: {X_train.shape}, Test: {X_test.shape}")
+print(f"Majority-class baseline accuracy (test): {data['majority_accuracy']:.4f}")
+
+K_VALUES = [1, 3, 5, 11, 21, 31, 51, 101]
 METRICS = ["euclidean", "manhattan", "cosine"]
 
-print("\n--- k sweep (euclidean distance) ---")
-print(f"{'k':>6} {'CV Accuracy':>14} {'CV F1':>10}")
-print("-" * 34)
+print("\n--- k sweep (euclidean distance, 5-fold CV) ---")
+print(f"{'k':>6} {'CV Accuracy':>14} {'CV F1':>10} {'CV AUC':>10}")
+print("-" * 44)
 k_results: dict[int, dict[str, float]] = {}
 for k in K_VALUES:
-    # TODO: build KNeighborsClassifier(n_neighbors=k, metric="euclidean")
-    # and call cv_accuracy_f1. Store {"accuracy", "f1"} in k_results[k].
-    acc, f1 = ____
-    k_results[k] = ____
-    print(f"{k:>6} {acc:>14.4f} {f1:>10.4f}")
+    # TODO: score KNeighborsClassifier(n_neighbors=k, metric="euclidean")
+    # with cv_scores(estimator, X_train, y_train, cv).
+    scores = ____
+    k_results[k] = scores
+    print(
+        f"{k:>6} {scores['accuracy']:>14.4f} {scores['f1']:>10.4f} "
+        f"{scores['auc_roc']:>10.4f}"
+    )
 
-# TODO: pick the k with the highest F1.
+# TODO: pick the k with the highest CV AUC ("auc_roc").
 best_k = ____
-print(f"\nBest k: {best_k}")
+print(f"\nBest k by CV AUC: {best_k}")
+print(
+    f"k=1 CV AUC {k_results[1]['auc_roc']:.4f} vs best {k_results[best_k]['auc_roc']:.4f} "
+    f"— a single neighbour copies the noise of one customer."
+)
 
 print(f"\n--- distance metric sweep (k={best_k}) ---")
-print(f"{'metric':<12} {'CV Accuracy':>14} {'CV F1':>10}")
-print("-" * 40)
+print(f"{'metric':<12} {'CV Accuracy':>14} {'CV F1':>10} {'CV AUC':>10}")
+print("-" * 50)
 metric_results: dict[str, dict[str, float]] = {}
 for m in METRICS:
-    # TODO: build KNeighborsClassifier(n_neighbors=best_k, metric=m)
-    # and cv_accuracy_f1. Store in metric_results[m].
-    acc, f1 = ____
-    metric_results[m] = ____
-    print(f"{m:<12} {acc:>14.4f} {f1:>10.4f}")
+    # TODO: same as above, but with n_neighbors=best_k and metric=m.
+    scores = ____
+    metric_results[m] = scores
+    print(
+        f"{m:<12} {scores['accuracy']:>14.4f} {scores['f1']:>10.4f} "
+        f"{scores['auc_roc']:>10.4f}"
+    )
 
-best_metric = max(metric_results, key=lambda m: metric_results[m]["f1"])
-print(f"\nBest metric: {best_metric}")
+# TODO: pick the metric with the highest CV AUC.
+best_metric = ____
+print(f"\nBest metric by CV AUC: {best_metric}")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 3 — TRAIN: final KNN
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: fit_and_evaluate with KNeighborsClassifier(n_neighbors=best_k,
-# metric=best_metric) and name f"KNN (k={best_k}, {best_metric})".
+# TODO: fit_and_evaluate(...) a KNeighborsClassifier with best_k and
+# best_metric; name it f"KNN (k={best_k}, {best_metric})".
 knn_result = ____
 
 print(
-    f"\n{knn_result['name']}: trained in {knn_result['train_time']:.4f}s | "
-    f"accuracy={knn_result['accuracy']:.4f} | F1={knn_result['f1']:.4f}"
+    f"\n{knn_result['name']}: 'trained' in {knn_result['train_time']:.4f}s | "
+    f"accuracy={knn_result['accuracy']:.4f} | "
+    f"F1={knn_result['f1']:.4f} | AUC={knn_result['auc_roc']:.4f}"
+)
+print(
+    f"Accuracy lift over the majority baseline: "
+    f"{knn_result['accuracy'] - data['majority_accuracy']:+.4f}"
 )
 print_classification_report(y_test, knn_result["pred"])
 
 # ── Checkpoint 1 ────────────────────────────────────────────────────────
-assert knn_result["accuracy"] > 0.5, "KNN must beat random"
+assert knn_result["auc_roc"] > 0.6, "KNN must rank churners above retained customers"
 assert best_k > 1, "Best k should be > 1 (k=1 always overfits)"
-print("[ok] Checkpoint 1 passed\n")
+print("[ok] Checkpoint 1 passed — KNN trained and evaluated\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE
+# TASK 4 — VISUALISE: k-sweep curve + 2D decision boundary (expect jagged)
 # ════════════════════════════════════════════════════════════════════════
+
+sweep_out = save_sweep_plot(
+    K_VALUES,
+    {
+        "CV AUC": [k_results[k]["auc_roc"] for k in K_VALUES],
+        "CV accuracy": [k_results[k]["accuracy"] for k in K_VALUES],
+    },
+    x_label="k (number of neighbours, log scale)",
+    title="KNN: CV AUC / accuracy vs k",
+    fname="ex3_02_knn_k_sweep.html",
+    log_x=True,
+)
+print(f"Saved: {sweep_out}")
 
 pca_bundle = project_2d(X_train, X_test)
 X_train_2d = pca_bundle["X_train_2d"]
 
-# TODO: fit KNN (best_k, best_metric) on X_train_2d and predict over the
-# mesh returned by decision_boundary_mesh(X_train_2d).
-knn_2d = ____
 xx, yy = decision_boundary_mesh(X_train_2d)
-Z = ____
+grid = np.c_[xx.ravel(), yy.ravel()]
+panels: dict[str, np.ndarray] = {}
+for k_show in (1, best_k):
+    # TODO: fit KNN (n_neighbors=k_show, metric=best_metric) on X_train_2d,
+    # then predict every grid point and reshape to xx.shape.
+    knn_2d = ____
+    panels[f"KNN k={k_show}"] = ____
 
-viz = get_visualizer()
-fig = viz.training_history(
-    {
-        "k accuracy": [k_results[k]["accuracy"] for k in K_VALUES],
-        "k F1": [k_results[k]["f1"] for k in K_VALUES],
-    },
-    x_label="k (index into K_VALUES)",
+boundary_out = save_decision_boundaries(
+    panels,
+    xx,
+    yy,
+    X_train_2d,
+    y_train,
+    fname="ex3_02_knn_boundary.html",
+    title="KNN decision regions in 2D PCA space: k=1 vs the CV-best k",
 )
-fig.update_layout(title="KNN: accuracy / F1 vs k")
-out = OUTPUT_DIR / "ex3_02_knn_k_sweep.html"
-fig.write_html(str(out))
-print(f"Saved: {out}")
-print(f"Decision mesh shape: {Z.shape}")
+print(f"Saved: {boundary_out}")
+print(
+    f"PCA variance captured: {pca_bundle['explained_variance'].sum():.2%}. "
+    f"Compare the panels: k=1 carves an island around every training "
+    f"customer; the CV-best k smooths those islands away."
+)
 
 # ── Checkpoint 2 ────────────────────────────────────────────────────────
-assert Z.shape[0] > 0 and Z.shape[1] > 0
-print("[ok] Checkpoint 2 passed — KNN 2D boundary computed\n")
+assert all(Z.shape == xx.shape for Z in panels.values()), "Mesh must match grid"
+assert boundary_out.exists(), "Decision-boundary figure must be written"
+print("[ok] Checkpoint 2 passed — KNN 2D boundaries rendered\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: cold-start churn for new Singapore marketplaces
+# TASK 5 — APPLY: cold-start churn for a new marketplace
 # ════════════════════════════════════════════════════════════════════════
-# Why KNN fits: zero training cost, works on a few thousand labelled
-# customers, easy to deploy. Limitations: prediction cost scales with
-# dataset size; poor interpretability.
+# SCENARIO: A new regional marketplace (e.g. a niche B2C fashion
+# platform) has only a few thousand labelled customers in its first six
+# months. The data science team needs a churn model that works from
+# day one, even before enough data exists to justify a deep model.
+# (Business figures are illustrative teaching assumptions.)
+#
+# Why KNN fits:
+#   - Zero training cost. Add new customers to the reference set and
+#     predict immediately.
+#   - Low ceremony: k and the distance metric are the only real choices.
+#   - Low-dimensional (11 features) means the curse of dimensionality is
+#     mild and distance still means something.
+#
+# LIMITATIONS:
+#   - Prediction cost grows linearly with dataset size — at 250K
+#     customers, every prediction scans 250K vectors (use an index).
+#   - Anisotropic feature space: unevenly-scaled or correlated features
+#     distort the distance metric. We mitigate via z-score normalisation.
+#   - Hard to explain individual predictions. Retention teams prefer
+#     "feature X was high" over "this customer resembled 31 past ones".
 
-# TODO: compute true_positives and dollars_saved.
+# TODO: count true positives (pred == 1 AND y_test == 1) and convert with
+# churn_saved_dollars(...).
 true_positives = ____
 dollars_saved = ____
-print(f"\nTrue positives: {true_positives}")
-print(f"Net retention value: S${dollars_saved:,.2f}")
+print(f"\nBusiness impact on held-out test set ({len(y_test)} customers):")
+print(f"  True positives (churners caught): {true_positives}")
+print(f"  Net retention value at 40% offer acceptance: S${dollars_saved:,.2f}")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("=" * 70)
 print(
     f"""
-  [x] Lazy learning — fit() is trivial, predict() does the work
-  [x] CV-driven k selection and metric comparison
-  [x] Accuracy: {knn_result['accuracy']:.4f}, F1: {knn_result['f1']:.4f}
-  [x] Jagged 2D decision boundary
-  [x] Cold-start business case — S${dollars_saved:,.0f} retained
+  [x] Lazy learning: fit() is trivial, predict() does the work
+  [x] k selection via CV AUC — k=1 overfits, very large k under-fits
+  [x] Distance metric comparison (Euclidean / Manhattan / Cosine)
+  [x] Held-out accuracy {knn_result['accuracy']:.4f} vs majority baseline
+      {data['majority_accuracy']:.4f}; AUC {knn_result['auc_roc']:.4f}
+  [x] Jagged k=1 vs smoothed best-k 2D decision boundaries
+  [x] Cold-start churn business case — S${dollars_saved:,.0f} retained on test
 
-  Next: 03_naive_bayes.py
+  Next: 03_naive_bayes.py — Bayes theorem applied to classification.
 """
 )

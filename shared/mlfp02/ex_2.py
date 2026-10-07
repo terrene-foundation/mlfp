@@ -157,9 +157,18 @@ def profile_lr_ci_normal_mu(
 ) -> tuple[tuple[float, float], np.ndarray, np.ndarray]:
     """Profile likelihood 1-alpha CI for the Normal mean.
 
-    The CI is the set of mu where 2*(loglik_at_mle - loglik(mu)) < chi^2_{1-alpha, df=1}.
+    sigma is a NUISANCE parameter, so it is profiled out: at every grid
+    value of mu we re-maximise the likelihood over sigma, which for the
+    Normal has the closed form sigma_hat(mu)^2 = mean((x - mu)^2). The
+    profile log-likelihood is l_p(mu) = l(mu, sigma_hat(mu)).
 
-    Returns (ci, mu_grid, loglik_values) so the caller can plot the profile.
+    (Holding sigma fixed at the global MLE instead would give
+    2*(l_max - l(mu)) = n*(x_bar - mu)^2 / sigma_hat^2 — exactly the Wald
+    statistic, i.e. no profile at all.)
+
+    The CI is the set of mu where 2*(loglik_at_mle - l_p(mu)) <= chi^2_{1-alpha, df=1}.
+
+    Returns (ci, mu_grid, profile_loglik_values) so the caller can plot it.
     """
     n = len(x)
     se_mu = sigma_hat / np.sqrt(n)
@@ -171,15 +180,26 @@ def profile_lr_ci_normal_mu(
         n_grid,
     )
     loglik_values = np.array(
-        [-neg_log_likelihood_normal([mu, np.log(sigma_hat)], x) for mu in mu_grid]
+        [
+            -neg_log_likelihood_normal(
+                [mu, 0.5 * np.log(np.mean((x - mu) ** 2))], x
+            )
+            for mu in mu_grid
+        ]
     )
     lr_values = loglik_at_mle - loglik_values
     mask = lr_values <= threshold
-    if mask.any():
-        ci = (float(mu_grid[mask][0]), float(mu_grid[mask][-1]))
-    else:
-        # Fallback: Wald CI
-        ci = wald_ci(mu_hat, se_mu, alpha)
+    if not mask.any():
+        raise ValueError(
+            "profile likelihood: no grid point inside the CI — check that "
+            "loglik_at_mle is the log-likelihood at (mu_hat, sigma_hat)"
+        )
+    if mask[0] or mask[-1]:
+        raise ValueError(
+            "profile likelihood: CI reaches the grid edge — increase "
+            "grid_width_in_se"
+        )
+    ci = (float(mu_grid[mask][0]), float(mu_grid[mask][-1]))
     return ci, mu_grid, loglik_values
 
 
@@ -263,6 +283,153 @@ def aic(k: int, loglik: float) -> float:
 
 def bic(k: int, loglik: float, n: int) -> float:
     return k * float(np.log(n)) - 2 * loglik
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TAXI TRIPS — count and duration data for Poisson / Exponential models
+# ════════════════════════════════════════════════════════════════════════
+#
+# The GDP series suits location-scale families (Normal, Student-t, Laplace).
+# Counts (trips per hour) and positive durations (seconds between pickups)
+# need the Poisson-process pair: Poisson for counts, Exponential (or Gamma,
+# Weibull) for waiting times. Data: Singapore taxi trips (mlfp01).
+
+TAXI_DATASET = ("mlfp01", "sg_taxi_trips.parquet")
+TAXI_WINDOW_YEAR: int = 2024
+TAXI_WINDOW_MONTH: int = 4  # April 2024 — a complete, busy month
+
+
+def load_taxi_trips() -> pl.DataFrame:
+    """Load Singapore taxi trips with parsed pickup timestamps."""
+    loader = MLFPDataLoader()
+    trips = loader.load(*TAXI_DATASET)
+    return trips.with_columns(
+        pl.col("pickup_datetime").str.to_datetime(strict=False).alias("pickup_ts")
+    ).drop_nulls("pickup_ts")
+
+
+def taxi_trips_per_hour(
+    trips: pl.DataFrame, year: int = TAXI_WINDOW_YEAR, month: int = TAXI_WINDOW_MONTH
+) -> np.ndarray:
+    """Trip counts per (date, hour) cell within one calendar month."""
+    window = trips.filter(
+        (pl.col("pickup_ts").dt.year() == year)
+        & (pl.col("pickup_ts").dt.month() == month)
+    )
+    counts = window.group_by(
+        pl.col("pickup_ts").dt.date().alias("date"),
+        pl.col("pickup_ts").dt.hour().alias("hour"),
+    ).len()
+    return counts["len"].to_numpy().astype(np.float64)
+
+
+def taxi_interarrival_seconds(
+    trips: pl.DataFrame, year: int = TAXI_WINDOW_YEAR, month: int = TAXI_WINDOW_MONTH
+) -> np.ndarray:
+    """Seconds between consecutive pickups within one calendar month."""
+    window = trips.filter(
+        (pl.col("pickup_ts").dt.year() == year)
+        & (pl.col("pickup_ts").dt.month() == month)
+    ).sort("pickup_ts")
+    ts = window["pickup_ts"].to_numpy()
+    gaps = np.diff(ts).astype("timedelta64[s]").astype(np.float64)
+    return gaps[gaps > 0]
+
+
+def taxi_fares(trips: pl.DataFrame) -> np.ndarray:
+    """Fare amounts (SGD) as a float64 array — the LLN demonstration series."""
+    return trips["fare_sgd"].drop_nulls().to_numpy().astype(np.float64)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# POISSON / EXPONENTIAL / GAMMA / WEIBULL MLE
+# ════════════════════════════════════════════════════════════════════════
+
+
+def poisson_mle(counts: np.ndarray) -> dict:
+    """Closed-form Poisson MLE: lambda_hat = sample mean; loglik at the MLE."""
+    lam = float(np.mean(counts))
+    loglik = float(np.sum(stats.poisson.logpmf(counts.astype(int), lam)))
+    return {"lambda": lam, "loglik": loglik, "n": len(counts), "k": 1}
+
+
+def exponential_mle(durations: np.ndarray) -> dict:
+    """Closed-form Exponential MLE: lambda_hat = 1 / sample mean."""
+    lam = 1.0 / float(np.mean(durations))
+    loglik = float(np.sum(stats.expon.logpdf(durations, scale=1.0 / lam)))
+    return {"lambda": lam, "loglik": loglik, "n": len(durations), "k": 1}
+
+
+def gamma_mle(durations: np.ndarray) -> dict:
+    """Gamma MLE via scipy with loc pinned at 0 (durations are positive)."""
+    shape, _, scale = stats.gamma.fit(durations, floc=0)
+    loglik = float(np.sum(stats.gamma.logpdf(durations, shape, loc=0, scale=scale)))
+    return {
+        "shape": float(shape),
+        "scale": float(scale),
+        "loglik": loglik,
+        "n": len(durations),
+        "k": 2,
+    }
+
+
+def weibull_mle(durations: np.ndarray) -> dict:
+    """Weibull MLE via scipy with loc pinned at 0."""
+    shape, _, scale = stats.weibull_min.fit(durations, floc=0)
+    loglik = float(
+        np.sum(stats.weibull_min.logpdf(durations, shape, loc=0, scale=scale))
+    )
+    return {
+        "shape": float(shape),
+        "scale": float(scale),
+        "loglik": loglik,
+        "n": len(durations),
+        "k": 2,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════
+# EXPERIMENT TRACKING — kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+#
+# Every technique logs its fitted model the moment it is trained — params
+# first, metrics second — so the run is auditable even if the session dies
+# before the report is written. DataFlow rewrites relative sqlite URLs, so
+# the store URL is pinned to an absolute path beside the exercise outputs.
+
+TRACKER_STORE_URL = (
+    f"sqlite:///{(OUTPUT_DIR / 'experiments.db').resolve().as_posix()}"
+)
+
+
+def track_train_run(
+    experiment: str,
+    run_name: str,
+    params: dict[str, str],
+    metrics: dict[str, float],
+) -> str:
+    """Log one Train-phase run to ExperimentTracker (sync wrapper).
+
+    Returns the run_id. The tracker is closed in a finally block — kailash-ml
+    holds the store connection open until close() is called.
+    """
+    import asyncio
+
+    async def _log() -> str:
+        from kailash_ml import ExperimentTracker
+
+        tracker = await ExperimentTracker.create(store_url=TRACKER_STORE_URL)
+        try:
+            async with tracker.track(
+                experiment=experiment, run_name=run_name
+            ) as run:
+                await run.log_params(params)
+                await run.log_metrics(metrics)
+                return run.run_id
+        finally:
+            await tracker.close()
+
+    return asyncio.run(_log())
 
 
 # ════════════════════════════════════════════════════════════════════════

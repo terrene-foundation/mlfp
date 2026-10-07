@@ -35,7 +35,7 @@
   Data Visualisation
 </h1>
 
-<p class="lead">Total time: ~55 minutes · 15 slides · ~3.5 min average</p>
+<p class="lead">Total time: ~55 minutes · 16 slides · ~3.5 min average</p>
 
 <p>
   Visualisation is a design lesson as much as a code lesson. The learners
@@ -112,11 +112,36 @@
     Six will take you through most of your career. Specialists exist for
     the other 5%."
   </p>
+  <div class="transition">→ "Two questions pick the chart — here is the map."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Chart decision tree</span></div>
+  <h3>Choosing the right chart</h3>
+  <p>
+    Walk the decision tree twice with two different questions. First:
+    "Is price related to area?" — main variable continuous, two or more
+    variables, not over time, one pair — scatter. Second: "Which town has
+    the most sales?" — categorical, comparing amounts, ranking —
+    horizontal bar. The tree resolves every example from the six-types
+    table.
+  </p>
+  <p>
+    Tell them to save it: "Two questions — what type is your main
+    variable, and what relationship are you showing — pick the chart.
+    When a chart feels wrong, walk the tree; you will usually find you
+    answered a question the reader did not ask."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "When in doubt, the tree almost always
+    ends at histogram, line, or bar. If it ends somewhere exotic, double
+    check you need it."
+  </div>
   <div class="transition">→ "The scientific backing."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Cleveland-McGill ranking</span></div>
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Cleveland-McGill ranking</span></div>
   <h3>🔵 Cleveland–McGill perceptual ranking</h3>
   <p>
     This is the single most useful chart-design insight in the lesson.
@@ -141,7 +166,7 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>ModelVisualizer API</span></div>
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>ModelVisualizer API</span></div>
   <h3>ModelVisualizer API</h3>
   <p>
     Walk the code. Point at each argument. "Data — a Polars DataFrame.
@@ -158,12 +183,19 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Histogram</span></div>
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Histogram</span></div>
   <h3>Histogram — distribution</h3>
   <p>
-    Run it live. Show the right skew — most transactions in the 350k-600k
-    range, a long tail of expensive flats. Ask what this means for mean
-    versus median ("mean &gt; median for right-skewed data").
+    Run it live. Read the shape together: "Eighty percent of sales fall
+    between about S$540k and S$1.22M, median S$849k. And look at the right
+    edge — 144 records at S$9M stretch the axis so far that the body of
+    the distribution is squashed into the first few bins."
+  </p>
+  <p>
+    Make the practical move: filter the planted S$10 / S$9M records and
+    re-plot. "Same code, clean data — now you can actually see the shape.
+    This is why profiling (Lesson 1.7) comes before charting in every
+    professional workflow."
   </p>
   <p>
     Point at the bins. "40 bins is usually a good starting number. 10 is
@@ -174,29 +206,38 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Scatter</span></div>
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Scatter</span></div>
   <h3>Scatter — relationship between two numbers</h3>
   <p>
     The sample-first rule. Run it once without sampling — show the grey
-    blob that 500k points produces. Then run with sample(5000) and show
-    the clear positive slope.
+    blob that 50,000 points produces. Then run with <code>sample(n=5_000,
+    seed=42)</code> and show the clear positive slope.
   </p>
   <p>
-    Point at the spread. "At 100 sqm, prices range from 400k to over 900k.
-    Area alone explains maybe 40-50% of price variance. The other half is
-    town, floor level, lease. That's what the ML models in M3 will
-    learn."
+    Read the numbers honestly: "Positive slope, wide vertical spread.
+    r = 0.47 — area alone explains about 22% of price variance (r²). The
+    rest is town, flat type, lease, storey. And here is the kicker: drop
+    the planted S$10 and S$9M records and r jumps to about 0.91. Bad rows
+    were hiding the real relationship — cleaning revealed it."
   </p>
   <div class="transition">→ "Chart 3 — bar."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Bar</span></div>
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Bar</span></div>
   <h3>Bar — ranking categories</h3>
   <p>
-    Run it. Point at the horizontal orientation. "Town names are long —
-    horizontal bars let them be readable. Vertical bars would require
-    rotated labels, which are harder to read."
+    Run it. The slide borrows <code>metric_comparison</code> — built for
+    model scores — to draw the town bars, so point at the two repair
+    lines: "Its default axis titles are 'Model' and 'Score', which would
+    mislead every reader. The code sets the real titles — 'Town' and
+    'Median resale price (S$)'. Whenever you repurpose a chart method,
+    audit its default labels."
+  </p>
+  <p>
+    Then the readability point: "For 27 long town names, a horizontal bar
+    — <code>px.bar(..., orientation='h')</code> — reads better still.
+    Vertical bars would require rotated labels, which are harder to read."
   </p>
   <p>
     Emphasise the sort. "Always sort bar charts by the value you're
@@ -207,7 +248,7 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Line</span></div>
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Line</span></div>
   <h3>Line — change over time</h3>
   <p>
     Run it. "This is continuity in action. Your eye follows the line and
@@ -215,16 +256,20 @@
     see it."
   </p>
   <p>
-    Note: "We're using <code>training_history</code> for a non-ML line
-    chart because it's a general-purpose line plotter. Plotly-native
-    <code>go.Scatter</code> with <code>mode='lines'</code> is an
-    alternative if you want more control."
+    Be transparent about the repurpose, because the slide does it in code:
+    "<code>training_history</code> is built for ML training curves, so it
+    plots values against 1..N and labels the axis 'Epoch'. The code fixes
+    both: <code>update_traces(x=…)</code> puts the real transaction dates
+    on the x-axis and the labels become months. The lesson generalises —
+    when you borrow a chart method, check what its default x-axis and
+    titles actually say. Plotly-native <code>go.Scatter</code> is the
+    alternative if you want full control from the start."
   </p>
   <div class="transition">→ "Chart 5 — heatmap."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Heatmap</span></div>
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Heatmap</span></div>
   <h3>Heatmap — correlations at a glance</h3>
   <p>
     Run it. Walk the diagonal (each variable perfectly correlated with
@@ -232,32 +277,45 @@
     strongly with price_per_sqm because they share the numerator."
   </p>
   <p>
-    Tell them: "Colour encodes magnitude. Diverging palette around zero —
-    red for negative, blue for positive. This is the one place colour
-    encodes quantity well — because the comparison is between two
-    colours, not among many."
+    Tell them: "Colour encodes magnitude. Diverging palette pinned at
+    zero with <code>zmin=-1, zmax=1</code> — red for <em>positive</em>,
+    blue for <em>negative</em>, white for zero. Without the pinned range
+    the midpoint floats and the signs mislead. And one API caution from
+    the slide: <code>ModelVisualizer.confusion_matrix</code> is not a
+    heatmap tool — it takes true and predicted labels, so the correlation
+    heatmap here is built with Plotly's <code>px.imshow</code> on the
+    Polars correlation matrix."
   </p>
   <div class="transition">→ "Chart 6 — stacked bar."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Stacked bar</span></div>
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Stacked bar</span></div>
   <h3>Stacked bar — composition</h3>
   <p>
     Run it. "Each bar is one town, split by flat type. The total height
     is the number of transactions; the colour segments are the mix."
   </p>
   <p>
+    Two slide points to echo. First, no conversion step: "Plotly Express
+    takes the Polars DataFrame directly — <code>color=</code> grouping
+    included. There is no <code>.to_pandas()</code> anywhere in this
+    course." Second, the share variant: "For a 100% stacked bar — survey
+    or Likert data, or comparing flat-type <em>share</em> across towns —
+    plot each town's share:
+    <code>pl.col('count') / pl.col('count').sum().over('town')</code>."
+  </p>
+  <p>
     Note the caveat: "Stacked bars are good for one comparison at a time
     — either the total across towns, or the share within a single town.
-    Comparing 3-room share across towns is actually hard because the
-    baseline moves. For share comparisons, use 100% stacked bars."
+    Comparing 3-room share across towns is hard on the raw version
+    because the baseline moves."
   </p>
   <div class="transition">→ "Charts to avoid."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Anti-patterns</span></div>
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Anti-patterns</span></div>
   <h3>Four charts to avoid</h3>
   <p>
     Walk each. The 3D ban is firm. Show a 3D bar chart — point at how the
@@ -278,7 +336,7 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~2 min</span><span>Titles</span></div>
+  <div class="meta"><span class="badge">Slide 15</span><span>~2 min</span><span>Titles</span></div>
   <h3>Title = takeaway, not topic</h3>
   <p>
     Walk the before/after. Tell them: "The title is the first thing the
@@ -292,17 +350,17 @@
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Reflection</span></div>
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Reflection</span></div>
   <h3>What you can now do</h3>
   <p>
     Walk the bullets. Pause on each.
   </p>
   <p>
-    Tease 1.7: "Today you hand-built six charts. Tomorrow you'll meet the
-    engine that does the entire EDA for you. Point DataExplorer at any
-    dataset, and it profiles every column, surfaces eight kinds of quality
-    alerts, and generates a suite of diagnostic visualisations — the same
-    charts you just built, at scale."
+    Tease 1.7: "Today you hand-built six charts and hand-checked your data.
+    Next lesson you'll meet the engine that does the checking for you —
+    point DataExplorer at any dataset and it profiles every column and
+    surfaces eight kinds of quality alerts, so charts like these are built
+    on data you have already verified."
   </p>
   <div class="transition">→ End of Lesson 1.6.</div>
 </div>

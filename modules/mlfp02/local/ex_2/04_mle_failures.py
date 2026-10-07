@@ -20,7 +20,7 @@
 #   2. Build — simulations for each failure mode
 #   3. Train — quantify bias, bimodality, and tail underestimation
 #   4. Visualise — bimodal histogram + tail comparison table
-#   5. Apply — MAS stress testing: why Normal underestimates crises
+#   5. Apply — bank stress testing: why Normal underestimates crises
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -40,6 +40,7 @@ from shared.mlfp02.ex_2 import (
     load_singapore_econ,
     save_figure,
 )
+from shared.mlfp02 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -148,7 +149,10 @@ print("\n--- Checkpoint 2 passed --- multimodal failure demonstrated\n")
 print(f"\n=== MLE Failure Case 3: Misspecified Likelihood ===")
 
 rng_t = np.random.default_rng(seed=77)
-shock_data = rng_t.standard_t(df=3, size=100) * 2.0 + 2.5
+# df=4 Student-t with scale=1.2 produces Singapore-realistic quarterly GDP
+# growth (centred at 2.5%, heavy tails without pathological outliers that
+# would inflate the sample std and contaminate the Normal fit).
+shock_data = rng_t.standard_t(df=4, size=500) * 1.2 + 2.5
 
 # Fit Normal MLE
 normal_mle_mu = shock_data.mean()
@@ -190,7 +194,7 @@ print("\n--- Checkpoint 3 passed --- misspecification and tail risk demonstrated
 # TASK 4 — VISUALISE: Bimodal Failure
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 bimodal_df = pl.DataFrame({"gdp_growth_pct": bimodal_data})
 fig = viz.histogram(
@@ -208,10 +212,10 @@ print("\n--- Checkpoint 4 passed --- bimodal failure visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: MAS Stress Testing — Why Normal Underestimates Crises
+# TASK 5 — APPLY: Bank Stress Testing — Why Normal Underestimates Crises
 # ════════════════════════════════════════════════════════════════════════
 
-print(f"\n=== APPLY: MAS Stress Testing ===")
+print(f"\n=== APPLY: Bank Stress Testing ===")
 
 threshold = -5.0
 # TODO: Compute the probability of GDP growth < threshold under
@@ -232,13 +236,13 @@ print(
     f"\nNormal UNDERESTIMATES crisis probability by {prob_t/max(prob_normal, 1e-12):.1f}x"
 )
 print(
-    f"If MAS sets capital requirements using the Normal model, banks"
+    f"If a bank sizes its capital buffers with the Normal model, it"
     f"\nwill hold insufficient reserves for tail events."
 )
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
 assert prob_t > prob_normal, "t-dist assigns more probability to tail events"
-print("\n--- Checkpoint 5 passed --- MAS stress testing application complete\n")
+print("\n--- Checkpoint 5 passed --- stress testing application complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════

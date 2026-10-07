@@ -86,7 +86,7 @@
     <li>Recommend: top-k by cosine similarity.</li>
   </ul>
   <div class="callout-slide foundations">
-    <strong>🟢 Foundations:</strong> no other users needed. Works for new users with item features. Cannot discover surprises.
+    <strong>🟢 Foundations:</strong> no other users needed, so it handles <em>brand-new items</em> (they have features from day one). It does <strong>not</strong> solve brand-new <em>users</em> — with no liked items there is no profile; fall back to popularity or onboarding questions. Cannot discover surprises.
   </div>
 </section>
 
@@ -125,7 +125,7 @@
       <text x="72" y="105" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Carol</text>
       <g font-family="JetBrains Mono" font-size="10" text-anchor="middle">
         <text x="175" y="105" fill="#CBD5E1">?</text><text x="265" y="105" fill="#1E293B">2</text>
-        <text x="355" y="105" fill="#1E293B">1</text><text x="445" y="105" fill="#CBD5E1">?</text>
+        <text x="355" y="105" fill="#1E293B">1</text><text x="445" y="105" fill="#1E293B">5</text>
         <text x="535" y="105" fill="#1E293B">5</text>
       </g>
       <!-- Row: Dan -->
@@ -145,7 +145,7 @@
       <polygon points="8,170 4,164 12,164" fill="#22C55E"/>
       <!-- Explanation -->
       <text x="35" y="195" font-family="Inter" font-size="9" fill="#1E293B">Alice and Bob rate films similarly</text>
-      <text x="35" y="210" font-family="Inter" font-size="9" fill="#1E293B">(both like A, B, D).</text>
+      <text x="35" y="210" font-family="Inter" font-size="9" fill="#1E293B">(A, B, D — Alice 5, 3, 4 · Bob 4, 4, 3).</text>
       <text x="35" y="230" font-family="Inter" font-size="9" fill="#1E293B">Bob rates Film C = 5.</text>
       <text x="35" y="250" font-family="Inter" font-weight="600" font-size="10" fill="#22C55E">--> Recommend Film C to Alice.</text>
       <!-- Row arrow -->
@@ -160,9 +160,9 @@
       <polygon points="445,170 441,164 449,164" fill="#3B82F6"/>
       <!-- Explanation -->
       <text x="405" y="195" font-family="Inter" font-size="9" fill="#1E293B">Film D gets similar ratings to Film A</text>
-      <text x="405" y="210" font-family="Inter" font-size="9" fill="#1E293B">(Alice: 4/5, Bob: 3/4, Dan: 5/5).</text>
-      <text x="405" y="230" font-family="Inter" font-size="9" fill="#1E293B">Carol likes Film E. Film E ~ Film B?</text>
-      <text x="405" y="250" font-family="Inter" font-weight="600" font-size="10" fill="#3B82F6">--> Recommend Film B to Carol.</text>
+      <text x="405" y="210" font-family="Inter" font-size="9" fill="#1E293B">(D vs A — Alice 4/5, Bob 3/4, Dan 5/5).</text>
+      <text x="405" y="230" font-family="Inter" font-size="9" fill="#1E293B">Carol rates Film D = 5 and has not seen Film A.</text>
+      <text x="405" y="250" font-family="Inter" font-weight="600" font-size="10" fill="#3B82F6">--&gt; Recommend Film A to Carol.</text>
       <!-- Column arrow -->
       <line x1="405" y1="268" x2="405" y2="300" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="3 2"/>
       <line x1="405" y1="300" x2="735" y2="300" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="3 2"/>
@@ -299,12 +299,12 @@ def als(R, k=20, lam=0.1, n_iter=20):
     <tbody>
       <tr><td>Star ratings</td><td>Clicks, views, purchases, dwell time</td></tr>
       <tr><td>User actively provides</td><td>Observed from behaviour</td></tr>
-      <tr><td>Sparse — most items unrated</td><td>100x more abundant</td></tr>
+      <tr><td>Sparse — most items unrated</td><td>Far more abundant</td></tr>
       <tr><td>Clear signal</td><td>Noisy but predictive</td></tr>
     </tbody>
   </table>
   <div class="callout-slide theory">
-    <strong>🔵 Theory:</strong> SVD++ combines explicit + implicit. Modern production systems use implicit almost exclusively.
+    <strong>🔵 Theory:</strong> SVD++ combines explicit + implicit. Many production systems rely mainly on implicit feedback — but "no click" is not "dislike".
   </div>
 </section>
 
@@ -315,8 +315,12 @@ def als(R, k=20, lam=0.1, n_iter=20):
     <li>Combine content-based features with collaborative signals.</li>
     <li>Mitigate cold start: new items have features but no interactions.</li>
     <li>Typical: neural network with embedding layer (CF) + feature layer (content).</li>
+    <li>Tune blend weights on a <em>validation</em> split; report lift on held-out ratings against no-skill baselines (global mean, popularity, random).</li>
   </ul>
-  <p style="font-size: 0.85em; color: #64748B;">Most production recommenders at Shopee, Grab, and Netflix are hybrids.</p>
+  <div class="callout-slide foundations">
+    <strong>🟢 Exercise 7:</strong> 300 users × 120 SKUs (synthetic marketplace, known generative model); 10 brand-new SKUs held out as cold-start items. Content, user-CF, item-CF and ALS against baselines, then a validation-tuned hybrid with its measured lift. No Kailash recommender engine — numpy / polars from scratch.
+  </div>
+  <p style="font-size: 0.85em; color: #64748B;">Most large production recommenders are hybrids.</p>
 </section>
 
 <!-- ═══ Slide 12: Embedding visualisation ═══════════════════ -->
@@ -324,7 +328,7 @@ def als(R, k=20, lam=0.1, n_iter=20):
   <h2>Visualising learned embeddings</h2>
   <figure style="text-align: center;">
     <svg viewBox="0 0 600 340" xmlns="http://www.w3.org/2000/svg">
-      <text x="300" y="20" text-anchor="middle" font-weight="700" font-size="13" fill="#475569">t-SNE of item embeddings — clusters emerge without labels</text>
+      <text x="300" y="20" text-anchor="middle" font-weight="700" font-size="13" fill="#475569">Illustration: t-SNE of item embeddings — clusters emerge without labels</text>
       <rect x="40" y="30" width="520" height="260" fill="#F8FAFC" stroke="#E2E8F0" rx="4"/>
       <!-- Simulated clusters -->
       <g fill="#3B82F6" opacity="0.6">
@@ -394,8 +398,8 @@ def als(R, k=20, lam=0.1, n_iter=20):
 <section>
   <h2>Four common mistakes</h2>
   <ol style="font-size: 0.85em;">
-    <li><strong>Training on the full matrix</strong> — hold out test interactions.</li>
-    <li><strong>Ignoring implicit data</strong> — clicks are 100x more abundant than ratings.</li>
+    <li><strong>Training on the full matrix</strong> — hold out test interactions; never tune on them.</li>
+    <li><strong>Ignoring implicit data</strong> — clicks and views far outnumber ratings.</li>
     <li><strong>Too many latent factors</strong> — $k = 20$–$50$ typical; higher overfits.</li>
     <li><strong>Missing the pivot insight</strong> — if you leave thinking this is about recommendations, re-read.</li>
   </ol>

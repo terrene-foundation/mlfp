@@ -11,8 +11,8 @@
 #   - Gradient penalty vs weight clipping — why GP wins
 #   - Train a WGAN-GP with critic (not discriminator) architecture
 #   - Compare training stability against vanilla GAN
-#   - Apply privacy-preserving synthetic medical imaging for a
-#     Singapore hospital under PDPA
+#   - Apply synthetic medical-image generation for a Singapore
+#     hospital — and test what synthetic data does and does not buy you
 #
 # PREREQUISITES: ex_5/01_vanilla_gan.py (vanilla GAN fundamentals)
 # ESTIMATED TIME: ~45 min
@@ -56,17 +56,22 @@ print(
     """
   THE PROBLEM WITH VANILLA GANS:
 
-  Vanilla GAN uses Jensen-Shannon (JS) divergence to measure how
-  different the real and generated distributions are. JS divergence
-  has a fatal flaw: when the two distributions don't overlap at all
-  (which happens early in training), JS divergence is a CONSTANT.
+  With an optimal discriminator, the vanilla GAN game minimises the
+  Jensen-Shannon (JS) divergence between the real and generated
+  distributions. JS has a fatal flaw: when the two distributions don't
+  overlap (common early in training — both sit on thin manifolds in
+  pixel space), JS is stuck at its maximum, log 2, no matter how far
+  apart they are. A constant has zero gradient.
 
-  A constant means zero gradient. Zero gradient means the generator
-  learns nothing. Training stalls or collapses.
+  With the original minimax G loss, log(1 - D(G(z))), that shows up as
+  a saturated, vanishing gradient. The non-saturating loss used in
+  ex_5/01 restores a gradient, but it comes from a near-perfect D and
+  carries no information about HOW FAR the fakes are from the real
+  data — so training is jumpy and prone to mode collapse.
 
   Think of it this way: the detective is SO good that the counterfeiter
-  gets no useful feedback — just "everything you make is obviously fake."
-  No signal about HOW to improve.
+  gets feedback like "everything you make is obviously fake" — but no
+  signal about HOW to improve.
 
   THE WASSERSTEIN FIX:
 
@@ -262,45 +267,57 @@ async def train_wgan_gp(
             {"final_g_loss": g_losses[-1], "final_d_loss": d_losses[-1]}
         )
 
-    return G, g_losses, d_losses, epoch_snapshots
+    return G, D, g_losses, d_losses, epoch_snapshots
 
 
 print("\n  Training WGAN-GP on full MNIST (60K images)...")
-G_wgan, wgan_g_losses, wgan_d_losses, wgan_snapshots = asyncio.run(train_wgan_gp())
+G_wgan, D_wgan, wgan_g_losses, wgan_d_losses, wgan_snapshots = asyncio.run(
+    train_wgan_gp()
+)
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert (
     len(wgan_g_losses) == EPOCHS
 ), f"Expected {EPOCHS} epochs, got {len(wgan_g_losses)}"
 # INTERPRETATION: Unlike vanilla GAN's BCE loss, the WGAN critic loss
-# approximates the Wasserstein distance — a MEANINGFUL quality metric.
-# Lower critic loss = distributions are closer = better generation.
-# The loss should decrease smoothly, unlike vanilla GAN's oscillation.
+# tracks the Wasserstein distance W — a MEANINGFUL quality signal. Read
+# the sign carefully: critic loss = E[D(fake)] - E[D(real)] + lambda*GP
+# ≈ -W (the GP term is small once the critic is ~1-Lipschitz). So the
+# critic loss is NEGATIVE, and as the generator improves W shrinks and
+# the critic loss RISES TOWARD 0. A more negative critic loss means the
+# distributions are FURTHER apart. Expect a smoother curve than vanilla
+# GAN's, not a monotonic descent.
 print("\n--- Checkpoint 2 passed --- WGAN-GP trained\n")
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — WGAN-GP (Wasserstein distance = smooth gradient)
+# DIAGNOSTIC CHECKPOINT — WGAN-GP (Wasserstein critic + generator)
 # ══════════════════════════════════════════════════════════════════
-# The core WGAN-GP selling point is that the critic provides a
-# GRADIENT EVERYWHERE — unlike vanilla GAN where the saturating BCE
-# kills Generator gradients when D wins. We expect the Blood Test
-# to read healthier than 01_vanilla_gan: no vanishing, no mode
-# collapse signature in the activations. The Stethoscope should
-# show critic loss decreasing smoothly as the Wasserstein distance
-# shrinks — NOT the oscillating adversarial dance of vanilla GAN.
+# The WGAN-GP claim is that a ~1-Lipschitz critic gives the generator
+# an informative gradient everywhere. Test it: run the Prescription
+# Pad on the generator AND the critic, each with the real training
+# objective (no weights are updated), then compare with ex_5/01.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
-import torch.nn.functional as _F
+from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05 import create_visualizer
 
 
 def _g_loss(m, batch):
+    # Generator objective used in training: maximise the critic's score.
     bs = batch[0].size(0)
     z = torch.randn(bs, LATENT_DIM, device=device)
-    fake = m(z)
-    return _F.mse_loss(fake, batch[0])
+    return -D_wgan(m(z)).mean()
 
 
-print("\n── Diagnostic Report (WGAN-GP Generator) ──")
+def _critic_loss(m, batch):
+    # Critic objective used in training: E[D(fake)] - E[D(real)] + lambda*GP.
+    real = batch[0]
+    with torch.no_grad():
+        fake = G_wgan(torch.randn(real.size(0), LATENT_DIM, device=device))
+    gp = gradient_penalty(m, real, fake)
+    return m(fake).mean() - m(real).mean() + GP_LAMBDA * gp
+
+
 g_diag, g_findings = run_diagnostic_checkpoint(
     G_wgan,
     real_loader,
@@ -310,64 +327,42 @@ g_diag, g_findings = run_diagnostic_checkpoint(
     train_losses=wgan_g_losses,
     show=False,
 )
+print_prescription_pad(g_findings, "WGAN-GP — Generator")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad (WGAN-GP Generator)
-# ════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): min RMS ~2.8e-04 across G layers.
-#       Contrast 01's vanilla G at 5e-6 under D dominance.
-#       The Wasserstein objective is unsaturating — gradient
-#       survives even when critic perfectly separates real/fake.
-#   [✓] Activations   (HEALTHY): tanh output entropy across the
-#       batch is high — digits of varied shape, no mode collapse.
-#       Visible signature of diverse latent -> diverse output.
-#   [✓] Loss trend    (HEALTHY): critic (Wasserstein) loss
-#       descends smoothly with slope -4.2e-03/epoch — this is the
-#       MEANINGFUL quality metric that vanilla GAN BCE cannot give.
-# ════════════════════════════════════════════════════════════════
-# Final G loss ~0.18, critic loss ~-2.3 (trend: monotonically toward 0).
+c_diag, c_findings = run_diagnostic_checkpoint(
+    D_wgan,
+    real_loader,
+    _critic_loss,
+    title="WGAN-GP — Critic",
+    n_batches=6,
+    train_losses=wgan_d_losses,
+    show=False,
+)
+print_prescription_pad(c_findings, "WGAN-GP — Critic")
+
+# HOW TO READ THESE PADS (your readings depend on your run):
 #
-# STUDENT INTERPRETATION GUIDE — reading the WGAN-GP Prescription Pad:
+#  GRADIENT FLOW — put the generator pad next to ex_5/01's. If WGAN-GP
+#     is doing its job, G's gradients are neither vanishing nor
+#     exploding even though the critic is trained 5x more often. If G's
+#     gradients still vanish, the critic may be under-trained (raise
+#     n_critic) or the penalty too weak (check GP_LAMBDA is applied).
 #
-#  [BLOOD TEST — GRADIENT EVERYWHERE] G's gradient RMS holds
-#     steady ~1e-4 across training. Compare vanilla GAN (ex_5/01)
-#     where the same instrument reads WARNING (RMS < 1e-5) the
-#     moment D_loss approached 0. The gradient penalty is the
-#     mechanism: it enforces 1-Lipschitz on the critic, which
-#     bounds the gradient magnitude but also PREVENTS it from
-#     vanishing. Slide 5.5 covers this — the Earth-Mover distance
-#     is continuous everywhere, unlike JS divergence.
-#     >> Prescription: if G RMS still drops below 1e-5 here,
-#        the gradient penalty coefficient (lambda_gp=10) is too
-#        low or the critic is under-trained (increase n_critic).
+#  DEAD NEURONS / SATURATION — the generator's Tanh output saturating
+#     (pixels pinned at black/white) together with a gallery of
+#     near-identical digits is the mode-collapse signature. WGAN-GP
+#     makes collapse LESS likely, not impossible — ex_5/03 measures it.
 #
-#  [X-RAY — NO MODE COLLAPSE] Activation entropy across the batch
-#     confirms visual diversity. The gallery (below) should show
-#     varied digits, not 50 copies of a "7". WGAN-GP's Lipschitz
-#     constraint discourages the critic from sharp rejection of
-#     minority modes, so G is not punished for diversity.
-#     >> Prescription: persistent mode collapse even with WGAN-GP
-#        means the critic architecture is too shallow OR the
-#        gradient penalty is mis-implemented (check sample points
-#        are interpolated between real and fake, not just on real).
+#  LOSS TREND — mind the sign. The critic loss ≈ -W, so improvement
+#     shows up as the critic loss RISING toward 0. The library's trend
+#     check assumes "lower is better", so a WARNING about a rising
+#     critic loss can be the HEALTHY WGAN pattern. The real red flags:
+#     the critic loss diving ever more negative (G falling behind) or
+#     swinging wildly (check the gradient penalty is really applied).
 #
-#  [STETHOSCOPE — MEANINGFUL QUALITY METRIC] Critic loss ≈ negative
-#     Wasserstein distance. It DECREASES as generation quality
-#     improves — unlike BCE which oscillates. You can actually
-#     monitor this for early stopping, something impossible with
-#     vanilla GAN. This is a textbook plot: smooth descent, tight
-#     error bars, no mode-collapse cliff.
-#     >> Prescription: if critic loss oscillates like vanilla GAN,
-#        check that gradient penalty is actually being applied
-#        (common bug: lambda_gp=0 silent default).
-#
-#  FIVE-INSTRUMENT TAKEAWAY: WGAN-GP inverts every red flag of
-#  vanilla GAN — gradient healthy, activations diverse, loss
-#  meaningful. This is the architectural fix that unlocks
-#  training stability. Move to ex_5/03 to quantify quality with
-#  FID, because even WGAN-GP's loss doesn't answer "how real?"
-# ════════════════════════════════════════════════════════════════════
+#  Even a clean pad does not answer "how real are the images?" — that
+#  is what FID and mode coverage in ex_5/03 are for.
+# ══════════════════════════════════════════════════════════════════
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -406,7 +401,7 @@ G_wgan.load_state_dict(wgan_snapshots[max(wgan_snapshots.keys())])
 G_wgan.eval()
 
 # 4C: Critic loss curve — should be smoother than D loss
-print("\n  4C: Critic loss dynamics (should decrease smoothly)")
+print("\n  4C: Critic loss dynamics (critic loss ≈ -W: watch it rise toward 0)")
 fig_critic = plot_loss_curves(
     wgan_g_losses,
     wgan_d_losses,
@@ -436,55 +431,49 @@ fig_compare.suptitle(
     fontweight="bold",
 )
 
-# Load vanilla GAN losses from previous run if available, otherwise note
-# (In practice both files run in sequence; we re-train a small vanilla GAN
-# for comparison if the previous data isn't available)
-try:
-    # Import from sibling module — but we'll just retrain briefly for comparison
-    raise ImportError("Using local comparison")
-except ImportError:
-    # Quick vanilla GAN training for comparison plot
-    print("  Training a brief vanilla GAN for comparison...")
-    _G_cmp = Generator().to(device)
-    _D_cmp = Discriminator().to(device)
-    _opt_g = torch.optim.Adam(_G_cmp.parameters(), lr=2e-4, betas=(0.5, 0.999))
-    _opt_d = torch.optim.Adam(_D_cmp.parameters(), lr=2e-4, betas=(0.5, 0.999))
-    _bce = nn.BCEWithLogitsLoss()
-    _cmp_g, _cmp_d = [], []
-    for _ep in range(min(EPOCHS, 15)):
-        _eg, _ed = [], []
-        for (_rb,) in real_loader:
-            _bs = _rb.size(0)
-            _z = torch.randn(_bs, LATENT_DIM, device=device)
-            _fk = _G_cmp(_z).detach()
-            _ld = _bce(_D_cmp(_rb), torch.ones(_bs, 1, device=device)) + _bce(
-                _D_cmp(_fk), torch.zeros(_bs, 1, device=device)
-            )
-            _opt_d.zero_grad()
-            _ld.backward()
-            _opt_d.step()
-            _z = torch.randn(_bs, LATENT_DIM, device=device)
-            _lg = _bce(_D_cmp(_G_cmp(_z)), torch.ones(_bs, 1, device=device))
-            _opt_g.zero_grad()
-            _lg.backward()
-            _opt_g.step()
-            _eg.append(_lg.item())
-            _ed.append(_ld.item())
-        _cmp_g.append(float(np.mean(_eg)))
-        _cmp_d.append(float(np.mean(_ed)))
-    del _G_cmp, _D_cmp, _opt_g, _opt_d
+# Train a brief vanilla GAN on the same data so both loss curves
+# come from this run.
+print("  Training a brief vanilla GAN for comparison...")
+_G_cmp = Generator().to(device)
+_D_cmp = Discriminator().to(device)
+_opt_g = torch.optim.Adam(_G_cmp.parameters(), lr=2e-4, betas=(0.5, 0.999))
+_opt_d = torch.optim.Adam(_D_cmp.parameters(), lr=2e-4, betas=(0.5, 0.999))
+_bce = nn.BCEWithLogitsLoss()
+_cmp_g, _cmp_d = [], []
+for _ep in range(min(EPOCHS, 15)):
+    _eg, _ed = [], []
+    for (_rb,) in real_loader:
+        _bs = _rb.size(0)
+        _z = torch.randn(_bs, LATENT_DIM, device=device)
+        _fk = _G_cmp(_z).detach()
+        _ld = _bce(_D_cmp(_rb), torch.ones(_bs, 1, device=device)) + _bce(
+            _D_cmp(_fk), torch.zeros(_bs, 1, device=device)
+        )
+        _opt_d.zero_grad()
+        _ld.backward()
+        _opt_d.step()
+        _z = torch.randn(_bs, LATENT_DIM, device=device)
+        _lg = _bce(_D_cmp(_G_cmp(_z)), torch.ones(_bs, 1, device=device))
+        _opt_g.zero_grad()
+        _lg.backward()
+        _opt_g.step()
+        _eg.append(_lg.item())
+        _ed.append(_ld.item())
+    _cmp_g.append(float(np.mean(_eg)))
+    _cmp_d.append(float(np.mean(_ed)))
+del _D_cmp, _opt_g, _opt_d  # keep _G_cmp: Phase 5 reuses it
 
-# Vanilla GAN D loss (oscillating)
+# Vanilla GAN BCE losses
 van_epochs = range(1, len(_cmp_d) + 1)
 axes[0].plot(van_epochs, _cmp_d, "r-", linewidth=2, alpha=0.8, label="Vanilla D Loss")
 axes[0].plot(van_epochs, _cmp_g, "b-", linewidth=2, alpha=0.8, label="Vanilla G Loss")
 axes[0].set_xlabel("Epoch", fontsize=12)
 axes[0].set_ylabel("Loss (BCE)", fontsize=12)
-axes[0].set_title("Vanilla GAN: Oscillating Losses", fontsize=13)
+axes[0].set_title("Vanilla GAN: BCE Losses", fontsize=13)
 axes[0].legend(fontsize=11)
 axes[0].grid(True, alpha=0.3)
 
-# WGAN-GP critic loss (smooth descent)
+# WGAN-GP critic loss ≈ -W (rises toward 0 as the distributions converge)
 wgan_epochs = range(1, len(wgan_d_losses) + 1)
 axes[1].plot(
     wgan_epochs, wgan_d_losses, "r-", linewidth=2, alpha=0.8, label="Critic Loss"
@@ -492,7 +481,7 @@ axes[1].plot(
 axes[1].plot(wgan_epochs, wgan_g_losses, "b-", linewidth=2, alpha=0.8, label="G Loss")
 axes[1].set_xlabel("Epoch", fontsize=12)
 axes[1].set_ylabel("Loss (Wasserstein)", fontsize=12)
-axes[1].set_title("WGAN-GP: Smooth Convergence", fontsize=13)
+axes[1].set_title("WGAN-GP: Critic Loss ≈ -W (closer to 0 = closer)", fontsize=13)
 axes[1].legend(fontsize=11)
 axes[1].grid(True, alpha=0.3)
 
@@ -519,7 +508,7 @@ print("\n--- Checkpoint 3 passed --- WGAN-GP visualisations complete\n")
 # Interactive training curves with ModelVisualizer
 from kailash_ml import ModelVisualizer
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig_html = viz.training_history(
     metrics={
         "WGAN-GP G loss": wgan_g_losses,
@@ -533,50 +522,45 @@ print("  Interactive training curves saved to ex_5_02_wgan_training.html")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# PHASE 5 — APPLY: Privacy-Preserving Synthetic Medical Images at NUH
+# PHASE 5 — APPLY: Synthetic Medical Images at a Singapore Hospital
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
-print("  PHASE 5 — APPLY: Synthetic Medical Images for NUH")
+print("  PHASE 5 — APPLY: Synthetic Medical Images for a Public Hospital")
 print("=" * 70)
 print(
     """
-  BUSINESS SCENARIO:
-  You are an AI researcher at the National University Hospital (NUH)
-  in Singapore. Your team is developing an automated chest X-ray
-  screening model for tuberculosis (TB). Training requires thousands
-  of annotated X-ray images, but sharing real patient scans outside
-  the hospital is prohibited by PDPA and the Ministry of Health (MOH)
-  data governance framework.
+  BUSINESS SCENARIO (illustrative):
+  You are an AI researcher at a Singapore public hospital. Your team is
+  developing an automated chest X-ray screening model for tuberculosis
+  (TB). Training needs thousands of annotated scans, and patient scans
+  cannot leave the hospital under the PDPA and the health ministry's
+  data-governance rules. Partner hospitals want to build their own
+  screening models but lack local data.
 
-  Other hospitals want to train their own TB screening models but
-  lack sufficient local data. NUH cannot share real patient images,
-  but CAN share a trained GAN that generates synthetic X-ray-like
-  images preserving the visual patterns of TB without containing
-  any real patient data.
-
-  SOLUTION: Train a WGAN-GP on NUH's X-ray dataset (kept internal).
-  Share only the trained generator. Partner hospitals generate synthetic
-  training data locally — no real patient data ever leaves NUH.
+  PROPOSAL ON THE TABLE: train a WGAN-GP on the hospital's scans and
+  share only the trained generator, so partners can sample synthetic
+  training images locally.
 
   WHY WGAN-GP (not vanilla GAN):
-  Medical images demand training STABILITY. A mode-collapsed GAN
-  that only generates one type of X-ray would train a biased screening
-  model. WGAN-GP's smooth Wasserstein gradients prevent collapse,
-  ensuring the synthetic dataset covers the full range of TB
-  presentations (mild, moderate, severe, bilateral, unilateral).
+  A mode-collapsed GAN that only generates one kind of X-ray would
+  train a biased screening model. WGAN-GP's more informative gradients
+  make collapse less likely — but you still have to MEASURE coverage
+  (ex_5/03) rather than assume it.
 
-  BUSINESS IMPACT:
-  - 3 partner hospitals gain access to TB screening AI
-  - Zero real patient data shared (PDPA + MOH compliant)
-  - Screening model sensitivity: 89% (synthetic) vs 92% (real data)
-  - Cost savings: S$1.2M/year across 3 hospitals (reduced manual reads)
-  - Time to diagnosis: 48 hours → 4 hours for preliminary screen
+  WHAT THE PROPOSAL MUST SURVIVE BEFORE ANYONE SIGNS OFF:
+  - Privacy. A generator is trained on real scans and can memorise and
+    regenerate them; sharing it is not automatically "sharing zero
+    patient data". It needs privacy guarantees (e.g. differentially-
+    private training) and memorisation / membership-inference testing
+    — FID or a nice-looking gallery prove nothing about privacy.
+  - Utility. A screening model trained on synthetic scans must be
+    evaluated on REAL held-out scans. Steps 4-5 below do exactly that.
 """
 )
 
-# Simulate the medical imaging scenario with MNIST as proxy
-# (real deployment would use chest X-ray datasets like CheXpert)
-print("\n  Simulating the NUH medical imaging scenario...")
+# Proxy for the medical imaging scenario, using MNIST
+# (a real deployment would use a chest X-ray dataset).
+print("\n  Running the medical imaging scenario on the MNIST proxy...")
 
 # Step 1: Generate a large synthetic dataset from the trained WGAN-GP
 G_wgan.eval()
@@ -588,40 +572,16 @@ with torch.no_grad():
 print(f"  Synthetic 'X-ray' images generated: {n_synthetic}")
 
 # Step 2: Compare quality — real vs WGAN-GP synthetic vs vanilla GAN
-# Train a quick vanilla GAN to show the quality difference
-print("  Training vanilla GAN for quality comparison...")
-_G_van = Generator().to(device)
-_D_van = Discriminator().to(device)
-_opt_gv = torch.optim.Adam(_G_van.parameters(), lr=2e-4, betas=(0.5, 0.999))
-_opt_dv = torch.optim.Adam(_D_van.parameters(), lr=2e-4, betas=(0.5, 0.999))
-_bce_van = nn.BCEWithLogitsLoss()
-for _ep in range(10):
-    for (_rb,) in real_loader:
-        _bs = _rb.size(0)
-        _z = torch.randn(_bs, LATENT_DIM, device=device)
-        _fk = _G_van(_z).detach()
-        _ld = _bce_van(_D_van(_rb), torch.ones(_bs, 1, device=device)) + _bce_van(
-            _D_van(_fk), torch.zeros(_bs, 1, device=device)
-        )
-        _opt_dv.zero_grad()
-        _ld.backward()
-        _opt_dv.step()
-        _z = torch.randn(_bs, LATENT_DIM, device=device)
-        _lg = _bce_van(_D_van(_G_van(_z)), torch.ones(_bs, 1, device=device))
-        _opt_gv.zero_grad()
-        _lg.backward()
-        _opt_gv.step()
-
-_G_van.eval()
+# Reuse the vanilla GAN trained for the 4E stability comparison.
+_G_cmp.eval()
 with torch.no_grad():
-    X_vanilla_synthetic = _G_van(torch.randn(64, LATENT_DIM, device=device))
-del _D_van, _opt_gv, _opt_dv
+    X_vanilla_synthetic = _G_cmp(torch.randn(64, LATENT_DIM, device=device))
 
 # Step 3: Visual comparison — Real vs Vanilla GAN vs WGAN-GP
 fig_med, axes = plt.subplots(3, 8, figsize=(16, 7))
 fig_med.suptitle(
     "Medical Image Quality Comparison\n"
-    "Real Patient Scans vs Vanilla GAN vs WGAN-GP Synthetic",
+    "Real Images vs Vanilla GAN vs WGAN-GP Synthetic (MNIST proxy)",
     fontsize=14,
     fontweight="bold",
 )
@@ -659,7 +619,7 @@ fig_med.savefig(
 )
 plt.show()
 print("  Medical image comparison saved")
-del _G_van, X_vanilla_synthetic
+del _G_cmp, X_vanilla_synthetic
 
 # Step 4: Diagnostic model comparison — trained on real vs synthetic
 print("\n  Training diagnostic models: real data vs synthetic data...")
@@ -688,8 +648,7 @@ for _ in range(3):
     for xb, yb in torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(X_01[:5000], y_real[:5000]),
         batch_size=256,
-        shuffle=True,
-    ):
+        shuffle=True, num_workers=0):
         loss = torch.nn.functional.cross_entropy(model_real(xb), yb)
         opt_real.zero_grad()
         loss.backward()
@@ -709,8 +668,7 @@ for _ in range(3):
     for xb, yb in torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(synth_01, pseudo_labels),
         batch_size=256,
-        shuffle=True,
-    ):
+        shuffle=True, num_workers=0):
         loss = torch.nn.functional.cross_entropy(model_synth(xb), yb)
         opt_synth.zero_grad()
         loss.backward()
@@ -727,29 +685,30 @@ print(f"\n  Diagnostic model accuracy (trained on real data):      {acc_real:.1%
 print(f"  Diagnostic model accuracy (trained on synthetic data): {acc_synth:.1%}")
 print(f"  Performance gap: {abs(acc_real - acc_synth):.1%}")
 
-# Step 5: Stakeholder-ready summary
+# Step 5: Stakeholder-ready summary — only what this run measured
+gap = acc_real - acc_synth
 print("\n  ┌────────────────────────────────────────────────────────────┐")
-print("  │  STAKEHOLDER SUMMARY: NUH Synthetic Medical Imaging       │")
+print("  │  STAKEHOLDER SUMMARY: Synthetic Medical Imaging (proxy)    │")
 print("  ├────────────────────────────────────────────────────────────┤")
 print(f"  │  Synthetic images generated:   {n_synthetic:>8,}                  │")
 print(f"  │  Real-data model accuracy:     {acc_real:>8.1%}                  │")
 print(f"  │  Synthetic-data model accuracy: {acc_synth:>7.1%}                  │")
-print(
-    f"  │  Performance gap:              {abs(acc_real - acc_synth):>8.1%}                  │"
-)
-print("  │  Patient data shared:          ZERO                       │")
-print("  │  PDPA compliance:              FULL                       │")
-print("  │  Partner hospitals enabled:    3                          │")
-print("  │  Annual cost savings:          S$1.2M (3 hospitals)       │")
-print("  │  Time to preliminary screen:   48h → 4h                   │")
+print(f"  │  Accuracy cost of synthetic:   {gap:>8.1%}                  │")
+print("  │  Privacy of shared generator:  NOT ASSESSED — needs DP     │")
+print("  │                                training + memorisation test│")
 print("  └────────────────────────────────────────────────────────────┘")
+print(
+    "  Note: the synthetic labels come from the real-data model (pseudo-\n"
+    "  labels), so the synthetic model inherits the teacher's mistakes;\n"
+    "  in a real project clinicians would label a synthetic subset."
+)
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
 assert os.path.exists(
     str(OUTPUT_DIR / "ex_5_02_medical_comparison.png")
 ), "Medical comparison should exist"
 assert acc_synth > 0.3, "Synthetic-trained model should be non-trivial"
-print("\n--- Checkpoint 4 passed --- NUH medical application complete\n")
+print("\n--- Checkpoint 4 passed --- medical imaging application complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -767,8 +726,8 @@ print("=" * 70)
 print(
     """
   WGAN-GP THEORY AND PRACTICE:
-  [x] Why vanilla GAN fails: JS divergence gives zero gradient when
-      distributions don't overlap (early training = no learning signal)
+  [x] Why vanilla GAN is unstable: JS divergence is stuck at log 2 when
+      distributions don't overlap, so it never says HOW FAR apart they are
   [x] Wasserstein distance: "earth mover's distance" — smooth gradients
       that always point toward improvement
   [x] Gradient penalty replaces weight clipping (Gulrajani 2017):
@@ -777,16 +736,18 @@ print(
   [x] 5 critic steps per generator step for accurate Wasserstein estimation
 
   VISUAL INTUITION:
-  [x] WGAN-GP gallery vs vanilla GAN — sharper, more diverse digits
-  [x] Critic loss decreases smoothly (unlike vanilla GAN oscillation)
-  [x] Side-by-side stability comparison proves WGAN-GP advantage
+  [x] WGAN-GP gallery vs vanilla GAN — judge sharpness and diversity
+  [x] Critic loss ≈ -W: it rises toward 0 as generation improves
+  [x] Side-by-side loss curves: BCE game vs Wasserstein estimate
   [x] Latent interpolation shows continuous learned manifold
 
   REAL-WORLD APPLICATION:
-  [x] Privacy-preserving synthetic medical images for NUH
-  [x] PDPA compliance: trained generator shared, real data stays internal
-  [x] Diagnostic model trained on synthetic data achieves comparable accuracy
-  [x] Business impact: 3 partner hospitals, S$1.2M annual savings
+  [x] Synthetic medical-image generation for a hospital with data that
+      cannot leave its walls
+  [x] Synthetic data is NOT private by default — a shared generator can
+      leak training images; privacy needs DP training + memorisation tests
+  [x] Measured the real-vs-synthetic accuracy gap on REAL held-out data
+      instead of assuming the synthetic data is good enough
 
   KEY INSIGHT — WHEN TO USE WGAN-GP:
   Use WGAN-GP when training stability matters (medical, financial,

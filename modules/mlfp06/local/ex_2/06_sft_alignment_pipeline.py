@@ -15,7 +15,10 @@
 # PREREQUISITES: Exercises 2.1-2.5
 # ESTIMATED TIME: ~40 min (training dominates)
 #
-# FRAMEWORK-FIRST: kailash-align, NOT raw transformers.Trainer.
+# FRAMEWORK-FIRST: kailash-align, NOT raw transformers.Trainer. The
+# pipeline wraps TRL SFTTrainer but adds a single typed config, adapter
+# serialisation, and registry integration — the same pattern you used
+# in MLFP03 for TrainingPipeline.
 #
 # TASKS:
 #   1. THEORY: why AlignmentPipeline beats raw SFTTrainer
@@ -31,6 +34,7 @@ from __future__ import annotations
 import asyncio
 
 import matplotlib.pyplot as plt
+import polars as pl
 from dotenv import load_dotenv
 
 from shared.mlfp06.ex_2 import (
@@ -47,7 +51,8 @@ load_dotenv()
 # THEORY — Why AlignmentPipeline (Framework-First)
 # ════════════════════════════════════════════════════════════════════════
 # Raw transformers.Trainer + peft.get_peft_model loses three guarantees:
-#   1. LoRA config validation against the base model's module tree
+#   1. One typed AlignmentConfig (LoRA/SFT/DPO sub-configs) — note it only
+#      checks target_modules is non-empty, not that the names exist
 #   2. Structured adapter artefact lifecycle (not a bag of .bin files)
 #   3. AdapterRegistry hand-off between training and serving
 # Framework-first rule: Engine layer first, primitives only when the
@@ -62,8 +67,7 @@ print("\n" + "=" * 70)
 print("TASK 1: Load IMDB SFT instruction pairs")
 print("=" * 70)
 
-# TODO: sft_data, train_data, eval_data = load_imdb_sft()
-sft_data, train_data, eval_data = ____
+sft_data, train_data, eval_data = load_imdb_sft()
 print(f"Train: {train_data.height} pairs")
 print(f"Eval:  {eval_data.height} pairs")
 
@@ -106,8 +110,9 @@ print("✓ Checkpoint 2 passed — AlignmentConfig built\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 3 — TRAIN: AlignmentPipeline + register adapter
 # ════════════════════════════════════════════════════════════════════════
-# Set MLFP_SKIP_SFT_TRAIN=1 to exercise the registry with synthetic
-# metrics on environments without GPU / HF access.
+# Training needs the base model from HuggingFace and is slow on CPU. There
+# is deliberately NO "skip and pretend" mode: MLFP_SKIP_SFT_TRAIN=1 stops
+# the exercise with an explanation instead of reporting a made-up loss.
 
 print("=" * 70)
 print("TASK 3: AlignmentPipeline.train() -> AdapterRegistry")
@@ -118,68 +123,65 @@ async def run_sft_and_register() -> dict:
     """Train the SFT adapter and register it. Returns metrics dict."""
     import os
 
-    skip = os.environ.get("MLFP_SKIP_SFT_TRAIN") == "1"
-
-    if skip:
-        print("  MLFP_SKIP_SFT_TRAIN=1 -> using synthetic metrics")
-        # Mirror the real AlignmentResult.training_metrics shape (kailash-align
-        # 0.7.3): raw TRL TrainOutput.metrics — train_loss + throughput, and
-        # NO eval_loss (the new train() API has no eval_data parameter).
-        metrics = {
-            "train_loss": 0.742,
-            "train_runtime": 0.0,
-            "train_samples_per_second": 0.0,
-            "adapter_path": str(OUTPUT_DIR / "sft_output" / "adapter"),
-        }
-    else:
-        from kailash_align import (
-            AdapterRegistry,
-            AdapterSignature,
-            AlignmentPipeline,
+    if os.environ.get("MLFP_SKIP_SFT_TRAIN") == "1":
+        raise RuntimeError(
+            "MLFP_SKIP_SFT_TRAIN=1 is set, so SFT training was skipped and "
+            "there is no training loss to report. Unset it to run Task 3."
         )
+    from kailash_align import (
+        AdapterRegistry,
+        AdapterSignature,
+        AlignmentPipeline,
+    )
 
-        # TODO: Instantiate AlignmentPipeline(config), then await
-        # pipeline.train(train_data, adapter_name="imdb_sentiment_sft_v1").
-        # Note (kailash-align 0.7.3): `dataset` is positional, `adapter_name`
-        # is REQUIRED, and there is NO eval_data parameter anymore.
-        pipeline = ____
-        print("  Running SFT training (this may take several minutes)...")
-        result = ____
+    # TODO: Instantiate AlignmentPipeline(config)
+    pipeline = ____
+    print("  Running SFT training (this may take several minutes)...")
+    # TODO: SFT trains on the `text` column, but `text` in train_data is the
+    # RAW review. Build a one-column polars frame whose `text` is
+    # instruction + "\n\n" + response (pl.col(...) + ... .alias("text")).
+    sft_frame = ____
+    # TODO: kailash-align checks `dataset.column_names`, which a polars
+    # DataFrame does not have. Convert: Dataset.from_dict(
+    #   sft_frame.to_dict(as_series=False)) with `from datasets import Dataset`.
+    from datasets import Dataset
 
-        # result.training_metrics is the raw TRL TrainOutput.metrics dict:
-        # train_loss + train_runtime + train_samples_per_second. There is NO
-        # eval_loss (no eval dataset is configured under the new API).
-        train_metrics = result.training_metrics
-        metrics = {
-            "train_loss": train_metrics.get("train_loss"),
-            "train_runtime": train_metrics.get("train_runtime", 0),
-            "train_samples_per_second": train_metrics.get(
-                "train_samples_per_second", 0
-            ),
-            "adapter_path": result.adapter_path,
-        }
-        print(f"  Train loss:    {metrics['train_loss']:.4f}")
-        print(f"  Train runtime: {metrics['train_runtime']:.0f}s")
-        print(f"  Throughput:    {metrics['train_samples_per_second']:.1f} samples/s")
+    train_data_hf = ____
+    # TODO: await pipeline.train(train_data_hf, adapter_name="imdb_sentiment_sft_v1").
+    # Note (kailash-align 0.7.3): `dataset` is positional, `adapter_name`
+    # is REQUIRED, and there is NO eval_data parameter anymore.
+    result = ____
 
-        # TODO: Instantiate registry = AdapterRegistry()
-        registry = ____
-        # TODO: Build an AdapterSignature with base_model_id=config.base_model_id,
-        #   adapter_type="lora", training_method="sft"
-        signature = ____
-        # TODO: await registry.register_adapter(
-        #     name="imdb_sentiment_sft_v1",
-        #     adapter_path=metrics["adapter_path"],
-        #     signature=signature,
-        #     training_metrics={"train_loss": metrics["train_loss"]},
-        #     tags=["imdb", "sentiment", "lora-r16"])
-        # register_adapter returns an AdapterVersion (not a string).
-        version = ____
-        # TODO: Build a stable adapter_id string of the form
-        #   f"{version.adapter_name}:v{version.version}"
-        adapter_id = ____
-        metrics["adapter_id"] = adapter_id
-        print(f"  Registered as: {adapter_id}")
+    # result.training_metrics is the raw TRL TrainOutput.metrics dict:
+    # train_loss + train_runtime + train_samples_per_second. There is NO
+    # eval_loss (no eval dataset is configured under the new API).
+    train_metrics = result.training_metrics
+    metrics = {
+        "train_loss": train_metrics.get("train_loss"),
+        "train_runtime": train_metrics.get("train_runtime", 0),
+        "train_samples_per_second": train_metrics.get(
+            "train_samples_per_second", 0
+        ),
+        "adapter_path": result.adapter_path,
+    }
+    print(f"  Train loss:    {metrics['train_loss']:.4f}")
+    print(f"  Train runtime: {metrics['train_runtime']:.0f}s")
+    print(f"  Throughput:    {metrics['train_samples_per_second']:.1f} samples/s")
+
+    # TODO: Instantiate registry = AdapterRegistry()
+    registry = ____
+    # TODO: Build an AdapterSignature with base_model_id=config.base_model_id,
+    #   adapter_type="lora", training_method="sft"
+    signature = ____
+    # TODO: await registry.register_adapter(name=..., adapter_path=...,
+    #   signature=..., training_metrics={"train_loss": ...}, tags=[...])
+    # register_adapter returns an AdapterVersion (not a string).
+    version = ____
+    # TODO: Build a stable adapter_id string of the form
+    #   f"{version.adapter_name}:v{version.version}"
+    adapter_id = ____
+    metrics["adapter_id"] = adapter_id
+    print(f"  Registered as: {adapter_id}")
 
     return metrics
 
@@ -195,19 +197,62 @@ print("✓ Checkpoint 3 passed — SFT training + registration complete\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — VISUALISE: SFT training loss + throughput
 # ════════════════════════════════════════════════════════════════════════
-# The 0.7.3 train() API returns the TRL headline metrics (no eval split),
-# so plot the honest signals: final train loss + throughput. Do NOT
-# fabricate an eval curve — generalisation is a separate eval pass (Ex 3.4).
+# The new train() API returns the TRL headline metrics (no eval split), so
+# we plot the honest signal it provides: the final train loss alongside
+# training throughput. We deliberately do NOT fabricate an eval curve —
+# generalisation is measured by a separate held-out eval pass (Ex 3.4).
 
 print("=" * 70)
 print("TASK 4: Visualise SFT training loss + throughput")
 print("=" * 70)
 
-# TODO: Two-panel bar chart. Left panel: metrics["train_loss"]. Right panel:
-# metrics["train_samples_per_second"]. Annotate each bar with its value.
-# Save to OUTPUT_DIR / "ex2_sft_train_loss.png"
-____
+fig, (ax_loss, ax_tput) = plt.subplots(1, 2, figsize=(11, 5))
+
+# Left: final train loss (single headline bar — train() returns the run
+# mean, not a per-step curve; the per-step curve lives in the TRL logs).
+ax_loss.bar(
+    ["Train loss (run mean)"],
+    [metrics["train_loss"]],
+    color="steelblue",
+    edgecolor="black",
+)
+ax_loss.annotate(
+    f"{metrics['train_loss']:.3f}",
+    xy=(0, metrics["train_loss"]),
+    xytext=(0, 3),
+    textcoords="offset points",
+    ha="center",
+)
+ax_loss.set_ylabel("Cross-entropy loss")
+ax_loss.set_title("SFT LoRA r=16 — train loss", fontweight="bold")
+ax_loss.grid(True, axis="y", alpha=0.3)
+
+# Right: throughput — the other honest signal the pipeline reports.
+ax_tput.bar(
+    ["samples/s"],
+    [metrics["train_samples_per_second"]],
+    color="seagreen",
+    edgecolor="black",
+)
+ax_tput.annotate(
+    f"{metrics['train_samples_per_second']:.1f}",
+    xy=(0, metrics["train_samples_per_second"]),
+    xytext=(0, 3),
+    textcoords="offset points",
+    ha="center",
+)
+ax_tput.set_ylabel("Samples / second")
+ax_tput.set_title(
+    f"Training throughput (runtime {metrics['train_runtime']:.0f}s)",
+    fontweight="bold",
+)
+ax_tput.grid(True, axis="y", alpha=0.3)
+
+plt.tight_layout()
 fname = OUTPUT_DIR / "ex2_sft_train_loss.png"
+fname.unlink(missing_ok=True)  # so the checkpoint cannot pass on a stale file
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
 print(f"  Saved: {fname}")
 
 print(f"\n  Final train loss: {metrics['train_loss']:.3f}")
@@ -222,28 +267,66 @@ print("✓ Checkpoint 4 passed — SFT train loss visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore e-commerce adapter registry governance
 # ════════════════════════════════════════════════════════════════════════
-# A Singapore e-commerce platform has 37 LoRAs trained over 18 months
-# with no shared record of "which adapter is live right now". Customer
-# complaints cannot be traced back to a training run, compliance
-# audits fail, rollback takes hours. Fix: mandate AdapterRegistry
-# entries for every training run with name, base SHA, method, metrics,
-# and tags. Serving pulls by registry name, not filename.
+# SCENARIO: A Singapore e-commerce platform runs an LLM-powered
+# customer service assistant.  Over 18 months, the team has trained
+# 37 different LoRA adapters on top of the same 7B base: returns,
+# refunds, promotions, shipping, loyalty tiers, billing, KYC, and so
+# on.  Each adapter was trained by a different on-call engineer with
+# no shared record of "which adapter is live in production right now".
+#
+# PROBLEM: when a shopper complains that "the chatbot said shipping
+# is free above S$50 but it charged me", the team cannot trace which
+# adapter produced the answer, which dataset it was trained on, or
+# which eval metrics it passed at training time.  Customer trust
+# erodes; the promotion team cannot roll back a bad adapter because
+# they don't know which version is deployed.
+#
+# GOVERNANCE FIX: every trained adapter MUST go through AdapterRegistry
+# at training time with:
+#   - name: human-readable identifier (e.g. "shipping_v3")
+#   - base_model: exact base checkpoint SHA
+#   - method: sft_lora / dpo_lora / adapter / ...
+#   - metrics: train loss, eval loss, business-level eval (CSAT proxy)
+#   - tags: domain (shipping), audience (retail), legal-reviewed (yes)
+#
+# Downstream serving pulls by registry name + metric threshold, never
+# by raw .bin filename.  Deployment becomes auditable: every live
+# adapter has a registry row that links back to the training run.
+#
+# BUSINESS IMPACT (illustrative figures):
+#   - Audit: the compliance team can trace any customer-facing LLM
+#     response to a registered adapter + training run + eval report —
+#     the evidence a regulator's technology-risk review asks for.
+#   - Rollback: a bad adapter can be rolled back in minutes by
+#     pointing the serving layer at the previous registered version.
+#     Previous rollback took ~4 hours and required redeploying the
+#     serving image.
+#   - Retraining cost avoided: the registry prevents duplicate runs
+#     of the same fine-tune.  Engineers used to retrain ~4 adapters
+#     per quarter because they could not find the previous adapter
+#     files.  At ~S$600/training run + ~1 day engineering time, that
+#     is ~S$2,400 + 4 engineer-days per quarter avoided.
+#
+# ANNUAL BENEFIT: computed below from these assumptions (~S$21K in direct
+# cost) plus audit traceability and faster incident response.
+#
+# THE RULE: no adapter ships to production without a registry entry.
+# Treat AdapterRegistry the way you treat ModelRegistry in MLFP03 —
+# the single source of truth for which artefact runs where.
 
 print("Singapore e-commerce adapter governance:")
-# TODO: Compute annual_retraining_saving (16 runs * S$600), engineer hours
-# (16 * 8), annual_engineer_saving at S$90/hr, and total_annual
-annual_retraining_saving = ____
-annual_engineer_hours_saved = ____
+annual_retraining_saving = 4 * 4 * 600  # 4 quarters * 4 runs/quarter * S$600
+annual_engineer_hours_saved = 4 * 4 * 8  # 4 * 4 * 1 day
 engineer_hourly_sgd = 90
-annual_engineer_saving = ____
-total_annual = ____
+annual_engineer_saving = annual_engineer_hours_saved * engineer_hourly_sgd
+total_annual = annual_retraining_saving + annual_engineer_saving
 print(f"  Retraining runs avoided / year:      {4 * 4}")
 print(f"  Annual retraining cost avoided:      S${annual_retraining_saving:,}")
 print(f"  Engineer hours saved / year:         {annual_engineer_hours_saved}")
 print(f"  Annual engineer time saving:         S${annual_engineer_saving:,}")
 print(f"  Total direct annual saving:          S${total_annual:,}")
-print(f"  Plus: MAS compliance + rollback SLA (unquantified but critical)")
-print(f"  Recommended: AdapterRegistry mandatory for all SFT runs")
+print("  Plus: audit traceability + rollback SLA (not quantified here)")
+print("  Recommended: AdapterRegistry mandatory for all SFT runs")
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────────
 assert total_annual > 0, "Task 5: governance should deliver positive ROI"
@@ -265,70 +348,14 @@ print(
   [x] Visualised SFT train loss + throughput (the honest signals the
       0.7.3 train() API reports — no fabricated eval curve)
   [x] Applied adapter-registry governance to a Singapore e-commerce
-      scenario (~S$32k/year saving + unblocked MAS compliance)
+      scenario (illustrative direct saving + audit traceability)
 
   KEY INSIGHT: SFT is the first rung of the alignment ladder.
   AlignmentPipeline + AdapterRegistry give you the versioning and
-  audit trail you need before you layer DPO / GRPO / RLHF on top.
+  audit trail you need before you layer DPO, GRPO, or RLHF on top.
 
-  Next: Exercise 3 (DPO Alignment) moves from "learn the right
-  response" to "learn which response is PREFERRED".
+  Next exercise (Exercise 3) moves from "learn the right response"
+  (SFT) to "learn which response is PREFERRED" (DPO). Preference
+  data replaces instruction pairs as the training signal.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Alignment (KL divergence from base, reward margin).
-# Secondary: Output (judge quality on paired completions), Attention
-# (layer-wise shift in target modules for LoRA).
-if False:  # scaffold — requires trained base + adapter checkpoint
-    obs = LLMObservatory(run_id="ex_2_finetune_run")
-    # Typical alignment read:
-    # for step, metrics in enumerate(training_log):
-    #     obs.alignment.log_training_step(step=step, **metrics)
-    # obs.alignment.evaluate_pair(base_responses, adapter_responses)
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Alignment  (WARNING): KL divergence from base = 0.42 nats
-#       Fix: healthy range 0.2-1.0; this is low-end — adapter barely
-#            moved. Increase LoRA rank or learning rate.
-#   [✓] Output     (HEALTHY): judge win-rate 0.58 vs base (>0.50 = good)
-#   [✓] Attention  (HEALTHY): shift concentrated in q_proj/v_proj as
-#       expected for LoRA; no drift in frozen layers.
-#   [?] Retrieval / Agent / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [ALIGNMENT LENS] KL 0.42 nats is the SIGNATURE of a cautiously-trained
-#     LoRA adapter — it diverged from the base distribution but not
-#     enough to break it. Above 2.0 nats signals over-fit; below 0.2
-#     signals the adapter barely learned. Our value is slightly under the
-#     0.5 floor we want for visible task lift.
-#     >> Prescription: raise lora_r from 8 -> 16 or train another epoch.
-#  [OUTPUT LENS] Win-rate 0.58 > 0.50 confirms the adapter is better
-#     than base on held-out prompts — tiny lift but statistically real.
-#  [ATTENTION LENS] Shift localised in the target modules = LoRA is
-#     doing what it's supposed to do (low-rank delta on attention
-#     projections, frozen MLP). If attention shifted everywhere you'd
-#     know you accidentally unfroze a module.
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

@@ -20,7 +20,7 @@
 #   2. Build — simulations for each failure mode
 #   3. Train — quantify bias, bimodality, and tail underestimation
 #   4. Visualise — bimodal histogram + tail comparison table
-#   5. Apply — MAS stress testing: why Normal underestimates crises
+#   5. Apply — bank stress testing: why Normal underestimates crises
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -40,6 +40,7 @@ from shared.mlfp02.ex_2 import (
     load_singapore_econ,
     save_figure,
 )
+from shared.mlfp02 import create_visualizer
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -221,7 +222,7 @@ print("\n--- Checkpoint 3 passed --- misspecification and tail risk demonstrated
 # TASK 4 — VISUALISE: Bimodal Failure
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 bimodal_df = pl.DataFrame({"gdp_growth_pct": bimodal_data})
 fig = viz.histogram(
@@ -239,15 +240,16 @@ print("\n--- Checkpoint 4 passed --- bimodal failure visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: MAS Stress Testing — Why Normal Underestimates Crises
+# TASK 5 — APPLY: Bank Stress Testing — Why Normal Underestimates Crises
 # ════════════════════════════════════════════════════════════════════════
-# MAS requires banks to stress-test against severe GDP shocks. If a bank
+# Banks stress-test their capital against severe GDP shocks (Singapore's
+# regulator also runs industry-wide stress tests). If a bank
 # uses a Normal model, it systematically underestimates the probability
 # and magnitude of extreme downturns.
 #
 # Example: What is the probability of GDP growth < -5% in a quarter?
 
-print(f"\n=== APPLY: MAS Stress Testing ===")
+print(f"\n=== APPLY: Bank Stress Testing ===")
 
 # Use the shock_data (t-distributed) to illustrate
 threshold = -5.0
@@ -265,7 +267,7 @@ print(
     f"\nNormal UNDERESTIMATES crisis probability by {prob_t/max(prob_normal, 1e-12):.1f}x"
 )
 print(
-    f"If MAS sets capital requirements using the Normal model, banks"
+    f"If a bank sizes its capital buffers with the Normal model, it"
     f"\nwill hold insufficient reserves for tail events. The 2008 GFC"
     f"\nand 2020 COVID shock were precisely these 'impossible' events"
     f"\nthat the Normal model assigns negligible probability."
@@ -273,7 +275,7 @@ print(
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
 assert prob_t > prob_normal, "t-dist assigns more probability to tail events"
-print("\n--- Checkpoint 5 passed --- MAS stress testing application complete\n")
+print("\n--- Checkpoint 5 passed --- stress testing application complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════

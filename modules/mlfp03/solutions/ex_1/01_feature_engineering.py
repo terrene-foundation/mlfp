@@ -12,7 +12,8 @@
 #   - Flag clinically meaningful medication and lab patterns
 #   - Engineer interaction features that encode domain knowledge (shock
 #     index, mean arterial pressure, fever-tachycardia product)
-#   - Apply to early-warning scoring at Singapore General Hospital
+#   - Audit how much event data actually exists at prediction time
+#   - Apply to early-warning scoring at a Singapore public hospital
 #
 # PREREQUISITES: MLFP02 complete (polars group-by, joins, temporal filters)
 # ESTIMATED TIME: ~35 min
@@ -22,7 +23,7 @@
 #   2. Build — load tables, aggregate vitals, meds, labs
 #   3. Train — there is no training; we BUILD the full feature matrix
 #   4. Visualise — preview the engineered columns + interaction distributions
-#   5. Apply — Singapore General Hospital early-warning scoring (S$ impact)
+#   5. Apply — early-warning scoring at a Singapore public hospital
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -33,8 +34,10 @@ import polars as pl
 
 from shared.mlfp03.ex_1 import (
     OUTPUT_DIR,
+    PREDICTION_HOURS,
     build_full_feature_frame,
     load_icu_tables,
+    prediction_window_report,
 )
 
 
@@ -42,14 +45,18 @@ from shared.mlfp03.ex_1 import (
 # THEORY — Why Point-in-Time Correctness Matters
 # ════════════════════════════════════════════════════════════════════════
 # A feature built from "all vitals this patient ever had" leaks the
-# future. If prediction time is the moment of ICU admission, then the
-# patient's discharge-day vitals do not exist yet — using them inflates
-# validation accuracy and fails catastrophically in production.
+# future. Our model predicts, 24 hours after ICU admission, whether the
+# stay will be LONG (longer than the median). At that moment the
+# patient's later vitals, later drugs and — above all — the discharge
+# time do not exist yet. Using them inflates validation accuracy and
+# fails in production.
 #
-# The fix is a temporal filter: every feature only uses data recorded
-# BETWEEN admit_time and discharge_time for THAT admission. The same
-# rule applies to medications (start_time), labs (timestamp), and any
-# derived feature.
+# The fix is a temporal filter with a fixed PREDICTION CUTOFF: every
+# feature only uses data recorded between admit_time and
+# admit_time + 24h for THAT admission. The same rule applies to
+# medications (start_time), labs (timestamp) and every derived feature —
+# and no feature may divide by, or otherwise use, the length of stay,
+# because that is the target.
 #
 # Analogy: imagine building a stock-price model that accidentally uses
 # tomorrow's close as today's feature. Your backtest looks amazing; your
@@ -69,6 +76,12 @@ tables = load_icu_tables()
 for name, df in tables.items():
     print(f"  {name}: {df.shape}")
 
+# How much event data exists INSIDE the prediction window? Computed from
+# the same filter the feature builders use.
+window = prediction_window_report(tables)
+print(f"\nEvents available in the first {PREDICTION_HOURS}h of each admission:")
+print(window)
+
 # The shared helper encodes the full feature contract: vital aggregates
 # per admission (mean/std/min/max/range/trend/count/cv), medication flags
 # (vasopressors, antibiotics, sedation), lab ratios, and clinical
@@ -87,11 +100,26 @@ assert "abnormal_lab_ratio" in features.columns, "Task 2: lab ratio missing"
 assert features["abnormal_lab_ratio"].null_count() == 0, "Task 2: null in lab ratio"
 print("\n[ok] Checkpoint 1 passed — feature matrix built\n")
 
-# INTERPRETATION: The _count suffix columns are particularly valuable —
-# a patient with heart_rate_count = 120 in a 24h stay (5/hour) is being
-# monitored far more intensively than one with count = 8. The coefficient
-# of variation (_cv) captures NORMALISED volatility: a heart rate that
-# oscillates wildly has high CV regardless of baseline.
+# INTERPRETATION: The _count suffix columns measure monitoring intensity
+# — 48 heart-rate readings in the first 24h (2/hour) means a patient is
+# watched far more closely than one with 6. The coefficient of variation
+# (_cv) captures NORMALISED volatility regardless of baseline.
+
+coverage = {
+    row["table"]: row["admissions_with_events"] / row["admissions_total"]
+    for row in window.iter_rows(named=True)
+}
+print("Share of admissions with ANY event in the prediction window:")
+for table_name, share in coverage.items():
+    print(f"  {table_name:<12} {share:7.2%}")
+if max(coverage.values()) < 0.05:
+    print(
+        "\n  DATA-QUALITY FINDING: almost no admission has vitals, drugs or labs\n"
+        "  recorded in its first 24h — in this extract the event tables are\n"
+        "  not time-aligned with the admissions. Event features will be\n"
+        "  zero for nearly every row. Catching this BEFORE modelling is the\n"
+        "  point of a point-in-time audit."
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -124,19 +152,24 @@ print(f"  Global null rate: {null_rate:.4f}")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
 assert null_rate < 0.20, (
-    f"Task 3: null rate {null_rate:.4f} exceeds 20%. A high null rate "
-    "means the temporal filter dropped too many rows — investigate the "
-    "admit_time / discharge_time coverage before moving on."
+    f"Task 3: null rate {null_rate:.4f} exceeds 20% after the documented "
+    "fills — a builder is producing unexpected nulls."
 )
-print("\n[ok] Checkpoint 2 passed — feature quality audit OK\n")
+assert (window["max_offset_hours"] <= PREDICTION_HOURS).all(), (
+    "Task 3: an event later than the prediction cutoff reached the features"
+)
+print("\n[ok] Checkpoint 2 passed — no nulls left, no event after the cutoff\n")
+# NOTE: a low null rate here does NOT mean good coverage — the builders
+# fill 'no events' with 0. Coverage is what the window report measures.
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — VISUALISE the interaction features
 # ════════════════════════════════════════════════════════════════════════
-# Visual proof: the interaction features should show clinically plausible
-# distributions. Shock index > 0.9 is a known emergency marker; MAP
-# should centre around 70-90 mmHg for most patients.
+# Visual proof: plot the interaction features. With good event coverage
+# shock index would sit mostly below 0.7 (above 0.9 is an emergency
+# marker) and MAP around 70-90 mmHg. A tall spike at 0 is the visual
+# signature of admissions with NO vitals in the window.
 
 print("\n--- Clinical Interaction Feature Distributions ---")
 interaction_cols = [
@@ -158,7 +191,9 @@ if "shock_index" in features.columns:
     print("\n  shock_index buckets (clinical interpretation):")
     buckets = (
         features.select(
-            pl.when(pl.col("shock_index") < 0.7)
+            pl.when(pl.col("shock_index") == 0)
+            .then(pl.lit("no vitals in window (0)"))
+            .when(pl.col("shock_index") < 0.7)
             .then(pl.lit("normal (<0.7)"))
             .when(pl.col("shock_index") < 0.9)
             .then(pl.lit("concerning (0.7-0.9)"))
@@ -180,10 +215,13 @@ corr_cols = [c for c in interaction_cols if c in features.columns]
 corr_cols += [
     c for c in features.columns if c.endswith("_mean") and c not in corr_cols
 ][:8]
-corr_df = features.select([pl.col(c).cast(pl.Float64) for c in corr_cols]).to_pandas()
-corr_matrix = corr_df.corr()
+# A correlation is undefined for a constant column — drop those first.
+corr_cols = [c for c in corr_cols if features[c].cast(pl.Float64).std() > 0]
+corr_matrix = features.select([pl.col(c).cast(pl.Float64) for c in corr_cols]).corr()
 fig_heat = px.imshow(
-    corr_matrix,
+    corr_matrix.to_numpy(),
+    x=corr_cols,
+    y=corr_cols,
     text_auto=".2f",
     color_continuous_scale="RdBu_r",
     zmin=-1,
@@ -218,47 +256,38 @@ assert "shock_index" in features.columns, "Task 4: shock_index missing"
 assert (
     features["shock_index"].null_count() == 0
 ), "Task 4: null in shock_index — check input vital columns"
-print("\n[ok] Checkpoint 3 passed — interaction distributions plausible\n")
+print("\n[ok] Checkpoint 3 passed — interaction features computed and plotted\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Singapore General Hospital Early-Warning Scoring
+# TASK 5 — APPLY: early-warning scoring at a Singapore public hospital
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Singapore General Hospital (SGH) runs ~2,500 ICU admissions
-# per year. The clinical informatics team wants an early-warning score
-# that flags deteriorating patients 4-6 hours before a code-blue event.
-# The current system uses raw vitals (heart rate > 120 = alert); it
-# fires hundreds of false alarms per day and the nurses have started
-# ignoring the pager.
+# SCENARIO (illustrative): a Singapore public hospital runs ~2,500 ICU
+# admissions a year. Its clinical informatics team wants an early-warning
+# score that flags deteriorating patients hours before an emergency
+# escalation. The current rule (heart rate > 120 = alert) fires hundreds
+# of false alarms a day and nurses have started ignoring the pager.
 #
-# Why the engineered features solve it:
-#   - shock_index (HR / SBP) is a validated early-warning marker that
-#     beats either vital alone — it fires ~30% fewer false alarms at
-#     the same sensitivity because it captures compensated shock
-#   - abnormal_lab_ratio integrates the "everything is drifting off
-#     baseline" signal into a single number
-#   - medication_intensity and n_unique_medications act as a proxy for
-#     clinician concern — more drugs means the team has already
-#     escalated, which is itself a predictor
+# Why engineered features help:
+#   - shock_index (HR / SBP) combines two vitals into one marker of
+#     compensated shock that neither vital shows on its own
+#   - abnormal_lab_ratio integrates "many results drifting off baseline"
+#     into a single number
+#   - medication_doses_per_hour and n_unique_medications proxy clinician
+#     concern — the team has already escalated treatment
 #
-# BUSINESS IMPACT: SGH estimates each prevented code-blue saves roughly
-# S$18,000 in ICU escalation costs and adds 2.3 disability-adjusted life
-# years per patient. If the engineered features reduce false alarms 30%
-# and catch even 5 additional deteriorations per month, that is:
-#     5 events/month x 12 months x S$18,000 = S$1.08M/year in direct
-#     cost avoidance, plus ~140 DALYs preserved. Feature engineering
-#     cost: one clinical informatics hire + one data engineer =
-#     ~S$350K/year. 3x ROI in year one; 6-8x once the model compounds
-#     across more wards.
+# ILLUSTRATIVE ARITHMETIC (round numbers, not the hospital's figures): if
+# each avoided emergency escalation saves ~S$18,000 and better features
+# catch 5 more deteriorations a month, that is 5 × 12 × S$18,000 ≈
+# S$1.08M a year — before counting fewer false alarms.
 #
 # LIMITATIONS:
-#   - Vitals coverage varies by ward — general wards have sparser vital
-#     streams than the ICU, so heart_rate_count is confounded by ward
-#   - The model still needs calibration per patient cohort (cardiac,
-#     trauma, surgical) before it can ship to other hospitals
+#   - Features are only as good as the data available at prediction time:
+#     the window audit above shows how little event data this extract
+#     has in the first 24h. A real project would fix the data feed first.
+#   - Vitals coverage varies by ward, so *_count is confounded by ward
 #   - Leakage auditing (see 05_validation_and_tracking.py) MUST run
-#     every time the feature list changes; one leaky feature silently
-#     kills the model in production
+#     every time the feature list changes
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -270,11 +299,11 @@ print("=" * 70)
 print(
     """
   [x] Joined five ICU tables (patients, admissions, vitals, meds, labs)
-  [x] Applied point-in-time filters so features cannot leak the future
+  [x] Applied a 24h prediction cutoff so features cannot leak the future
+  [x] Audited how much event data exists inside the prediction window
   [x] Aggregated irregular vital-sign time series into per-admission stats
   [x] Flagged clinically meaningful drug classes via regex
   [x] Computed clinical interaction features from domain knowledge
-  [x] Quantified business impact at Singapore General Hospital
 
   KEY INSIGHT: Domain knowledge dominates algorithmic complexity. The
   shock_index feature is one division, but it encodes decades of

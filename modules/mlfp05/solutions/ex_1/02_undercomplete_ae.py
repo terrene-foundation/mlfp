@@ -9,7 +9,7 @@
 #   - Build an undercomplete AE with bottleneck (784 -> 16 = 49:1 compression)
 #   - Understand WHY forced compression solves the identity risk
 #   - Visualise blurry but meaningful reconstructions
-#   - Apply to credit card fraud detection at DBS Singapore
+#   - Apply to credit card fraud detection at a Singapore bank
 #   - Quantify business impact in S$ with precision-recall analysis
 #
 # PREREQUISITES: 01_standard_ae.py (identity risk understanding)
@@ -18,7 +18,7 @@
 # TASKS:
 #   1. Build undercomplete AE (784 -> 256 -> 64 -> 16)
 #   2. Train on Fashion-MNIST and visualise reconstructions
-#   3. Apply: fraud detection at DBS using anomaly reconstruction error
+#   3. Apply: fraud detection at a Singapore bank using anomaly reconstruction error
 #   4. Business impact analysis with S$ projections
 #
 # ════════════════════════════════════════════════════════════════════════
@@ -135,6 +135,7 @@ undercomplete_losses = train_variant(
 # train loss stays noticeably higher than the overcomplete AE —
 # that higher loss is the SIGNAL of genuine compression learning.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -153,72 +154,14 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=undercomplete_losses,
     show=False,
 )
+print_prescription_pad(findings, "Undercomplete AE (latent=16)")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): min RMS = 4.3e-04 at
-#       'decoder.2.weight'. Two orders of magnitude HIGHER
-#       than 01's 9.46e-06. Bottleneck forces every channel
-#       to carry signal.
-#   [✓] Dead neurons  (HEALTHY): max 11% dead on decoder.1.
-#       Tight bottleneck means no ReLU can afford to die.
-#       Contrast 01's 59% dead.
-#   [✓] Loss trend    (HEALTHY): train slope -1.6e-03/epoch.
-#       Final loss ~0.028 — HIGHER than 01's 0.007. This
-#       HIGHER loss IS the success signal.
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.028 after 10 epochs, latent=16 < input=784.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [STETHOSCOPE — INVERTED SUCCESS CRITERION] HIGHER final
-#     loss than 01 is the WIN condition. The model is
-#     forbidden from copying (latent=16 cannot encode 784
-#     pixels pointwise), so reconstruction is necessarily
-#     lossy. The loss quantifies how much information the
-#     16-dim bottleneck retained. Slide 5C covers this: "an
-#     autoencoder that achieves zero loss on an overcomplete
-#     architecture has learned nothing; an undercomplete AE
-#     with non-trivial loss has learned STRUCTURE."
-#     >> Prescription: No fix. Final loss <0.01 on this
-#        latent size would actually be suspicious — verify
-#        the bottleneck isn't accidentally bypassed (check
-#        for skip connections that shouldn't be there).
-#
-#  [BLOOD TEST — BOTTLENECK REVIVING GRADIENTS] RMS 4.3e-04
-#     at decoder.2 is 45x healthier than 01's 9.46e-06. The
-#     mechanism: every decoder layer MUST receive signal
-#     from a 16-dim vector to reconstruct 784 pixels, so
-#     backprop distributes gradient across more channels.
-#     Compare this to the overcomplete case where most
-#     channels get vanishing gradient because the identity
-#     function doesn't need them.
-#     >> Prescription: If RMS drops BELOW 1e-5 even with the
-#        bottleneck, latent dim is TOO tight (information
-#        destroyed faster than the model can learn). Try
-#        latent=32 or 64.
-#
-#  [X-RAY — CAPACITY DISCIPLINE] 11% dead is within the
-#     normal ReLU operating range. Contrast 01's 59% where
-#     the overcomplete architecture let half the channels
-#     shut down. Undercomplete architecture enforces
-#     capacity discipline: every neuron must contribute or
-#     the model cannot achieve even its lossy reconstruction.
-#     >> Prescription: Dead% >25% here indicates either
-#        LR too high (killing channels faster than they
-#        learn) or latent still too large (capacity excess
-#        allowing some neurons to be redundant).
-#
-#  FIVE-INSTRUMENT TAKEAWAY: undercomplete AE demonstrates
-#  the ARCHITECTURAL fix for the identity-risk pathology of
-#  01. Same 5 instruments, inverted readings: higher loss
-#  is better, fewer dead neurons, stronger gradients.
-#  This is the "normal" autoencoder baseline that variants
-#  3-10 refine with explicit regularisers. You'll see this
-#  flip repeatedly in the course: the same metric reads
-#  differently based on the WHY of the model (design intent).
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# Compare with 01: the 16-unit bottleneck cannot copy, so the final
+# train loss should sit HIGHER than the overcomplete AE's — that gap is
+# compression, not failure. On the pad, check the narrow encoder layers:
+# vanishing gradients or a high dead-ReLU share there shrink the
+# effective latent size even further.
 # ════════════════════════════════════════════════════════════════════
 
 
@@ -246,9 +189,9 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — Credit Card Fraud Detection at DBS Singapore
+# APPLY — Credit Card Fraud Detection at a Singapore Bank
 # ════════════════════════════════════════════════════════════════════════
-# BUSINESS SCENARIO: You are a fraud analyst at DBS Bank. 99.8% of
+# BUSINESS SCENARIO: You are a fraud analyst at a Singapore retail bank. 99.8% of
 # daily transactions are legitimate. You have NO labelled fraud
 # examples — only a gut feeling that "unusual" transactions deserve
 # investigation. Your manager asks: "Can we catch more fraud without
@@ -260,7 +203,7 @@ if has_registry:
 # because the encoder never learned their patterns.
 
 print("\n" + "=" * 70)
-print("  APPLICATION: Credit Card Fraud Detection at DBS")
+print("  APPLICATION: Credit Card Fraud Detection (Singapore bank)")
 print("=" * 70)
 
 # --- Generate realistic Singapore bank transaction data ---
@@ -386,8 +329,7 @@ test_labels = np.concatenate([np.zeros(len(test_normal)), np.ones(len(test_fraud
 train_tensor = torch.tensor(train_features, device=device)
 test_tensor = torch.tensor(test_features, device=device)
 fraud_train_loader = DataLoader(
-    TensorDataset(train_tensor), batch_size=512, shuffle=True
-)
+    TensorDataset(train_tensor), batch_size=512, shuffle=True, num_workers=0)
 
 print(f"Training on {len(train_features):,} normal-only transactions")
 print(f"Test set: {len(test_normal):,} normal + {len(test_fraud):,} fraud")
@@ -589,10 +531,10 @@ plt.savefig(OUTPUT_DIR / "ex1_fraud_top_anomalies.png", dpi=150, bbox_inches="ti
 plt.show()
 
 # --- Business Impact Analysis ---
-DBS_DAILY_TRANSACTIONS = 2_000_000
+BANK_DAILY_TRANSACTIONS = 2_000_000  # illustrative scenario figures
 AVG_FRAUD_VALUE_SGD = 800
 RULE_BASED_RECALL = 0.67
-DAILY_FRAUD_COUNT = int(DBS_DAILY_TRANSACTIONS * FRAUD_RATE)
+DAILY_FRAUD_COUNT = int(BANK_DAILY_TRANSACTIONS * FRAUD_RATE)
 FPR_AT_BEST = np.sum((errors > best_threshold) & (test_labels == 0)) / np.sum(
     test_labels == 0
 )
@@ -600,14 +542,14 @@ FPR_AT_BEST = np.sum((errors > best_threshold) & (test_labels == 0)) / np.sum(
 daily_fraud_caught_ae = int(DAILY_FRAUD_COUNT * best_recall)
 daily_fraud_caught_rules = int(DAILY_FRAUD_COUNT * RULE_BASED_RECALL)
 daily_additional_caught = daily_fraud_caught_ae - daily_fraud_caught_rules
-daily_false_alerts = int(DBS_DAILY_TRANSACTIONS * (1 - FRAUD_RATE) * FPR_AT_BEST)
+daily_false_alerts = int(BANK_DAILY_TRANSACTIONS * (1 - FRAUD_RATE) * FPR_AT_BEST)
 daily_value_saved = daily_additional_caught * AVG_FRAUD_VALUE_SGD
 annual_value_saved = daily_value_saved * 365
 
 print("\n" + "=" * 64)
-print("BUSINESS IMPACT SUMMARY — DBS Singapore Card Fraud Detection")
+print("BUSINESS IMPACT SUMMARY — Card Fraud Detection (illustrative bank)")
 print("=" * 64)
-print(f"\nDBS daily card transactions:     {DBS_DAILY_TRANSACTIONS:>12,}")
+print(f"\nDaily card transactions:         {BANK_DAILY_TRANSACTIONS:>12,}")
 print(f"Estimated daily fraud events:    {DAILY_FRAUD_COUNT:>12,}")
 print(f"Average fraud value:             {'S$' + str(AVG_FRAUD_VALUE_SGD):>12}")
 print(f"\nCurrent rule-based system:")
@@ -635,7 +577,7 @@ print(
     """
   [x] Built an undercomplete AE with 49:1 compression (784 -> 16)
   [x] Observed blurry but meaningful reconstructions — structure preserved
-  [x] Applied bottleneck AE to credit card fraud detection at DBS
+  [x] Applied bottleneck AE to credit card fraud detection at a Singapore bank
   [x] Computed precision-recall curves for threshold selection
   [x] Quantified business impact: S$ value of additional fraud prevented
 

@@ -13,7 +13,7 @@
 - Transfer pre-trained models to new tasks (CV and NLP)
 - Implement RL algorithms (DQN, DDPG, SAC, A2C, PPO) for business applications
 
-**Kailash Engines**: ModelVisualizer, OnnxBridge, InferenceServer, RLTrainer
+**Kailash Engines**: ModelVisualizer, OnnxBridge, InferenceServer, RLTrainer (`kailash_ml.rl.RLTrainer` / `km.rl_train`; there is no top-level `kailash_ml.RLTrainer`, and its Stable-Baselines3 backend is the optional `kailash-ml[rl]` extra)
 
 ## Compute Backend — Auto-Detected (Apple MPS / NVIDIA CUDA / CPU)
 
@@ -58,7 +58,7 @@ device = get_device()       # torch.device('mps') on Mac, 'cuda' on NVIDIA
 model.to(device)
 ```
 
-The kailash-ml 0.12 `MLEngine()` constructor (`accelerator='auto'` default)
+The kailash-ml `MLEngine()` constructor (`accelerator='auto'` default)
 exercises the same detector, so anything routed through the engine inherits
 the same answer without further wiring.
 
@@ -81,10 +81,10 @@ the same answer without further wiring.
   - Convolutional autoencoder: use conv layers for image data
 - **Survey** (5 additional variants as reference):
   - Sparse autoencoder (L1 penalty on activations)
-  - Contractive autoencoder (penalty on Jacobian)
+  - Contractive autoencoder (penalty on the encoder Jacobian: per-sample ‖∂z/∂x‖²_F, which depends on the input — not L2 weight decay on the encoder weights)
   - Stacked autoencoder (progressively deeper)
   - Recurrent autoencoder (for sequences)
-  - CVAE (Contractive + Variational)
+  - Contractive VAE (contractive Jacobian penalty + VAE). Not abbreviated "CVAE": CVAE conventionally means Conditional VAE.
 
 **Key Formulas**:
 
@@ -124,7 +124,7 @@ the same answer without further wiring.
   - AlexNet: deeper, ReLU, dropout
   - VGGNet: very small (3x3) filters, depth
   - GoogLeNet/Inception: multiple filter sizes in parallel
-  - **ResNet**: residual connections (skip connections) solving vanishing gradients
+  - **ResNet**: residual connections (skip connections) that make very deep networks trainable — they fix the degradation problem (an optimisation difficulty; He et al. 2015 found it "unlikely to be caused by vanishing gradients") and give gradients an identity path
 - **Modern training enhancements** (from PCML6-2):
   - SE blocks (Squeeze-and-Excitation): channel recalibration
   - Kaiming initialisation (proper for ReLU)
@@ -145,7 +145,7 @@ the same answer without further wiring.
 - Build CNNs with convolution, pooling, and normalisation layers
 - Implement ResNet with skip connections
 - Apply modern training enhancements (SE blocks, mixed precision, Mixup)
-- Explain why ResNet solves the vanishing gradient problem
+- Explain why ResNet's skip connections make very deep networks trainable (degradation problem, identity gradient path)
 
 **Exercise**: Build CNN for image classification (Fashion-MNIST or mask detection). Start simple, add ResBlock, add SE block. Compare training curves. Export to ONNX with OnnxBridge.
 
@@ -350,8 +350,8 @@ the same answer without further wiring.
   - BERT fine-tuning: HuggingFace Pipeline API, Lightning-based training
   - Adapter modules as a concept (bottleneck layers between transformer layers)
   - Connects to M6.2 (LoRA + Adapters for LLM fine-tuning)
-- **ONNX export**: OnnxBridge for portable model deployment
-- **InferenceServer**: predict, predict_batch, warm_cache, PredictionResult
+- **ONNX export**: OnnxBridge for portable model deployment — `OnnxBridge().export(model, "torch", output_path=Path(...), sample_input=x)` returns a result with `.success` (it does not validate or raise); `OnnxBridge().validate(model, path, rows)` checks PyTorch↔ONNX parity (`.valid`, `.max_diff`)
+- **InferenceServer**: register the ONNX artifact in ModelRegistry → `server = await InferenceServer.from_registry(name, registry=registry, version=v, runtime="onnx")` → `await server.start()` → `await server.predict({"records": [...]})`, which returns a mapping (`{"predictions": [...]}`). All three calls are coroutines. (`predict_batch`, `warm_cache` and `PredictionResult` do not exist in kailash-ml.)
 - **Architecture Selection Guide** (consolidation):
   | Data Type | Best Architecture | When to Transfer |
   |---|---|---|
@@ -391,8 +391,8 @@ the same answer without further wiring.
   - Policy: mapping from states to actions
   - Value function: expected cumulative reward from a state
 - **Bellman equations**: expectation + optimality
-  - V(s) = E[R + gamma * V(s')]
-  - Q(s,a) = E[R + gamma * max_{a'} Q(s', a')]
+  - V(s) = E[R + gamma * V(s')] (expectation, under the current policy)
+  - Q\*(s,a) = E[R + gamma * max_{a'} Q\*(s', a')] (optimality)
 - **5 algorithms, 5 business applications** (from PCML6-13):
   - **DQN** (Deep Q-Network): customer churn prevention. Discrete actions.
   - **DDPG** (Deep Deterministic Policy Gradient): manufacturing control. Continuous actions.

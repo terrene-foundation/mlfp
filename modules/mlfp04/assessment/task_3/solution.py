@@ -1,124 +1,126 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP04 — Assessment Task 3: NLP Topic Discovery with NMF (Reference)
+MLFP04 — Assessment Task 3: Baskets and Recommendations (Reference)
 
-Reference implementation. Withheld from students. Verified to pass grader.py.
-Framework-first: topic factorisation via kailash-ml DimReductionEngine (NMF).
-Dataset: real data/mlfp04/sg_domain_qa.parquet (four most distinct domains).
+Instructor-only reference. Withheld from students.
+
+Rules: till names are normalised (trim + lowercase) and double scans
+collapse to one line per basket before counting; itemsets are enumerated
+level by level (Apriori pruning) with basket sets as python sets of ids.
+Recommender: only each customer's LATEST rating of a product counts; a
+biased matrix factorisation is fitted by alternating least squares, and
+unknown customers / products fall back to the bias terms.
 """
 from __future__ import annotations
 
-import re
-from collections import Counter
+from itertools import combinations
+from pathlib import Path
 
 import numpy as np
 import polars as pl
 
-from kailash_ml.engines.dim_reduction import DimReductionEngine
-from shared import MLFPDataLoader
-
-CATEGORIES = ["finance", "food", "geography", "transport"]
-N_TOPICS = 4
-
-STOPWORDS = set(
-    "the a an and or but of to in on at for with as is are was were be been being "
-    "this that these those it its they them their from by we you your our he she "
-    "his her not have has had do does did will would can could should about into "
-    "over under more most some any all than then so such which who what when where "
-    "how also use used using many much each both other one two new high low first "
-    "second within across per via etc".split()
-)
-STOPWORDS |= {
-    "singapore",
-    "singapores",
-    "singaporean",
-    "singaporeans",
-    "country",
-    "city",
-    "include",
-    "including",
-    "main",
-    "known",
-    "provides",
-    "provide",
-    "offers",
-    "offer",
-}
+HERE = Path(__file__).parent
 
 
-def load_documents() -> pl.DataFrame:
-    """Load the four distinct domains in the canonical, grader-aligned order."""
-    df = MLFPDataLoader().load("mlfp04", "sg_domain_qa.parquet")
-    df = df.filter(pl.col("category").is_in(CATEGORIES)).sort(
-        ["category", "instruction"]
-    )
-    return df.with_columns(
-        (pl.col("instruction") + " " + pl.col("response")).alias("text")
-    )
+def load_dev_baskets() -> pl.DataFrame:
+    return pl.read_parquet(HERE / "dev_baskets.parquet")
 
 
-def build_tfidf(docs: list[str], *, min_df: int = 5, max_df_frac: float = 0.15):
-    """Deterministic TF-IDF: sublinear TF, df-pruned vocab, L2-normalised rows."""
-    tokens = [
-        [t for t in re.findall(r"[a-z]{3,}", d.lower()) if t not in STOPWORDS]
-        for d in docs
-    ]
-    n = len(tokens)
-    dfreq: Counter[str] = Counter()
-    for ts in tokens:
-        for w in set(ts):
-            dfreq[w] += 1
-    vocab = sorted(w for w, cnt in dfreq.items() if min_df <= cnt <= max_df_frac * n)
-    vidx = {w: i for i, w in enumerate(vocab)}
-    idf = np.array([np.log((1 + n) / (1 + dfreq[w])) + 1 for w in vocab])
-    M = np.zeros((n, len(vocab)))
-    for i, ts in enumerate(tokens):
-        for w, cnt in Counter(ts).items():
-            if w in vidx:
-                M[i, vidx[w]] = 1 + np.log(cnt)  # sublinear TF
-    M = M * idf
-    norms = np.linalg.norm(M, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    return M / norms, vocab
+def load_dev_ratings() -> pl.DataFrame:
+    return pl.read_parquet(HERE / "dev_ratings.parquet")
 
 
-def _purity(true: np.ndarray, pred: np.ndarray) -> float:
-    return float(
-        sum(
-            np.unique(true[pred == c], return_counts=True)[1].max()
-            for c in np.unique(pred)
-        )
-        / len(true)
-    )
+def mine_rules(baskets: pl.DataFrame, min_support: float, min_confidence: float, max_len: int = 3) -> pl.DataFrame:
+    clean = baskets.select(pl.col("basket_id"), pl.col("item").str.strip_chars().str.to_lowercase()).unique()
+    n = clean["basket_id"].n_unique()
+    holders = {r["item"]: set(r["basket_id"]) for r in clean.group_by("item").agg(pl.col("basket_id")).iter_rows(named=True)}
+
+    support: dict[frozenset, float] = {}
+    level = {}
+    for it, bs in holders.items():
+        if len(bs) / n >= min_support:
+            level[frozenset([it])] = bs
+    size = 1
+    while level:
+        for s, bs in level.items():
+            support[s] = len(bs) / n
+        if size == max_len:
+            break
+        nxt = {}
+        keys = list(level)
+        singles = sorted({i for s in keys for i in s})
+        for s in keys:
+            for it in singles:
+                if it in s:
+                    continue
+                cand = s | {it}
+                if cand in nxt or any(frozenset(sub) not in level for sub in combinations(cand, size)):
+                    continue
+                bs = level[s] & holders[it]
+                if len(bs) / n >= min_support:
+                    nxt[cand] = bs
+        level, size = nxt, size + 1
+
+    rows = []
+    for s, sup in support.items():
+        if len(s) < 2:
+            continue
+        for r in range(1, len(s)):
+            for ante in combinations(sorted(s), r):
+                a = frozenset(ante)
+                cons = s - a
+                conf = sup / support[a]
+                if conf >= min_confidence:
+                    rows.append((sorted(a), sorted(cons), sup, conf, conf / support[cons]))
+    schema = {"antecedent": pl.List(pl.String), "consequent": pl.List(pl.String),
+              "support": pl.Float64, "confidence": pl.Float64, "lift": pl.Float64}
+    return pl.DataFrame(rows, schema=schema, orient="row").sort("lift", descending=True)
 
 
-def solve() -> dict:
-    """Discover four topics via TF-IDF + NMF — kailash-ml DimReductionEngine."""
-    frame = load_documents()
-    M, _vocab = build_tfidf(frame["text"].to_list())
+def fit_recommender(history: pl.DataFrame, factors: int = 6, reg: float = 3.0, sweeps: int = 15):
+    latest = history.sort("rated_at").unique(["user_id", "item_id"], keep="last")
+    users = latest["user_id"].unique().to_list()
+    items = latest["item_id"].unique().to_list()
+    uix = {u: k for k, u in enumerate(users)}
+    iix = {i: k for k, i in enumerate(items)}
+    u = np.array([uix[v] for v in latest["user_id"].to_list()])
+    i = np.array([iix[v] for v in latest["item_id"].to_list()])
+    r = latest["rating"].to_numpy().astype(float)
+    nu, ni = len(users), len(items)
 
-    matrix_df = pl.from_numpy(M, schema=[f"t{i}" for i in range(M.shape[1])])
-    reduced = DimReductionEngine().reduce(
-        matrix_df, algorithm="nmf", n_components=N_TOPICS, seed=42
-    )
-    W = np.asarray(reduced.transformed)
-    doc_topics = W.argmax(axis=1).astype(int)
+    mu = r.mean()
+    bu, bi = np.zeros(nu), np.zeros(ni)
+    for _ in range(10):
+        bi = np.bincount(i, r - mu - bu[u], ni) / (np.bincount(i, minlength=ni) + 5.0)
+        bu = np.bincount(u, r - mu - bi[i], nu) / (np.bincount(u, minlength=nu) + 5.0)
+    res = r - mu - bu[u] - bi[i]
+    rng = np.random.default_rng(0)
+    P, Q = rng.normal(0, 0.1, (nu, factors)), rng.normal(0, 0.1, (ni, factors))
+    by_u = [np.flatnonzero(u == k) for k in range(nu)]
+    by_i = [np.flatnonzero(i == k) for k in range(ni)]
+    eye = reg * np.eye(factors)
+    for _ in range(sweeps):
+        for k, idx in enumerate(by_u):
+            A = Q[i[idx]]
+            P[k] = np.linalg.solve(A.T @ A + eye, A.T @ res[idx])
+        for k, idx in enumerate(by_i):
+            A = P[u[idx]]
+            Q[k] = np.linalg.solve(A.T @ A + eye, A.T @ res[idx])
 
-    # Self-reported purity (the grader recomputes it from the true domains).
-    cat_to_id = {c: i for i, c in enumerate(CATEGORIES)}
-    true = np.array([cat_to_id[c] for c in frame["category"].to_list()])
+    def predict(pairs: pl.DataFrame) -> np.ndarray:
+        pu = np.array([uix.get(v, -1) for v in pairs["user_id"].to_list()])
+        pi = np.array([iix.get(v, -1) for v in pairs["item_id"].to_list()])
+        out = np.full(len(pu), mu)
+        ku, ki = pu >= 0, pi >= 0
+        out[ku] += bu[pu[ku]]
+        out[ki] += bi[pi[ki]]
+        both = ku & ki
+        out[both] += (P[pu[both]] * Q[pi[both]]).sum(1)
+        return np.clip(out, 1.0, 5.0)
 
-    return {
-        "doc_topics": [int(v) for v in doc_topics],
-        "n_topics": N_TOPICS,
-        "topic_purity": _purity(true, doc_topics),
-    }
+    return predict
 
 
 if __name__ == "__main__":
-    out = solve()
-    sizes = np.bincount(np.array(out["doc_topics"]), minlength=4)
-    print(f"n_topics     : {out['n_topics']}")
-    print(f"topic_purity : {out['topic_purity']:.4f}")
-    print(f"topic sizes  : {sizes.tolist()}")
+    print(mine_rules(load_dev_baskets(), 0.03, 0.5).head(10))

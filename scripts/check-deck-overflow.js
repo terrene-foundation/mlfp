@@ -41,7 +41,9 @@ const fs = require("node:fs");
 const http = require("node:http");
 const puppeteer = require("puppeteer");
 
-const REPO_ROOT = path.resolve(__dirname, "..");
+// MLFP_REPO_ROOT lets a git worktree be audited with this checkout's node_modules
+// (worktrees only carry the partially-tracked node_modules, which cannot resolve puppeteer).
+const REPO_ROOT = path.resolve(process.env.MLFP_REPO_ROOT || path.join(__dirname, ".."));
 const VIEWPORT_W = 1280;
 const VIEWPORT_H = 720;
 const EXT_TOL = 6; // px past the frame edge before EXTENT counts

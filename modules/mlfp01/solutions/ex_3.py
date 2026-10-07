@@ -30,8 +30,9 @@
 #   10. Comprehensive ranked district report with for loop iteration
 #
 # DATASET: Singapore HDB resale flat transactions
-#   Source: Housing & Development Board (data.gov.sg)
-#   Rows: ~500,000 transactions | Columns: month, town, flat_type,
+#   Source: synthetic course dataset (hdb_resale.parquet) modelled on the
+#   public HDB resale records — the numbers are not real market data
+#   Rows: ~50,000 transactions | Columns: month, town, flat_type,
 #   floor_area_sqm, resale_price, and more
 #
 # ════════════════════════════════════════════════════════════════════════
@@ -98,6 +99,9 @@ def format_pct(value: float, decimals: int = 1) -> str:
     return f"{value * 100:.{decimals}f}%"
 
 
+# price_range_label() uses if / elif / else to pick ONE branch. You'll
+# study if/elif/else properly in Lesson 1.4 — for now, read it top to
+# bottom: the first condition that is True decides the label.
 def price_range_label(price: float) -> str:
     """Classify a resale price into a human-readable tier.
 
@@ -347,7 +351,8 @@ for row in flat_type_stats.iter_rows(named=True):
         f"median={format_sgd(row['median_price'])}  "
         f"area={row['median_area']:.0f}sqm"
     )
-# INTERPRETATION: There's a clear price ladder from 1-room to Executive.
+# INTERPRETATION: There's a clear price ladder from 2-room up to
+# Multi-generation (this dataset has no 1-room flats).
 # The median area also climbs — bigger flats cost more partly because
 # they ARE more. The key question is: which flat types offer the best
 # price per sqm? That answers "where is the value?"
@@ -486,9 +491,11 @@ position_summary = (
 )
 print(f"\n=== Market Position Summary ===")
 print(position_summary)
-# INTERPRETATION: cv_price_pct is key. A district with CV=25% has prices
-# clustered tightly. CV=40%+ means a wide mix — budget and premium side by side.
-# Districts with high CV are harder to generalise about.
+# INTERPRETATION: cv_price_pct is key. Compare the CVs printed above:
+# the lower a town's CV, the more tightly its prices cluster; a high CV
+# means a wide mix — budget and premium side by side — or a few extreme
+# outliers, so check the town's min/max before trusting it. Districts
+# with high CV are harder to generalise about.
 
 # ── Checkpoint 6 ─────────────────────────────────────────────────────
 assert "iqr_price" in district_stats.columns, "iqr_price should be added"
@@ -539,8 +546,9 @@ for row in four_room_ranking.head(10).iter_rows(named=True):
         f"{format_sgd(row['median_price_sqm']):>12}"
     )
 # INTERPRETATION: Sorting by price/sqm ascending shows where you get the
-# most space for your money. Peripheral towns (Woodlands, Jurong West)
-# typically lead — but the trade-off is commute time and amenity access.
+# most space for your money. Check whether the towns at the top of the
+# list are away from the city centre — if so, the usual trade-off is
+# commute time and amenity access.
 
 # --- 7c: Flat type mix by town ---
 # What percentage of each town's transactions are 4-room vs 5-room?
@@ -663,13 +671,17 @@ hdb_q = hdb.with_columns(
     pl.col("month_num").replace_strict(quarter_map, default="Q?").alias("quarter")
 )
 
+# pl.len() counts every sale in the quarter across ALL years (pooled),
+# so this is a total, not an average per year.
 quarterly_volume = (
-    hdb_q.group_by("quarter").agg(pl.len().alias("avg_transactions")).sort("quarter")
+    hdb_q.group_by("quarter").agg(pl.len().alias("total_transactions")).sort("quarter")
 )
-print(f"\n=== Average Quarterly Volume ===")
+print(f"\n=== Transactions by Quarter (all years pooled) ===")
 print(quarterly_volume)
-# INTERPRETATION: If Q1 has fewer transactions, that's the Chinese New Year
-# effect — the market slows during the holiday period.
+# INTERPRETATION: If Q1 had clearly fewer transactions than the other
+# quarters, a Chinese New Year slowdown would be a plausible reason. Check
+# the totals above: if the quarters are nearly equal, there is no such
+# seasonal effect in this data.
 
 # ── Checkpoint 8 ─────────────────────────────────────────────────────
 assert annual_stats.height > 0, "Should have annual stats"
@@ -906,9 +918,9 @@ print(
   ✓ Report building: combining statistics into formatted output
 
   NEXT: In Exercise 4, you'll combine data from multiple tables
-  using joins — merging HDB transactions with MRT station proximity
-  and school density data. You'll learn when to use left vs inner
-  joins, how to handle NULLs after a join, and how to enrich a
-  dataset with spatial context.
+  using joins — enriching HDB transactions with MRT station and
+  school data. You'll learn when to use left vs inner joins, how to
+  handle NULLs after a join, and why you must check what a column
+  really measures before you join it.
 """
 )

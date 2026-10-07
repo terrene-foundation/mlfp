@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -47,17 +47,18 @@
 <h2>Why This Matters</h2>
 
 <p>
-  Singapore has 26 HDB towns. Yesterday's pattern — filter, then summarise,
-  then write down the numbers — would mean 26 filters, 26 summaries, and
-  26 rows of notes. If you then want the same summary by flat type (seven
-  categories) you multiply: 182 filters. By year (twelve years)? 2,184
-  filters. No analyst does that by hand. They use <code>group_by</code>.
+  Our HDB dataset covers 27 towns. Yesterday's pattern — filter, then
+  summarise, then write down the numbers — would mean 27 filters, 27
+  summaries, and 27 rows of notes. If you then want the same summary by flat
+  type (six categories) you multiply: 162 filters. By year as well (ten
+  years, 2015–2024)? 1,620 filters. No analyst does that by hand. They use
+  <code>group_by</code>.
 </p>
 
 <p>
   The mental shift is from <em>one-at-a-time</em> to <em>all-at-once</em>.
   Instead of asking "what is the median price in Bishan?", you ask "what is
-  the median price in <em>every</em> town?" — and get a 26-row table back.
+  the median price in <em>every</em> town?" — and get a 27-row table back.
   Instead of asking "how many transactions happened in 2023?", you ask "how
   many transactions happened in <em>every</em> year?". The single-row
   answers you used yesterday become rows in a bigger answer.
@@ -84,7 +85,7 @@
     <rect x="20" y="157" width="220" height="24" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
     <text x="30" y="174">hdb.filter(town == "WOODLANDS")</text>
     <rect x="20" y="185" width="220" height="24" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
-    <text x="30" y="202">26 separate filter calls 😩</text>
+    <text x="30" y="202">27 separate filter calls 😩</text>
   </g>
 
   <line x1="255" y1="130" x2="330" y2="130" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-g)"/>
@@ -103,7 +104,7 @@
     <text x="380" y="190">   .sort("median", descending=True)</text>
     <text x="360" y="208">)</text>
   </g>
-  <text x="570" y="235" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488" font-style="italic">One call → 26-row summary table</text>
+  <text x="570" y="235" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488" font-style="italic">One call → 27-row summary table</text>
 </svg>
 <figcaption>The mental shift from "one filter at a time" to "group by and aggregate all at once" is the single largest productivity jump in the entire module.</figcaption>
 </figure>
@@ -120,7 +121,7 @@
   <code>return</code> statement sends a value back to the caller.
 </p>
 
-<pre><code class="language-python">def format_sgd(amount: float) -> str:
+<pre><code class="language-python">def format_sgd(amount: float) -&gt; str:
     """Format a number as Singapore dollars with thousands separator."""
     return f"S${amount:,.0f}"
 
@@ -157,12 +158,12 @@ print(format_sgd(1_234_567)) # → S$1,234,567
 
   <!-- body -->
   <rect x="30" y="110" width="720" height="60" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
-  <text x="60" y="150" font-family="JetBrains Mono" font-size="15" fill="#1E293B">    return f"S${"{"}amount:,.0f{"}"}"</text>
+  <text x="60" y="150" class="nomath" font-family="JetBrains Mono" font-size="15" fill="#1E293B">    return f"S${amount:,.0f}"</text>
   <text x="60" y="195" font-family="Inter" font-size="11" fill="#3B82F6">↑ body indented · return sends value back to caller</text>
 
   <!-- usage -->
   <rect x="30" y="210" width="720" height="40" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
-  <text x="60" y="235" font-family="JetBrains Mono" font-size="14" fill="#1E293B">print(format_sgd(485_000))   # → S$485,000</text>
+  <text x="60" y="235" class="nomath" font-family="JetBrains Mono" font-size="14" fill="#1E293B">print(format_sgd(485_000))   # → S$485,000</text>
 </svg>
 <figcaption>The four parts of a function definition: keyword <code>def</code>, name, parameter list with type hints, and indented body. The <code>return</code> statement hands a value back.</figcaption>
 </figure>
@@ -200,8 +201,8 @@ print(format_sgd(1_234_567)) # → S$1,234,567
 print(central_towns[0])    # → BISHAN
 print(len(central_towns))  # → 4
 
-town_medians = {"BISHAN": 715_000, "TOA PAYOH": 680_000, "JURONG WEST": 455_000}
-print(town_medians["BISHAN"])  # → 715_000
+town_medians = {"BISHAN": 945_823, "TOA PAYOH": 973_887, "JURONG WEST": 836_185}
+print(town_medians["BISHAN"])  # → 945823  (underscores are for humans only)
 </code></pre>
 
 <h3>for loops</h3>
@@ -215,6 +216,10 @@ print(town_medians["BISHAN"])  # → 715_000
 <pre><code class="language-python">for town in central_towns:
     subset = hdb.filter(pl.col("town") == town)
     print(f"{town}: {subset.height} transactions")
+# → BISHAN: 1515 transactions
+# → TOA PAYOH: 1463 transactions
+# → QUEENSTOWN: 1523 transactions
+# → BUKIT MERAH: 1994 transactions
 </code></pre>
 
 <p>
@@ -248,8 +253,8 @@ print(town_medians["BISHAN"])  # → 715_000
 <p>
   Read it: "group the HDB data by town; for each group compute four
   aggregates; sort the result by median price descending." The output is a
-  26-row DataFrame — one row per town — with four numeric columns. You just
-  replaced 26 manual filters.
+  27-row DataFrame — one row per town — with four numeric columns. You just
+  replaced 27 manual filters.
 </p>
 
 <figure class="diagram">
@@ -264,16 +269,16 @@ print(town_medians["BISHAN"])  # → 715_000
   <text x="150" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">Input (hdb)</text>
   <g font-family="JetBrains Mono" font-size="11">
     <text x="30" y="55" fill="#0F766E">town      price</text>
-    <text x="30" y="75" fill="#1E293B">BISHAN    720k</text>
-    <text x="30" y="92" fill="#1E293B">JURONG    420k</text>
-    <text x="30" y="109" fill="#1E293B">BISHAN    680k</text>
-    <text x="30" y="126" fill="#1E293B">TOA PAYOH 650k</text>
-    <text x="30" y="143" fill="#1E293B">JURONG    445k</text>
-    <text x="30" y="160" fill="#1E293B">BISHAN    740k</text>
-    <text x="30" y="177" fill="#1E293B">TOA PAYOH 620k</text>
-    <text x="30" y="194" fill="#1E293B">JURONG    430k</text>
-    <text x="30" y="211" fill="#1E293B">BISHAN    710k</text>
-    <text x="30" y="228" fill="#94A3B8">...  500k rows</text>
+    <text x="30" y="75" fill="#1E293B">BISHAN    950k</text>
+    <text x="30" y="92" fill="#1E293B">JURONG W  820k</text>
+    <text x="30" y="109" fill="#1E293B">BISHAN    930k</text>
+    <text x="30" y="126" fill="#1E293B">TOA PAYOH 980k</text>
+    <text x="30" y="143" fill="#1E293B">JURONG W  845k</text>
+    <text x="30" y="160" fill="#1E293B">BISHAN    960k</text>
+    <text x="30" y="177" fill="#1E293B">TOA PAYOH 965k</text>
+    <text x="30" y="194" fill="#1E293B">JURONG W  836k</text>
+    <text x="30" y="211" fill="#1E293B">BISHAN    940k</text>
+    <text x="30" y="228" fill="#94A3B8">...  50k rows</text>
   </g>
 
   <line x1="285" y1="160" x2="360" y2="160" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-gb)"/>
@@ -282,15 +287,15 @@ print(town_medians["BISHAN"])  # → 715_000
   <!-- Groups -->
   <rect x="370" y="40" width="160" height="70" rx="6" fill="#E0F2F1" stroke="#0D9488"/>
   <text x="450" y="58" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">BISHAN group</text>
-  <text x="450" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11">720k, 680k, 740k, 710k, ...</text>
+  <text x="450" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11">950k, 930k, 960k, 940k, ...</text>
 
   <rect x="370" y="120" width="160" height="70" rx="6" fill="#E0F2F1" stroke="#0D9488"/>
   <text x="450" y="138" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">TOA PAYOH group</text>
-  <text x="450" y="158" text-anchor="middle" font-family="JetBrains Mono" font-size="11">650k, 620k, ...</text>
+  <text x="450" y="158" text-anchor="middle" font-family="JetBrains Mono" font-size="11">980k, 965k, ...</text>
 
   <rect x="370" y="200" width="160" height="70" rx="6" fill="#E0F2F1" stroke="#0D9488"/>
-  <text x="450" y="218" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">JURONG group</text>
-  <text x="450" y="238" text-anchor="middle" font-family="JetBrains Mono" font-size="11">420k, 445k, 430k, ...</text>
+  <text x="450" y="218" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">JURONG WEST group</text>
+  <text x="450" y="238" text-anchor="middle" font-family="JetBrains Mono" font-size="11">820k, 845k, 836k, ...</text>
 
   <line x1="535" y1="160" x2="610" y2="160" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-gb)"/>
   <text x="572" y="148" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">agg(median)</text>
@@ -300,22 +305,23 @@ print(town_medians["BISHAN"])  # → 715_000
   <text x="700" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Output</text>
   <g font-family="JetBrains Mono" font-size="11" fill="#1E293B">
     <text x="640" y="105" fill="#0F766E">town        median</text>
-    <text x="640" y="130">BISHAN      715k</text>
-    <text x="640" y="150">TOA PAYOH   635k</text>
-    <text x="640" y="170">JURONG      432k</text>
+    <text x="640" y="130">TOA PAYOH   974k</text>
+    <text x="640" y="150">BISHAN      946k</text>
+    <text x="640" y="170">JURONG W    836k</text>
     <text x="640" y="190">...         ...</text>
-    <text x="640" y="220" fill="#0D9488" font-style="italic">(26 rows)</text>
+    <text x="640" y="220" fill="#0D9488" font-style="italic">(27 rows)</text>
   </g>
 </svg>
-<figcaption>Group-by splits the DataFrame into groups (one per unique value of the group key) and computes a statistic for each group. The output has one row per group — 26 towns become 26 rows.</figcaption>
+<figcaption>Group-by splits the DataFrame into groups (one per unique value of the group key) and computes a statistic for each group. The output has one row per group — 27 towns become 27 rows. (Input prices are illustrative; the output medians are the real ones from the course file.)</figcaption>
 </figure>
 
 <h3>Multi-key grouping</h3>
 
 <p>
   Pass multiple columns to <code>group_by</code> and Polars groups by every
-  unique combination. "Every (town, flat_type) pair" produces ~180 groups —
-  one for each combination that actually appears in the data.
+  unique combination. "Every (town, flat_type) pair" produces one group for
+  each combination that actually appears in the data — here 162, because
+  every one of the 27 × 6 combinations occurs at least once.
 </p>
 
 <pre><code class="language-python">town_flat_stats = (
@@ -384,7 +390,7 @@ hdb = loader.load("mlfp01", "hdb_resale.parquet").with_columns(
     <span class="step-label">Step 2.</span>
     <p>Write a helper function that formats a number as Singapore dollars —
        we will call it dozens of times across the report.</p>
-    <pre><code class="language-python">def format_sgd(amount: float) -> str:
+    <pre><code class="language-python">def format_sgd(amount: float) -&gt; str:
     """Format a number as Singapore dollars with thousands separator."""
     return f"S${amount:,.0f}"</code></pre>
   </div>
@@ -418,13 +424,13 @@ hdb = loader.load("mlfp01", "hdb_resale.parquet").with_columns(
     <span class="step-label">Step 4.</span>
     <p>Iterate over the top 10 rows with a for loop and print a formatted
        report line using our helper function.</p>
-    <pre><code class="language-python">def district_line(row: dict) -> str:
+    <pre><code class="language-python">def district_line(row: dict) -&gt; str:
     return (
-        f"  {row['town']:<20} "
-        f"{format_sgd(row['median_price']):>12}  "
-        f"{row['transaction_count']:>8,}  "
-        f"IQR={format_sgd(row['iqr_price']):>10}  "
-        f"{format_sgd(row['median_price_sqm']):>10}/sqm"
+        f"  {row['town']:&lt;20} "
+        f"{format_sgd(row['median_price']):&gt;12}  "
+        f"{row['transaction_count']:&gt;8,}  "
+        f"IQR={format_sgd(row['iqr_price']):&gt;10}  "
+        f"{format_sgd(row['median_price_sqm']):&gt;10}/sqm"
     )
 
 print("=" * 70)
@@ -433,6 +439,21 @@ print("=" * 70)
 for row in district_stats.head(10).iter_rows(named=True):
     print(district_line(row))
 print("=" * 70)</code></pre>
+    <p>Output:</p>
+    <pre><code class="language-text">======================================================================
+  SINGAPORE HDB — TOP 10 MOST EXPENSIVE TOWNS
+======================================================================
+  TOA PAYOH               S$973,887     1,463  IQR= S$410,734     S$9,972/sqm
+  KALLANG/WHAMPOA         S$964,675     1,514  IQR= S$447,399     S$9,960/sqm
+  BUKIT TIMAH             S$961,182       485  IQR= S$408,941     S$9,809/sqm
+  QUEENSTOWN              S$960,422     1,523  IQR= S$410,051     S$9,947/sqm
+  CENTRAL AREA            S$955,722       504  IQR= S$463,624     S$9,938/sqm
+  MARINE PARADE           S$955,660       979  IQR= S$386,804     S$9,946/sqm
+  BISHAN                  S$945,823     1,515  IQR= S$383,937     S$9,936/sqm
+  JURONG EAST             S$843,266     1,439  IQR= S$354,315     S$8,680/sqm
+  SERANGOON               S$838,884     1,579  IQR= S$343,412     S$8,650/sqm
+  HOUGANG                 S$837,820     2,564  IQR= S$353,498     S$8,651/sqm
+======================================================================</code></pre>
     <p>
       <code>.iter_rows(named=True)</code> yields each row as a dictionary so
       you can access fields by name (<code>row["town"]</code>) rather than by
@@ -449,6 +470,18 @@ print(f"Most expensive district:   {format_sgd(medians.max())}")
 print(f"Least expensive district:  {format_sgd(medians.min())}")
 print(f"Average district median:   {format_sgd(medians.mean())}")
 print(f"Price spread:              {format_sgd(medians.max() - medians.min())}")</code></pre>
+    <p>Output:</p>
+    <pre><code class="language-text">Most expensive district:   S$973,887
+Least expensive district:  S$819,980
+Average district median:   S$865,923
+Price spread:              S$153,906</code></pre>
+    <p>
+      The cheapest town by median is Boon Lay. Notice the clear break in the
+      top-10 table: seven central towns sit at <span class="nomath">S$945k</span>–<span class="nomath">S$974k</span>, then the
+      medians drop to about <span class="nomath">S$840k</span>. Remember this is synthetic data — the
+      ranking tells you how the generator was configured, not how the real
+      market behaves.
+    </p>
   </div>
 </div>
 
@@ -478,9 +511,10 @@ $$ \bar{x} = \frac{1}{n} \sum_{i=1}^{n} x_i $$
 <div class="callout foundations">
   <span class="label">🟢 Mean vs median</span>
   <p>
-    Mean is pulled by outliers; median is not. One billion-dollar flat in a
-    district of 300 flats will shift the mean by several thousand dollars
-    but will not move the median at all. For skewed distributions like
+    Mean is pulled by outliers; median is not. One <span class="nomath">S$9,000,000</span> record — our
+    dataset has 144 of them — in a town of 1,500 sales shifts that town's
+    mean up by about <span class="nomath">S$5,400</span> ((9,000,000 − 850,000) / 1,500), but moves the
+    median by at most one position in the sorted list. For skewed distributions like
     property prices, <em>always report median for "typical" and mean for
     "total market value"</em>.
   </p>
@@ -546,10 +580,12 @@ $$ \text{CV} = \frac{s}{\bar{x}} \times 100\% $$
 <div class="callout warning">
   <span class="label">⚠ Mistake 2: Forgetting <code>.alias(...)</code></span>
   <p>
-    Inside <code>agg</code>, Polars will auto-name columns if you do not
-    alias them, and the names are often unhelpful
-    (<code>"resale_price"</code>, <code>"resale_price_2"</code>, …). Always
-    give every aggregation an explicit <code>.alias(...)</code>.
+    Inside <code>agg</code>, an un-aliased aggregation keeps the source
+    column's name. Two aggregations on the same column —
+    <code>pl.col("resale_price").mean(), pl.col("resale_price").median()</code>
+    — therefore collide, and Polars raises
+    <code>DuplicateError: column with name 'resale_price' has more than one occurrence</code>.
+    Always give every aggregation an explicit <code>.alias(...)</code>.
   </p>
 </div>
 
@@ -557,8 +593,9 @@ $$ \text{CV} = \frac{s}{\bar{x}} \times 100\% $$
   <span class="label">⚠ Mistake 3: Using a Python loop instead of group_by</span>
   <p>
     A Python <code>for</code> loop that filters one town at a time and
-    appends to a list is ten to a hundred times slower than the equivalent
-    <code>group_by</code>. If you find yourself writing
+    appends to a list re-scans the whole table once per town, so it gets
+    slower with every group you add; a <code>group_by</code> makes a single
+    parallel pass. If you find yourself writing
     <code>for town in towns: subset = df.filter(...)</code>, stop and
     rewrite as group-by.
   </p>
@@ -605,6 +642,20 @@ $$ \text{CV} = \frac{s}{\bar{x}} \times 100\% $$
   </p>
 </div>
 
+<div class="callout foundations">
+  <span class="label">🟢 Check your answers</span>
+  <p>
+    A: <code>return f"S${cents / 100:,.2f}"</code>. B: six flat types; for
+    5-room flats the mean (about <span class="nomath">S$1,104,700</span>) is above the median
+    (<span class="nomath">S$1,076,483</span>) — a modest right skew, and part of the gap is the planted
+    <span class="nomath">S$9M</span> records. Multi-generation flats are the most expensive type, above
+    Executive. C: Bishan has six rows, one per flat type, with medians
+    between about <span class="nomath">S$9,400</span> and <span class="nomath">S$10,400</span> per sqm. D: for
+    <code>describe_town(hdb, "BISHAN")</code> you should report 1,515
+    transactions and a median of <span class="nomath">S$945,823.</span>
+  </p>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Cross-References</h2>
 
@@ -627,12 +678,12 @@ $$ \text{CV} = \frac{s}{\bar{x}} \times 100\% $$
   and <strong>group_by/agg</strong> computes statistics for every group in
   one call. The combination turns scripts into libraries. You wrote a
   <code>format_sgd</code> helper and used it in a district report, and you
-  produced a 26-row summary table with a single Polars chain — no loops,
+  produced a 27-row summary table with a single Polars chain — no loops,
   no hand-copied filters.
 </p>
 <p>
   The statistical vocabulary — mean, median, IQR, CV — is the one you will
-  use for the next ten modules. Mean and median go together; IQR is the
+  use for the rest of the course. Mean and median go together; IQR is the
   spread that ignores outliers; CV normalises spread across groups. When
   you see a table with a large IQR and a moderate std, you know instantly
   that the middle of the data is spread out but the tails are not.

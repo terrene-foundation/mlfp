@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -39,8 +39,8 @@
   project ships or dies: <strong>what goes into the model?</strong> You will
   engineer features from a messy multi-table ICU dataset, learn the seven
   stages of the ML pipeline, and apply three feature-selection families —
-  filter, wrapper, and embedded — to shrink forty-five candidate features down
-  to the ones that actually predict mortality. Along the way you will meet the
+  filter, wrapper, and embedded — to shrink a pile of candidate features down
+  to the ones that actually predict a <em>long ICU stay</em>. Along the way you will meet the
   single most expensive mistake in ML: <em>feature leakage</em>.
 </p>
 
@@ -128,8 +128,9 @@
 <h3>Statistics vs ML: explaining the past vs predicting the future</h3>
 
 <p>
-  In Module 2 you fitted a linear regression to HDB prices and reported the
-  coefficients: "every additional square metre is worth about S\$4,200". That
+  In Module 2 you fitted a linear regression to HDB prices and read the
+  coefficients: "each additional square metre adds a few thousand dollars to
+  the resale price, holding the town fixed". That
   is a <strong>statistical</strong> exercise — the goal is to explain what is
   in the data using a small number of interpretable parameters.
 </p>
@@ -181,7 +182,7 @@ $$\text{ML objective:} \quad \min_{f} \; \mathbb{E}_{(x, y) \sim \mathcal{D}} \b
     <tr><td><strong>Aggregation</strong></td><td>mean heart rate over first 24h of admission</td><td>reduces irregular time-series to a fixed shape</td></tr>
     <tr><td><strong>Temporal / lag</strong></td><td>rainfall 1 day ago, rainfall 7 days ago</td><td>exposes autoregressive structure</td></tr>
     <tr><td><strong>Interaction</strong></td><td>age × systolic_bp</td><td>lets linear models capture non-linear effects</td></tr>
-    <tr><td><strong>Domain-derived</strong></td><td>SOFA score, shock index, price per sqm</td><td>encodes expert knowledge the model cannot discover from 5000 rows</td></tr>
+    <tr><td><strong>Domain-derived</strong></td><td>SOFA score, shock index, price per sqm</td><td>encodes expert knowledge the model cannot discover from 8,000 admissions</td></tr>
   </tbody>
 </table>
 
@@ -217,7 +218,7 @@ $$\text{ML objective:} \quad \min_{f} \; \mathbb{E}_{(x, y) \sim \mathcal{D}} \b
     <line x1="60" y1="200" x2="720" y2="200" stroke="#475569" stroke-width="2"/>
     <text x="60"  y="222" text-anchor="start"  font-size="11" fill="#64748B">t = admission</text>
     <text x="390" y="222" text-anchor="middle" font-size="11" fill="#64748B">t = 24h (prediction time)</text>
-    <text x="720" y="222" text-anchor="end"    font-size="11" fill="#64748B">t = discharge / death</text>
+    <text x="720" y="222" text-anchor="end"    font-size="11" fill="#64748B">t = discharge</text>
     <line x1="390" y1="180" x2="390" y2="210" stroke="#0D9488" stroke-width="3"/>
 
     <!-- Allowed features -->
@@ -230,9 +231,9 @@ $$\text{ML objective:} \quad \min_{f} \; \mathbb{E}_{(x, y) \sim \mathcal{D}} \b
     <!-- Leaky features -->
     <rect x="420" y="40" width="280" height="100" rx="10" fill="#FEF2F2" stroke="#DC2626" stroke-width="2"/>
     <text x="560" y="65"  text-anchor="middle" font-weight="700" fill="#B91C1C">✗ Leaky features</text>
-    <text x="560" y="88"  text-anchor="middle" font-size="12" fill="#7F1D1D">length_of_stay (known only at discharge)</text>
-    <text x="560" y="105" text-anchor="middle" font-size="12" fill="#7F1D1D">max_ventilator_hours</text>
-    <text x="560" y="122" text-anchor="middle" font-size="12" fill="#7F1D1D">icd10 = "I46.9 Cardiac arrest, unspecified"</text>
+    <text x="560" y="88"  text-anchor="middle" font-size="12" fill="#7F1D1D">los_days (known only at discharge)</text>
+    <text x="560" y="105" text-anchor="middle" font-size="12" fill="#7F1D1D">discharge_time (the label's source)</text>
+    <text x="560" y="122" text-anchor="middle" font-size="12" fill="#7F1D1D">vitals, meds, labs after hour 24</text>
 
     <line x1="560" y1="140" x2="560" y2="180" stroke="#DC2626" stroke-width="2" marker-end="url(#arrow-leak)" stroke-dasharray="4 3"/>
     <text x="570" y="165" fill="#B91C1C" font-size="11" font-style="italic">these only exist after prediction time</text>
@@ -348,79 +349,99 @@ $$\chi^2 \;=\; \sum_{i} \frac{(O_i - E_i)^2}{E_i}$$
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>The Kailash Engines: FeatureEngineer, FeatureStore, PreprocessingPipeline</h2>
+<h2>The Kailash Engines: FeatureSchema, FeatureEngineer, PreprocessingPipeline</h2>
 
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    Three kailash-ml engines cover almost every operation in this lesson.
-    <code>FeatureEngineer</code> generates derived columns from declarative
-    recipes. <code>PreprocessingPipeline</code> chains encoders, scalers, and
-    splitters as a polars-native pipeline. <code>FeatureStore</code> registers
-    a schema (names, types, allowed ranges) so downstream models can validate
-    incoming batches before inference. Think of them as the three verbs:
-    <em>engineer, preprocess, register</em>.
+    Three kailash-ml pieces cover the mechanical parts of this lesson.
+    <code>FeatureSchema</code> declares the feature contract — names, dtypes
+    and the entity id each row belongs to. <code>FeatureEngineer</code>
+    <code>generate()</code>s candidate columns (interactions, squares, bins)
+    from the columns in the schema and <code>select()</code>s the top-k by a
+    ranking method. <code>PreprocessingPipeline</code> imputes, encodes and
+    scales a polars frame. Think of them as three verbs:
+    <em>declare, engineer, preprocess</em>. Domain features such as the shock
+    index are <em>not</em> generated for you — you write those in polars, as
+    the worked example below shows.
   </p>
 </div>
 
-<pre><code class="language-python">from kailash_ml import FeatureEngineer, PreprocessingPipeline
-from kailash_ml.types import FeatureSchema, FeatureField
+<pre><code class="language-python">from kailash_ml import FeatureEngineer
+from kailash_ml.types import FeatureField, FeatureSchema
 
-fe = FeatureEngineer()
-features = (
-    fe.aggregate(vitals, group_by="admission_id",
-                 agg={"heart_rate": ["mean", "std", "max"]})
-      .then_join(admissions, on="admission_id")
-      .then_derive("shock_index", "heart_rate_mean / systolic_bp_mean")
-)
+# train_df: the imputed TRAINING rows from Step 6 of the worked example,
+# plus admission_id and the long_stay label
+schema = FeatureSchema(
+    name="icu_admission_v1", entity_id_column="admission_id",
+    features=[FeatureField("age", "int64"),
+              FeatureField("bmi", "float64"),
+              FeatureField("weight_kg", "float64")])
 
-schema = FeatureSchema([
-    FeatureField("heart_rate_mean",  dtype="float64", min=20,  max=220),
-    FeatureField("heart_rate_std",   dtype="float64", min=0,   max=80),
-    FeatureField("shock_index",      dtype="float64", min=0,   max=5),
-])
-features = schema.validate(features)
+fe = FeatureEngineer(max_features=5)
+cands = fe.generate(train_df, schema, strategies=["interactions"])
+picked = fe.select(cands.data, cands, target="long_stay",
+                   method="mutual_info")   # fit on train rows only
+print([c.name for c in cands.generated_columns])  # age_x_bmi, age_x_weight_kg, ...
+print(picked.selected_columns)
 </code></pre>
 
+<p>
+  Two cautions. <code>FeatureEngineer</code> cannot handle nulls — impute
+  first. And <code>PreprocessingPipeline.setup(df, target)</code> fits its
+  imputer, encoder and scaler on <em>every row you pass it</em> and only then
+  splits off a test set, so test-row statistics leak into training. Hold out
+  your test rows yourself, call <code>setup()</code> on the training rows only,
+  and apply the fitted pipeline to the test rows with
+  <code>transform()</code>.
+</p>
+
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Engineering Features for ICU Mortality</h2>
+<h2>Worked Example: Engineering Features for ICU Long Stays</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    We have five tables from a Singapore ICU cohort: <code>patients</code>,
+    We have five tables from a <strong>synthetic</strong> Singapore ICU cohort
+    (5,000 patients, 8,000 admissions): <code>patients</code>,
     <code>admissions</code>, <code>vitals</code>, <code>medications</code>,
-    <code>labs</code>. The target is <em>in-hospital mortality</em> — a binary
-    flag. The prediction is made at the end of the first 24 hours of
-    admission. We need one row per admission, with features that obey
-    point-in-time correctness.
+    <code>labs</code>. The target is <code>long_stay</code> — 1 if the
+    admission's length of stay is above the cohort median (15.1 days), 0
+    otherwise, so the classes are almost exactly balanced. The prediction is
+    made 24 hours after admission. We need one row per admission, with
+    features that obey point-in-time correctness. This is the same target
+    Exercise 3.1 uses.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1.</span>
-    <p>Load every table and force the timestamp columns to proper datetimes
-       so we can do temporal filtering later.</p>
+    <p>Load the tables, parse the timestamp columns (they are stored as
+       strings) and derive the label from <code>los_days</code>. The label's
+       source columns are recorded at discharge, so they can never be
+       features.</p>
     <pre><code class="language-python">import polars as pl
 from shared import MLFPDataLoader
 
+FMT = "%Y-%m-%d %H:%M:%S"
 loader = MLFPDataLoader()
-patients    = loader.load("mlfp02", "icu_patients.parquet")
-admissions  = loader.load("mlfp02", "icu_admissions.parquet")
-vitals      = loader.load("mlfp02", "icu_vitals.parquet")
-medications = loader.load("mlfp02", "icu_medications.parquet")
-labs        = loader.load("mlfp02", "icu_labs.parquet")
+patients   = loader.load("mlfp02", "icu_patients.parquet")
+admissions = loader.load("mlfp02", "icu_admissions.parquet")
+vitals     = loader.load("mlfp02", "icu_vitals.parquet")
 
 admissions = admissions.with_columns(
-    pl.col("admit_time").str.to_datetime("%Y-%m-%d %H:%M:%S"),
-    pl.col("discharge_time").str.to_datetime("%Y-%m-%d %H:%M:%S"),
-)</code></pre>
+    pl.col("admit_time").str.to_datetime(FMT),
+    pl.col("discharge_time").str.to_datetime(FMT),
+    long_stay=(pl.col("los_days") > pl.col("los_days").median()).cast(pl.Int8),
+)
+vitals = vitals.with_columns(pl.col("timestamp").str.to_datetime(FMT))</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 2.</span>
     <p>Clip every vital reading to the first 24 hours of the admission it
        belongs to. This is where point-in-time correctness is enforced: a
-       vital recorded at hour 48 cannot be a feature for a hour-24 prediction.</p>
+       vital recorded at hour 48 cannot be a feature for an hour-24
+       prediction — and neither can one recorded <em>before</em> admission.</p>
     <pre><code class="language-python">vitals_24h = (
     vitals.join(admissions.select(["admission_id", "admit_time"]),
                 on="admission_id")
@@ -429,15 +450,32 @@ admissions = admissions.with_columns(
                   pl.col("timestamp") - pl.col("admit_time")
               ).dt.total_hours()
           )
-          .filter(pl.col("hours_since_admit") <= 24)
-)</code></pre>
+          .filter(pl.col("hours_since_admit").is_between(0, 24))
+)
+print(vitals.height, vitals_24h.height,
+      vitals_24h["admission_id"].n_unique())   # 69421 38 4</code></pre>
+    <p>
+      Look at that output before going further. Of 69,421 vital-sign rows,
+      only 38 fall inside the 24-hour window, covering 4 of 8,000
+      admissions. Exercise 3.1 counts the same thing per individual reading
+      (six vitals per row, unpivoted): only 198 of 416,526 readings fall in
+      the first 24 hours. Medications (14 admissions) and labs (17
+      admissions) are just as sparse. In this extract the event tables are
+      simply not time-aligned with the admissions, so <strong>the
+      first-24-hour features carry almost no signal</strong> — for all but
+      a handful of admissions they are empty and get imputed.
+      Exercise 3.1 runs the same <em>window audit</em> and reports it as a
+      data-quality finding. Catching this <em>before</em> modelling is the
+      whole point of the audit: in a real project you would go back and fix
+      the data feed.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3.</span>
-    <p>Aggregate the time-series into a fixed-shape summary per admission.
-       Mean, std, min, max of heart rate, systolic BP, SpO₂. This collapses
-       an irregular time series into a flat row.</p>
+    <p>Aggregate the time-series into a fixed-shape summary per admission:
+       mean, std, min and max of heart rate, systolic BP and SpO₂. This
+       collapses an irregular time-series into a flat row.</p>
     <pre><code class="language-python">vital_features = vitals_24h.group_by("admission_id").agg([
     pl.col("heart_rate").mean().alias("hr_mean"),
     pl.col("heart_rate").std().alias("hr_std"),
@@ -459,8 +497,8 @@ admissions = admissions.with_columns(
     <span class="step-label">Step 4.</span>
     <p>Engineer a domain-derived feature: the <strong>shock index</strong>,
        defined clinically as <em>heart rate divided by systolic BP</em>. A
-       value above 1 is a red flag for early sepsis. This single derived
-       feature often outperforms the two raw inputs.</p>
+       value above 1 is a red flag for shock. With good vitals coverage this
+       single derived feature often outperforms the two raw inputs.</p>
     <pre><code class="language-python">vital_features = vital_features.with_columns(
     shock_index=pl.col("hr_mean") / pl.col("sbp_mean")
 )</code></pre>
@@ -468,50 +506,84 @@ admissions = admissions.with_columns(
 
   <div class="step">
     <span class="step-label">Step 5.</span>
-    <p>Join everything onto the admission table to produce the final feature
-       matrix <code>X</code> and the label vector <code>y</code>.</p>
+    <p>Join everything onto the admission table. Then build <code>X</code>
+       from numeric columns only, explicitly excluding the IDs, the label and
+       the label's sources (<code>los_days</code>,
+       <code>discharge_time</code>).</p>
     <pre><code class="language-python">features = (
     admissions
       .join(patients,       on="patient_id",   how="left")
       .join(vital_features, on="admission_id", how="left")
 )
 
-y = features["died"].to_numpy()
-X = features.drop(["admission_id", "patient_id", "died",
-                   "admit_time", "discharge_time"])  # drop leaky cols</code></pre>
+LEAKY = ["los_days", "discharge_time", "long_stay"]   # label + its sources
+IDS   = ["admission_id", "patient_id", "admit_time"]
+numeric = [c for c, t in features.schema.items()
+           if t.is_numeric() and c not in LEAKY + IDS]
+
+y = features["long_stay"].to_numpy()
+X = features.select(numeric)   # age, height_cm, weight_kg, bmi, hr_mean, ...</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 6.</span>
-    <p>Apply all three feature-selection families and compare the rankings.</p>
-    <pre><code class="language-python">from sklearn.feature_selection import mutual_info_classif, RFE
+    <p>Split <em>first</em>. Learn the imputation values (medians) from the
+       training rows only, then run all three selection families on the
+       training split.</p>
+    <pre><code class="language-python">from sklearn.model_selection import train_test_split
+from sklearn.feature_selection import mutual_info_classif, RFE
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+
+idx_train, idx_test = train_test_split(
+    range(features.height), test_size=0.2, stratify=y, random_state=42)
+X_train, X_test = X[idx_train], X[idx_test]
+y_train, y_test = y[idx_train], y[idx_test]
+
+fill = {c: X_train[c].median() for c in X_train.columns}   # train only
+X_train = X_train.with_columns([pl.col(c).fill_null(v) for c, v in fill.items()])
+X_test  = X_test.with_columns([pl.col(c).fill_null(v) for c, v in fill.items()])
+cols, Xtr = X_train.columns, X_train.to_numpy()
 
 # 1) Filter: mutual information with the target
-mi = mutual_info_classif(X.to_numpy(), y, random_state=42)
-filter_top = sorted(zip(X.columns, mi), key=lambda t: -t[1])[:10]
+mi = mutual_info_classif(Xtr, y_train, random_state=42)
+filter_top = sorted(zip(cols, mi), key=lambda t: -t[1])[:5]
 
-# 2) Wrapper: recursive feature elimination with logistic regression
-rfe = RFE(LogisticRegression(max_iter=2000), n_features_to_select=10)
-rfe.fit(X.to_numpy(), y)
-wrapper_top = [c for c, keep in zip(X.columns, rfe.support_) if keep]
+# 2) Wrapper: RFE with logistic regression (scale first: LR needs
+#    comparable units)
+Xtr_scaled = StandardScaler().fit_transform(Xtr)
+rfe = RFE(LogisticRegression(max_iter=2000), n_features_to_select=5)
+rfe.fit(Xtr_scaled, y_train)
+wrapper_top = [c for c, keep in zip(cols, rfe.support_) if keep]
 
-# 3) Embedded: random forest feature importance
+# 3) Embedded: random-forest impurity importance
 rf = RandomForestClassifier(n_estimators=200, random_state=42)
-rf.fit(X.to_numpy(), y)
-embedded_top = sorted(zip(X.columns, rf.feature_importances_),
-                      key=lambda t: -t[1])[:10]</code></pre>
+rf.fit(Xtr, y_train)
+embedded_top = sorted(zip(cols, rf.feature_importances_),
+                      key=lambda t: -t[1])[:5]</code></pre>
   </div>
 
   <p>
-    The three rankings will not agree perfectly — and that is the point. The
-    filter method is fast but feature-blind to interactions. The wrapper
-    method tunes to logistic regression specifically. The embedded random-forest
-    importance captures non-linearities. In practice you use the
-    <em>intersection</em> (features that every method ranks highly) as a robust
-    core and the <em>union</em> (features any method ranks highly) as a
-    candidate set for hyperparameter tuning.
+    <strong>What you actually see.</strong> The three rankings disagree almost
+    completely. Every mutual-information score is below 0.02 nats — next to
+    nothing. RFE keeps five of the vital-sign columns, which are constant
+    (the imputed median) for all but a handful of rows. The random forest
+    puts <code>height_cm</code>, <code>weight_kg</code>, <code>bmi</code> and
+    <code>age</code> on top with roughly a quarter of the importance each —
+    not because they predict a long stay (their correlation with
+    <code>los_days</code> is about 0.01), but because impurity importance
+    favours continuous columns with many distinct split points.
+  </p>
+  <p>
+    That is the honest lesson of this dataset: when no feature carries
+    signal, the selection methods return <em>noise rankings</em>, and each
+    one is noisy in its own way. With real signal the methods agree much
+    more. In practice you use the <em>intersection</em> (features every
+    method ranks highly) as a robust core and the <em>union</em> as a
+    candidate set for tuning — and when the intersection is empty, as
+    here, you treat that as a warning that the data, not the model, is the
+    problem.
   </p>
 </div>
 
@@ -542,9 +614,12 @@ $$I(X; Y) \;=\; H(X) + H(Y) - H(X, Y) \;=\; H(Y) - H(Y \mid X)$$
   <p>
     A subtle property: $I(X; Y) = I(g(X); Y)$ for any invertible $g$. Scaling,
     log-transforming, or rank-transforming a feature does not change its MI
-    with the target. That is a property Pearson correlation does <em>not</em>
-    have, which is why an MI-based filter is robust to the unit of
-    measurement in a way that a correlation-based filter is not.
+    with the target. Pearson correlation is also unchanged by a change of
+    units (any affine map $aX + b$ with $a &gt; 0$), but it <em>does</em>
+    change under non-linear monotone transforms such as a log. So the
+    advantage of an MI filter is not unit-robustness: it is invariance to
+    monotone non-linear re-expressions of a feature, plus the ability to
+    detect non-linear dependence that correlation misses entirely.
   </p>
 </div>
 
@@ -557,9 +632,11 @@ $$I(X; Y) \;=\; H(X) + H(Y) - H(X, Y) \;=\; H(Y) - H(Y \mid X)$$
     A standard scaler learns the mean and std from its input. If you fit it
     on the combined train+test data before splitting, test-set statistics
     leak into the training features. Always fit the scaler on
-    <em>train only</em>, then transform both. <code>PreprocessingPipeline</code>
-    enforces this by default; sklearn's <code>Pipeline</code> does too. Doing
-    it by hand is where leakage creeps in.
+    <em>train only</em>, then transform both. sklearn's <code>Pipeline</code>
+    inside <code>cross_val_score</code> does this per fold. kailash-ml's
+    <code>PreprocessingPipeline.setup()</code> does <em>not</em>: it fits on
+    every row you hand it before it splits, so hold out the test rows first
+    and call <code>setup()</code> on the training rows only.
   </p>
 </div>
 
@@ -588,21 +665,26 @@ $$I(X; Y) \;=\; H(X) + H(Y) - H(X, Y) \;=\; H(Y) - H(Y \mid X)$$
 <h2>Try It Yourself</h2>
 
 <div class="try-it">
-  <h3>🎯 Exercise A — Geocode an HDB address into features</h3>
+  <h3>🎯 Exercise A — Medication features inside the window</h3>
   <p>
-    Start from the HDB resale table from Module 1. Write a function that
-    takes an address string and returns two features: distance to the nearest
-    MRT station and distance to the nearest primary school. Justify why each
-    of those numbers is a legitimate feature for a price-prediction model.
+    Load <code>icu_medications.parquet</code>, parse <code>start_time</code>,
+    and keep only doses that started between admission and hour 24. Build
+    three per-admission features: number of doses, number of distinct drugs,
+    and a 0/1 flag for any vasopressor (Norepinephrine or Dopamine). Join
+    them onto the admission table and fill admissions with no doses with 0.
+    Then explain why a dose that started at hour 20 and ended at hour 30
+    may count towards "number of doses" but its <em>duration</em> may not
+    be a feature.
   </p>
 </div>
 
 <div class="try-it">
   <h3>🎯 Exercise B — Spot three leaky features</h3>
   <p>
-    The ICU cohort has 30 raw columns. Make a list of every column, and for
-    each one answer: "is this known at hour 24 of admission?". Mark the three
-    most insidious leaky columns and explain why each one would inflate
+    The five ICU tables have 35 raw columns between them. Make a list of
+    every column, and for each one answer: "is this known at hour 24 of
+    admission?". Mark the leaky columns (the label's sources and every event
+    timestamped after hour 24) and explain how each one would inflate
     cross-validation scores.
   </p>
 </div>
@@ -612,8 +694,10 @@ $$I(X; Y) \;=\; H(X) + H(Y) - H(X, Y) \;=\; H(Y) - H(Y \mid X)$$
   <p>
     Run the filter / wrapper / embedded selection from the worked example and
     compute the intersection (features selected by all three) and the union
-    (features selected by at least one). Which features survive the
-    intersection? Which make the union only because of a single method?
+    (features selected by at least one). Then repeat with
+    <code>random_state</code> set to 0, 1 and 2 for the split. Which
+    rankings change? What does their instability tell you about how much
+    signal these features carry?
   </p>
 </div>
 
@@ -640,10 +724,11 @@ $$I(X; Y) \;=\; H(X) + H(Y) - H(X, Y) \;=\; H(Y) - H(Y \mid X)$$
   In 75 minutes you have learned the discipline that separates a working ML
   engineer from someone who only knows algorithms. You engineered features
   from a multi-table ICU dataset, enforced point-in-time correctness,
-  aggregated irregular time-series, derived a clinically meaningful index,
-  and compared three families of feature selection on the same data. You saw
-  that filter, wrapper, and embedded methods disagree in useful ways and that
-  the right move is usually to use all three.
+  audited how much data actually exists at prediction time, aggregated
+  irregular time-series, derived a clinically meaningful index, and compared
+  three families of feature selection on the same data. You saw that when
+  signal is weak the methods disagree, and that their disagreement is
+  itself evidence.
 </p>
 <p>
   More importantly, you internalised the single most valuable habit in ML:

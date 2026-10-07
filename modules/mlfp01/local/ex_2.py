@@ -31,8 +31,9 @@
 #   10. Method chaining — building analysis pipelines step by step
 #
 # DATASET: Singapore HDB resale flat transactions
-#   Source: Housing & Development Board (data.gov.sg)
-#   Rows: ~500,000 transactions | Columns: month, town, flat_type,
+#   Source: synthetic course dataset (hdb_resale.parquet) modelled on the
+#   public HDB resale records — the numbers are not real market data
+#   Rows: ~50,000 transactions | Columns: month, town, flat_type,
 #   floor_area_sqm, resale_price, and more
 #
 # ════════════════════════════════════════════════════════════════════════
@@ -242,6 +243,10 @@ mid_range = hdb.filter(pl.col("resale_price").is_between(400_000, 600_000))
 print(f"\nS$400k-600k (is_between): {mid_range.height:,}")
 
 # --- 4e: .is_null() and .is_not_null() ---
+# You've been making decisions with EXPRESSIONS (filters, and soon
+# pl.when/then). Python also has if/else STATEMENTS for decisions in
+# ordinary code — you'll learn them properly in Lesson 1.4. For now,
+# read `if nc > 0:` as "only do the next line when nc is above 0".
 for col_name in hdb.columns:
     nc = hdb[col_name].null_count()
     if nc > 0:
@@ -503,6 +508,9 @@ for row in tier_counts.iter_rows(named=True):
     )
 
 # --- 8b: Transaction era classification ---
+# Group each sale by WHEN it happened (its transaction year). This is not
+# the flat's age — that comes from lease_commence_date, the year the
+# flat's 99-year lease started.
 hdb = hdb.with_columns(
     pl.when(pl.col("year") <= 2015)
     .then(pl.lit("pre-2016"))
@@ -597,6 +605,7 @@ print(f"  Town: {middle_row['town']}, Type: {middle_row['flat_type']}")
 print(
     f"  Price: S${middle_row['resale_price']:,.0f}, Area: {middle_row['floor_area_sqm']:.0f} sqm"
 )
+print(f"  Column median for comparison: S${hdb['resale_price'].median():,.0f}")
 
 # ── Checkpoint 9 ─────────────────────────────────────────────────────
 assert (
@@ -710,10 +719,13 @@ for row in investment_report.head(15).iter_rows(named=True):
 
 # ── Checkpoint 10 ────────────────────────────────────────────────────
 assert recent_premium.height > 0, "recent_premium should have rows"
-assert top_towns.height > 0, "top_towns should have rows"
-assert annual_median.height > 0, "annual_median should have rows"
+assert recent_premium.height < hdb.height, "Chained filters should reduce row count"
+assert (
+    recent_premium["resale_price"][0] >= recent_premium["resale_price"][-1]
+), "DataFrame should be sorted descending by resale_price"
 assert investment_report.height > 0, "investment_report should have rows"
-print("\n✓ Checkpoint 10 passed — method chaining pipelines working\n")
+assert "cv_pct" in investment_report.columns, "cv_pct should be computed"
+print("\n✓ Checkpoint 10 passed — method chaining pipelines built correctly\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -724,18 +736,24 @@ print("  WHAT YOU'VE MASTERED")
 print("═" * 60)
 print(
     """
-  ✓ Single-condition filters: ==, !=, >, <, >=, <=
-  ✓ Compound filters: & (AND), | (OR), ~ (NOT)
-  ✓ Set membership: .is_in(), .is_between(), .is_null()
-  ✓ Column selection: .select(), .drop(), .rename()
-  ✓ Derived columns: .with_columns() + .alias()
-  ✓ Date parsing: .str.to_date(), .str.slice(), .dt.truncate()
-  ✓ Conditional columns: pl.when().then().otherwise()
-  ✓ Sorting: single key, multi-key, descending
-  ✓ Method chaining: building readable analysis pipelines
+  ✓ Dataset inspection: unique values, ranges, null counts before filtering
+  ✓ Boolean filters: pl.col() + comparison operators (==, >, <=, !=)
+  ✓ Compound filters: & for AND, | for OR, parentheses for grouping
+  ✓ Negation: ~ to invert a condition
+  ✓ Set membership: .is_in() for multi-value matching, .is_between() for ranges
+  ✓ Null handling: .is_null(), .is_not_null() for missing data checks
+  ✓ Column selection: .select() to keep, .drop() to remove
+  ✓ Column renaming: .rename({"old": "new"}) for clearer names
+  ✓ Feature engineering: .with_columns() + .alias() for new columns
+  ✓ Date parsing: str.to_date(), extracting year/month/quarter
+  ✓ Conditional logic: pl.when().then().otherwise() for categories
+  ✓ Sorting: single-key, multi-key, and by computed expressions
+  ✓ Method chaining: building readable analysis pipelines step by step
+  ✓ Investment analysis: volume, median, volatility, CV% by district
 
-  NEXT: In Exercise 3, you'll learn to write reusable functions
-  and aggregate data by groups using group_by() + agg(). This is
-  the foundation for all market analysis and reporting.
+  NEXT: In Exercise 3, you'll write Python functions and use
+  group_by() + agg() to compute statistics for every district
+  at once — instead of filtering one town at a time. You'll
+  also learn for loops to iterate over results and build reports.
 """
 )

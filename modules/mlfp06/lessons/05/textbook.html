@@ -39,23 +39,26 @@
   train a model, or check a fact. <strong>Agents</strong> give the LLM the ability
   to <em>act</em>: reason about a task, select a tool, execute it, observe the
   result, and iterate until the task is complete. Today you build a ReAct agent
-  using Kaizen that wraps Kailash's DataExplorer, TrainingPipeline, and
-  ModelVisualizer as tools — an autonomous data scientist that explores a dataset,
-  selects a model, trains it, and reports results. All under a cost budget that
-  prevents runaway LLM spending.
+  with Kaizen — a <code>Delegate</code> whose <code>ToolRegistry</code> holds
+  Python tools over the HotpotQA multi-hop question-answering dataset
+  (Exercise 5), plus a profiling tool backed by kailash-ml's
+  <code>DataExplorer</code>. The agent decides which tool to call and in what
+  order, you capture and read its real trace, and you bound it with a hard
+  turn ceiling and — on priced providers — a dollar budget.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Why This Matters</h2>
 
 <p>
-  A Singapore logistics company receives 200 datasets per quarter from port
-  authorities, customs, and carrier APIs. An analyst manually profiling each one
-  takes 30 minutes: load, inspect, check for nulls, visualise distributions,
-  try a baseline model. An agent does it in two minutes, including writing the
-  summary. More importantly, the agent applies the <em>same</em> methodology
-  every time — it never forgets to check for class imbalance or skips the
-  train-test split.
+  Picture (illustratively) an analytics team at a Singapore logistics firm
+  that receives dozens of new datasets each quarter. Profiling each one by
+  hand — load, inspect, check for nulls, look at distributions, try a
+  baseline — takes the better part of an hour. An agent with the right tools
+  can do the mechanical part in minutes and draft the summary. More
+  importantly, it applies the <em>same</em> checklist every time, because the
+  checklist lives in its tools and instructions rather than in someone's
+  memory.
 </p>
 
 <p>
@@ -63,8 +66,10 @@
   in a loop, hallucinate tool names, or present fabricated results as real.
   Today you learn the three components that make agents useful and safe:
   <strong>structured reasoning</strong> (ReAct), <strong>structured tool interfaces</strong>
-  (function calling), and <strong>cost budgets</strong> (per-agent
-  <code>budget_limit_usd</code> on the agent's config).
+  (function calling), and <strong>bounds</strong> — a turn ceiling
+  (<code>max_turns</code>) that works on every provider, and a dollar budget
+  (<code>budget_limit_usd</code>, passed when the agent is constructed) that
+  stops spend on priced providers.
 </p>
 
 <figure class="diagram">
@@ -96,7 +101,7 @@
   <text x="595" y="65" text-anchor="middle" font-weight="700" font-size="13" fill="#F59E0B">Agent (6.5)</text>
   <text x="595" y="85" text-anchor="middle" font-size="10" fill="#1E293B">LLM + reasoning loop</text>
   <text x="595" y="102" text-anchor="middle" font-size="10" fill="#1E293B">+ multiple tools</text>
-  <text x="595" y="119" text-anchor="middle" font-size="10" fill="#1E293B">+ cost budget</text>
+  <text x="595" y="119" text-anchor="middle" font-size="10" fill="#1E293B">+ turn / cost bounds</text>
 
   <!-- Capability labels -->
   <text x="130" y="160" text-anchor="middle" font-size="10" fill="#64748B">Cannot act</text>
@@ -158,8 +163,8 @@
   <!-- Thought -->
   <rect x="40" y="50" width="180" height="90" rx="10" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
   <text x="130" y="78" text-anchor="middle" font-weight="700" font-size="14" fill="#3B82F6">Thought</text>
-  <text x="130" y="98" text-anchor="middle" font-size="11" fill="#1E293B">"I need to check the</text>
-  <text x="130" y="114" text-anchor="middle" font-size="11" fill="#1E293B">class distribution first"</text>
+  <text x="130" y="98" text-anchor="middle" font-size="11" fill="#1E293B">"I need the mix of</text>
+  <text x="130" y="114" text-anchor="middle" font-size="11" fill="#1E293B">question types first"</text>
 
   <!-- Arrow T→A -->
   <line x1="225" y1="95" x2="265" y2="95" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-teal)"/>
@@ -167,8 +172,8 @@
   <!-- Action -->
   <rect x="270" y="50" width="180" height="90" rx="10" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
   <text x="360" y="78" text-anchor="middle" font-weight="700" font-size="14" fill="#F59E0B">Action</text>
-  <text x="360" y="98" text-anchor="middle" font-size="11" fill="#1E293B">explore_data(</text>
-  <text x="360" y="114" text-anchor="middle" font-size="11" fill="#1E293B">  dataset="churn.csv")</text>
+  <text x="360" y="98" text-anchor="middle" font-size="11" fill="#1E293B">run_query(</text>
+  <text x="360" y="114" text-anchor="middle" font-size="11" fill="#1E293B">  "count question types")</text>
 
   <!-- Arrow A→O -->
   <line x1="455" y1="95" x2="495" y2="95" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-teal)"/>
@@ -176,13 +181,13 @@
   <!-- Observation -->
   <rect x="500" y="50" width="180" height="90" rx="10" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
   <text x="590" y="78" text-anchor="middle" font-weight="700" font-size="14" fill="#22C55E">Observation</text>
-  <text x="590" y="98" text-anchor="middle" font-size="11" fill="#1E293B">shape=(5000, 12)</text>
-  <text x="590" y="114" text-anchor="middle" font-size="11" fill="#1E293B">target: 73% / 27%</text>
+  <text x="590" y="98" text-anchor="middle" font-size="11" fill="#1E293B">counts of bridge vs</text>
+  <text x="590" y="114" text-anchor="middle" font-size="11" fill="#1E293B">comparison questions</text>
 
   <!-- Loop arrow -->
   <path d="M 590 145 C 590 210 130 210 130 145" stroke="#94A3B8" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
   <polygon points="130,145 125,155 135,155" fill="#94A3B8"/>
-  <text x="360" y="200" text-anchor="middle" font-size="12" fill="#94A3B8" font-style="italic">loop until task complete or budget exhausted</text>
+  <text x="360" y="200" text-anchor="middle" font-size="12" fill="#94A3B8" font-style="italic">loop until task complete or a turn / budget ceiling is hit</text>
 
   <!-- Final answer box -->
   <rect x="250" y="230" width="220" height="40" rx="8" fill="#F0FDF4" stroke="#0D9488" stroke-width="2"/>
@@ -190,7 +195,7 @@
   <line x1="360" y1="210" x2="360" y2="225" stroke="#94A3B8" stroke-width="1.5"/>
   <polygon points="360,225 355,219 365,219" fill="#94A3B8"/>
 </svg>
-<figcaption>The ReAct loop interleaves reasoning (Thought) with tool calls (Action) and result processing (Observation). The loop continues until the agent has enough information to produce a final answer, or until the cost budget is exhausted.</figcaption>
+<figcaption>The ReAct loop interleaves reasoning (Thought) with tool calls (Action) and result processing (Observation). The loop continues until the agent has enough information to produce a final answer, or until it hits its turn ceiling (or, on a priced provider, its dollar budget).</figcaption>
 </figure>
 
 <div class="callout foundations">
@@ -288,9 +293,12 @@
     The quadratic cost growth explains why agents stuck in loops are expensive.
     A 10-step agent costs roughly $\frac{10 \cdot 11}{2} = 55$ "step-units" of
     input tokens. A 20-step agent (just double the steps) costs $\frac{20 \cdot 21}{2} = 210$
-    step-units — nearly 4x more. This is why every Kaizen agent declares a
-    <code>budget_limit_usd</code> on its config. Without a hard budget, a
-    confused agent can spend hundreds of dollars in minutes.
+    step-units — nearly 4x more. This is why every agent needs a hard bound:
+    a turn ceiling (<code>max_turns</code> on the Delegate) caps the number
+    of steps on any provider, and a dollar cap
+    (<code>BaseAgentConfig.budget_limit_usd</code>) caps priced spend.
+    Without a bound, a confused agent on a priced API keeps paying for a
+    growing context on every turn.
   </p>
 </div>
 
@@ -307,52 +315,80 @@
 
 <h3>Tool schema definition</h3>
 
-<pre><code class="language-python">tools = [
+<p>
+  A tool definition has three parts: a <strong>name</strong>, a
+  <strong>description</strong> the model reads to decide when to call it, and
+  a <strong>JSON Schema</strong> for its arguments. These are the schemas for
+  two of the Exercise 5 tools over HotpotQA (the shape every tool-capable chat
+  API expects):
+</p>
+
+<pre><code class="language-python">tool_schemas = [
     {
-        "type": "function",
-        "function": {
-            "name": "explore_data",
-            "description": "Load and profile a dataset. Returns shape, column types, null counts, and basic statistics.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "dataset": {
-                        "type": "string",
-                        "description": "Dataset filename (e.g. 'churn.csv')"
-                    },
-                    "show_distributions": {
-                        "type": "boolean",
-                        "description": "Whether to compute distribution stats",
-                        "default": False
-                    }
-                },
-                "required": ["dataset"]
-            }
-        }
+        "name": "search_documents",
+        "description": "Search the QA corpus for documents matching a keyword query.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Keywords to search for"},
+                "top_k": {"type": "integer", "description": "Maximum documents to return"},
+            },
+            "required": ["query"],
+        },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "train_model",
-            "description": "Train a classification model on the loaded dataset.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "algorithm": {
-                        "type": "string",
-                        "enum": ["logistic_regression", "random_forest", "gradient_boosting"],
-                        "description": "ML algorithm to use"
-                    },
-                    "target_column": {
-                        "type": "string",
-                        "description": "Name of the target variable"
-                    }
+        "name": "run_query",
+        "description": "Run a descriptive query against the QA dataset.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query_description": {
+                    "type": "string",
+                    "description": "e.g. 'count question types', 'find bridge-type questions'",
                 },
-                "required": ["algorithm", "target_column"]
-            }
-        }
-    }
+            },
+            "required": ["query_description"],
+        },
+    },
 ]</code></pre>
+
+<p>
+  In Kaizen a tool exists for the model only once it is
+  <strong>registered</strong> in a <code>ToolRegistry</code>: name,
+  description, schema, and an <em>async</em> executor that runs your code and
+  returns a string. Handing a <code>Delegate</code> a bare list of Python
+  functions registers nothing — the model then has no tools and simply
+  guesses.
+</p>
+
+<pre><code class="language-python">from kaizen_agents.delegate.loop import ToolRegistry
+from shared.mlfp06.ex_5 import load_hotpotqa, make_tools, run_query
+
+make_tools(load_hotpotqa())          # binds the HotpotQA frame to the tool functions
+
+
+async def run_query_tool(query_description: str) -> str:
+    return run_query(query_description)          # plain Python, returns text
+
+
+registry = ToolRegistry()
+registry.register(
+    name="run_query",
+    description="Run a descriptive query against the QA dataset.",
+    parameters={
+        "type": "object",
+        "properties": {"query_description": {"type": "string"}},
+        "required": ["query_description"],
+    },
+    executor=run_query_tool,
+)
+print(registry.tool_names)           # ['run_query']</code></pre>
+
+<p>
+  <code>shared.mlfp06.ex_5.build_tool_registry(tools)</code> does exactly this
+  for a list of functions, generating each schema from the function's
+  signature and the first line of its docstring.
+</p>
 
 <div class="callout foundations">
   <span class="label">Foundations</span>
@@ -370,7 +406,10 @@
 <h3>The tool_choice parameter</h3>
 
 <p>
-  You can control how aggressively the LLM uses tools:
+  Chat APIs that support function calling let the caller control how
+  aggressively the LLM uses tools. Kaizen's <code>Delegate</code> loop always
+  sends <code>"auto"</code> when tools are registered; the other settings are
+  part of the protocol you will meet when calling a provider API directly:
 </p>
 
 <table>
@@ -389,8 +428,11 @@
   Some LLM providers support parallel function calling — the LLM can request
   multiple tool calls in a single response. This is useful when the agent needs
   independent pieces of information simultaneously (e.g., profile two datasets
-  at once). Kaizen handles parallel calls automatically when the model supports
-  them.
+  at once). When one model turn contains several tool calls, the Kaizen
+  <code>Delegate</code> loop runs their executors concurrently
+  (<code>asyncio.gather</code>) and feeds all the results back in the next
+  turn. Whether the model <em>emits</em> several calls in one turn depends on
+  the model; small local models usually call one tool at a time.
 </p>
 
 <figure class="diagram">
@@ -423,7 +465,7 @@
   <rect x="430" y="160" width="210" height="30" rx="4" fill="#DCFCE7"/>
   <text x="535" y="180" text-anchor="middle" font-size="10" fill="#166534">1x LLM call = 1x cost</text>
 </svg>
-<figcaption>Parallel function calling reduces both cost and latency when tools are independent. Kaizen handles the concurrency.</figcaption>
+<figcaption>Parallel function calling reduces both cost and latency when tools are independent. The Delegate executes the calls of one turn concurrently.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -432,119 +474,178 @@
 <div class="callout kailash">
   <span class="label">Kailash Engine</span>
   <p>
-    Kaizen provides three agent types: <code>ReActAgent</code> (thought-action-observation
-    loop), <code>ChainOfThoughtAgent</code> (reason then answer, no tools), and
-    <code>BaseAgent</code> (build your own loop). All agents use
-    <code>Signature</code> for typed input/output, <code>Delegate</code> for
-    LLM communication, and declare <code>budget_limit_usd</code> on their
-    dataclass config to cap cumulative spend. The agent framework handles
-    prompt formatting, tool dispatch, error recovery, and streaming.
+    Three Kaizen building blocks cover this lesson. A <code>Delegate</code>
+    with a <code>ToolRegistry</code> <em>is</em> a ReAct loop: each model turn
+    either emits tool calls (Thought + Action), which the Delegate executes and
+    feeds back (Observation), or answers in plain text, which ends the loop.
+    <code>BaseAgent</code> + <code>Signature</code> gives typed inputs and
+    outputs for a single structured call (Exercise 5.3). And
+    <code>ChainOfThoughtAgent</code> (in <code>kaizen_agents.agents</code>)
+    reasons step by step <em>without</em> tools. Kaizen also ships a
+    <code>ReActAgent</code> class, but in the installed release its tool
+    executor dispatches only MCP tools, not Python functions — so for Python
+    tools the course uses the Delegate. In course code, always build the
+    Delegate with <code>make_delegate()</code> from
+    <code>shared.mlfp06._ollama_bootstrap</code>: it wires the local Ollama
+    adapter and takes the model from <code>OLLAMA_CHAT_MODEL</code>.
   </p>
 </div>
 
 <h3>Building a ReAct agent with Kaizen</h3>
 
-<pre><code class="language-python">from dataclasses import dataclass
-from kaizen import Signature, InputField, OutputField
-from kaizen.tools import tool
-from kaizen_agents.agents.specialized.react import ReActAgent
-from kailash_ml import DataExplorer, TrainingPipeline, ModelVisualizer
-import polars as pl
+<pre><code class="language-python">import polars as pl
+from kailash_ml import DataExplorer
+from shared.mlfp06._ollama_bootstrap import make_delegate
+from shared.mlfp06.ex_5 import build_tool_registry, load_hotpotqa, make_tools
 
-# Define typed signature
-class DataAnalysis(Signature):
-    """Analyse a dataset and recommend the best model."""
-    dataset_name: str = InputField(description="Name of the CSV file to analyse")
-    analysis_report: str = OutputField(description="Markdown report with findings")
-    recommended_model: str = OutputField(description="Best model and why")
+qa_data = load_hotpotqa()            # 500 HotpotQA rows: text, question, answer, level, type
+tools = make_tools(qa_data)          # data_summary, search_documents, run_query, answer_question
+registry = build_tool_registry(tools)
 
-# Define tools that wrap Kailash engines
-@tool
-def explore_data(dataset: str) -> dict:
-    """Load a dataset and return profiling statistics."""
-    from shared import MLFPDataLoader
-    loader = MLFPDataLoader()
-    df = loader.load("mlfp06", dataset)
-    explorer = DataExplorer()
-    profile = explorer.profile(df)
-    return {
-        "shape": str(df.shape),
-        "columns": df.columns,
-        "null_pct": profile.null_percentages,
-        "stats": profile.summary_stats,
-    }
 
-@tool
-def train_model(dataset: str, target: str, algorithm: str) -> dict:
-    """Train a model and return evaluation metrics."""
-    from shared import MLFPDataLoader
-    loader = MLFPDataLoader()
-    df = loader.load("mlfp06", dataset)
-    pipeline = TrainingPipeline(algorithm=algorithm)
-    result = pipeline.fit(df, target=target)
-    return {
-        "accuracy": result.metrics["accuracy"],
-        "f1": result.metrics["f1_score"],
-        "training_time_s": result.training_time,
-    }
+async def profile_dataset(dataset_name: str = "qa_data") -> str:
+    """Profile the QA dataset with kailash-ml's DataExplorer: rows, column types, alerts."""
+    profile = await DataExplorer().profile(qa_data)
+    lines = [f"{profile.n_rows} rows x {profile.n_columns} columns"]
+    lines += [f"{c.name}: {c.dtype}, nulls={c.null_pct:.1%}, unique={c.unique_count}"
+              for c in profile.columns]
+    lines += [f"alert: {a['type']} {a.get('column', '')}" for a in profile.alerts]
+    return "\n".join(lines)
 
-@tool
-def visualise_results(dataset: str, target: str) -> str:
-    """Generate a feature importance chart and return the file path."""
-    viz = ModelVisualizer()
-    path = viz.feature_importance(dataset, target, save_to="results/")
-    return f"Chart saved to {path}"
 
-# Dataclass config carries the model and the hard budget cap
-@dataclass
-class AnalystConfig:
-    model: str = "gpt-4o-mini"
-    budget_limit_usd: float = 2.00
-    max_iterations: int = 10
+registry.register(
+    name="profile_dataset",
+    description="Profile the QA dataset with DataExplorer: rows, column types, nulls, alerts.",
+    parameters={"type": "object", "properties": {"dataset_name": {"type": "string"}}, "required": []},
+    executor=profile_dataset,
+)
 
-# Subclass ReActAgent so the signature is bound at construction
-class AnalystAgent(ReActAgent):
-    def __init__(self, config: AnalystConfig):
-        super().__init__(
-            config=config,
-            signature=DataAnalysis(),
-            tools=[explore_data, train_model, visualise_results],
-        )
+agent = make_delegate(               # model from OLLAMA_CHAT_MODEL; no model= here
+    tools=registry,
+    system_prompt=(
+        "You are a research analyst working on the HotpotQA dataset. Use the tools "
+        "to gather evidence before you answer; do not invent numbers."
+    ),
+    max_turns=8,                     # hard ceiling on Thought-Action-Observation cycles
+)
+print(agent.tool_registry.tool_names)</code></pre>
 
-agent = AnalystAgent(AnalystConfig())</code></pre>
+<p>
+  The last line prints the five registered tool names
+  (<code>data_summary</code>, <code>search_documents</code>,
+  <code>run_query</code>, <code>answer_question</code>,
+  <code>profile_dataset</code>). Note that <code>DataExplorer.profile</code> is
+  a coroutine, so the executor <code>await</code>s it — executors are async
+  precisely so tools can do I/O and call other async engines.
+</p>
 
-<h3>Cost budget enforcement via <code>BaseAgentConfig.budget_limit_usd</code></h3>
+<div class="callout warning">
+  <span class="label">Caution — a tool that hands over the answer</span>
+  <p>
+    <code>answer_question</code> looks up the dataset's ground-truth answer for
+    a question. It is there so you can check the agent's work, but it also
+    means an agent can "answer" a HotpotQA question without reasoning at all.
+    When you want to see multi-hop reasoning, leave it out of the registry and
+    let the agent work from <code>search_documents</code>.
+  </p>
+</div>
 
-<pre><code class="language-python">from dataclasses import dataclass
-from kaizen.core.base_agent import BaseAgent
+<h3>Bounding the agent: <code>max_turns</code> and <code>budget_limit_usd</code></h3>
 
-# Budget is bound to the agent's config — no separate tracker.
-@dataclass
-class AnalystConfig:
-    model: str = "gpt-4o-mini"
-    budget_limit_usd: float = 2.00   # hard cap; agent degrades gracefully when exhausted
+<p>
+  Two different ceilings bound an agent, and they work in different places:
+</p>
 
-agent = AnalystAgent(AnalystConfig())
-result = await agent.run_async(dataset_name="sg_churn.csv")
+<ul>
+  <li><strong>Turn ceiling</strong> — <code>make_delegate(..., max_turns=N)</code>
+    stops the loop after $N$ model turns, whatever the model wants. It works on
+    every provider, including free local Ollama.</li>
+  <li><strong>Dollar cap</strong> — <code>BaseAgentConfig(budget_limit_usd=...)</code>
+    on a <code>BaseAgent</code> stops the agent once its <em>priced</em> spend
+    reaches the cap. It is only as good as the price table behind it: Kaizen
+    prices a local Ollama call at $0, so on this course's stack a dollar cap
+    can never trip (and <code>make_delegate()</code> deliberately sets the
+    Delegate's own <code>budget_usd</code> to <code>None</code>). On a hosted,
+    priced provider it is the control you want.</li>
+</ul>
 
-print(result["analysis_report"])
-print(f"Budget cap: ${agent.config.budget_limit_usd:.4f}")</code></pre>
+<pre><code class="language-python">from kaizen import InputField, OutputField, Signature
+from kaizen.core.base_agent import BaseAgent, BaseAgentConfig
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
+
+
+class BriefingSignature(Signature):
+    """Write a one-paragraph briefing from a dataset summary."""
+
+    dataset_summary: str = InputField(description="Statistical summary")
+    briefing: str = OutputField(description="One-paragraph briefing")
+
+
+def ollama_config(**extra) -> BaseAgentConfig:
+    return BaseAgentConfig(llm_provider="ollama", model=DEFAULT_CHAT_MODEL,
+                           base_url=OLLAMA_BASE_URL, use_async_llm=True, **extra)
+
+
+capped = BaseAgent(config=ollama_config(budget_limit_usd=0.10), signature=BriefingSignature())
+late = BaseAgent(config=ollama_config(), signature=BriefingSignature())
+late.config.budget_limit_usd = 0.10          # the trap: set after construction
+
+print(capped.execution_context.budget_limit)   # 0.1  -> enforced
+print(late.execution_context.budget_limit)     # None -> NOT enforced</code></pre>
 
 <div class="callout theory">
   <span class="label">Theory</span>
   <p>
-    Budget lives on the agent's config (<code>BaseAgentConfig.budget_limit_usd</code>),
-    not a separate tracker. Every LLM call routed through the agent's run
-    loop contributes to its cumulative spend; when the remaining budget drops
-    below the estimated cost of one more call, the agent receives a signal to
-    produce its final answer with whatever information it has gathered so far.
-    This is a <strong>graceful degradation</strong> — the agent does not
-    crash, it summarises partial results and explains what it could not
-    complete. Binding the budget to the agent's config makes it part of the
-    agent's operating envelope rather than a global variable — which, as
-    Lesson 6.7 will show, is exactly what PACT governance depends on.
+    <code>BaseAgent</code> copies <code>budget_limit_usd</code> into its
+    enforcement context only when it is constructed. Assigning
+    <code>agent.config.budget_limit_usd</code> afterwards changes the config
+    object but not the enforcement, so the agent runs uncapped — the snippet
+    above prints <code>0.1</code> and then <code>None</code> (both checked on
+    the installed Kaizen; no LLM call is made). Exercise 5.2 runs a tight
+    (<code>max_turns=2</code>) and a normal (<code>max_turns=12</code>) agent
+    on a deliberately expensive task and measures turns, tool calls and tokens
+    against each ceiling. Budgets attached to the agent are the
+    <em>agent layer</em> of its operating envelope; Lesson 6.7 adds the
+    <em>organisation layer</em>, where PACT bounds spend per role.
   </p>
 </div>
+
+<h3>Reasoning without tools: <code>ChainOfThoughtAgent</code></h3>
+
+<p>
+  When a task needs careful reasoning but no data access, Kaizen's
+  <code>ChainOfThoughtAgent</code> runs a fixed step-by-step reasoning
+  signature — five labelled steps (problem understanding, data
+  identification, analysis, verification, answer formulation), then a <code>final_answer</code> and a <code>confidence</code>
+  in [0, 1]. Its <code>run</code> method is synchronous and returns a dict.
+  Its defaults point at a hosted provider, so pass the local provider and
+  model explicitly. Like <code>BaseAgent.run_async</code>, it reports a failed
+  LLM call as a dict with an <code>error</code> key instead of raising (with
+  Ollama stopped it returns <code>{"error": "Missing required output field:
+  step1", ...}</code>), so check the result before using it:
+</p>
+
+<pre><code class="language-python">from kaizen_agents.agents import ChainOfThoughtAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL
+from shared.mlfp06.ex_5 import require_agent_result
+
+cot = ChainOfThoughtAgent(llm_provider="ollama", model=DEFAULT_CHAT_MODEL)
+result = cot.run(
+    problem="A bridge question needs facts from two documents. Why can a single "
+            "keyword search miss the second document?",
+)
+require_agent_result(result, "ChainOfThoughtAgent")   # failures come back as {"error": ...}
+for step in ("step1", "step2", "step3", "step4", "step5"):
+    print(step, "->", result.get(step, "")[:120])
+print("answer:", result.get("final_answer"), "| confidence:", result.get("confidence"))</code></pre>
+
+<p>
+  The chain-of-thought agent can only reason from what the model already
+  knows. Give it a question about <em>this</em> dataset ("how many comparison
+  questions are there?") and it will produce a confident, unverifiable number;
+  the ReAct agent calls <code>run_query</code> and reports the real count.
+  That contrast is the whole argument for tools.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Agent Design Framework</h2>
@@ -594,83 +695,97 @@ print(f"Budget cap: ${agent.config.budget_limit_usd:.4f}")</code></pre>
   <p>
     The specialist description becomes the agent's system prompt. A vague
     specialist ("you are a helpful assistant") produces unfocused behaviour. A
-    sharp specialist ("you are a senior data scientist at a Singapore logistics
-    firm, specialising in churn prediction using gradient boosting on tabular
-    data") produces targeted, domain-appropriate reasoning. The more specific
+    sharp specialist ("you are a research analyst for multi-hop question
+    answering: gather evidence from each document the question depends on
+    before answering, and never invent numbers") produces targeted,
+    domain-appropriate reasoning. The more specific
     the specialist, the fewer wasted tool calls.
   </p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Autonomous Data Analyst</h2>
+<h2>Worked Example: A Traced Research Agent on HotpotQA</h2>
 
 <div class="worked-example">
   <h3>Goal</h3>
   <p>
-    Build an agent that autonomously analyses Singapore telco customer churn
-    data: profiles the dataset, identifies class imbalance, trains three
-    candidate models, and recommends the best one — all within a $1.00 budget.
+    Run the tool-using agent built above on a multi-step task over the
+    HotpotQA dataset, capture its <em>real</em> trace with the course's
+    <code>LLMObservatory</code>, and judge its behaviour from the trace rather
+    than from its prose. This follows <code>ex_5/01_react_agent.py</code>. It
+    needs the Ollama daemon running with a tool-capable chat model
+    (<code>OLLAMA_CHAT_MODEL</code>, default <code>llama3.2:3b</code>); the code
+    uses top-level <code>await</code> as in a notebook cell.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1. Define the signature and tools.</span>
-    <p>We already defined these above. The key design decisions:</p>
+    <span class="step-label">Step 1. Design decisions.</span>
     <ul>
-      <li><strong>3 tools</strong> (explore, train, visualise) — enough to complete the task, few enough for reliable selection.</li>
-      <li><strong>Typed outputs</strong> — <code>analysis_report</code> (Markdown) and <code>recommended_model</code> (string) force structured results.</li>
-      <li><strong>Tool descriptions are precise</strong> — each says what it returns, not just what it does.</li>
+      <li><strong>Five focused tools</strong> — summary, keyword search, descriptive queries, ground-truth lookup, DataExplorer profile. Enough to finish the task, few enough for reliable selection.</li>
+      <li><strong>Precise descriptions</strong> — each tool's description says what it returns, because that is all the model sees.</li>
+      <li><strong>A turn ceiling</strong> — <code>max_turns=8</code>, so a confused model cannot loop indefinitely.</li>
+      <li><strong>A fresh agent per task</strong> — a Delegate keeps its conversation history between runs, so independent tasks get independent instances.</li>
     </ul>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2. Run the agent under a budget cap.</span>
-    <pre><code class="language-python"># Budget is a field on the agent's dataclass config — no standalone tracker.
-agent = AnalystAgent(AnalystConfig(budget_limit_usd=1.00))
+    <span class="step-label">Step 2. Run the task under trace capture.</span>
+    <pre><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
+from shared.mlfp06.ex_5 import require_llm_trace
 
-result = await agent.run_async(dataset_name="sg_telco_churn.csv")
+task = (
+    "Analyse the HotpotQA dataset: 1) profile it, 2) count question types and "
+    "difficulty levels, 3) search for documents relevant to this question: "
+    f"\"{qa_data['question'][0]}\", 4) write a short report of your findings."
+)
 
-print(result["analysis_report"])
-print(f"\nRecommended: {result['recommended_model']}")
-print(f"Budget cap: ${agent.config.budget_limit_usd:.4f}")</code></pre>
+obs = LLMObservatory(run_id="lesson_6_5_react")
+trace = await obs.agent.capture_run(agent, task, run_id="react_main")
+require_llm_trace(trace)                     # raises if the LLM call itself failed
+
+tool_order = [ev.tool for ev in trace.events if ev.kind == "tool_start"]
+answer = "".join(ev.content or "" for ev in trace.events if ev.kind == "token")
+print("tool order:", " -> ".join(tool_order) or "(none)")
+print("turns used:", agent.loop.usage.turns, "| tokens:", agent.loop.usage.total_tokens)
+print(answer[:600])</code></pre>
+    <p>
+      <code>require_llm_trace</code> matters: <code>Delegate.run</code> turns a
+      provider failure (daemon down, model not pulled) into an error
+      <em>event</em> rather than an exception, so without the check a failed run
+      looks like an empty but "successful" one.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 3. Observe the agent's trace.</span>
-    <p>A typical ReAct trace for this task looks like:</p>
-    <pre><code class="language-text">[Thought] I need to understand the dataset first. Let me profile it.
-[Action]  explore_data(dataset="sg_telco_churn.csv")
-[Observe] shape=(5000, 12), target "churned": 73% No / 27% Yes, 2% nulls in "tenure"
-
-[Thought] Class imbalance (73/27). I should use F1 as the metric, not accuracy.
-          Let me try three models: logistic regression, random forest, gradient boosting.
-[Action]  train_model(dataset="sg_telco_churn.csv", target="churned", algorithm="logistic_regression")
-[Observe] accuracy=0.78, f1=0.61, training_time=1.2s
-
-[Action]  train_model(dataset="sg_telco_churn.csv", target="churned", algorithm="random_forest")
-[Observe] accuracy=0.83, f1=0.72, training_time=3.4s
-
-[Action]  train_model(dataset="sg_telco_churn.csv", target="churned", algorithm="gradient_boosting")
-[Observe] accuracy=0.85, f1=0.76, training_time=5.1s
-
-[Thought] Gradient boosting wins on both accuracy (0.85) and F1 (0.76).
-          The F1 gap is significant: 0.76 vs 0.72 for random forest.
-          Let me generate the feature importance chart.
-[Action]  visualise_results(dataset="sg_telco_churn.csv", target="churned")
-[Observe] Chart saved to results/feature_importance.png
-
-[Answer]  Gradient boosting recommended. F1=0.76 on imbalanced data (73/27).
-          Top features: contract_length, monthly_charges, tenure.
-          Cost: $0.34 (6 LLM calls)</code></pre>
+    <span class="step-label">Step 3. Read the trace, not the prose.</span>
+    <pre><code class="language-python">print(obs.agent.tool_usage("react_main"))    # tool, calls, errors, mean_latency_ms, total_cost_usd
+loops = obs.agent.detect_loops("react_main")  # same tool + same args repeated
+print("stuck loops:", loops.height)</code></pre>
+    <p>
+      The exact tool order varies from run to run and model to model — that is
+      the point of an agent. What you look for is the <em>shape</em>:
+    </p>
+    <ul>
+      <li><strong>Good signals:</strong> general-to-specific order (profile or summary before search); every tool call's arguments match its schema; the final report uses all observations, and every number in it appears in some tool output.</li>
+      <li><strong>Bad signals:</strong> no tool calls at all (the model guessed — check that the tools are registered and the model is tool-capable); the same tool with identical arguments several times in a row (<code>detect_loops</code> reports it); numbers in the answer that no tool returned.</li>
+    </ul>
+    <p>
+      <code>total_cost_usd</code> in the tool-usage table is 0 on local Ollama.
+      Tokens are the real consumption measure: multiply
+      <code>agent.loop.usage.total_tokens</code> by your provider's price to
+      estimate what the same run would cost on a hosted model.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 4. Evaluate the agent's behaviour.</span>
     <p>
-      The agent made sensible decisions: it profiled first (not training blind),
-      recognised class imbalance, chose F1 over accuracy, compared three models,
-      and recommended the winner. Six LLM calls, $0.34, about 90 seconds
-      end-to-end. A human analyst would reach the same conclusion in 20-30
-      minutes.
+      Compare the report with the tool outputs line by line. A small local
+      model will usually call the right tools but may summarise loosely, mix up
+      counts, or stop early when it reaches the turn ceiling — all visible in
+      the trace. That is why Exercise 5.4 adds a critic agent that reviews the
+      draft and requests a revision, and why every number an agent reports
+      should be traceable to a tool call.
     </p>
   </div>
 </div>
@@ -682,25 +797,65 @@ print(f"Budget cap: ${agent.config.budget_limit_usd:.4f}")</code></pre>
 <p>
   A critic agent can review another agent's output and recommend improvements.
   The data analyst agent produces a report; a reviewer agent checks for missing
-  analyses, statistical errors, or unsupported conclusions. This is more reliable
-  than asking the same agent to self-critique.
+  analyses, statistical errors, or unsupported conclusions. A separate critic,
+  with its own instructions, catches errors the author's own framing hides.
+  Exercise 5.4 builds this loop from three <code>BaseAgent</code>s — analyst,
+  critic (whose signature returns <code>should_revise: bool</code>) and
+  refiner — and compares the initial and refined outputs.
 </p>
 
 <h3>Human-in-the-loop</h3>
 <p>
-  For high-stakes decisions, the agent can pause and request human approval
-  before proceeding. Kaizen supports this with checkpoint callbacks — the agent
-  emits a checkpoint event, the framework surfaces it to the user, and the agent
-  resumes only after approval. This is critical for financial applications where
-  MAS requires human oversight of AI-driven decisions.
+  For high-stakes or irreversible actions, the agent should pause and request
+  human approval before proceeding. In a tool-using agent the natural place
+  for that pause is the tool executor: the model may <em>propose</em> a call
+  that moves money or deletes data, but the executor only acts after an
+  approval callback says yes, and otherwise returns the refusal to the model
+  as the observation.
+</p>
+
+<pre><code class="language-python">from typing import Callable
+
+
+def gated(executor, approve: Callable[[str, dict], bool]):
+    """Wrap an async tool executor so it runs only after human approval."""
+    async def _run(**kwargs) -> str:
+        if not approve(executor.__name__, kwargs):
+            return f"REFUSED: a human reviewer did not approve {executor.__name__}({kwargs})"
+        return await executor(**kwargs)
+    return _run
+
+
+async def delete_records(table: str) -> str:
+    return f"deleted all rows in {table}"     # stands in for an irreversible action
+
+
+def ask_console(name: str, args: dict) -> bool:
+    return input(f"Approve {name}({args})? [y/N] ").strip().lower() == "y"
+
+
+safe_delete = gated(delete_records, ask_console)   # register safe_delete, never delete_records</code></pre>
+
+<p>
+  Kaizen also ships a <code>HumanApprovalAgent</code> with an
+  <code>approval_callback</code> parameter, but in the installed release its
+  <code>run_async</code> asks for approval of a placeholder decision without
+  calling the model, so it demonstrates the callback shape rather than a
+  working approval flow — the gated executor above is the pattern to use.
+  Financial supervisors, including MAS, expect firms to keep appropriate
+  human oversight over material AI-driven decisions; an approval gate is how
+  that expectation becomes code.
 </p>
 
 <h3>Monitoring and logging</h3>
 <p>
   Every agent step — thought, action, observation — should be logged for
   debugging and audit. Kaizen's <code>Delegate</code> emits streaming events
-  that you can capture in real time. This connects directly to the governance
-  audit trails in Lesson 6.7.
+  (text, tool start, tool end, completion, error), and
+  <code>LLMObservatory().agent.capture_run(delegate, prompt)</code> records
+  them as an <code>AgentTrace</code> that <code>tool_usage</code>,
+  <code>detect_loops</code> and <code>plot_trace</code> analyse. This connects
+  directly to the governance audit trails in Lesson 6.7.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -717,13 +872,15 @@ print(f"Budget cap: ${agent.config.budget_limit_usd:.4f}")</code></pre>
 </div>
 
 <div class="callout warning">
-  <span class="label">Mistake 2: No cost budget</span>
+  <span class="label">Mistake 2: No turn ceiling or budget</span>
   <p>
-    An agent stuck in a reasoning loop can spend hundreds of dollars in minutes.
-    Always set a hard budget via <code>budget_limit_usd</code> on the agent's
-    config. A good heuristic: estimate the expected number of steps, multiply
-    by 3x for safety, and compute the token cost. For most data analysis
-    tasks, $1-5 is sufficient.
+    An agent stuck in a reasoning loop keeps calling the model, and every turn
+    re-sends the growing context. Always set <code>max_turns</code>; on a priced
+    provider also pass <code>budget_limit_usd</code> <em>when the agent is
+    constructed</em> (setting it afterwards is not enforced). A good heuristic
+    for the turn ceiling: estimate the steps the task needs and allow about 3x.
+    Remember that on free local Ollama a dollar cap never trips — the turn
+    ceiling is the control that actually stops a loop there.
   </p>
 </div>
 
@@ -753,45 +910,177 @@ print(f"Budget cap: ${agent.config.budget_limit_usd:.4f}")</code></pre>
 <h2>Try It Yourself</h2>
 
 <div class="try-it">
-  <h3>Exercise A — Add a fourth tool</h3>
+  <h3>Exercise A — Add a tool and see whether the agent uses it</h3>
   <p>
-    Add a <code>check_correlations</code> tool that computes pairwise correlation
-    coefficients for all numeric columns in a dataset. The tool should return
-    the top 5 most correlated pairs. Then run the agent on the telco churn
-    dataset and observe whether it uses the new tool. Does it change the
-    agent's recommendation?
+    Add a <code>level_by_type</code> tool that returns a cross-tabulation of
+    question <code>type</code> (bridge / comparison) against difficulty
+    <code>level</code>. Register it, then ask the agent "Are comparison
+    questions harder than bridge questions?" and check in the trace whether it
+    called the new tool.
   </p>
+  <details>
+    <summary>Solution</summary>
+    <pre><code class="language-python">async def level_by_type(dataset_name: str = "qa_data") -> str:
+    """Cross-tabulate question type against difficulty level (row counts)."""
+    table = qa_data.group_by("type", "level").len().sort("type", "level")
+    return str(table)
+
+
+registry.register(
+    name="level_by_type",
+    description="Count HotpotQA questions by type (bridge/comparison) and difficulty level.",
+    parameters={"type": "object", "properties": {"dataset_name": {"type": "string"}}, "required": []},
+    executor=level_by_type,
+)
+agent_a = make_delegate(tools=registry, max_turns=6,
+                        system_prompt="Use the tools to gather evidence before you answer.")
+trace_a = await obs.agent.capture_run(
+    agent_a, "Are comparison questions harder than bridge questions?", run_id="ex_a")
+print(obs.agent.tool_usage("ex_a"))</code></pre>
+    <p>A tool-capable model should pick <code>level_by_type</code> because its
+    description names exactly the two columns the question is about — the
+    tool-usage table shows whether it did. If it calls
+    <code>run_query</code> instead, sharpen the description; that is the
+    "vague description" mistake in action. The answer itself must cite the
+    counts in the tool output; the dataset is a 500-question sample, so the
+    agent should say "in this sample".</p>
+  </details>
 </div>
 
 <div class="try-it">
-  <h3>Exercise B — Budget sensitivity</h3>
+  <h3>Exercise B — Turn-ceiling sensitivity</h3>
   <p>
-    Run the same agent with three different budgets: $0.20, $1.00, and $5.00.
-    Compare the quality of the analysis report at each budget level. At $0.20,
-    the agent should be forced to cut steps short. At $5.00, does it use the
-    extra budget productively or waste it on unnecessary tool calls?
+    Run the Step 2 task with three agents built with
+    <code>max_turns</code> = 2, 4 and 12. For each, record turns used, tool
+    calls, total tokens, and whether the run ended because of the ceiling.
+    (A dollar budget would be the same experiment on a priced provider; on
+    local Ollama it cannot trip.)
   </p>
+  <details>
+    <summary>Solution</summary>
+    <pre><code class="language-python">import polars as pl
+
+rows = []
+for ceiling in (2, 4, 12):
+    bounded = make_delegate(tools=registry, max_turns=ceiling,
+                            system_prompt="Use the tools, one step at a time, then report.")
+    tr = await obs.agent.capture_run(bounded, task, run_id=f"turns_{ceiling}")
+    require_llm_trace(tr)
+    steps = [ev for ev in tr.events if ev.kind in ("token", "tool_end", "error")]
+    used = bounded.loop.usage.turns
+    rows.append({
+        "max_turns": ceiling,
+        "turns_used": used,
+        "tool_calls": len(tr.filter_kind("tool_start")),
+        "tokens": bounded.loop.usage.total_tokens,
+        "hit_ceiling": used >= ceiling and bool(steps) and steps[-1].kind != "token",
+    })
+print(pl.DataFrame(rows))</code></pre>
+    <p><code>turns_used</code> never exceeds <code>max_turns</code> — the
+    ceiling holds whatever the model wants. With 2 turns the agent typically
+    stops mid-investigation (its last step is a tool call, not a written
+    answer), so <code>hit_ceiling</code> is <code>True</code>; with 12 it
+    usually finishes on its own and uses fewer than 12 turns. Tokens grow
+    faster than turns, because each turn re-sends the growing context — the
+    quadratic-cost argument from the Math Foundations section, measured.</p>
+  </details>
 </div>
 
 <div class="try-it">
-  <h3>Exercise C — Build a ChainOfThoughtAgent</h3>
+  <h3>Exercise C — ChainOfThoughtAgent versus the ReAct agent</h3>
   <p>
-    Create a <code>ChainOfThoughtAgent</code> (no tools) that answers the same
-    question: "What is the best model for the telco churn dataset?" Compare its
-    answer with the ReAct agent's answer. The CoT agent will reason from general
-    knowledge; the ReAct agent reasons from actual data. Which is more trustworthy?
+    Ask both agents "How many comparison questions are in this HotpotQA
+    sample, and what share of all questions is that?" Then compute the true
+    answer with polars. Which agent's answer can you trust, and why?
   </p>
+  <details>
+    <summary>Solution</summary>
+    <pre><code class="language-python">question = "How many comparison questions are in this HotpotQA sample, and what share of all questions is that?"
+
+cot_result = require_agent_result(cot.run(problem=question), "ChainOfThoughtAgent")
+react_agent = make_delegate(tools=registry, max_turns=6,
+                            system_prompt="Use the tools to gather evidence before you answer.")
+react_trace = await obs.agent.capture_run(react_agent, question, run_id="ex_c")
+react_answer = "".join(ev.content or "" for ev in react_trace.events if ev.kind == "token")
+
+n_comp = qa_data.filter(pl.col("type") == "comparison").height
+print("truth:", n_comp, f"({n_comp / qa_data.height:.0%} of {qa_data.height})")
+print("CoT:  ", cot_result.get("final_answer"))
+print("ReAct:", react_answer[:300])</code></pre>
+    <p>The chain-of-thought agent has never seen this sample, so whatever
+    number it gives is a guess dressed as reasoning — its
+    <code>confidence</code> field does not change that. The ReAct agent can
+    call <code>run_query("count question types")</code> and quote the real
+    count, which you can check against the polars line. Trust comes from the
+    trace: an answer is only as good as the tool output behind it.</p>
+  </details>
 </div>
 
 <div class="try-it">
-  <h3>Exercise D — Singapore context</h3>
+  <h3>Exercise D — Singapore context: an HDB resale analyst</h3>
   <p>
-    Build a ReAct agent for HDB resale price analysis. Define tools for loading
-    the HDB resale dataset (50,000 Singapore property transactions), computing
-    price statistics by town, and training a regression model. The agent should
-    autonomously identify the most expensive town and the best predictors of
-    resale price.
+    Build a tool-using agent over the course's <em>synthetic</em> HDB resale
+    teaching dataset (Module 1; 50,150 rows, 2015–2024). Give it two tools —
+    median resale price by town, and a DataExplorer profile — and ask it which
+    town has the highest median price and which columns have data-quality
+    alerts.
   </p>
+  <details>
+    <summary>Solution</summary>
+    <pre><code class="language-python">import polars as pl
+from kailash_ml import DataExplorer
+from kaizen_agents.delegate.loop import ToolRegistry
+from shared import MLFPDataLoader
+from shared.mlfp06._ollama_bootstrap import make_delegate
+
+hdb = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+
+
+async def median_price_by_town(top_n: int = 5) -> str:
+    table = (hdb.group_by("town")
+                .agg(pl.col("resale_price").median().alias("median_price"), pl.len().alias("sales"))
+                .sort("median_price", descending=True)
+                .head(int(top_n)))
+    return str(table)
+
+
+async def profile_hdb(dataset_name: str = "hdb_resale") -> str:
+    profile = await DataExplorer().profile(hdb)
+    return "\n".join(f"{a['type']}: {a.get('column', '')}" for a in profile.alerts)
+
+
+hdb_tools = ToolRegistry()
+hdb_tools.register(name="median_price_by_town",
+                   description="Top towns by median HDB resale price, with number of sales.",
+                   parameters={"type": "object", "properties": {"top_n": {"type": "integer"}}, "required": []},
+                   executor=median_price_by_town)
+hdb_tools.register(name="profile_hdb",
+                   description="Data-quality alerts for the HDB resale dataset (DataExplorer).",
+                   parameters={"type": "object", "properties": {"dataset_name": {"type": "string"}}, "required": []},
+                   executor=profile_hdb)
+
+hdb_agent = make_delegate(tools=hdb_tools, max_turns=6,
+                          system_prompt="You are an HDB resale analyst. Use the tools; never invent prices.")
+hdb_trace = await obs.agent.capture_run(
+    hdb_agent, "Which town has the highest median resale price, and which columns "
+               "have data-quality alerts?", run_id="ex_d")
+print(await median_price_by_town(3))     # the ground truth to check the agent against</code></pre>
+    <p>Running <code>median_price_by_town(3)</code> directly on the course
+    file gives Toa Payoh (median S$973,887 over 1,463 sales), then
+    Kallang/Whampoa and Bukit Timah — these are figures from the synthetic
+    teaching data, not real HDB prices. The agent's answer is correct only if
+    it names the same town and reports the alerts the profile actually
+    returned — for this file, a highly skewed <code>resale_price</code>,
+    duplicate rows, and several imbalanced categorical columns
+    (<code>town</code>, <code>flat_type</code>, <code>storey_range</code>,
+    <code>flat_model</code>). Notice what the profile does <em>not</em> flag:
+    the impossible S$10 prices you found in Module 1 need an explicit range
+    check, so an agent that claims "no data-quality problems" from this tool
+    alone is over-reaching. A regression tool (the M3
+    <code>TrainingPipeline</code>) is the natural third tool; keep it out
+    until you have split train and test data before any preprocessing, as
+    Module 3 requires.</p>
+  </details>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -802,16 +1091,20 @@ print(f"Budget cap: ${agent.config.budget_limit_usd:.4f}")</code></pre>
   engineering at scale — every design decision about the specialist description,
   tool descriptions, and output format is prompt engineering.
   <br>
-  <strong>6.4 RAG:</strong> RAG agents use retrieval as a tool. The
-  <code>RAGResearchAgent</code> is a ReAct agent where the primary tool is
-  vector search.
+  <strong>6.4 RAG:</strong> retrieval can become one tool among several — wrap
+  the 6.4 hybrid retriever in an executor and the agent decides when to search
+  and when it has enough. Kaizen's packaged <code>RAGResearchAgent</code>
+  instead always retrieves first and then answers, with no choice of tools.
   <br>
   <strong>6.6 Multi-agent:</strong> single agents compose into orchestrated
   teams — the supervisor-worker pattern delegates subtasks to specialised
   ReAct agents.
   <br>
-  <strong>6.7 Governance:</strong> <code>GovernedSupervisor</code> wraps any
-  Kaizen agent with access controls, operating envelopes, and audit logging.
+  <strong>6.7 Governance:</strong> <code>GovernedSupervisor</code> is not a
+  wrapper around an existing agent: it is a planner that breaks an objective
+  into steps and runs each through your <code>execute_node</code> callback,
+  under an operating envelope with budget tracking and an audit trail. The
+  agent-level bounds from this lesson become one layer of that envelope.
   <br>
   <strong>5.8 RL:</strong> the ReAct loop is conceptually similar to an RL
   agent's interaction with an environment — state, action, reward, repeat.
@@ -824,8 +1117,10 @@ print(f"Budget cap: ${agent.config.budget_limit_usd:.4f}")</code></pre>
   You have built your first autonomous AI agent — a system that reasons about
   a task, selects and calls tools, observes results, and iterates until it has
   an answer. The three critical components are the ReAct loop (structured
-  reasoning), function calling (structured tool interfaces), and cost budgets
-  (structured safety).
+  reasoning), function calling (structured tool interfaces), and bounds — a
+  turn ceiling everywhere, a construction-time dollar budget on priced
+  providers (structured safety). And you have learned to judge an agent by its
+  trace, not by how convincing its prose sounds.
 </p>
 <p>
   The agent design framework — goal, process, specialist, tools — is more

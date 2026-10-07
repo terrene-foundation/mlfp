@@ -22,7 +22,7 @@
 #   2. Build — three synthetic populations (Exponential, Uniform, Bimodal)
 #   3. Train — run CLT simulations at different sample sizes
 #   4. Visualise — CLT sampling distributions and Bessel's correction
-#   5. Apply — MAS quarterly GDP volatility reporting
+#   5. Apply — honest error bands on reported average GDP growth
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -290,20 +290,19 @@ print("\n--- Checkpoint 4 passed --- CLT visualisation saved\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: MAS Quarterly GDP Volatility Reporting
+# TASK 5 — APPLY: Reporting Average GDP Growth with Honest Error Bands
 # ════════════════════════════════════════════════════════════════════════
-# The Monetary Authority of Singapore (MAS) publishes quarterly GDP
-# statistics. When the macro team reports "GDP growth was 3.2% +/- 0.8%",
-# what does the +/- mean?
+# Singapore publishes official quarterly GDP growth figures. When a
+# macro research team (illustrative) reports "average growth was
+# 3.9% +/- 0.8%", what does the +/- mean?
 #
 # With n quarters of data, CLT tells us the standard error of the mean
 # is sigma / sqrt(n). This determines how precisely we know the
-# average growth rate. The Bessel correction matters because with
-# only ~40-60 quarterly observations, the naive MLE underestimates
-# volatility by ~2%, which compounds into misleading confidence bands
-# in the GDP fan chart.
+# AVERAGE growth rate. Bessel's correction (ddof=1) widens sigma by the
+# factor sqrt(n / (n - 1)) — small for a long series, large for a short
+# one. The code below measures both.
 
-print(f"\n=== APPLY: MAS GDP Volatility Reporting ===")
+print(f"\n=== APPLY: Average GDP Growth — Error Bands ===")
 
 sigma_mle = gdp_growth.std(ddof=0)
 sigma_unbiased = gdp_growth.std(ddof=1)
@@ -318,16 +317,22 @@ print(
     f"({(sigma_unbiased - sigma_mle) / sigma_mle * 100:.2f}% wider)"
 )
 print(
-    f"\nFor MAS fan chart: 95% CI for mean growth = "
+    f"\n95% CI for MEAN quarterly growth = "
     f"[{gdp_growth.mean() - 1.96 * se_unbiased:.2f}%, "
     f"{gdp_growth.mean() + 1.96 * se_unbiased:.2f}%]"
 )
-print("Using the biased MLE would produce a CI that is too narrow,")
-print("giving policymakers false confidence in the growth forecast.")
+short_n = 8
+short_widening = (np.sqrt(short_n / (short_n - 1)) - 1) * 100
+print(
+    f"With n={n_gdp} the ddof=0 vs ddof=1 gap is small; with only "
+    f"{short_n} quarters it would be {short_widening:.1f}% — use ddof=1 for short series."
+)
+print("Note: this band is for the AVERAGE growth rate, not a forecast range")
+print("for next quarter — that needs sigma itself, not sigma / sqrt(n).")
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
 assert sigma_unbiased > sigma_mle, "Unbiased sigma must exceed MLE sigma"
-print("\n--- Checkpoint 5 passed --- MAS application complete\n")
+print("\n--- Checkpoint 5 passed --- GDP error-band application complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -343,7 +348,7 @@ print(
   - Central Limit Theorem: x-bar -> Normal regardless of population
     shape, demonstrated for Exponential, Uniform, and Bimodal
   - Shapiro-Wilk test to assess normality before fitting models
-  - Real-world impact: MAS GDP reporting with correct volatility bands
+  - Real-world impact: honest error bands on reported average growth
 
   NEXT: In 02_mle_fisher.py, you'll write and optimise a log-likelihood
   function using scipy.optimize, then compute standard errors from the

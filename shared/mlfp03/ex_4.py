@@ -27,10 +27,10 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from kailash_ml import PreprocessingPipeline
 from kailash_ml.interop import to_sklearn_input
 
 from shared.data_loader import MLFPDataLoader
+from shared.kailash_helpers import split_then_preprocess
 
 # ════════════════════════════════════════════════════════════════════════
 # CONFIG — output directory, random seeds, dataset tag
@@ -40,6 +40,15 @@ SEED = 42
 DATASET_MODULE = "mlfp02"
 DATASET_FILE = "sg_credit_scoring.parquet"
 TARGET_COLUMN = "default"
+
+# Columns that MUST NOT be model inputs (Lesson 3.1 leakage rule):
+#   customer_id              — a row identifier, not a property of the applicant
+#   future_default_indicator — recorded AFTER the loan outcome is known; it
+#                              agrees with ``default`` on ~99% of rows, so a
+#                              model that sees it "predicts" default by
+#                              reading the answer.
+# ``screen_single_feature_leakage`` below is the EDA check that exposes it.
+CREDIT_NON_FEATURE_COLUMNS: tuple[str, ...] = ("customer_id", "future_default_indicator")
 
 OUTPUT_DIR = Path("outputs") / "mlfp03" / "ex_4_boosting"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -56,6 +65,37 @@ def load_credit_data() -> pl.DataFrame:
     return loader.load(DATASET_MODULE, DATASET_FILE)
 
 
+def screen_single_feature_leakage(
+    df: pl.DataFrame,
+    target: str = TARGET_COLUMN,
+    *,
+    flag_auc: float = 0.95,
+) -> pl.DataFrame:
+    """EDA leakage screen: how well does EACH numeric column alone rank the target?
+
+    A legitimate credit feature on its own rarely exceeds AUC ~0.75. A column
+    that separates defaulters almost perfectly by itself is almost always
+    information recorded after the outcome (or the outcome in disguise).
+
+    Returns a polars DataFrame (feature, single_feature_auc, suspicious)
+    sorted by AUC, where AUC is orientation-free (max(auc, 1 - auc)).
+    """
+    y = df[target].to_numpy()
+    rows: list[dict[str, Any]] = []
+    for col, dtype in df.schema.items():
+        if col == target or not dtype.is_numeric():
+            continue
+        x = df[col].fill_null(df[col].median()).to_numpy().astype(float)
+        if np.unique(x).size < 2:
+            continue
+        auc = float(roc_auc_score(y, x))
+        auc = max(auc, 1.0 - auc)
+        rows.append(
+            {"feature": col, "single_feature_auc": auc, "suspicious": auc >= flag_auc}
+        )
+    return pl.DataFrame(rows).sort("single_feature_auc", descending=True)
+
+
 def prepare_credit_split() -> dict[str, Any]:
     """Load credit data and return a train/test split ready for boosting.
 
@@ -64,18 +104,24 @@ def prepare_credit_split() -> dict[str, Any]:
       feature_names                    : list[str]
       default_rate                     : float (positive-class prevalence)
 
+    ``CREDIT_NON_FEATURE_COLUMNS`` (the row ID and the post-outcome leak
+    column) are dropped BEFORE preprocessing so no model in this exercise
+    can see them.
+
     Tree models do not need normalisation, so we set ``normalize=False``.
     Categoricals are ordinal-encoded because XGBoost/LightGBM expect numeric
     input; CatBoost would accept raw categoricals but we keep the pipeline
     consistent across all three libraries for a fair comparison.
     """
-    credit = load_credit_data()
+    credit = load_credit_data().drop(CREDIT_NON_FEATURE_COLUMNS)
 
-    pipeline = PreprocessingPipeline()
-    result = pipeline.setup(
-        data=credit,
+    # Split FIRST, then fit imputation/encoding on the training rows only:
+    # PreprocessingPipeline.setup() on the whole frame would fit them on the
+    # test rows too (it splits only after fitting).
+    result = split_then_preprocess(
+        credit,
         target=TARGET_COLUMN,
-        train_size=0.8,
+        test_size=0.2,
         seed=SEED,
         normalize=False,
         categorical_encoding="ordinal",
@@ -102,6 +148,31 @@ def prepare_credit_split() -> dict[str, Any]:
         "feature_names": col_info["feature_columns"],
         "default_rate": float(credit[TARGET_COLUMN].mean()),
     }
+
+
+def categorical_feature_indices(feature_names: list[str]) -> list[int]:
+    """Column indices (in ``feature_names``) of the dataset's string categoricals.
+
+    ``prepare_credit_split`` ordinal-encodes these (gender, race, region,
+    loan_purpose, ...). CatBoost can instead treat them as true categories.
+    """
+    schema = load_credit_data().schema
+    return [
+        i for i, name in enumerate(feature_names) if schema.get(name) == pl.String
+    ]
+
+
+def as_catboost_categoricals(X: np.ndarray, cat_idx: list[int]) -> np.ndarray:
+    """Return an object array where the categorical columns hold integer codes.
+
+    CatBoost refuses float-valued categorical columns; integer codes (or
+    strings) are accepted and treated as unordered categories, so the
+    arbitrary ordinal order no longer matters.
+    """
+    out = X.astype(object)
+    for i in cat_idx:
+        out[:, i] = X[:, i].astype(int)
+    return out
 
 
 # ════════════════════════════════════════════════════════════════════════

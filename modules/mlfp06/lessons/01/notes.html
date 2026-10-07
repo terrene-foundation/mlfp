@@ -83,7 +83,7 @@
 <!-- Slide 2 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 2</span><span>~2 min</span><span>Module arc</span></div>
-  <h3>Where M6 starts — and ends</h3>
+  <h3>Where Module 6 starts — and ends</h3>
   <p>
     Walk them through the arc in 30 seconds each. Name each future lesson
     by number: 6.2 LoRA, 6.3 DPO, 6.4 RAG, 6.5 agents, 6.6 multi-agent
@@ -152,8 +152,10 @@
   <h3>Tokenisation — you pay per token</h3>
   <p>
     Walk the diagram. Text → subword tokens → integer IDs. The integers
-    are what actually enters the transformer. "Singapore" is one token in
-    most vocabularies; "HDB" is usually two or three.
+    are what actually enters the transformer. The slide shows the
+    cl100k_base BPE tokenizer: a rare name like "Jurong" splits into
+    sub-words ("Jur", "ong"), while a common word like "Singapore" is a
+    single token.
   </p>
   <p>
     Hammer the rule of thumb: 1 token ≈ 0.75 words ≈ 4 characters. They
@@ -188,17 +190,20 @@
 <!-- Slide 7 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 7</span><span>~2 min</span><span>Strategy table</span></div>
-  <h3>Four baseline prompting strategies</h3>
+  <h3>Five baseline prompting strategies</h3>
   <p>
     Walk the table. Zero-shot is cheapest. Few-shot adds examples.
-    Chain-of-thought adds reasoning tokens. Self-consistency runs N CoT
-    chains and votes. Each one typically trades more cost for more
-    accuracy — but not always.
+    Chain-of-thought adds reasoning tokens. Zero-shot CoT gets the same
+    effect from one appended phrase — no hand-written steps.
+    Self-consistency runs N CoT chains and votes. Each one typically
+    trades more cost for more accuracy — but not always.
   </p>
   <p>
     Flag the catch: "self-consistency only helps when the majority is
     actually right. On tasks where all your chains are wrong in the
-    same way, voting amplifies the error."
+    same way, voting amplifies the error." Then point at the footer:
+    Exercise 1 runs all five (files 01–05) on the same 20 SST-2
+    movie-review snippets, then adds typed output (06).
   </p>
   <div class="transition">→ "Zero-shot — the default."</div>
 </div>
@@ -293,15 +298,21 @@
   <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Delegate</span></div>
   <h3>Kaizen <code>Delegate</code> — the LLM primitive</h3>
   <p>
-    This is the first code they will write. Walk it line by line. "Pick
-    a model. Set a budget — this is not optional, it is the difference
-    between a bug and a bill. Call <code>.run(prompt)</code> and iterate
-    asynchronously. Accumulate the text from the events."
+    This is the first code they will write. Walk it line by line.
+    "Build the delegate with <code>make_delegate(temperature=0.0)</code>
+    — no <code>model=</code> argument, because the model comes from
+    <code>OLLAMA_CHAT_MODEL</code> (default llama3.2:3b). Call
+    <code>.run(prompt)</code> and iterate the events asynchronously.
+    Accumulate the text deltas; the turn-complete event carries the
+    token usage."
   </p>
   <p>
-    Mention provider neutrality: the same code works for OpenAI,
-    Anthropic, Ollama, local models. The model string is the only thing
-    that changes.
+    On accounting: "Count tokens on every call. Local Ollama is free,
+    so a dollar cap cannot trip here — <code>make_delegate</code> sets
+    <code>budget_usd=None</code>. On a priced provider,
+    <code>Delegate(budget_usd=…)</code> is the hard cap." The same
+    streaming interface works for hosted and local models — this course
+    runs every call on local Ollama.
   </p>
   <div class="audience-cue beginner">
     <strong>If async feels scary:</strong> "Inside a notebook or main
@@ -341,15 +352,20 @@
   <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Agent call</span></div>
   <h3>Using the signature</h3>
   <p>
-    Walk the code. "Create a <code>SimpleQAAgent</code> with the
-    signature class. Await its <code>.run()</code> with the input field
-    as a kwarg. You get a Python object back, not a string."
+    Walk the code. "Create a <code>BaseAgent</code> with an Ollama
+    config — provider, model from <code>DEFAULT_CHAT_MODEL</code>,
+    base URL, <code>use_async_llm=True</code>, and the JSON
+    structured-output mode — plus an instance of the signature class.
+    Await <code>.run_async(review_text=…)</code> with the input field
+    as a kwarg. You get a dict keyed by field name, not a string."
   </p>
   <p>
     Point out the two post-processing lines — the float threshold and
     the list iteration — and emphasise that <em>neither line requires
     parsing</em>. They are native Python operations on a typed object.
-    That is the production win.
+    That is the production win. And stress the contract: "Exercise 1.6
+    <em>raises</em> if any field is missing — no silent placeholder
+    values. A missing field is a bug to surface, not to paper over."
   </p>
   <div class="transition">→ "But what does it cost?"</div>
 </div>
@@ -359,16 +375,21 @@
   <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Cost model</span></div>
   <h3>Cost model</h3>
   <p>
-    Read the formula. Walk the price table. The headline number is "output
-    tokens cost 4× input tokens". This is why CoT is expensive — you are
-    paying the 4× rate for the reasoning prefix.
+    Read the formula. Walk the price table — and say clearly that the
+    prices are illustrative: "A local model on Ollama — what this course
+    runs — costs $0 in both columns. A hosted small model is roughly
+    $0.15 in / $0.60 out per million tokens; a hosted frontier model
+    roughly $3 / $15. Check your provider's price list before sizing a
+    real deployment."
   </p>
   <p>
-    Give them a mental calculation: "One classification call is ~1000
-    input tokens + 5 output tokens. On gpt-4o-mini that is $0.00015 +
-    $0.000003 = roughly $0.00015. Ten thousand classifications is $1.50.
-    A million is $150. Keep those numbers in your head; they keep you
-    honest."
+    The headline ratio: "hosted providers typically charge 4–5× more
+    per output token than per input token. This is why CoT is expensive
+    — you are paying the output rate for the reasoning prefix."
+    Then the course accounting: "Exercise 1 measures tokens per
+    technique and converts them at one illustrative blended rate
+    ($0.50 / 1M). On Ollama the real dollar cost is zero — the token
+    count is what carries over to any priced provider."
   </p>
   <div class="transition">→ "And temperature."</div>
 </div>
@@ -395,10 +416,13 @@
 <!-- Slide 17 -->
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Worked example</span></div>
-  <h3>Worked example — 10 Singapore reports</h3>
+  <h3>Worked example — 10 SST-2 reviews, three prompts</h3>
   <p>
-    Walk the code. Load the dataset. Iterate the sample. Call three
-    classifiers per row. Build a comparison DataFrame. Print it.
+    Walk the code. Load the eval docs with
+    <code>get_eval_docs().head(10)</code> — SST-2 snippets with a gold
+    label. Iterate the sample. Call three classifiers per row — each
+    returns its label plus token and latency accounting. Build a
+    comparison DataFrame. Print it.
   </p>
   <p>
     Stop and point out the practical pattern they should remember:
@@ -422,10 +446,11 @@
   <p>
     Walk each one. Mistake 1 (parsing free-form text) is the reason
     Signatures exist. Mistake 2 (batched answers) is the most common
-    "helpful optimisation that actually hurts". Mistake 3 (no budget)
-    is the one that has cost someone you know real money. Mistake 4
-    ("T=0 is deterministic") is a myth that surprises people during
-    audits.
+    "helpful optimisation that actually hurts". Mistake 3 (no spend
+    control <em>on a priced provider</em>) is the one that runs up a
+    real bill overnight — cap turns and set a budget when you move off
+    local Ollama. Mistake 4 ("T=0 is deterministic") is a myth that
+    surprises people during audits.
   </p>
   <p>
     Give them the takeaway: "<em>Signature, async, budget, logging.</em>
@@ -453,11 +478,12 @@
   </p>
   <p>
     Take 5 minutes for questions. The most common ones after 6.1 are:
-    "Which provider should I use?" (any — the code is the same), "How
-    do I know if my prompt is good?" (measure on a holdout set, that is
-    the only answer), and "Can I just use ChatGPT instead?" (you can,
-    but you cannot build products that way because there is no budget
-    control, no structured output, no audit trail).
+    "Which provider should I use?" (any — the code is the same, the
+    config changes), "How do I know if my prompt is good?" (measure on
+    a holdout set, that is the only answer), and "Can I just use a
+    hosted chat app instead?" (for a one-off answer, yes — but you
+    cannot build products that way: no token accounting, no structured
+    output, no audit trail).
   </p>
   <div class="transition">→ End of Lesson 6.1. Take a 5-minute break.</div>
 </div>

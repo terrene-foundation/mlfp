@@ -375,36 +375,47 @@ print(f"Saved: {out_path}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — A/B test platform at a Singapore fintech
+# APPLY — A/B test platform at a payments app
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore fintech company runs experiments on their payment
-# app. Each experiment tests 8 metrics: conversion, revenue, time-to-
-# complete, error rate, retry rate, customer satisfaction, support
-# tickets, and churn risk.
+# SCENARIO: A Singapore payments app (illustrative) runs ~50 experiments a
+# quarter. Each tests 8 metrics: conversion, revenue, time-to-complete,
+# error rate, retry rate, customer satisfaction, support tickets, churn
+# risk. A change ships if ANY metric shows a "significant" win.
 #
-# Without correction (8 tests at alpha=0.05):
-#   FWER = 1 - (1-0.05)^8 = 33.7%
-#   One in three experiments will show a "significant" result that is
-#   actually a false positive. Over 50 experiments per quarter, that's
-#   ~17 false positives shipped to production.
+# Illustrative assumptions (change them and re-run):
+#   - half of all experiments change nothing at all (every null true)
+#   - a change that ships for no reason costs ~S$50K of engineering
+#     effort to build, deploy and maintain
 #
-# With BH-FDR correction:
-#   At most 5% of declared wins are expected to be false.
-#   Over 50 experiments, the team ships ~1-2 false positives instead of 17.
-#
-# BUSINESS IMPACT: Each false positive shipped means wasted engineering
-# effort (building, deploying, monitoring a change that does nothing)
-# plus the opportunity cost of not running the next experiment. At an
-# estimated S$50K per shipped feature, 15 false positives = S$750K/year
-# wasted. BH-FDR correction pays for itself immediately.
+# For a no-effect experiment, P(at least one false "win" among 8 metrics)
+# is the FWER: 1 - (1 - 0.05)^8 uncorrected. Bonferroni (and BH-FDR, which
+# equals FWER control when every null is true) keeps it at about 0.05.
 
-fwer_8 = 1 - (1 - ALPHA) ** 8
+n_metrics = 8
+experiments_per_quarter = 50
+share_null_experiments = 0.5  # illustrative
+cost_per_false_ship = 50_000  # SGD, illustrative
+
+fwer_8 = 1 - (1 - ALPHA) ** n_metrics
+fwer_8_corrected = 1 - (1 - ALPHA / n_metrics) ** n_metrics
+null_experiments = experiments_per_quarter * share_null_experiments
+false_ships_raw = null_experiments * fwer_8
+false_ships_corrected = null_experiments * fwer_8_corrected
+annual_saving = (false_ships_raw - false_ships_corrected) * cost_per_false_ship * 4
+
 print(f"\n--- Business Application: Multi-Metric A/B Platform ---")
-print(f"8 metrics per experiment, alpha=0.05")
-print(f"  Uncorrected FWER: {fwer_8:.1%}")
-print(f"  50 experiments/quarter: ~{int(50 * fwer_8 * 0.5)} false positives shipped")
-print(f"  With BH-FDR: ~{int(50 * 0.05 * 0.5)} false positives shipped")
-print(f"  Annual savings: ~S$750K in wasted engineering effort")
+print(f"{n_metrics} metrics per experiment, alpha={ALPHA}")
+print(f"  FWER per no-effect experiment — uncorrected: {fwer_8:.1%}")
+print(f"  FWER per no-effect experiment — corrected:   {fwer_8_corrected:.1%}")
+print(
+    f"  {null_experiments:.0f} no-effect experiments/quarter -> "
+    f"{false_ships_raw:.1f} false ships uncorrected vs "
+    f"{false_ships_corrected:.1f} corrected"
+)
+print(
+    f"  Illustrative saving: S${annual_saving:,.0f}/year "
+    f"at S${cost_per_false_ship:,} per false ship"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

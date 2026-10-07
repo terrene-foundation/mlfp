@@ -39,10 +39,15 @@
   does not know anything that was private to your organisation.
   Retrieval-Augmented Generation (RAG) fixes both in one architectural
   move — fetch relevant facts from a search index and inject them into
-  the prompt as context. In this lesson you will build a production-grade
-  RAG pipeline on Singapore regulatory documents (MAS, PDPA, AI Verify),
-  compare BM25, dense, and hybrid retrieval, evaluate quality with
-  RAGAS, and try the HyDE trick for an easy accuracy boost.
+  the prompt as context. In this lesson you will build a complete
+  RAG pipeline on the Exercise 4 corpus — 1,000 documents sampled from
+  the public <code>neural-bridge/rag-dataset-12000</code> collection,
+  each with one question and reference answer about it — compare BM25,
+  dense, and hybrid retrieval, measure retrieval with hit@k, evaluate
+  answers with the four RAGAS metrics, and test whether the HyDE trick
+  helps on this corpus. The same pipeline works unchanged on a
+  Singapore corpus such as public MAS notices or PDPC guidance — swap
+  the documents in.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -57,8 +62,8 @@
 <ul>
   <li><strong>Freshness:</strong> new regulations, product launches, policy changes happen daily. Retraining daily is absurd. Re-indexing daily is trivial.</li>
   <li><strong>Attribution:</strong> RAG can cite the source chunk that produced an answer. Fine-tuning blurs facts into weights with no traceability.</li>
-  <li><strong>Cost:</strong> indexing a million documents costs pennies. Fine-tuning on a million documents costs thousands of dollars.</li>
-  <li><strong>Privacy:</strong> the document stays in your index; only the retrieved snippets reach the model provider.</li>
+  <li><strong>Cost:</strong> indexing is one embedding pass per chunk. Fine-tuning on the same corpus means GPU training runs — and repeating them every time the facts change.</li>
+  <li><strong>Privacy:</strong> the documents stay in your index; only the few retrieved snippets go into the prompt. With the course's local Ollama models nothing leaves your machine at all; with a hosted model only those snippets reach the provider.</li>
 </ul>
 
 <p>
@@ -83,15 +88,15 @@
 
   <rect x="30" y="50" width="130" height="70" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
   <text x="95" y="75" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">1. Documents</text>
-  <text x="95" y="95" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">MAS / PDPA /</text>
-  <text x="95" y="108" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">AI Verify</text>
+  <text x="95" y="95" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">1,000 corpus</text>
+  <text x="95" y="108" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">documents</text>
 
   <line x1="160" y1="85" x2="190" y2="85" stroke="#0D9488" stroke-width="2" marker-end="url(#arr5)"/>
 
   <rect x="190" y="50" width="130" height="70" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
   <text x="255" y="75" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">2. Chunk</text>
-  <text x="255" y="95" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">~500 tokens</text>
-  <text x="255" y="108" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">50 overlap</text>
+  <text x="255" y="95" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">≤500 chars,</text>
+  <text x="255" y="108" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">sentence-aligned</text>
 
   <line x1="320" y1="85" x2="350" y2="85" stroke="#0D9488" stroke-width="2" marker-end="url(#arr5)"/>
 
@@ -104,7 +109,7 @@
 
   <rect x="510" y="50" width="130" height="70" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
   <text x="575" y="75" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">4. Index</text>
-  <text x="575" y="95" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">Vector DB</text>
+  <text x="575" y="95" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">Vector store</text>
   <text x="575" y="108" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">+ BM25</text>
 
   <!-- Query row -->
@@ -112,16 +117,16 @@
 
   <rect x="30" y="190" width="130" height="80" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
   <text x="95" y="215" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#92400E">5. User query</text>
-  <text x="95" y="235" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">"What does MAS</text>
-  <text x="95" y="248" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">TRM require for</text>
-  <text x="95" y="261" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">AI models?"</text>
+  <text x="95" y="235" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">a natural-</text>
+  <text x="95" y="248" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">language question</text>
+  <text x="95" y="261" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">about the corpus</text>
 
   <line x1="160" y1="230" x2="190" y2="230" stroke="#F59E0B" stroke-width="2" marker-end="url(#arr5)"/>
 
   <rect x="190" y="190" width="130" height="80" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
   <text x="255" y="215" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#92400E">6. Retrieve top-k</text>
-  <text x="255" y="238" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">dense + BM25</text>
-  <text x="255" y="251" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">+ re-rank</text>
+  <text x="255" y="238" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">dense + BM25,</text>
+  <text x="255" y="251" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">RRF + re-rank</text>
 
   <line x1="320" y1="230" x2="350" y2="230" stroke="#F59E0B" stroke-width="2" marker-end="url(#arr5)"/>
 
@@ -150,8 +155,9 @@
 <h2>Stage 1: Chunking</h2>
 
 <p>
-  You cannot retrieve "the MAS TRM document" — it is 200 pages. You
-  retrieve <em>chunks</em>. A chunk is a contiguous window of text
+  You cannot usefully retrieve a 200-page regulatory guideline as one
+  unit — it would not even fit in the prompt. You retrieve
+  <em>chunks</em>. A chunk is a contiguous window of text
   small enough to fit comfortably in the prompt and focused enough
   that its meaning is self-contained.
 </p>
@@ -182,10 +188,10 @@
 </p>
 
 <pre><code class="language-python">def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
-    """Split text into overlapping chunks of approximately `chunk_size` tokens.
+    """Split text into overlapping chunks of `chunk_size` whitespace words.
 
-    Simple whitespace tokenisation — for production, use a proper tokenizer
-    so your chunks match the embedder's view of length.
+    Words are a rough proxy for tokens — for production, count with the
+    embedder's own tokenizer so chunks match the model's view of length.
     """
     tokens = text.split()
     chunks: list[str] = []
@@ -208,6 +214,15 @@
   <li><strong>Sentence-boundary aware:</strong> split on sentence-ending punctuation and pack sentences into chunks until you hit the target size. Prevents sentence fragments.</li>
   <li><strong>Semantic chunking:</strong> use an embedding model to detect topic shifts and put chunk boundaries where topics change. Slow at indexing time, pays off in retrieval quality.</li>
 </ul>
+
+<p>
+  Exercise 4.1 (<code>ex_4/01_chunking_strategies.py</code>) compares
+  four strategies on the course corpus — fixed-size (500 characters
+  with 100 characters of overlap), sentence-packed, paragraph and
+  semantic — and the later Exercise 4 files index the corpus with the
+  sentence-packed chunker shown in the worked example below (sentences
+  packed into chunks of at most 500 <em>characters</em>).
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Stage 2: Sparse Retrieval with BM25</h2>
@@ -329,7 +344,13 @@ class VectorStore:
   For real systems use a dedicated vector database (pgvector, Qdrant,
   FAISS) that can handle millions of chunks with approximate nearest
   neighbour search. The in-memory version above is enough to teach
-  the mechanics and small enough to debug.
+  the mechanics and small enough to debug — the course ships the same
+  idea as <code>shared.mlfp06.ex_4.DenseVectorStore</code>, whose
+  <code>search(query_embedding, top_k)</code> returns dicts with
+  <code>text</code>, <code>score</code> and <code>metadata</code>.
+  The vectors come from the course's local Ollama embedding model
+  (<code>make_embedder()</code>, default <code>nomic-embed-text</code>,
+  768 dimensions), never from a chat model.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -339,16 +360,39 @@ class VectorStore:
   BM25 and dense retrieval have complementary failure modes. BM25
   misses paraphrases ("credit exposure" vs "counterparty risk").
   Dense retrieval misses exact identifiers ("MAS Notice 626"). A
-  hybrid combines both:
+  hybrid combines both. The problem is that their scores live on
+  different scales — BM25 is unbounded, cosine similarity lives in
+  $[-1, 1]$ — so you cannot simply add them.
 </p>
 
-$$\text{score}_\text{hybrid} \;=\; \alpha \cdot \text{score}_\text{dense} + (1 - \alpha) \cdot \text{score}_\text{BM25}$$
+<p>
+  <strong>Reciprocal Rank Fusion</strong> (RRF; Cormack, Clarke and
+  Büttcher, 2009) sidesteps the scale problem by throwing the scores
+  away and fusing <em>ranks</em>:
+</p>
+
+<div class="annotated-equation">
+  $$\text{RRF}(d) \;=\; \sum_{r \in \text{retrievers}} \frac{1}{k + \text{rank}_r(d)}$$
+  <div class="annotations">
+    <span>$\text{rank}_r(d)$ — position of $d$ in retriever $r$'s list (1 = top)</span>
+    <span>$k = 60$ — damping constant from the original paper</span>
+  </div>
+</div>
 
 <p>
-  The scores are first <em>normalised</em> (both to [0, 1]) before
-  combining, since BM25 scores are unbounded while cosine similarities
-  live in $[-1, 1]$. Tune $\alpha$ on a held-out set; $\alpha = 0.6$
-  is a reasonable default for technical documents with rare terms.
+  A chunk ranked near the top by <em>both</em> retrievers collects two
+  large terms and rises; a chunk only one retriever likes still scores,
+  but less. Exercises 4.4 and 4.5 use RRF with $k = 60$.
+</p>
+
+<p>
+  The alternative is a <em>weighted score blend</em>: min–max normalise
+  both score lists to $[0, 1]$, then
+  $\text{score}_\text{hybrid} = \alpha \cdot \text{score}_\text{dense} + (1 - \alpha) \cdot \text{score}_\text{BM25}$.
+  It gives you a dial ($\alpha$) but the result depends on how each
+  score distribution happens to be shaped, so $\alpha$ must be tuned on
+  a held-out set for every corpus. RRF needs no tuning, which is why it
+  is the common default.
 </p>
 
 <h3>Re-ranking with a cross-encoder</h3>
@@ -362,7 +406,12 @@ $$\text{score}_\text{hybrid} \;=\; \alpha \cdot \text{score}_\text{dense} + (1 -
   attend between query and chunk tokens) but far too slow to use on
   an entire corpus. The standard pattern is <em>retrieve 20 with
   dense + BM25, re-rank with a cross-encoder, keep top 5 for the
-  prompt</em>.
+  prompt</em>. Exercise 4.5 has no dedicated cross-encoder model
+  available offline, so it uses the local chat model as a stand-in:
+  it asks the LLM to rate each (query, passage) pair 0–10 and re-sorts
+  the top 10 hybrid candidates. A reply with no number raises an error
+  rather than defaulting to a neutral score — a silent default would
+  look like a real judgement.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -400,6 +449,16 @@ $$\text{score}_\text{hybrid} \;=\; \alpha \cdot \text{score}_\text{dense} + (1 -
     <em>in the right neighbourhood</em>.
   </p>
 </div>
+
+<p>
+  HyDE costs one extra LLM call per query, and it is not a guaranteed
+  win: when the queries already share vocabulary with the documents
+  (as the Exercise 4 questions largely do — they were written about
+  each document), plain dense retrieval may do as well or better.
+  Exercise 4.5 therefore <em>measures</em> it, scoring BM25, dense,
+  hybrid and HyDE on the same evaluation questions rather than
+  assuming an improvement.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Evaluating RAG with RAGAS</h2>
@@ -447,6 +506,44 @@ $$\text{score}_\text{hybrid} \;=\; \alpha \cdot \text{score}_\text{dense} + (1 -
   retrieval is missing the right chunks.
 </p>
 
+<p>
+  <strong>How the course computes them.</strong> The <code>ragas</code>
+  library itself cannot be imported in the course environment (one of
+  its dependencies fails to import), so Exercise 4.5 implements the
+  same four metrics directly as LLM-as-judge prompts to the local
+  Ollama model (<code>compute_ragas_metrics</code> in
+  <code>ex_4/05_rerank_rag_pipeline.py</code>), each returning a number
+  in [0, 1]. Two rules make a judge-based metric trustworthy: a judge
+  reply with no number must raise, never default to 0.5; and a small
+  local judge is noisy, so read the scores as a diagnostic shape across
+  a handful of questions, not as a precise benchmark.
+</p>
+
+<h3>Retrieval metrics: hit@k and MRR</h3>
+
+<p>
+  The RAGAS metrics need an LLM judge. Retrieval can also be scored
+  <em>without</em> one, whenever you know which document answers each
+  question — and in the Exercise 4 corpus you do, because question $i$
+  was written about document $i$.
+</p>
+
+<ul>
+  <li><strong>hit@k</strong> — the fraction of questions whose source document appears in the top $k$ results. With exactly one relevant document per question this is the same number as recall@k. (Precision@k is not informative here: with one relevant document it can never exceed $1/k$.)</li>
+  <li><strong>MRR</strong> (mean reciprocal rank) — the average of $1/\text{rank}$ of the source document (0 if it is not retrieved), which rewards putting it first rather than fifth.</li>
+</ul>
+
+<p>
+  The course's <code>LLMObservatory</code> computes both:
+  <code>obs.retrieval.compare_retrievers(retrievers, eval_set, k=5)</code>
+  takes a dict of retrievers — each a callable
+  <code>(query, k) → [(doc_id, text, score), ...]</code> — and an
+  evaluation set of <code>{"query": ..., "relevant_ids": [...]}</code>
+  rows, and returns a leaderboard DataFrame with
+  <code>recall_at_k</code>, <code>precision_at_k</code>,
+  <code>mrr</code> and <code>ndcg_at_k</code> per retriever.
+</p>
+
 <div class="callout advanced">
   <span class="label">🟣 Advanced — why separate context relevance from recall</span>
   <p>
@@ -462,71 +559,91 @@ $$\text{score}_\text{hybrid} \;=\; \alpha \cdot \text{score}_\text{dense} + (1 -
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Singapore Regulatory RAG</h2>
+<h2>Worked Example: RAG over the Exercise 4 Corpus</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Build a RAG pipeline on <code>sg_regulations.parquet</code>
-    (MAS, PDPA, AI Verify sections). Compare BM25, dense, and hybrid
-    retrieval. Evaluate with RAGAS. Implement HyDE and measure the
-    improvement.
+    Build a RAG pipeline on the Exercise 4 corpus (loaded with
+    <code>load_rag_corpus()</code>: columns <code>section</code> — a
+    document id such as <code>doc_0007</code> — <code>text</code>,
+    <code>question</code> and <code>answer</code>). Index 40 documents,
+    compare BM25, dense and hybrid retrieval with hit@k, and generate a
+    grounded answer with the local Ollama chat model. This is the
+    pipeline of <code>ex_4/05_rerank_rag_pipeline.py</code>, minus the
+    re-ranker and plots. The code uses top-level <code>await</code>, as
+    in a notebook cell; in a script, wrap it in an
+    <code>async def main()</code> and call <code>asyncio.run(main())</code>.
+    It needs the Ollama daemon running with the chat and embedding
+    models pulled.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1.</span>
-    <p>Load the corpus and chunk it.</p>
-    <pre><code class="language-python">import polars as pl
-from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
+    <p>Load the corpus and chunk it, tagging every chunk with the
+    document it came from — that tag is what lets you <em>measure</em>
+    retrieval later.</p>
+    <pre><code class="language-python">import re
+from shared.mlfp06.ex_4 import load_rag_corpus, split_corpus
 
-setup_environment()
-loader = MLFPDataLoader()
-regs = loader.load("mlfp06", "sg_regulations.parquet")
-print(f"Loaded {regs.height:,} regulation sections")
 
-all_chunks = []
-for row in regs.iter_rows(named=True):
-    for i, chunk in enumerate(chunk_text(row["text"], 500, 50)):
-        all_chunks.append({
-            "section": row["section"],
-            "chunk_id": f"{row['section']}::{i}",
-            "text": chunk,
-        })
-chunks_df = pl.DataFrame(all_chunks)
-print(f"Produced {chunks_df.height:,} chunks")</code></pre>
+def chunk_sentence(text: str, max_chunk_chars: int = 500) -> list[str]:
+    """Pack whole sentences into chunks of at most max_chunk_chars characters."""
+    sentences = re.split(r"(?&lt;=[.!?])\s+", text)
+    chunks, current = [], ""
+    for sent in sentences:
+        if len(current) + len(sent) + 1 > max_chunk_chars and current:
+            chunks.append(current.strip())
+            current = sent
+        else:
+            current = current + " " + sent if current else sent
+    if current.strip():
+        chunks.append(current.strip())
+    return [c for c in chunks if c]
+
+
+corpus = load_rag_corpus()                 # 1,000 rows, cached under data/mlfp06/rag/
+doc_texts, eval_questions, eval_answers = split_corpus(corpus, n_eval=10)
+doc_ids = corpus["section"].to_list()
+eval_relevant = doc_ids[:10]               # question i was written about document i
+
+chunk_texts: list[str] = []
+chunk_doc_ids: list[str] = []
+for doc_id, text in zip(doc_ids[:40], doc_texts[:40]):   # 10 answer docs + 30 distractors
+    for chunk in chunk_sentence(text, 500):
+        chunk_texts.append(chunk)
+        chunk_doc_ids.append(doc_id)
+print(f"Indexing {len(chunk_texts)} chunks from 40 documents")</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 2.</span>
-    <p>Embed with Delegate and build the vector store.</p>
-    <pre><code class="language-python">import os
-from kaizen_agents import Delegate
+    <p>Embed every chunk with the local embedding model and build the
+    vector store. <code>embed_many</code> wraps
+    <code>make_embedder().embed(texts)</code> — one batched call to
+    Ollama, 768-dimensional vectors.</p>
+    <pre><code class="language-python">from shared.mlfp06.ex_4 import DenseVectorStore, embed_many
 
-model = os.environ["DEFAULT_LLM_MODEL"]
-embedder = Delegate(model=model, max_llm_cost_usd=2.0)
+embeddings = await embed_many(chunk_texts)
+store = DenseVectorStore()
+for i, (text, emb) in enumerate(zip(chunk_texts, embeddings)):
+    store.add(text, emb, {"chunk_idx": i, "doc_id": chunk_doc_ids[i]})
 
-async def embed(text: str) -> list[float]:
-    # In practice use a dedicated embedding endpoint; Delegate abstracts both.
-    return await embedder.embed(text)
-
-store = VectorStore()
-for row in chunks_df.iter_rows(named=True):
-    emb = await embed(row["text"])
-    store.add(row["text"], emb, {"chunk_id": row["chunk_id"], "section": row["section"]})</code></pre>
+query_embeddings = await embed_many(eval_questions)   # embed each question once</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3.</span>
     <p>Implement BM25 over the same chunks.</p>
     <pre><code class="language-python">import math
+import re
 from collections import Counter
 
 class BM25Index:
     def __init__(self, chunks: list[str], k1: float = 1.5, b: float = 0.75):
         self.chunks = chunks
         self.k1, self.b = k1, b
-        self.tokens = [c.lower().split() for c in chunks]
+        self.tokens = [re.findall(r"\w+", c.lower()) for c in chunks]
         self.lengths = [len(t) for t in self.tokens]
         self.avg_len = sum(self.lengths) / len(self.lengths)
         # document frequency
@@ -541,7 +658,7 @@ class BM25Index:
         return math.log((self.N - n_t + 0.5) / (n_t + 0.5) + 1)
 
     def score(self, query: str, idx: int) -> float:
-        q_terms = query.lower().split()
+        q_terms = re.findall(r"\w+", query.lower())
         doc_toks = self.tokens[idx]
         doc_len = self.lengths[idx]
         tf = Counter(doc_toks)
@@ -555,74 +672,253 @@ class BM25Index:
             score += self.idf(t) * num / den
         return score
 
-    def top_k(self, query: str, k: int = 5) -> list[tuple[float, int]]:
+    def search(self, query: str, top_k: int = 5) -> list[dict]:
         scored = [(self.score(query, i), i) for i in range(self.N)]
         scored.sort(reverse=True)
-        return scored[:k]</code></pre>
+        return [{"text": self.chunks[i], "score": s, "chunk_idx": i}
+                for s, i in scored[:top_k]]
+
+
+bm25 = BM25Index(chunk_texts)</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 4.</span>
-    <p>Build a hybrid retriever that normalises and combines both.</p>
-    <pre><code class="language-python">def normalise(scores: list[float]) -> list[float]:
-    lo, hi = min(scores), max(scores)
-    if hi - lo &lt; 1e-9:
-        return [0.0] * len(scores)
-    return [(s - lo) / (hi - lo) for s in scores]
+    <p>Build the hybrid retriever with Reciprocal Rank Fusion: take
+    twice as many candidates from each retriever, fuse by rank.</p>
+    <pre><code class="language-python">def dense_search(q_emb: list[float], top_k: int = 5) -> list[dict]:
+    return [{"text": r["text"], "score": r["score"], "chunk_idx": r["metadata"]["chunk_idx"]}
+            for r in store.search(q_emb, top_k=top_k)]
 
 
-async def hybrid_retrieve(query: str, k: int = 5, alpha: float = 0.6):
-    q_emb = await embed(query)
-    # dense scores
-    dense_scores = [cosine_similarity(q_emb, e) for e in store.embeddings]
-    # bm25 scores
-    bm25_scores = [bm25.score(query, i) for i in range(len(store.chunks))]
+def reciprocal_rank_fusion(ranked_lists: list[list[dict]], k: int = 60) -> list[dict]:
+    fused: dict[int, float] = {}
+    texts: dict[int, str] = {}
+    for ranked in ranked_lists:
+        for rank, item in enumerate(ranked, start=1):
+            idx = item["chunk_idx"]
+            texts[idx] = item["text"]
+            fused[idx] = fused.get(idx, 0.0) + 1.0 / (k + rank)
+    order = sorted(fused.items(), key=lambda x: x[1], reverse=True)
+    return [{"text": texts[i], "score": s, "chunk_idx": i} for i, s in order]
 
-    d_norm = normalise(dense_scores)
-    b_norm = normalise(bm25_scores)
 
-    hybrid = [alpha * d + (1 - alpha) * b for d, b in zip(d_norm, b_norm)]
-    ranked = sorted(enumerate(hybrid), key=lambda x: x[1], reverse=True)
-    return [(store.chunks[i], s) for i, s in ranked[:k]]</code></pre>
+def hybrid_search(query: str, q_emb: list[float], top_k: int = 5) -> list[dict]:
+    return reciprocal_rank_fusion(
+        [dense_search(q_emb, top_k * 2), bm25.search(query, top_k * 2)]
+    )[:top_k]</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 5.</span>
-    <p>Assemble the full RAG answer pipeline.</p>
-    <pre><code class="language-python">async def rag_answer(question: str, k: int = 5) -> dict:
-    retrieved = await hybrid_retrieve(question, k=k)
-    context = "\n\n---\n\n".join(f"[Source {i+1}]\n{chunk}" for i, (chunk, _) in enumerate(retrieved))
+    <p>Score the three retrievers on the 10 evaluation questions with
+    hit@k and MRR. Chunks are collapsed to their source document
+    (first occurrence wins), because the gold label is a document.</p>
+    <pre><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
 
-    prompt = f"""You are a Singapore regulatory compliance assistant.
-Answer the question using only the sources below. Cite sources by number.
-If the sources do not contain the answer, say so clearly.
 
-SOURCES:
-{context}
+def to_docs(chunk_results: list[dict]) -> list[tuple[str, str, float]]:
+    seen, out = set(), []
+    for r in chunk_results:
+        doc_id = chunk_doc_ids[r["chunk_idx"]]
+        if doc_id not in seen:
+            seen.add(doc_id)
+            out.append((doc_id, r["text"], float(r["score"])))
+    return out
 
-QUESTION: {question}
 
-ANSWER:"""
+q_emb_of = dict(zip(eval_questions, query_embeddings))
+retrievers = {
+    "bm25":   lambda q, k: to_docs(bm25.search(q, top_k=20))[:k],
+    "dense":  lambda q, k: to_docs(dense_search(q_emb_of[q], top_k=20))[:k],
+    "hybrid": lambda q, k: to_docs(hybrid_search(q, q_emb_of[q], top_k=20))[:k],
+}
+eval_set = [{"query": q, "relevant_ids": [d]} for q, d in zip(eval_questions, eval_relevant)]
 
-    delegate = Delegate(model=model, max_llm_cost_usd=0.2)
-    response = ""
-    async for event in delegate.run(prompt):
-        if hasattr(event, "text"):
-            response += event.text
-
-    return {
-        "question": question,
-        "answer": response.strip(),
-        "sources": [chunk for chunk, _ in retrieved],
-    }</code></pre>
+obs = LLMObservatory(run_id="lesson_6_4_retrieval")
+leaderboard = obs.retrieval.compare_retrievers(retrievers, eval_set, k=5)
+print(leaderboard.select("retriever", "recall_at_k", "mrr"))</code></pre>
+    <p>The printed table has one row per retriever, sorted by MRR, with
+    <code>recall_at_k</code> (= hit@5 here) and <code>mrr</code> in
+    [0, 1]. The exact values depend on your embedding model and on
+    which 1,000 documents were sampled; with only 10 questions, one
+    question moves hit@5 by 10 percentage points, so treat small gaps
+    between retrievers as noise. Because the Exercise 4 questions reuse
+    words from their source documents, BM25 is often competitive with
+    dense retrieval on this corpus — a useful reminder that "dense is
+    always better" is an assumption to test, not a fact.</p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 6.</span>
-    <p>Evaluate with RAGAS on a small gold set. Expect faithfulness
-    near 0.9 when the retriever is working; watch for faithfulness
-    drops that signal hallucination.</p>
+    <p>Generate a grounded answer from the top hybrid chunks with the
+    local chat model. <code>make_delegate()</code> takes its model from
+    <code>OLLAMA_CHAT_MODEL</code>; <code>run_delegate_text</code>
+    returns <code>(text, usage, seconds)</code>.</p>
+    <pre><code class="language-python">from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+
+question = eval_questions[0]
+top = hybrid_search(question, q_emb_of[question], top_k=3)
+context = "\n\n---\n\n".join(f"[Source {i + 1}]\n{r['text']}" for i, r in enumerate(top))
+prompt = (
+    "Answer the question using ONLY the sources below. Cite sources by number.\n"
+    "If the sources do not contain the answer, say so clearly.\n\n"
+    f"SOURCES:\n{context}\n\nQUESTION: {question}\n\nANSWER:"
+)
+answer, usage, secs = await run_delegate_text(make_delegate(), prompt)
+print(answer)
+print("reference:", eval_answers[0])</code></pre>
+    <p>To finish the evaluation, Exercise 4.5 adds the LLM re-ranker,
+    scores three answers with its judge-based RAGAS metrics, and adds
+    HyDE as a fourth retriever on the leaderboard. Expect the judge
+    scores to vary between runs — a 3-billion-parameter local judge is
+    a rough instrument — so look for the <em>pattern</em> (for example
+    high answer relevance with low faithfulness = hallucination)
+    rather than a particular number.</p>
   </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Advanced RAG Patterns</h2>
+
+<p>
+  The pipeline above answers single-fact questions over a flat pile of
+  chunks. Three patterns extend it when that is not enough.
+</p>
+
+<h3>Metadata filtering</h3>
+
+<p>
+  Store structured fields with every chunk — source document, date,
+  section, access level — and filter on them <em>before</em> the
+  similarity search ("only notices issued after 2024", "only documents
+  this user may see"). It is the cheapest precision win in RAG: a
+  filter removes whole categories of wrong answers that no embedding
+  can tell apart, and it is also where access control belongs —
+  never rely on the LLM to ignore a chunk it should not have seen.
+</p>
+
+<pre><code class="language-python">def filtered_search(q_emb: list[float], allowed_docs: set[str], top_k: int = 5) -> list[dict]:
+    """Dense search restricted to chunks whose doc_id passes the filter."""
+    hits = store.search(q_emb, top_k=len(store.documents))      # score everything
+    return [h for h in hits if h["metadata"]["doc_id"] in allowed_docs][:top_k]
+
+
+# e.g. a user who may only see the first five documents
+allowed = set(doc_ids[:5])
+for h in filtered_search(query_embeddings[0], allowed, top_k=3):
+    print(h["metadata"]["doc_id"], round(h["score"], 3))</code></pre>
+
+<p>
+  This filters after scoring, which is fine for 40 documents. A vector
+  database applies the filter inside the index so it never scores the
+  excluded chunks at all.
+</p>
+
+<h3>Multi-hop retrieval</h3>
+
+<p>
+  Some questions need two facts from two documents: "Which country
+  was the director of <em>film X</em> born in?" needs the film's page
+  (to find the director) and then the director's page. One retrieval
+  with the original question rarely finds the second page, because
+  the question never names the director. Multi-hop retrieval loops:
+  retrieve, ask the LLM what fact is still missing, retrieve again
+  with that follow-up query, and answer from the union of both
+  contexts. Lesson 6.5 meets this question type in the HotpotQA
+  dataset, where it is handled by letting a ReAct agent decide when
+  to search again.
+</p>
+
+<pre><code class="language-python">from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+from shared.mlfp06.ex_4 import generate_embedding
+
+
+async def two_hop_context(question: str, top_k: int = 3) -> str:
+    first = store.search(await generate_embedding(question), top_k=top_k)
+    ctx1 = "\n".join(h["text"] for h in first)
+    follow_up, _, _ = await run_delegate_text(
+        make_delegate(temperature=0.0),
+        "Context:\n" + ctx1 + "\n\nQuestion: " + question +
+        "\n\nWrite ONE short search query for the fact still missing to answer "
+        "the question. If nothing is missing, reply exactly NONE.",
+    )
+    if follow_up.strip().upper() == "NONE":
+        return ctx1
+    second = store.search(await generate_embedding(follow_up), top_k=top_k)
+    seen = {h["text"] for h in first}
+    return ctx1 + "\n" + "\n".join(h["text"] for h in second if h["text"] not in seen)</code></pre>
+
+<h3>Document summaries (hierarchical retrieval)</h3>
+
+<p>
+  Index one LLM-written summary per document alongside its chunks.
+  Broad questions ("what is this report about?") match summaries;
+  narrow ones match chunks. A common two-stage form retrieves the best
+  documents by summary, then searches only those documents' chunks —
+  metadata filtering again, with the filter chosen by the first stage.
+</p>
+
+<h3>Packaged alternatives in Kaizen</h3>
+
+<p>
+  Kaizen ships ready-made RAG-style agents in
+  <code>kaizen_agents.agents</code>. <code>RAGResearchAgent</code>
+  keeps its own in-memory vector store
+  (<code>add_document(doc_id, title, content)</code>, embedded with a
+  small sentence-transformers model) and its synchronous
+  <code>run(query=...)</code> returns a dict with an
+  <code>answer</code>, the <code>sources</code> it used and a
+  <code>confidence</code>. <code>MemoryAgent</code> keeps conversation
+  history per <code>session_id</code> so follow-up questions
+  ("and what about the second one?") can be resolved
+  (<code>chat(message, session_id=...)</code>).
+</p>
+
+<pre><code class="language-python">from kaizen_agents.agents import MemoryAgent, RAGResearchAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL
+
+rag_agent = RAGResearchAgent(llm_provider="ollama", model=DEFAULT_CHAT_MODEL, top_k_documents=3)
+for doc_id, text in zip(doc_ids[:40], doc_texts[:40]):
+    rag_agent.add_document(doc_id=doc_id, title=doc_id, content=text)
+result = rag_agent.run(query=eval_questions[0])
+print(result["answer"], result["sources"])
+
+chat = MemoryAgent(llm_provider="ollama", model=DEFAULT_CHAT_MODEL)
+chat.chat("My name is Wei Ling and I work on RAG evaluation.", session_id="s1")
+print(chat.chat("What do I work on?", session_id="s1"))</code></pre>
+
+<p>
+  The packaged agents are convenient, but they hide every stage that
+  this lesson made visible — chunking, the embedding model, the fusion
+  rule, the evaluation. Exercise 4 builds the pipeline by hand for
+  that reason; reach for the packaged agents once you know what you
+  would tune inside them.
+</p>
+
+<div class="try-it">
+  <h3>🎯 Drill — Metadata filter as access control</h3>
+  <p>
+    Using <code>filtered_search</code>, show that a question whose
+    source document is <em>outside</em> the allowed set can never be
+    answered from that document. For question 7 (source
+    <code>doc_ids[7]</code>), compare unfiltered dense search with
+    <code>allowed = set(doc_ids[:5])</code>.
+  </p>
+  <details>
+    <summary>Solution</summary>
+    <pre><code class="language-python">q7 = query_embeddings[7]
+unfiltered = {h["metadata"]["doc_id"] for h in store.search(q7, top_k=5)}
+filtered = {h["metadata"]["doc_id"] for h in filtered_search(q7, set(doc_ids[:5]), top_k=5)}
+print("source in unfiltered top-5:", doc_ids[7] in unfiltered)
+print("source in filtered top-5:  ", doc_ids[7] in filtered)   # always False
+assert filtered &lt;= set(doc_ids[:5])</code></pre>
+    <p>The filtered result can only contain allowed documents, so the
+    second line prints <code>False</code> whatever the embeddings are;
+    the first line is <code>True</code> whenever dense retrieval finds
+    the source at all. The filter enforces the boundary in code — the
+    LLM never sees the excluded text.</p>
+  </details>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -663,9 +959,9 @@ ANSWER:"""
 <div class="callout warning">
   <span class="label">⚠ Mistake 4: Stale index</span>
   <p>
-    You indexed the MAS documents a month ago. Last week MAS
-    published a revision. Your RAG system confidently cites the old
-    version. Set up an index refresh schedule and include a "last
+    You indexed a regulator's guidelines a month ago. Last week the
+    regulator published a revision. Your RAG system confidently cites
+    the old version. Set up an index refresh schedule and include a "last
     indexed" timestamp in your answer's footer.
   </p>
 </div>
@@ -676,30 +972,102 @@ ANSWER:"""
 <div class="try-it">
   <h3>🎯 Exercise A — Chunk size sweep</h3>
   <p>
-    Run the pipeline with chunk sizes in $\{200, 500, 1000\}$. For
-    each, compute context relevance on a 10-question gold set. Which
-    chunk size wins on this corpus?
+    Rebuild the worked-example index with
+    <code>chunk_sentence(text, max_chunk_chars)</code> for
+    <code>max_chunk_chars</code> in $\{200, 500, 1000\}$ and re-run the
+    Step 5 leaderboard each time. Which chunk size gives the best
+    dense hit@5 and MRR on this corpus — and how many chunks does each
+    setting produce?
   </p>
+  <details>
+    <summary>Solution sketch</summary>
+    <p>Wrap Steps 1–5 in a function of <code>max_chunk_chars</code>
+    that returns <code>len(chunk_texts)</code> and the leaderboard;
+    the chunk count roughly halves each time the size doubles.
+    Because scoring is per <em>document</em>, very small chunks give
+    each document many chances to match, while very large chunks blur
+    several topics into one vector — compare the dense row across the
+    three runs. Ten questions is a small sample, so only a large gap
+    is meaningful.</p>
+  </details>
 </div>
 
 <div class="try-it">
-  <h3>🎯 Exercise B — Tune $\alpha$</h3>
+  <h3>🎯 Exercise B — RRF versus a weighted blend</h3>
   <p>
-    Sweep the hybrid blend factor $\alpha \in \{0.0, 0.3, 0.6, 0.9,
-    1.0\}$. $\alpha = 0$ is pure BM25, $\alpha = 1$ is pure dense.
-    Plot retrieval accuracy vs $\alpha$. Is the optimum closer to
-    dense or sparse on Singapore regulations?
+    Implement the weighted blend (min–max normalise the dense and BM25
+    scores over all chunks, then
+    $\alpha \cdot \text{dense} + (1 - \alpha) \cdot \text{BM25}$) as a
+    fourth retriever and sweep
+    $\alpha \in \{0.0, 0.3, 0.6, 0.9, 1.0\}$. $\alpha = 0$ is pure
+    BM25, $\alpha = 1$ is pure dense. Does any $\alpha$ beat RRF's
+    MRR, and is the best $\alpha$ closer to dense or sparse on this
+    corpus?
   </p>
+  <details>
+    <summary>Solution</summary>
+    <pre><code class="language-python">def normalise(scores: list[float]) -> list[float]:
+    lo, hi = min(scores), max(scores)
+    return [0.0] * len(scores) if hi - lo &lt; 1e-9 else [(s - lo) / (hi - lo) for s in scores]
+
+
+def blend_search(query: str, q_emb: list[float], alpha: float, top_k: int = 20) -> list[dict]:
+    dense = {h["metadata"]["chunk_idx"]: h["score"] for h in store.search(q_emb, top_k=len(chunk_texts))}
+    d = normalise([dense[i] for i in range(len(chunk_texts))])
+    b = normalise([bm25.score(query, i) for i in range(len(chunk_texts))])
+    mixed = sorted(range(len(chunk_texts)), key=lambda i: alpha * d[i] + (1 - alpha) * b[i], reverse=True)
+    return [{"text": chunk_texts[i], "score": alpha * d[i] + (1 - alpha) * b[i], "chunk_idx": i}
+            for i in mixed[:top_k]]
+
+
+for alpha in (0.0, 0.3, 0.6, 0.9, 1.0):
+    retrievers[f"blend_{alpha}"] = (
+        lambda q, k, a=alpha: to_docs(blend_search(q, q_emb_of[q], a))[:k]
+    )
+print(obs.retrieval.compare_retrievers(retrievers, eval_set, k=5).select("retriever", "recall_at_k", "mrr"))</code></pre>
+    <p>The <code>a=alpha</code> default argument freezes each value
+    of $\alpha$ inside its lambda (without it every lambda would see
+    the last $\alpha$). The leaderboard is sorted by MRR; the
+    <code>blend_0.0</code> and <code>blend_1.0</code> rows should match (up to tie-breaking)
+    the <code>bm25</code> and <code>dense</code> rows, which is a
+    useful sanity check. If the best blend only ties RRF, RRF wins on
+    simplicity — it has nothing to tune.</p>
+  </details>
 </div>
 
 <div class="try-it">
-  <h3>🎯 Exercise C — HyDE improvement</h3>
+  <h3>🎯 Exercise C — Does HyDE help here?</h3>
   <p>
-    Implement HyDE: before retrieval, ask the LLM to generate a
-    hypothetical answer, then embed that answer instead of the raw
-    query. Compare retrieval accuracy with and without HyDE on 20
-    short queries. Report the delta in context relevance.
+    Add HyDE as a retriever: ask the chat model for a 3–5 sentence
+    hypothetical answer, embed it, and run dense search with that
+    vector. Put it on the Step 5 leaderboard next to plain dense and
+    report the hit@5 and MRR difference.
   </p>
+  <details>
+    <summary>Solution</summary>
+    <pre><code class="language-python">from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+from shared.mlfp06.ex_4 import generate_embedding
+
+hyde_rankings: dict[str, list] = {}
+for q in eval_questions:
+    hypo, _, _ = await run_delegate_text(
+        make_delegate(),
+        "Write a short paragraph (3-5 sentences) that would be the ideal answer "
+        f"to this question. It need not be factually correct.\n\nQuestion: {q}\n\nAnswer:",
+    )
+    hyde_rankings[q] = to_docs(dense_search(await generate_embedding(hypo), top_k=20))
+
+retrievers["hyde"] = lambda q, k: hyde_rankings[q][:k]
+board = obs.retrieval.compare_retrievers(retrievers, eval_set, k=5)
+print(board.filter(board["retriever"].is_in(["dense", "hyde"])).select("retriever", "recall_at_k", "mrr"))</code></pre>
+    <p>The hypothetical answers are generated once and cached, because
+    <code>compare_retrievers</code> calls each retriever synchronously.
+    On this corpus the questions already share vocabulary with their
+    documents, so HyDE may tie or even lose to plain dense retrieval;
+    either outcome is a valid result. The point of the exercise is
+    that "HyDE improves retrieval" is a hypothesis you measure, with
+    10 questions giving a resolution of only 10 percentage points.</p>
+  </details>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -708,8 +1076,10 @@ ANSWER:"""
 <p class="xref">
   The dense embedding idea comes from <strong>Lesson 4.6</strong> (NLP
   and word embeddings). BM25 is a direct descendant of TF-IDF from the
-  same lesson. Cosine similarity was introduced in
-  <strong>Lesson 4.4</strong> as a distance metric for clustering.
+  same lesson. Cosine similarity scored items against a user's taste
+  profile in <strong>Lesson 4.7</strong> (recommender systems), and
+  distance metrics for grouping similar items were introduced with
+  clustering in <strong>Lesson 4.1</strong>.
   The LLM generator you use at the end is whatever you aligned in
   Lessons 6.2 and 6.3. Lesson 6.5 will wrap this RAG pipeline as a
   <em>tool</em> that an agent can call, and Lesson 6.8 will deploy
@@ -720,12 +1090,13 @@ ANSWER:"""
 <div class="reflection">
 <h2>Reflection</h2>
 <p>
-  You now have a complete, production-grade RAG pipeline: chunks with
-  overlap, BM25 for exact match, dense embeddings for semantics, a
-  hybrid blender, a cross-encoder re-ranker, and RAGAS to tell you
-  which stage is failing. That is the same architecture sitting
-  behind enterprise copilots at scale, only with a bigger vector
-  database.
+  You now have a complete RAG pipeline: sentence-aligned chunks, BM25
+  for exact match, dense embeddings for semantics, Reciprocal Rank
+  Fusion to combine them, a re-ranker, hit@k and MRR to measure
+  retrieval, and the four RAGAS metrics to tell you which stage is
+  failing. Production systems use the same architecture with a real
+  vector database, a dedicated cross-encoder and a much larger
+  evaluation set.
 </p>
 <p>
   More importantly, you now know the axis where RAG wins and where it

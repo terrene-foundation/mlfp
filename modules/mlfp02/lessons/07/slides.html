@@ -36,7 +36,7 @@
   </p>
   <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
     <strong style="color: #0D9488;">⏱ 55 minutes</strong> &nbsp; · &nbsp;
-    <strong>Outcome:</strong> cut A/B test variance by 50%
+    <strong>Outcome:</strong> cut A/B test variance with pre-experiment data
   </div>
   <div class="slide-footer">MLFP — Module 2</div>
 </section>
@@ -81,7 +81,7 @@
     <tbody>
       <tr><td>0.3</td><td>9%</td><td>1.10x</td></tr>
       <tr><td>0.5</td><td>25%</td><td>1.33x</td></tr>
-      <tr><td>0.7</td><td>51%</td><td>2.04x</td></tr>
+      <tr><td>0.7</td><td>49%</td><td>1.96x</td></tr>
       <tr><td>0.9</td><td>81%</td><td>5.26x</td></tr>
     </tbody>
   </table>
@@ -117,16 +117,23 @@
   <h2>CUPED in code</h2>
   <pre><code class="language-python" data-trim>
 import numpy as np
+import polars as pl
+from shared import MLFPDataLoader
 
-X_pre = df["spend_pre"].to_numpy()
-Y_post = df["spend_post"].to_numpy()
+df = (MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
+      .filter(pl.col("experiment_group").is_in(["control", "treatment_a"])))
+y = df["revenue"].to_numpy()
+x = df["pre_metric_value"].to_numpy()   # measured BEFORE randomisation
+theta = np.cov(y, x)[0, 1] / np.var(x, ddof=1)   # pooled over both arms
+y_adj = y - theta * (x - x.mean())
+treat = (df["experiment_group"] == "treatment_a").to_numpy()
 
-theta = np.cov(Y_post, X_pre)[0, 1] / np.var(X_pre)
-Y_adj = Y_post - theta * (X_pre - X_pre.mean())
-
-print(f"Var(Y):     {np.var(Y_post):.2f}")
-print(f"Var(Y_adj): {np.var(Y_adj):.2f}")
-print(f"Reduction:  {1 - np.var(Y_adj)/np.var(Y_post):.1%}")
+for name, v in [("raw", y), ("CUPED", y_adj)]:
+    diff = v[treat].mean() - v[~treat].mean()
+    se = np.sqrt(v[treat].var(ddof=1) / treat.sum()
+                 + v[~treat].var(ddof=1) / (~treat).sum())
+    print(f"{name}: effect {diff:.2f}  SE {se:.3f}")
+# → raw 3.16 (SE 0.164); CUPED 3.18 (SE 0.160): rho = 0.21, only 4% less variance
   </code></pre>
   <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; margin-top: 1em;">
     <strong style="color: #3B82F6;">🔵 Theory:</strong>
@@ -152,13 +159,12 @@ print(f"Reduction:  {1 - np.var(Y_adj)/np.var(Y_post):.1%}")
 <section>
   <h2>SRM: is your experiment broken?</h2>
   <pre><code class="language-python" data-trim>
-from scipy import stats as scipy_stats
+import numpy as np
+from scipy import stats
 
-n_control, n_treatment = 4800, 5200
-n_total = n_control + n_treatment
-chi2 = sum((obs - n_total/2)**2 / (n_total/2)
-           for obs in [n_control, n_treatment])
-p_srm = 1 - scipy_stats.chi2.cdf(chi2, df=1)
+observed = np.array([4800, 5200])            # control, treatment
+design = np.array([0.5, 0.5])                # the DESIGNED split, not always 50/50
+chi2, p_srm = stats.chisquare(observed, observed.sum() * design)
 
 if p_srm < 0.01:
     print("SRM detected — do not trust results")
@@ -171,6 +177,7 @@ if p_srm < 0.01:
       <tr><td>4800/5200</td><td>16.0</td><td>0.00006</td><td style="color: #F43F5E;">SRM</td></tr>
     </tbody>
   </table>
+  <p style="font-size: 0.7em; color: #64748B;">Exercise data is designed 40/35/15/10: test against those shares; a 50/50 test would flag SRM on a correct split.</p>
 </section>
 
 <!-- ═══ Slide 8: SRM causes ══════════════════════════════════ -->
@@ -191,9 +198,9 @@ if p_srm < 0.01:
 <section>
   <h2>When you cannot randomise</h2>
   <p style="font-size: 0.85em;">
-    Singapore's cooling measures apply to all districts. You cannot
-    randomly assign the policy. But you <em>can</em> compare districts
-    more affected vs less affected, before and after.
+    A policy cannot be randomly assigned. Exercise 7.4 simulates a
+    <em>hypothetical</em> cooling measure on Central-region flats only:
+    compare Central (treated) with Non-Central (control), before and after.
   </p>
   <div style="text-align: center; margin: 1.5em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
     \[ \text{ATT} = (\bar{Y}_{T,\text{post}} - \bar{Y}_{T,\text{pre}}) - (\bar{Y}_{C,\text{post}} - \bar{Y}_{C,\text{pre}}) \]
@@ -247,18 +254,20 @@ if p_srm < 0.01:
 <section>
   <h2>DiD in code</h2>
   <pre><code class="language-python" data-trim>
-means = (
-    df.group_by(["group", "period"])
-    .agg(pl.col("price").mean().alias("mean_price"))
-)
-# ATT = (treat_post - treat_pre) - (ctrl_post - ctrl_pre)
-treat_pre  = means.filter(...).item()
-treat_post = means.filter(...).item()
-ctrl_pre   = means.filter(...).item()
-ctrl_post  = means.filter(...).item()
+import polars as pl
+from shared.mlfp02.ex_7 import simulate_hdb_cooling_panel
 
-att = (treat_post - treat_pre) - (ctrl_post - ctrl_pre)
-print(f"ATT: {att:,.0f}")
+# Simulated panel (Exercise 7.4): true policy effect = -20,000
+panel = simulate_hdb_cooling_panel()
+means = panel.group_by(["central", "post"]).agg(pl.col("price").mean())
+
+def cell(central, post):
+    return means.filter((pl.col("central") == central)
+                        & (pl.col("post") == post))["price"].item()
+
+# ATT = (treat_post - treat_pre) - (ctrl_post - ctrl_pre)
+att = (cell(1, 1) - cell(1, 0)) - (cell(0, 1) - cell(0, 0))
+print(f"ATT: {att:,.0f}")   # → ATT: -23,208 (sampling noise around -20,000)
   </code></pre>
 </section>
 

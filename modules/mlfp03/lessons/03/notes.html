@@ -36,318 +36,332 @@
 </h1>
 
 <p class="lead">
-  Total time: ~90 minutes · 15 slides · ~5.5 min per slide average
+  Total time: ~90 minutes &nbsp;·&nbsp; 17 slides &nbsp;·&nbsp; ~5 min per slide average
 </p>
 
 <p>
-  This is the lesson where the zoo opens. Learners will be excited — five
-  model families in one session is a lot of new toys. Pace yourself: SVM
-  gets the most time because its math is the hardest; NB gets the least
-  because it is conceptually cheap. Leave twelve minutes at the end for the
-  live comparison run and the discussion.
+  Five model families in one sitting — the longest lesson of M3. Keep
+  the pace brisk through the theory and spend the saved minutes on the
+  two hands-on moments: the Gini calculation by hand, and the
+  leaderboard comparison. The leaderboard's honest punchline (simple
+  Naive Bayes edges out the forest on AUC) is the lesson's real payload:
+  no family wins everywhere.
 </p>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
-  <h3>Opening — "The zoo opens today"</h3>
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
+  <h3>The Complete Supervised Model Zoo</h3>
   <p>
-    Open with the promise: "By the end of this lesson you will have trained
-    five different model families on the same dataset, watched them compete,
-    and know which one to reach for given a data shape. No more 'try
-    everything and hope' — you will be able to predict which family wins,
-    and why."
+    Open: "3.2 taught you how hard to fit. Today: what to fit. Five
+    families cover most non-deep supervised problems — SVM, KNN, Naive
+    Bayes, decision trees, and random forests. By the end you'll train
+    all five on churn data and compare them fairly."
   </p>
-  <div class="transition">→ "Here are the five."</div>
+  <div class="transition">→ "The roster."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Five families</span></div>
-  <h3>The zoo map</h3>
+  <h3>Five families cover most non-deep supervised problems</h3>
   <p>
-    Preview the five. Give each one a one-line geometric identity: SVM is
-    a hyperplane. KNN is a neighborhood. NB is independent per feature.
-    Trees are axis-aligned rectangles. Forests are averaged trees.
+    Walk the roster with one geometry each. SVM: a hyperplane with
+    maximum margin. KNN: a vote of the nearest training points. Naive
+    Bayes: Bayes' theorem with conditional independence. Decision
+    trees: recursive axis-aligned splits. Random forests: a bagged
+    ensemble of decorrelated trees.
   </p>
   <p>
-    Tell them you will derive, hand-compute, or geometrically intuit
-    something concrete for each — this is not a tour, it is a working
-    lesson.
+    Read the italic line: "Every family has a distinct geometry. The
+    data tells you which geometry fits. There is no universally best
+    model — keep that in mind for the leaderboard at the end."
   </p>
-  <div class="transition">→ "Start with the one with the prettiest geometry."</div>
+  <div class="transition">→ "SVM first."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>SVM picture</span></div>
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>SVM margin</span></div>
   <h3>SVM — maximum margin</h3>
   <p>
-    Walk the diagram. "Two classes of points. Many lines separate them. SVM
-    picks the line that is as far as possible from the nearest point of
-    either class. The distance from the line to the nearest points is the
-    <em>margin</em>. The points touching the margin are the <em>support
-    vectors</em>."
+    Walk the figure. Two classes, and many lines could separate them.
+    SVM picks the one with the fattest buffer — the margin, $2/\|w\|$.
+    The dashed lines touch the closest points of each class; those
+    points — circled in red — are the support vectors. "Only those few
+    points determine the boundary. Move any other point and nothing
+    changes."
   </p>
-  <p>
-    Key intuition: "The support vectors are the only points that matter.
-    You could delete every other point and get the same model. That's why
-    SVMs are memory-efficient at inference — you only store the SVs."
-  </p>
-  <div class="transition">→ "Now the math that makes it a quadratic program."</div>
+  <div class="transition">→ "As an optimisation problem."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>SVM math</span></div>
-  <h3>The soft-margin quadratic program</h3>
+  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>SVM QP</span></div>
+  <h3>SVM — the quadratic program</h3>
   <p>
-    Walk the primal. "Minimise the norm of $\boldsymbol{w}$ — that
-    maximises the margin. Subject to every point being on the right side
-    with at least unit margin. In real data, not every point fits, so we
-    add slack variables $\xi_i$ and pay a penalty $C$ per violation."
+    Walk the primal: minimise $\frac{1}{2}\|w\|^2$ (maximise the
+    margin) plus $C\sum\xi_i$ (penalise violations), subject to each
+    point being on the correct side with slack $\xi_i$.
   </p>
   <p>
-    $C$ is the bias-variance dial. "Small $C$ = tolerant = smooth boundary
-    = high bias / low variance. Large $C$ = strict = complex boundary =
-    low bias / high variance. Same story as Lesson 3.2."
+    Then the bullets — connect $C$ to 3.2: "Small $C$ tolerates
+    violations and gives a smooth boundary — high bias. Large $C$
+    separates everything — high variance. $C$ is the SVM's
+    regularisation dial. And only support vectors have nonzero dual
+    coefficients — the solution is sparse."
   </p>
-  <div class="audience-cue expert">
-    <strong>For experts asking about the dual:</strong> "Yes, we get the
-    dual via Lagrange. It only depends on inner products and at the
-    optimum most $\alpha_i$ are zero — exactly the support vectors. That's
-    how the kernel trick plugs in on the next slide."
-  </div>
-  <div class="transition">→ "The kernel trick — why SVMs became famous."</div>
+  <div class="transition">→ "What if no line separates them?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 5</span><span>~5 min</span><span>Kernel trick</span></div>
-  <h3>Non-linear with a linear model</h3>
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Kernel trick</span></div>
+  <h3>The kernel trick</h3>
   <p>
-    Explain the trick in plain language: "Imagine mapping every point into
-    a higher-dimensional space where it becomes linearly separable. Then
-    do linear SVM there. The problem is the mapping $\phi$ could be
-    expensive — infinite dimensional even. The kernel trick says: you
-    don't need $\phi$. You just need the inner products
-    $\langle \phi(x), \phi(x')\rangle$, and for common kernels you can
-    compute those directly without ever touching $\phi$."
+    "Map the data into a higher-dimensional space where a hyperplane
+    <em>can</em> separate it. The trick: the dual only ever needs inner
+    products, so we compute $K(x, x') = \langle\phi(x),
+    \phi(x')\rangle$ directly — and never construct $\phi$ at all."
   </p>
   <p>
-    Walk the kernel table. "Linear kernel — just a dot product, useful for
-    text where everything is already sparse and high-dim. RBF kernel —
-    Gaussian bump around each support vector, smooth non-linear boundaries.
-    Polynomial — interactions up to degree $d$."
+    Walk the table. Linear: $x^\top x'$ — text and high-dimensional
+    sparse data. Polynomial: $(x^\top x' + c)^d$ — degree-$d$
+    interactions. RBF: $\exp(-\gamma\|x - x'\|^2)$ — smooth non-linear
+    boundaries, the default reach.
   </p>
-  <div class="transition">→ "Now something very different — KNN."</div>
+  <div class="transition">→ "KNN — and the curse that kills it."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 6</span><span>~6 min</span><span>KNN + curse</span></div>
-  <h3>KNN and the curse of dimensionality</h3>
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>KNN curse</span></div>
+  <h3>KNN — the curse of dimensionality</h3>
   <p>
-    Spend time here — this is the intuition learners will remember. "KNN is
-    almost trivial: find the $k$ nearest training points to your query,
-    take the majority vote. No training. No model. The magic is in the
-    distance metric."
+    KNN needs no training: store the data, and at prediction time take
+    a vote of the $k$ nearest points. Beautiful — until you see the
+    curve. As dimension $d$ grows, the ratio of farthest to nearest
+    distance collapses toward 1: <em>every</em> point becomes
+    equidistant, and "nearest" stops meaning anything.
   </p>
   <p>
-    Then pivot to the curse. Walk the diagram. "In 2D, your nearest neighbor
-    is meaningfully closer than a random point. In 500D, it is almost
-    exactly the same distance as a random point. That's distance
-    concentration — and it kills KNN as soon as you have enough features."
+    Read the labels: "At $d = 2$, neighbours are useful. At $d = 500$,
+    meaningless. This is distance concentration — the geometric reason
+    KNN dies in high dimensions, and one more argument for 3.1's
+    feature selection."
   </p>
-  <p>
-    Quantify: "With 10 features and enough data, KNN can be competitive.
-    With 100 features, it starts to struggle. With 1000 features, it is
-    essentially random. That's why KNN is not a default choice in modern
-    tabular ML."
-  </p>
-  <div class="audience-cue beginner">
-    <strong>For beginners lost in the math:</strong> "The intuition is
-    'everything is equidistant from everything else in high dimensions'.
-    Picture a 1000-dimensional unit cube — there is so much room that every
-    pair of points is roughly the same distance apart. So 'nearest' stops
-    meaning anything."
-  </div>
-  <div class="transition">→ "Now the simplest probabilistic model — Naive Bayes."</div>
+  <div class="transition">→ "The fastest baseline in the zoo."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Naive Bayes</span></div>
-  <h3>Naive Bayes — wrong but often right</h3>
+  <h3>Naive Bayes — fast baseline</h3>
   <p>
-    Walk the equation. "Bayes theorem, with one aggressive simplification:
-    assume every feature is independent given the class. That is never
-    true — 'age' and 'income' are correlated even within churners. But the
-    classifier still often works."
+    Walk the formula: predict the class that maximises the prior times
+    the product of per-feature likelihoods. "The independence
+    assumption is obviously wrong — words in a sentence are not
+    independent. But the model only needs to rank classes correctly,
+    and rank-correct is much easier than probability-correct."
   </p>
   <p>
-    Why it works despite being wrong: "The classifier only needs to pick
-    the right class, not output a correctly calibrated probability. Even if
-    the probability estimates are biased, the ranking can still put the
-    right class on top. NB is rank-correct more often than it is
-    probability-correct."
+    Walk the three variants: GaussianNB for continuous features,
+    MultinomialNB for counts (text bag-of-words — its natural home),
+    BernoulliNB for binary features. "Fit in milliseconds, hard to
+    beat on text. Always your first baseline."
   </p>
-  <p>
-    Three variants. "GaussianNB for continuous features. MultinomialNB for
-    counts — bag-of-words in text. BernoulliNB for binary flags. The
-    multinomial one is the best spam baseline ever invented."
-  </p>
-  <div class="transition">→ "Now the interpretable favourite — decision trees."</div>
+  <div class="transition">→ "Trees."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>Tree splitting</span></div>
-  <h3>Decision trees — Gini and information gain</h3>
+  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>Splitting criteria</span></div>
+  <h3>Decision trees — splitting criteria</h3>
   <p>
-    Walk both impurity measures. "Gini is 1 minus the sum of squared class
-    probabilities. Zero for a pure node, 0.5 for a balanced binary split.
-    Entropy is the same idea with logarithms. In practice they build
-    nearly identical trees; Gini is faster."
+    Walk the two impurity measures: Gini, $1 - \sum p_k^2$, and
+    entropy, $-\sum p_k \log_2 p_k$. Both are zero for a pure node and
+    maximal for a 50/50 mix.
   </p>
   <p>
-    Then information gain. "IG is the drop in impurity from the parent to
-    the weighted average of the children. The algorithm tries every
-    feature and every threshold and picks the split with the largest IG.
-    Recursive: each child becomes a parent for the next split."
+    Then information gain in the blue box: parent impurity minus the
+    weighted child impurities. "The algorithm is greedily simple: try
+    every feature, every threshold, pick the split with the largest
+    gain. Recurse until a stopping rule fires. Greedy means locally
+    optimal — trees don't look ahead."
   </p>
-  <div class="transition">→ "Now do one by hand."</div>
+  <div class="transition">→ "What those splits look like in space."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 9</span><span>~5 min</span><span>Gini by hand</span></div>
-  <h3>Compute Gini by hand</h3>
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>Axis-aligned cuts</span></div>
+  <h3>Trees partition feature space with axis-aligned cuts</h3>
   <p>
-    This is the hand-computation they will remember. Walk the numbers
-    slowly. "Parent node: 10 churn, 6 retain. $p_{\text{churn}} = 0.625$.
-    Gini = 1 - 0.625² - 0.375² = 0.469."
+    Walk the left panel: the first split is a horizontal cut at
+    bp = 150; the second is a vertical cut at age = 55, applied only
+    inside the high-bp region. Three rectangles result — R3 (low bp,
+    all survive), R2 (old, high bp, all mortality), R1 (young, high
+    bp, survive). The right panel is the same thing as a tree.
   </p>
   <p>
-    "Candidate split: {8 churn, 1 retain} on the left, {2 churn, 5 retain}
-    on the right. Compute Gini of each child. Weight by child size.
-    Subtract from parent Gini. That's IG = 0.179."
+    Read the amber insight box: "Each split is a single axis-aligned
+    cut. Trees cannot learn diagonal boundaries — SVMs can. A diagonal
+    boundary takes a tree a staircase of many cuts to approximate."
   </p>
-  <p>
-    Tell them: "The algorithm does exactly this arithmetic for thousands of
-    candidate splits per node and keeps the best. That's decision-tree
-    training in one slide."
-  </p>
-  <div class="transition">→ "One tree overfits. Average many, get a forest."</div>
+  <div class="transition">→ "Compute one split by hand."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Random forest diagram</span></div>
-  <h3>Random forests — decorrelating trees</h3>
+  <div class="meta"><span class="badge">Slide 10</span><span>~5 min</span><span>Gini by hand</span></div>
+  <h3>Decision tree by hand — Gini</h3>
   <p>
-    Walk the diagram. "Training data at the top. Bootstrap sample 1 grows
-    tree 1. Bootstrap sample 2 grows tree 2. Continue for $T$ trees. At
-    each split, only a random subset of features is considered — this is
-    the second decorrelation trick."
+    Do this one slowly at the board — it's the only hand calculation
+    of the lesson. Parent: 10 churn, 6 retain, $n = 16$. Gini =
+    $1 - 0.625^2 - 0.375^2 = 0.469$. The candidate split gives
+    {8 churn, 1 retain} and {2 churn, 5 retain}: Gini 0.198 and 0.408.
+    Weighted by size: $(9/16)(0.198) + (7/16)(0.408) = 0.290$.
+    Decrease: $0.469 - 0.290 = 0.179$.
   </p>
   <p>
-    "Prediction: pass the input through every tree and average (regression)
-    or vote (classification). The individual trees are high-variance and
-    decorrelated; their average has much lower variance. That's bagging."
+    "The tree computes this number for every candidate split and takes
+    the biggest. Entropy gives the same recipe with $H$ in place of
+    $G$ — in practice they rarely disagree."
   </p>
-  <div class="transition">→ "And the beautiful side effect — free validation."</div>
+  <div class="audience-cue beginner">
+    <strong>If students ask why not accuracy:</strong> "Impurity
+    rewards confident nodes. A split into 90/10 and 10/90 is far
+    better than two 50/50 nodes even if both classify the majority
+    class the same way."
+  </div>
+  <div class="transition">→ "One tree overfits. A forest doesn't."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>OOB = 1/e</span></div>
-  <h3>OOB = 1/e</h3>
+  <div class="meta"><span class="badge">Slide 11</span><span>~5 min</span><span>Random forest</span></div>
+  <h3>Random forest — why the trees are decorrelated</h3>
   <p>
-    This is the slide where you prove a beautiful limit. "When you draw a
-    bootstrap sample of size $n$ from $n$ points, each individual point
-    has probability $(1 - 1/n)^n$ of never being drawn. As $n$ gets large,
-    that probability converges to $1/e$, about 36.8 percent."
+    Walk the four panels. (a) Bootstrap rows: each tree trains on a
+    sample drawn with replacement — rows repeat, rows drop out. (b)
+    Random feature subsets: at each split, only $m = \sqrt{d}$ columns
+    are candidates. (c) The two sources of randomness produce trees
+    with genuinely different structures. (d) Majority vote aggregates.
   </p>
   <p>
-    "So every tree has ~37% of the original data unused. Those out-of-bag
-    samples form a validation set for free. Aggregate across all trees and
-    you get an unbiased generalisation estimate without any explicit CV.
-    That's why random forests are so convenient — you don't even need to
-    hold out data."
+    Read the key insight box: "Different rows + different columns at
+    each tree = trees make <em>independent</em> errors = averaging
+    reduces variance. A single tree is a low-bias, high-variance
+    dartboard. The forest keeps the bias and shrinks the spread —
+    that's 3.2's decomposition doing work."
+  </p>
+  <div class="transition">→ "And a free validation set falls out."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>OOB</span></div>
+  <h3>OOB = 1/e — free validation</h3>
+  <p>
+    Walk the limit: $(1 - 1/n)^n \to 1/e \approx 0.368$. "Each tree's
+    bootstrap sample leaves about 36.8% of rows out. For any given
+    row, roughly a third of the trees never saw it — vote only those
+    trees and you have an unbiased generalisation estimate with zero
+    extra compute."
+  </p>
+  <p>
+    "This is why the code sets <code>oob_score=True</code> — free
+    cross-validation, built into the training you were doing anyway."
+  </p>
+  <div class="transition">→ "All five families, one fair fight."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Fair comparison</span></div>
+  <h3>Five models, one dataset, same CV</h3>
+  <p>
+    Walk the code: five models in a dict, each evaluated with
+    <code>cross_validate</code> under the <em>same</em> stratified
+    5-fold split, scoring accuracy, F1, and AUC. "Same data, same
+    folds, same metrics. Anything less and the comparison is
+    astrology."
+  </p>
+  <div class="transition">→ "The results."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~5 min</span><span>Leaderboard</span></div>
+  <h3>Leaderboard on e-commerce churn (5-fold CV)</h3>
+  <p>
+    Read the table row by row. First the baseline — always predict
+    "churn": accuracy 0.741, F1 0.851, AUC 0.500. "Churners are the
+    majority here, so the trivial classifier already looks decent on
+    accuracy and F1. The baseline row is what every other number must
+    beat."
+  </p>
+  <p>
+    Now the models: SVM 0.790/0.871/0.747, KNN 0.764/0.859/0.739,
+    GaussianNB 0.787/0.863/<strong>0.791</strong>, tree
+    0.780/0.863/0.769, forest 0.784/0.866/0.779. Read the footer with
+    emphasis: "4,000 training rows, the recency column removed because
+    it defines the label. And the headline: <em>simple Naive Bayes
+    edges out the forest on AUC</em>. No family wins everywhere — the
+    geometry of this problem suits NB's independence story. This is
+    why you always run the table, never skip to your favourite."
   </p>
   <div class="audience-cue expert">
-    <strong>For experts:</strong> "The proof is one line. $\log(1-1/n)^n =
-    n\log(1-1/n) \approx -1$ for large $n$, so the whole thing converges
-    to $e^{-1}$. Standard calculus-1 limit."
+    <strong>For experts:</strong> the F1 column barely separates any
+    model from the baseline — a majority-positive class inflates F1
+    exactly as it inflates accuracy. AUC is the discriminating column
+    here; PR-AUC would be sharper still (3.5's topic).
   </div>
-  <div class="transition">→ "Now the live comparison."</div>
+  <div class="transition">→ "So how do you pick?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>Comparison code</span></div>
-  <h3>Five models, fair competition</h3>
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Right tool</span></div>
+  <h3>Pick the right tool</h3>
   <p>
-    Walk the dictionary. "Same StratifiedKFold, same X, same y, same
-    scorers. That makes the comparison honest — any difference we see is
-    due to the model, not the preprocessing or the splits."
+    Walk the table. SVM: small, clean, high-dimensional data; text
+    with a linear kernel. KNN: small data, low dimensions,
+    interpretable boundaries. Naive Bayes: text baseline, spam,
+    sentiment, fast prototypes. Decision tree: when you need a
+    human-readable rule set. Random forest: most tabular problems —
+    the default when unsure.
   </p>
   <p>
-    Mention inline that SVM needs probability=True to get AUC, KNN doesn't
-    need training but its inference is slow, and random forest gets OOB
-    for free.
-  </p>
-  <div class="transition">→ "Here's what typically happens."</div>
-</div>
-
-<div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~5 min</span><span>Leaderboard</span></div>
-  <h3>Typical leaderboard</h3>
-  <p>
-    Walk the table row by row. Comment on each: "Random forest wins AUC by
-    a narrow margin. SVM is very close second but 4× slower — not worth
-    it here. KNN lags because we have 30+ features and distance
-    concentration has started. Naive Bayes is decent but handicapped by
-    the independence assumption; the behavioural features are correlated
-    with each other. Decision tree is halfway between — decent AUC, very
-    fast, fully interpretable."
-  </p>
-  <p>
-    Make the production call explicit: "For this problem, I would ship the
-    random forest. Best metric, cheap inference, feature importance for
-    free, and OOB means I trust my generalisation estimate. Decision tree
-    is my backup if the business demands a human-readable rule set."
-  </p>
-  <div class="transition">→ "A pocket guide for future projects."</div>
-</div>
-
-<div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Pick the right tool</span></div>
-  <h3>Which model when</h3>
-  <p>
-    Walk the table. Tell them to screenshot this slide. "This is the
-    cheat sheet. Memorise which row fits your data shape and you will
-    pick the right family in 30 seconds instead of burning a day."
-  </p>
-  <p>
-    Emphasise that "random forest is the right default when you don't yet
-    know what you're doing". That is not lazy — it is correct. Most tabular
-    ML problems in production run on random forests or their boosted
-    cousins (next lesson).
+    "Default when unsure' is doing a lot of work in that last row.
+    The forest is rarely wrong and rarely best — but the leaderboard
+    just showed you why 'rarely best' matters."
   </p>
   <div class="transition">→ "Three traps."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Traps + reflection</span></div>
-  <h3>Three traps + reflection</h3>
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Traps</span></div>
+  <h3>Three traps</h3>
   <p>
-    Walk the three traps. Distance-based models without scaling is the
-    single most common mistake on this lesson's exercises — warn them
-    loudly.
+    Walk the three red boxes. One: unscaled features with SVM or KNN —
+    dollars dominate years; both methods are distance-based, so
+    standardise first. Two: KNN with very large $k$ — the vote
+    collapses to the base rate; tune $k$ by CV. Three: reporting
+    accuracy on imbalanced data — meaningless, as the baseline row
+    just proved; use F1/AUC, and 3.5 goes deeper.
   </p>
+  <div class="transition">→ "Recap and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
   <p>
-    Close with the bullet list and the bridge. "Next lesson: we ditch the
-    random-forest family and replace it with the single model family that
-    has won nearly every tabular competition of the last decade — gradient
-    boosting. We will derive the XGBoost split gain from a second-order
-    Taylor expansion. The math is gorgeous."
+    Walk the bullets: the SVM primal-to-dual and the kernel trick,
+    distance concentration, Gini and information gain by hand, OOB =
+    1/e, and training five families for a fair comparison. Tease 3.4:
+    "Random forests average independent trees. Gradient boosting does
+    the opposite — each tree corrects the last one's mistakes. XGBoost,
+    LightGBM, CatBoost, and a second-order Taylor derivation."
   </p>
-  <div class="transition">→ End of Lesson 3.3. Break.</div>
+  <div class="transition">→ End of Lesson 3.3. Ten-minute break.</div>
 </div>
 
 <nav class="lesson-nav">
-  <a href="../02/notes.html" class="prev"><span class="label">← Previous</span>3.2 Speaker Notes</a>
-  <a href="../04/notes.html" class="next"><span class="label">Next →</span>3.4 Speaker Notes</a>
+  <a href="../02/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    3.2 Speaker Notes
+  </a>
+  <a href="../04/notes.html" class="next">
+    <span class="label">Next →</span>
+    3.4 Speaker Notes
+  </a>
 </nav>
 
 </main>

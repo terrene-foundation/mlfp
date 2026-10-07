@@ -9,7 +9,7 @@
 #   - Simulate an experiment with a known effect (positive control)
 #   - Detect Sample Ratio Mismatch (SRM) via chi-squared test
 #   - Simulate SRM to see how biased allocation inflates effect estimates
-#   - Connect SRM diagnostics to Singapore ride-hailing A/B tests
+#   - Run SRM checks per segment, not just overall
 #
 # PREREQUISITES:
 #   - MLFP02 Exercise 4.1 (experiment design, power analysis)
@@ -20,9 +20,9 @@
 # TASKS (5-phase R10):
 #   1. Theory — why SRM breaks experiments before they start
 #   2. Build — positive control simulation with known treatment effect
-#   3. Train — SRM detection on simulated and real data
+#   3. Train — SRM detection on simulated and real data (vs the design)
 #   4. Visualise — SRM impact: biased vs unbiased estimation
-#   5. Apply — Grab Singapore surge-pricing A/B with device-type SRM
+#   5. Apply — ride-hailing surge-pricing A/B with device-type SRM
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -37,6 +37,7 @@ from shared.mlfp02.ex_4 import (
     OUTPUT_DIR,
     SEED,
     TwoArmAB,
+    designed_control_share,
     load_experiment,
     make_rng,
     print_banner,
@@ -140,18 +141,24 @@ print(
     f"{'SRM' if sim_srm_p < 0.01 else 'OK'}"
 )
 
-# --- On real data ---
+# --- On real data: test against the DESIGNED split ---
+# This experiment allocated 40% control / 35% treatment_a (plus two
+# other arms), so within the analysed pair control SHOULD hold
+# 40 / (40 + 35) = 53.3% of users — not 50%.
+expected_share = designed_control_share()
 real_obs = np.array([data.n_control, data.n_treatment])
-real_exp = np.array([data.n_total / 2, data.n_total / 2])
+# TODO: Expected counts under the DESIGNED split (not 50/50).
+# Hint: [data.n_total * expected_share, data.n_total * (1 - expected_share)]
+real_exp = ____
 
-# TODO: Same chi-squared test on real data.
+# TODO: Same chi-squared test on real data, against real_exp.
 chi2_stat, srm_p = ____
-print(f"\n--- Real Data (intended 50/50) ---")
+print(f"\n--- Real Data (designed control share {expected_share:.3f}) ---")
 print(
     f"Observed: {data.n_control:,} / {data.n_treatment:,} "
     f"({data.n_control / data.n_total:.4f}/{data.n_treatment / data.n_total:.4f})"
 )
-print(f"chi2={chi2_stat:.4f}, p={srm_p:.2e}")
+print(f"chi2={chi2_stat:.4f}, p={srm_p:.4f}")
 if srm_p < 0.01:
     print("SRM DETECTED — investigate:")
     print("  1. Bot filtering differential")
@@ -161,9 +168,20 @@ if srm_p < 0.01:
 else:
     print("No SRM detected — split is consistent with design")
 
+# The classic mistake: testing the same counts against 50/50
+naive_chi2, naive_p = stats.chisquare(
+    real_obs, f_exp=np.array([data.n_total / 2, data.n_total / 2])
+)
+print(
+    f"\nSame counts tested against 50/50 (WRONG for this design): "
+    f"chi2={naive_chi2:.1f}, p={naive_p:.2e}"
+)
+print("A false alarm like this trains teams to ignore SRM — always use the design.")
+
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert sim_chi2 == 0.0, "Simulated equal groups should give chi2=0"
-assert 0 <= srm_p <= 1, "SRM p-value must be valid"
+assert srm_p >= 0.01, "The real pair should match its DESIGNED split"
+assert naive_p < 0.01, "Testing an unequal design against 50/50 raises a false alarm"
 print("\n>>> Checkpoint 2 passed — SRM detection completed\n")
 
 
@@ -258,61 +276,106 @@ print("\n>>> Checkpoint 4 passed — SRM visualisation saved\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Grab Singapore Surge Pricing A/B
+# TASK 5 — APPLY: Ride-Hailing Surge Pricing A/B (illustrative)
 # ════════════════════════════════════════════════════════════════════════
-# Grab tests a new surge-pricing algorithm.  A device-type SRM appears:
-# iOS users are 5% more likely to land in treatment.
+# A ride-hailing platform (illustrative numbers) tests a new surge-pricing
+# algorithm with a designed 50/50 split. The feature reaches iOS first,
+# so iOS riders are more likely to land in treatment (55%) and Android
+# riders less likely (45%) — a device-type SRM. iOS riders also have
+# higher average fares.
 
-print_banner("Applied — Grab Singapore Surge Pricing A/B")
+print_banner("Applied — Ride-Hailing Surge Pricing A/B")
 
-n_grab = 20_000
+n_rides = 20_000
 ios_share = 0.45
 
-# Simulate device-type SRM
-grab_devices = rng.choice(
+ride_devices = rng.choice(
     ["iOS", "Android"],
-    size=n_grab,
+    size=n_rides,
     p=[ios_share, 1 - ios_share],
 )
-# Biased assignment: iOS users 55% likely to get treatment
-assign_prob_grab = np.where(grab_devices == "iOS", 0.55, 0.45)
-grab_assignment = (rng.random(n_grab) < assign_prob_grab).astype(int)
+# Biased assignment: iOS users 55% likely to get treatment, Android 45%
+assign_prob_ride = np.where(ride_devices == "iOS", 0.55, 0.45)
+ride_assignment = (rng.random(n_rides) < assign_prob_ride).astype(int)
 
-# Fare depends on device (iOS users have higher AOV)
-base_fare = np.where(grab_devices == "iOS", 18.0, 12.0)
-true_algo_effect = 0.5
-grab_fare = (
-    base_fare + grab_assignment * true_algo_effect + rng.normal(0, 4, size=n_grab)
+# Fare depends on device (iOS riders take pricier trips)
+base_fare = np.where(ride_devices == "iOS", 18.0, 12.0)
+true_algo_effect = 0.5  # True effect is small: $0.50
+ride_fare = (
+    base_fare + ride_assignment * true_algo_effect + rng.normal(0, 4, size=n_rides)
 )
 
-# TODO: Run the SRM chi-squared test on the Grab data.
-# Compute n_ctrl_grab and n_treat_grab from grab_assignment.
-n_ctrl_grab = ____
-n_treat_grab = ____
-grab_obs = np.array([n_ctrl_grab, n_treat_grab])
-grab_exp = np.array([n_grab / 2, n_grab / 2])
-grab_chi2, grab_srm_p = ____
+# Aggregate SRM check
+# TODO: Count control and treatment users from ride_assignment.
+# Hint: (ride_assignment == 0).sum() and (ride_assignment == 1).sum()
+n_ctrl_ride = ____
+n_treat_ride = ____
+ride_obs = np.array([n_ctrl_ride, n_treat_ride])
+ride_exp = np.array([n_rides / 2, n_rides / 2])
+# TODO: Aggregate SRM chi-squared test (designed 50/50 overall).
+ride_chi2, ride_srm_p = ____
+
+# Per-segment SRM check — the design is 50/50 WITHIN every device too
+segment_srm = {}
+for device in ["iOS", "Android"]:
+    in_seg = ride_devices == device
+    n_c = int(((ride_assignment == 0) & in_seg).sum())
+    n_t = int(((ride_assignment == 1) & in_seg).sum())
+    # TODO: SRM chi-squared test WITHIN this device (designed 50/50).
+    # Hint: stats.chisquare([n_c, n_t]) — equal expected counts by default
+    seg_chi2, seg_p = ____
+    segment_srm[device] = {"n_c": n_c, "n_t": n_t, "p": float(seg_p)}
 
 naive_effect = (
-    grab_fare[grab_assignment == 1].mean() - grab_fare[grab_assignment == 0].mean()
+    ride_fare[ride_assignment == 1].mean() - ride_fare[ride_assignment == 0].mean()
+)
+# Remedy for the estimate: compare within each device, then re-weight by
+# device share (a stratified estimate)
+stratified_effect = sum(
+    (ride_devices == dev).mean()
+    * (
+        ride_fare[(ride_assignment == 1) & (ride_devices == dev)].mean()
+        - ride_fare[(ride_assignment == 0) & (ride_devices == dev)].mean()
+    )
+    for dev in ["iOS", "Android"]
 )
 
-print(f"n = {n_grab:,}  |  True algo effect: ${true_algo_effect:.2f}")
-print(f"Control: {n_ctrl_grab:,}  Treatment: {n_treat_grab:,}")
-print(f"SRM chi2={grab_chi2:.2f}, p={grab_srm_p:.4f}")
-print(f"SRM {'DETECTED' if grab_srm_p < 0.01 else 'not detected'}")
-print(f"\nNaive estimated effect:  ${naive_effect:.2f}")
-print(f"True effect:             ${true_algo_effect:.2f}")
-print(f"Bias from SRM:           ${naive_effect - true_algo_effect:+.2f}")
+print(f"n = {n_rides:,}  |  True algo effect: ${true_algo_effect:.2f}")
+print(f"Control: {n_ctrl_ride:,}  Treatment: {n_treat_ride:,}")
 print(
-    "\nThe iOS enrichment in treatment inflates the fare estimate.\n"
-    "At Grab's scale (~8M rides/month), this bias would cause\n"
-    "incorrect pricing decisions worth millions in revenue."
+    f"Aggregate SRM: chi2={ride_chi2:.2f}, p={ride_srm_p:.4f} -> "
+    f"{'DETECTED' if ride_srm_p < 0.01 else 'not detected'}"
 )
+for device, r in segment_srm.items():
+    print(
+        f"  {device:<8} SRM: {r['n_c']:,} vs {r['n_t']:,}, p={r['p']:.2e} -> "
+        f"{'DETECTED' if r['p'] < 0.01 else 'not detected'}"
+    )
+any_segment_srm = any(r["p"] < 0.01 for r in segment_srm.values())
+if ride_srm_p >= 0.01 and any_segment_srm:
+    print(
+        "\nThe aggregate test MISSES it: iOS over-allocation and Android\n"
+        "under-allocation largely cancel in the totals. Only the per-segment\n"
+        "check reveals the compositional imbalance."
+    )
+print(f"\nNaive estimated effect:      ${naive_effect:.2f}")
+print(f"Stratified (within-device):  ${stratified_effect:.2f}")
+print(f"True effect:                 ${true_algo_effect:.2f}")
+print(f"Bias of the naive estimate:  ${naive_effect - true_algo_effect:+.2f}")
+# INTERPRETATION: Device-type SRM is common in mobile A/B tests because
+# iOS and Android releases ship at different times. Always run SRM checks
+# per key segment (device, country, new vs returning), not just overall.
+# Stratifying the estimate removes the composition bias here, but it
+# cannot fix unobserved differences — investigate the cause before
+# trusting any result.
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
-assert n_grab == n_ctrl_grab + n_treat_grab, "All users accounted for"
-print("\n>>> Checkpoint 5 passed — Grab SRM scenario completed\n")
+assert n_rides == n_ctrl_ride + n_treat_ride, "All users accounted for"
+assert any_segment_srm, "The per-segment check should catch the device SRM"
+assert abs(stratified_effect - true_algo_effect) < abs(
+    naive_effect - true_algo_effect
+), "Stratifying by device should reduce the bias"
+print("\n>>> Checkpoint 5 passed — device-type SRM scenario completed\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -327,7 +390,8 @@ print(
   - SRM detection: chi-squared test on observed vs expected split
   - SRM causes: bot filtering, redirects, randomisation bugs
   - SRM impact: biased allocation => biased treatment effect estimates
-  - Applied: Grab Singapore ride-hailing device-type SRM
+  - SRM must be tested against the DESIGNED split, overall AND per segment
+  - Applied: ride-hailing device-type SRM and a stratified estimate
 
   NEXT: In Exercise 4.3 you'll learn Welch's t-test — the robust
   test for comparing means when variances may differ.

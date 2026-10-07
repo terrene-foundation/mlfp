@@ -6,11 +6,13 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Write a D/T/R (Delegator/Task/Responsible) organisation in YAML
-#   - Compile that organisation with kailash-pact's GovernanceEngine
-#   - Understand what compilation validates (chains, cycles, monotonic
-#     clearance, budget bounds) — and what it does NOT (LLM safety)
-#   - Map the abstract grammar to a real Singapore FinTech scenario
+#   - Write a D/T/R (Department/Team/Role) organisation in YAML
+#   - Compile that organisation with kailash-pact's GovernanceEngine and
+#     apply its clearances + envelopes so they are actually enforced
+#   - Understand what compilation checks — and what it does NOT (clearance
+#     chains, roles without envelopes, LLM safety)
+#   - See the installed engine's real default: roles with no envelope, and
+#     unknown addresses, are auto-approved
 #
 # PREREQUISITES: Exercise 6 (multi-agent systems)
 # ESTIMATED TIME: ~30 min
@@ -19,8 +21,8 @@
 #   1. Load real adversarial prompts (used by later techniques)
 #   2. Write the SG FinTech org YAML to disk
 #   3. Compile with GovernanceEngine and inspect the result
-#   4. Visualise the D/T/R chains as a table
-#   5. Apply — why a MAS-regulated bank needs compiled governance
+#   4. Visualise the org: who heads what, and which envelopes apply
+#   5. Apply — why a regulated bank needs compiled governance
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -33,6 +35,7 @@ import polars as pl
 
 from shared.mlfp06.ex_7 import (
     ORG_YAML,
+    clearance_chain_violations,
     compile_governance,
     load_adversarial_prompts,
     write_org_yaml,
@@ -42,26 +45,32 @@ OUTPUT_DIR = Path("outputs") / "ex7_governance"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ════════════════════════════════════════════════════════════════════════
-# THEORY — D/T/R Accountability Grammar
+# THEORY — D/T/R: Department / Team / Role
 # ════════════════════════════════════════════════════════════════════════
-# Every autonomous action an agent takes in production MUST trace back
-# to a human Delegator who authorised it. That is the D/T/R grammar:
+# PACT addresses every position in an organisation with a D/T/R path:
 #
-#   D (Delegator):   A named human authority (chief_ml_officer,
-#                    chief_risk_officer, vp_customer, ...).
-#   T (Task):        A bounded scope of work the agent may perform
-#                    (data_analysis, model_training, bias_audit, ...).
-#   R (Responsible): The agent that executes within the envelope the
-#                    delegator attached to the task.
+#   D (Department): an organisational unit        D1 = ML Engineering
+#   T (Team):       a unit inside a department    D1-R1-T1 = Data Analysis
+#   R (Role):       a position — human or agent   D1-R1-T1-R1 = data_analyst
 #
-# Analogy: A bank manager (D) tells a teller (R) "handle customer
-# deposits up to S$10,000" (T with an envelope). If the teller approves
-# a S$50,000 transfer, accountability traces back to the manager who
-# set the envelope too wide — not to a nameless "the system".
+# Grammar rule: every D or T is immediately followed by the R that heads
+# it. "D1-R1-T1-R1" reads "the role heading Team 1, inside the unit headed
+# by D1-R1 (the Chief ML Officer)". So every agent role sits under a chain
+# of human heads — accountability is structural, not a slide.
 #
-# WHY THIS MATTERS: MAS TRM 7.5 and EU AI Act Art. 14 both require
-# human oversight of AI systems. "The agent did it" is never an
-# acceptable audit answer. D/T/R makes accountability structural.
+# DELEGATION is a separate concept: an operating envelope is defined BY
+# one role (the human head, `defined_by`) FOR another role (the agent,
+# `target`). The envelope is what restricts the agent.
+#
+# Analogy: A bank manager (head of a branch) tells a teller (a role in a
+# team at that branch) "handle deposits up to S$10,000" — that limit is
+# the envelope. If the teller approves a S$50,000 transfer, accountability
+# traces to the manager who set the envelope, not to "the system".
+#
+# WHY THIS MATTERS: the EU AI Act (Art. 14, human oversight) and the MAS
+# Technology Risk Management Guidelines both expect a named human to be
+# accountable for automated decisions. D/T/R makes that a property of the
+# compiled organisation.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -93,18 +102,12 @@ print("TASK 2: Write SG FinTech Org YAML (D/T/R)")
 print("=" * 70)
 
 org_yaml_path = write_org_yaml()
-
-print(f"Organisation: SG FinTech AI Division")
-print(f"Departments:  3 (ML Engineering, Risk & Compliance, Customer Intelligence)")
-print(f"Agents:       6")
-print(f"Delegations:  6 D/T/R chains")
-print(f"YAML path:    {org_yaml_path}")
+print(f"YAML path: {org_yaml_path}")
+print(f"YAML size: {len(ORG_YAML.splitlines())} lines")
 
 # ── Checkpoint 2 ────────────────────────────────────────────────────────
-# Modern pact schema: `envelopes:` block holds the D/T/R delegation
-# contracts; the old `delegations:` top-level list is gone. Each
-# envelope entry is one delegation from a human (`defined_by`) to an
-# agent (`target`).
+# The YAML has a flat schema: departments, teams, roles (with `heads` and
+# `reports_to`), clearances, and envelopes (one per delegation).
 assert "departments" in ORG_YAML and "envelopes" in ORG_YAML
 assert org_yaml_path  # path was returned
 print("[x] Checkpoint 2 passed — org YAML written\n")
@@ -118,90 +121,123 @@ print("=" * 70)
 print("TASK 3: Construct GovernanceEngine from org YAML")
 print("=" * 70)
 
+# compile_governance() = load_org_yaml -> GovernanceEngine(org_definition)
+# -> apply_governance_specs (grants the YAML clearances and attaches the
+# YAML envelopes). Without that last step the engine knows the structure
+# but enforces nothing.
 engine, org = compile_governance(org_yaml_path)
 
-print(f"Compiled organisation:")
-print(f"  Agents:      {org.n_agents}")
+print("Compiled organisation:")
+print(f"  Agent roles: {org.n_agents}")
 print(f"  Delegations: {org.n_delegations}")
 print(f"  Departments: {org.n_departments}")
+print(f"  Teams:       {org.n_teams}")
+
+structure = pl.DataFrame(
+    [
+        {"address": addr, "type": node.node_type.name, "name": node.name}
+        for addr, node in engine.get_org().nodes.items()
+    ]
+)
+print("\nD/T/R addresses produced by compilation:")
+print(structure)
+
+# Compilation does NOT check that a role's clearance is at or below the
+# clearance of the role it reports to — we check that ourselves.
+violations = clearance_chain_violations(org_yaml_path)
+print(f"\nClearance-chain violations (child above its head): {violations.height}")
+if violations.height:
+    print(violations)
+
+# What does the installed engine do with each kind of address?
+probes = [
+    ("D1-R1-T1-R1", "read_data", "agent WITH an envelope, allowed action"),
+    ("D1-R1-T1-R1", "delete_all_records", "agent WITH an envelope, other action"),
+    ("D1-R1", "delete_all_records", "department head, NO envelope"),
+    ("D99-R99-T99-R99", "read_data", "address not in the org"),
+]
+probe_rows = []
+for address, action, label in probes:
+    verdict = engine.verify_action(address, action, {"cost": 1.0})
+    probe_rows.append(
+        {
+            "case": label,
+            "address": address,
+            "action": action,
+            "level": verdict.level,
+            "allowed": verdict.allowed,
+        }
+    )
+probe_df = pl.DataFrame(probe_rows)
+print("\nverify_action() on four kinds of address:")
+print(probe_df.select("case", "level", "allowed"))
 print(
     """
-Compilation validates:
-  - Every agent has a delegation chain to a human Delegator
-  - No circular delegations (A -> B -> A)
-  - Clearance levels decrease monotonically down chains
-  - Budget envelopes don't exceed parent limits
-What compilation does NOT validate:
-  - Content safety of LLM outputs (that needs adversarial testing)
-  - Runtime budget consumption (that needs the runtime wrapper)
-"""
+What compilation checks:
+  - every role points at a declared unit (`heads`) and role (`reports_to`)
+  - clearance strings are valid pact levels
+  - envelope `target` / `defined_by` resolve to real roles
+  - an applied envelope may not widen its defining role's own envelope
+What it does NOT check:
+  - clearance chains (we checked them above)
+  - roles with no envelope: the installed default AUTO-APPROVES them
+  - addresses that are not in the org: also AUTO-APPROVED
+  - content safety of LLM outputs (that needs adversarial testing)
+So a deny path exists ONLY where an envelope is attached."""
 )
 
 # ── Checkpoint 3 ────────────────────────────────────────────────────────
 assert org is not None, "Task 3: compilation should succeed"
-assert org.n_agents > 0, "Task 3: org should have agents"
+assert org.n_agents > 0, "Task 3: org should have agent roles"
 assert org.n_delegations > 0, "Task 3: org should have delegations"
+assert violations.height == 0, "Task 3: every clearance chain must be monotonic"
+levels = dict(zip(probe_df["case"], probe_df["level"]))
+assert levels["agent WITH an envelope, other action"] == "blocked"
+assert levels["department head, NO envelope"] == "auto_approved"
+assert levels["address not in the org"] == "auto_approved"
 print(
-    f"[x] Checkpoint 3 passed — compiled {org.n_agents} agents, "
-    f"{org.n_delegations} delegations\n"
+    f"\n[x] Checkpoint 3 passed — compiled {org.n_agents} agent roles, "
+    f"{org.n_delegations} delegations; deny path only where an envelope exists\n"
 )
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — Visualise the D/T/R Chains
+# TASK 4 — Visualise the Organisation and its Delegations
 # ════════════════════════════════════════════════════════════════════════
 
 print("=" * 70)
-print("TASK 4: Visualise D/T/R Chains")
+print("TASK 4: Visualise D/T/R Organisation and Delegations")
 print("=" * 70)
 
-dtr_chains = pl.DataFrame(
-    {
-        "Delegator": [
-            "chief_ml_officer",
-            "chief_ml_officer",
-            "chief_ml_officer",
-            "chief_risk_officer",
-            "chief_risk_officer",
-            "vp_customer",
-        ],
-        "Task": [
-            "data_analysis",
-            "model_training",
-            "model_deployment",
-            "risk_assessment",
-            "bias_audit",
-            "customer_interaction",
-        ],
-        "Responsible": [
-            "data_analyst",
-            "model_trainer",
-            "model_deployer",
-            "risk_assessor",
-            "bias_checker",
-            "customer_agent",
-        ],
-        "Budget": ["$20", "$100", "$50", "$200", "$75", "$5"],
-        "Clearance": [
-            "internal",
-            "confidential",
-            "confidential",
-            "restricted",
-            "confidential",
-            "public",
-        ],
-    }
-)
+nodes = engine.get_org().nodes
+team_name_of = {
+    addr: node.name for addr, node in nodes.items() if node.node_type.name == "TEAM"
+}
+delegation_rows = []
+for spec in org.envelope_specs:
+    agent_addr = org.address_of(spec.target)
+    team_addr = agent_addr.rsplit("-R", 1)[0]
+    delegation_rows.append(
+        {
+            "Defined by (head)": spec.defined_by,
+            "Team": team_name_of.get(team_addr, ""),
+            "Agent role": spec.target,
+            "Address": agent_addr,
+            "Budget $": (spec.financial or {}).get("max_spend_usd"),
+            "Clearance": org.clearances.get(spec.target, "none"),
+        }
+    )
+dtr_chains = pl.DataFrame(delegation_rows)
 print(dtr_chains)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# VISUALISE — D/T/R Org Chart (Delegator-to-Agent hierarchy)
+# VISUALISE — Org chart (department heads -> agent roles)
 # ════════════════════════════════════════════════════════════════════════
-# Visual proof that every agent traces back to a named human Delegator.
-# The tree structure makes accountability chains visually obvious — no
-# agent floats without a human root.
+# Visual proof that every agent role sits under a named human head. Built
+# from the compiled delegations above, not from a hand-typed list.
 
+heads = list(dict.fromkeys(dtr_chains["Defined by (head)"].to_list()))
 fig, ax = plt.subplots(figsize=(10, 5))
 ax.set_xlim(0, 10)
 ax.set_ylim(0, 7)
@@ -210,72 +246,51 @@ ax.set_title(
     "D/T/R Organisation Chart — SG FinTech AI Division", fontweight="bold", fontsize=13
 )
 
-# Delegator positions (top row)
-delegators = {
-    "chief_ml_officer": (2, 6),
-    "chief_risk_officer": (5, 6),
-    "vp_customer": (8, 6),
-}
-# Agent positions (bottom row), keyed by delegator
-agents_map = {
-    "chief_ml_officer": [
-        ("data_analyst", 0.5, 3.5),
-        ("model_trainer", 2, 3.5),
-        ("model_deployer", 3.5, 3.5),
-    ],
-    "chief_risk_officer": [("risk_assessor", 4.5, 3.5), ("bias_checker", 5.5, 3.5)],
-    "vp_customer": [("customer_agent", 8, 3.5)],
-}
-
-for delegator, (dx, dy) in delegators.items():
+head_x = {h: 10 * (i + 0.5) / len(heads) for i, h in enumerate(heads)}
+agents = dtr_chains["Agent role"].to_list()
+agent_x = {a: 10 * (i + 0.5) / len(agents) for i, a in enumerate(agents)}
+for head, hx in head_x.items():
     ax.text(
-        dx,
-        dy,
-        delegator.replace("_", "\n"),
+        hx,
+        6,
+        f"{head.replace('_', chr(10))}\n[{org.clearances.get(head, '?')}]",
         ha="center",
         va="center",
         fontsize=8,
         fontweight="bold",
-        bbox=dict(
-            boxstyle="round,pad=0.4", facecolor="#3498db", edgecolor="white", alpha=0.9
-        ),
+        bbox=dict(boxstyle="round,pad=0.4", facecolor="#3498db", edgecolor="white"),
         color="white",
     )
-    for agent_name, ax_, ay in agents_map[delegator]:
-        ax.text(
-            ax_,
-            ay,
-            agent_name.replace("_", "\n"),
-            ha="center",
-            va="center",
-            fontsize=7,
-            bbox=dict(
-                boxstyle="round,pad=0.3",
-                facecolor="#2ecc71",
-                edgecolor="white",
-                alpha=0.8,
-            ),
-            color="white",
-        )
-        ax.annotate(
-            "",
-            xy=(ax_, ay + 0.8),
-            xytext=(dx, dy - 0.8),
-            arrowprops=dict(arrowstyle="->", color="#7f8c8d", lw=1.5),
-        )
+for row in dtr_chains.iter_rows(named=True):
+    agent, hx = row["Agent role"], head_x[row["Defined by (head)"]]
+    ax_ = agent_x[agent]
+    ax.text(
+        ax_,
+        3.3,
+        f"{agent.replace('_', chr(10))}\n[{row['Clearance']}]\n${row['Budget $']:g}",
+        ha="center",
+        va="center",
+        fontsize=7,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="#2ecc71", edgecolor="white"),
+        color="white",
+    )
+    ax.annotate(
+        "",
+        xy=(ax_, 4.1),
+        xytext=(hx, 5.3),
+        arrowprops=dict(arrowstyle="->", color="#7f8c8d", lw=1.5),
+    )
 
-# Legend
-ax.text(1, 1.5, "D = Delegator (human)", fontsize=9, color="#3498db", fontweight="bold")
-ax.text(
-    1, 0.8, "R = Responsible (agent)", fontsize=9, color="#2ecc71", fontweight="bold"
-)
+ax.text(0.3, 1.5, "Department head (human role)", fontsize=9, color="#3498db")
+ax.text(0.3, 0.8, "Team-head agent role", fontsize=9, color="#2ecc71")
 ax.text(
     5,
     1.5,
-    f"Agents: {org.n_agents}  |  Delegations: {org.n_delegations}",
+    f"Agent roles: {org.n_agents}  |  Delegations: {org.n_delegations}",
     fontsize=10,
     color="#2c3e50",
 )
+ax.text(5, 0.8, "arrow = envelope defined_by -> target", fontsize=9, color="#7f8c8d")
 
 plt.tight_layout()
 fname = OUTPUT_DIR / "ex7_dtr_org_chart.png"
@@ -285,91 +300,78 @@ print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Apply: MAS-Regulated Bank
+# TASK 5 — Apply: Regulated Bank
 # ════════════════════════════════════════════════════════════════════════
 #
 # SCENARIO: A Singapore retail bank deploys an AI agent platform for
-# customer service, fraud triage, and risk reporting. MAS TRM 7.5
-# mandates an auditable trail for every automated decision that
-# affects a customer. The compliance team asks one question during the
-# annual audit: "For every AI-taken action this year, show me which
-# human authorised that class of action."
+# customer service, fraud triage, and risk reporting. Its technology-risk
+# auditors ask one question: "For every AI-taken action this year, show
+# me which human authorised that class of action."
 #
-# Without compiled D/T/R governance, the bank's answer is "well, the
-# ML team wrote the agents, so... them, I guess?" — which fails the
-# audit because no specific human is accountable for any specific
-# action. With compile_governance() (load_org_yaml + GovernanceEngine) running on boot, every
-# agent action carries a delegation chain. The auditor's question is
-# answered by a 1-line query against the audit trail.
+# Without compiled D/T/R governance, the bank's answer is "well, the ML
+# team wrote the agents, so... them, I guess?" — no specific human is
+# accountable for any specific action. With compile_governance() running
+# at boot, every agent role has an address under a named head and an
+# envelope that head defined; the auditor's question becomes a lookup.
 #
-# BUSINESS IMPACT: A failed MAS TRM audit triggers remediation orders,
-# capital add-ons, and in severe cases, a pause on the affected
-# business line. Singapore banks regularly face S$500K–S$5M in
-# remediation costs per finding. One compiled org YAML eliminates an
-# entire class of findings.
+# The probe in Task 3 is the second half of the lesson: an agent role
+# that was never given an envelope is NOT restricted by default. "Every
+# agent has an envelope" must itself be a checked property of your org.
+#
+# BUSINESS IMPACT (illustrative figures): if remediating one adverse
+# audit finding costs on the order of S$500K in consultants, rework and
+# management time, a compiled org that removes a whole class of findings
+# ("no accountable owner for automated decisions") pays for itself
+# quickly.
 
 print("\n" + "=" * 70)
 print("  KEY TAKEAWAY: Compilation Is the Structural Audit Gate")
 print("=" * 70)
 print(
-    f"  {org.n_agents} agents, {org.n_delegations} delegations, "
-    f"all traced to named humans."
+    f"  {org.n_agents} agent roles, {org.n_delegations} envelopes, "
+    f"each defined by a named human head."
 )
-print("  The compilation step is the difference between 'we have")
-print("  governance' and 'we can prove governance ran at boot'.")
+print("  Compile + apply proves the structure and the envelopes are loaded;")
+print("  it does not make envelope-less roles safe — they are auto-approved.")
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# DIAGNOSTIC CHECKPOINT — Governance lens
 # ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
+# The LLM Observatory's Governance lens runs negative drills — actions
+# that SHOULD be denied — straight through engine.verify_action().
+# No LLM call is needed.
 from shared.mlfp06.diagnostics import LLMObservatory
 
-# Primary lens: Governance (audit chain, envelope breach scan, verdict
-# distribution, budget consumption). Secondary: Agent Trace.
-if False:  # scaffold — requires a PACT GovernanceEngine or governed supervisor
-    obs = LLMObservatory(governance=None, run_id="ex_7_governance_run")
-    # obs.governance.verify_chain(audit_df)
-    # obs.governance.budget_consumption()
-    # obs.governance.negative_drills([...])  # envelope breach attempts
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Governance (HEALTHY): audit chain intact (0 breaks), 128
-#       actions recorded, 2 blocks + 1 escalate, budget at 34% of cap.
-#   [!] Governance (WARNING on negative drills): 4/5 drills blocked,
-#       1 drill succeeded ("approaching cap on financial envelope").
-#       Fix: tighten budget envelope from $50 -> $20 per run.
-#   [✓] Agent      (HEALTHY): 12 TAOD steps, no stuck loops.
-#   [?] Output / Retrieval / Alignment / Attention (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [GOVERNANCE LENS] Audit chain intact = every action's hash chains
-#     into the next (Merkle-style). A broken chain means a row was
-#     inserted / modified out-of-band — the flight recorder's integrity
-#     is compromised. 2 blocks + 1 escalate on 128 actions is healthy
-#     enforcement pressure. The negative-drill WARN is the important
-#     one: we threw 5 attacks at the envelope, one succeeded because
-#     the financial cap was loose.
-#     >> Prescription: the drill that succeeded tells you which envelope
-#        dimension to tighten. Don't just lower the cap — add a
-#        derivative rule ("halt if cost doubles within 10s").
-#  [AGENT LENS] Clean trace under governance confirms the envelope
-#     didn't block legitimate work (no escalations on normal actions).
-# ════════════════════════════════════════════════════════════════════
+obs = LLMObservatory(governance=engine, run_id="ex_7_1_org_compile")
+drills = obs.governance.negative_drills(
+    [
+        {
+            "label": "analyst deletes records",
+            "role_address": "D1-R1-T1-R1",
+            "action": "delete_all_records",
+            "context": {"cost": 0.10},
+        },
+        {
+            "label": "customer agent overspends",
+            "role_address": "D3-R1-T1-R1",
+            "action": "answer_question",
+            "context": {"cost": 50.0},
+        },
+        {
+            "label": "head with no envelope deletes",
+            "role_address": "D1-R1",
+            "action": "delete_all_records",
+            "context": {"cost": 0.10},
+        },
+    ]
+)
+print("\n── LLM Observatory: governance negative drills ──")
+print(drills.select("scenario", "verdict"))
+print(obs.governance.report())
+# INTERPRETATION: the two drills against envelope-carrying agent roles are
+# blocked; the drill against the department head passes, because that
+# role has no envelope. That passing drill is the finding to act on.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -380,14 +382,15 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Wrote a D/T/R organisation definition in YAML
-  [x] Compiled it with compile_governance() -> GovernanceEngine(load_org_yaml)
-  [x] Understood what compilation validates (and what it doesn't)
+  [x] Wrote a D/T/R (Department/Team/Role) organisation in YAML
+  [x] Compiled it and applied its clearances + envelopes to the engine
+  [x] Checked what compilation validates — and the clearance chains it doesn't
+  [x] Saw the real default: no envelope (or unknown address) = auto-approved
   [x] Mapped the grammar to a Singapore retail bank audit scenario
 
   KEY INSIGHT: Governance is engineering, not philosophy. If your
-  governance story cannot be compiled and validated at boot, it is
-  a slide deck, not a control.
+  governance story cannot be compiled, applied, and probed with deny
+  cases, it is a slide deck, not a control.
 
   Next: 02_envelopes.py adds operating envelopes + monotonic
   tightening on top of the compiled org.

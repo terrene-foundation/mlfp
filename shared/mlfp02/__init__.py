@@ -11,3 +11,6 @@ submodule:
 
 Available after `uv sync` from any directory.
 """
+
+# Re-export the canonical factory (shared/kailash_helpers.py).
+from shared.kailash_helpers import create_visualizer

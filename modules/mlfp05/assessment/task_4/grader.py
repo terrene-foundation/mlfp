@@ -1,170 +1,179 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Automated grader for MLFP05 Assessment Task 4 — Tiny Transformer Text Classification.
+"""Grader for MLFP05 Assessment Task 4 — Ship the Postcode Reader as ONNX.
 
-Usage:
-    python grader.py starter.py     # grade your attempt
-    python grader.py solution.py    # verify the reference passes
+    python grader.py starter.py          # grade a submission
+    python grader.py solution.py         # verify the reference passes
+    python grader.py solution.py --seed 123   # replay a grading run
 
-The grader re-derives the exact same encoded test split, re-runs the returned model
-on it (so a hand-tuned `preds` array fails the anti-faking check), and verifies the
-model genuinely uses self-attention and clears the accuracy floor.
+Ground truth the student cannot influence: the grader loads the returned
+.onnx artefact with onnxruntime itself, feeds it grader-held inputs (its own
+stratified split of the digits with a fresh secret seed), and checks (a)
+numerical parity with the returned torch model and (b) accuracy against
+grader-held labels. Self-reported metrics are never read.
+
+Anti-stub: an untrained export passes parity but fails the accuracy floor;
+a constant artefact fails the variety and accuracy checks; a stale artefact
+that does not match the returned torch model fails parity.
 """
 from __future__ import annotations
 
-import argparse
-import importlib.util
-import json
-import re
 import sys
-from collections import Counter
 from pathlib import Path
 
 import numpy as np
-import torch
-import torch.nn as nn
 
-from shared import MLFPDataLoader
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from grading_harness import Checks, finalize, load_student_module, main, quiet  # noqa: E402
 
-MAX_LEN = 40
-MAX_VOCAB = 8000
-SEED = 5
-ACC_FLOOR = 0.72
-MAJORITY_MARGIN = 0.15
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
+WEIGHT = 25
+ACC_FLOOR = 0.88
+PARITY_TOL = 1e-4
+GATES = ("returns_contract", "export_succeeded")
 
 
-def _tokenize(text: str) -> list[str]:
-    return _TOKEN_RE.findall(text.lower())
+def _grader_split(seed: int):
+    """Grader-held stratified split of the bundled digits (fresh seed)."""
+    from sklearn.datasets import load_digits
+    from sklearn.model_selection import train_test_split
+
+    x, y = load_digits(return_X_y=True)
+    x = (x / 16.0).astype(np.float32)
+    _x_tr, x_te, y_tr, y_te = train_test_split(
+        x, y.astype(np.int64), test_size=0.3, stratify=y, random_state=seed
+    )
+    return y_tr, x_te, y_te
 
 
-def _reference_test_split():
-    """Re-derive (X_test, y_test) identically to the starter's make_dataset."""
-    train_df = MLFPDataLoader().load("mlfp05", "ag_news.parquet")
-    test_df = MLFPDataLoader().load("mlfp05", "ag_news_test.parquet")
-    train_texts = train_df["text"].to_list()
-    test_texts = test_df["text"].to_list()
-    y_test = test_df["label"].to_numpy().astype(np.int64)
-
-    counts: Counter = Counter()
-    for t in train_texts:
-        counts.update(_tokenize(t))
-    vocab = {"<pad>": 0, "<unk>": 1}
-    for tok, _ in counts.most_common(MAX_VOCAB - 2):
-        vocab[tok] = len(vocab)
-
-    out = np.zeros((len(test_texts), MAX_LEN), dtype=np.int64)
-    for i, t in enumerate(test_texts):
-        for j, tok in enumerate(_tokenize(t)[:MAX_LEN]):
-            out[i, j] = vocab.get(tok, 1)
-    return out, y_test
-
-
-def load_student_module(path: Path):
-    spec = importlib.util.spec_from_file_location("student_task4", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
+def grade(student_path: Path, seed: int) -> dict:
+    checks = Checks()
     try:
-        student = load_student_module(student_path)
+        st = load_student_module(student_path, "student_m5_task4")
     except Exception as e:
-        score["error"] = f"Failed to import: {type(e).__name__}: {e}"
-        return score
-    if not hasattr(student, "solve"):
-        score["error"] = "Module does not define a solve() function"
-        return score
+        return finalize(checks, WEIGHT, seed, f"Failed to import: {type(e).__name__}: {e}", GATES)
+    if not callable(getattr(st, "solve", None)):
+        return finalize(checks, WEIGHT, seed, "Module does not define solve()", GATES)
     try:
-        r = student.solve()
+        with quiet():
+            r = st.solve()
     except Exception as e:
-        score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
-        return score
+        return finalize(checks, WEIGHT, seed, f"solve() raised {type(e).__name__}: {e}", GATES)
 
-    c = score["checks"]
-    c["returns_dict"] = isinstance(r, dict)
-    if not c["returns_dict"]:
-        return _finalize(score)
+    import torch
+    import torch.nn as nn
 
-    required = {"model", "preds", "y_test", "uses_attention"}
-    c["has_required_keys"] = required.issubset(r.keys())
-    if not c["has_required_keys"]:
-        return _finalize(score)
+    torch.set_num_threads(2)
+    rng = np.random.default_rng(seed)
 
-    model = r["model"]
-    c["model_is_nn_module"] = isinstance(model, nn.Module)
+    model = r.get("model") if isinstance(r, dict) else None
+    onnx_path = r.get("onnx_path") if isinstance(r, dict) else None
+    export_result = r.get("export_result") if isinstance(r, dict) else None
+    checks.add(
+        "returns_contract",
+        isinstance(model, nn.Module) and onnx_path is not None,
+        "solve() must return {'model': nn.Module, 'onnx_path': Path, 'export_result': ...}",
+    )
+    if not checks.results["returns_contract"]:
+        return finalize(checks, WEIGHT, seed, None, GATES)
 
-    # Genuine attention: at least one attention module, declared flag matches.
-    if c["model_is_nn_module"]:
-        actual_attn = any(
-            isinstance(
-                m,
-                (
-                    nn.MultiheadAttention,
-                    nn.TransformerEncoderLayer,
-                    nn.TransformerEncoder,
-                ),
-            )
-            for m in model.modules()
-        )
-        c["uses_self_attention"] = (
-            actual_attn and bool(r["uses_attention"]) == actual_attn
-        )
-    else:
-        c["uses_self_attention"] = False
+    p = Path(str(onnx_path))
+    checks.add(
+        "export_succeeded",
+        bool(getattr(export_result, "success", False)) and p.exists() and p.suffix == ".onnx",
+        f"export_result.success={getattr(export_result, 'success', None)!r}, file exists={p.exists()} ({p})",
+    )
+    if not checks.results["export_succeeded"]:
+        return finalize(checks, WEIGHT, seed, None, GATES)
 
-    X_test_ref, y_test_ref = _reference_test_split()
+    import onnxruntime as ort
 
-    try:
-        preds = np.asarray(r["preds"]).ravel().astype(int)
-        y_test = np.asarray(r["y_test"]).ravel().astype(int)
-        c["preds_shape_matches"] = preds.shape == y_test.shape == y_test_ref.shape
-    except Exception:
-        c["preds_shape_matches"] = False
-        preds, y_test = np.array([]), np.array([])
+    y_tr, x_te, y_te = _grader_split(seed)
 
-    if c["preds_shape_matches"]:
-        acc = float((preds == y_test).mean())
-        c["accuracy_at_least_floor"] = bool(acc >= ACC_FLOOR)
-        majority = float(np.bincount(y_test).max() / len(y_test))
-        c["beats_majority_baseline"] = bool(acc - majority >= MAJORITY_MARGIN)
-    else:
-        c["accuracy_at_least_floor"] = False
-        c["beats_majority_baseline"] = False
-
-    # Anti-faking: re-run the returned model on the re-derived test set.
-    if c["model_is_nn_module"] and c["preds_shape_matches"]:
+    def serving():
         try:
-            model.eval()
+            sess = ort.InferenceSession(str(p))
+        except Exception as e:
+            return {"onnx_loads": (False, f"InferenceSession raised {type(e).__name__}: {e}")}
+        inp = sess.get_inputs()[0]
+        shape_ok = len(inp.shape) == 2 and inp.shape[-1] == 64
+        type_ok = "float" in inp.type
+        if not (shape_ok and type_ok):
+            return {
+                "onnx_loads": (
+                    False,
+                    f"input contract violated: name={inp.name!r} shape={inp.shape} type={inp.type}; expected float32 (batch, 64)",
+                )
+            }
+        outs = sess.get_outputs()
+        if len(outs) != 1:
+            return {"onnx_loads": (False, f"expected 1 output, got {len(outs)}")}
+
+        batches = []
+        for bs in (1, 7, 16, 33, 64):
+            batches.append(
+                rng.normal(0.5, 0.3, size=(bs, 64)).clip(0, 1).astype(np.float32)
+            )
+        model.eval()
+        worst = 0.0
+        for xb in batches:
             with torch.no_grad():
-                logits = model(torch.tensor(X_test_ref))
-                model_preds = logits.argmax(dim=1).cpu().numpy().astype(int)
-            agree = float((model_preds == preds).mean())
-            c["preds_reproduced_by_model"] = bool(agree >= 0.99)
-        except Exception:
-            c["preds_reproduced_by_model"] = False
-    else:
-        c["preds_reproduced_by_model"] = False
+                t_out = model(torch.tensor(xb)).numpy()
+            o_out = sess.run(None, {inp.name: xb})[0]
+            if t_out.shape != o_out.shape:
+                return {
+                    "onnx_loads": (True, ""),
+                    "torch_onnx_parity": (
+                        False,
+                        f"shape mismatch: torch {t_out.shape} vs onnx {o_out.shape}",
+                    ),
+                }
+            worst = max(worst, float(np.abs(t_out - o_out).max()))
+        return {
+            "onnx_loads": (True, ""),
+            "torch_onnx_parity": (
+                worst <= PARITY_TOL,
+                f"max |torch - onnx| over five grader batches = {worst:.2e} (tolerance {PARITY_TOL})",
+            ),
+        }
 
-    return _finalize(score)
+    checks.guarded(["onnx_loads", "torch_onnx_parity"], serving)
+    if not checks.results.get("onnx_loads"):
+        return finalize(checks, WEIGHT, seed, None, GATES)
 
+    def accuracy():
+        sess = ort.InferenceSession(str(p))
+        inp_name = sess.get_inputs()[0].name
+        o1 = sess.run(None, {inp_name: x_te})[0]
+        o2 = sess.run(None, {inp_name: x_te})[0]
+        pred = o1.argmax(1)
+        acc = float((pred == y_te).mean())
+        majority = float(np.bincount(y_tr, minlength=10).max() / len(y_tr))
+        return {
+            "heldout_accuracy_at_least_0p88": (
+                acc >= ACC_FLOOR,
+                f"artefact accuracy on the grader-held split is {acc:.3f} (floor {ACC_FLOOR})",
+            ),
+            "beats_majority": (
+                acc > majority + 0.05,
+                f"accuracy {acc:.3f} does not clear the majority rate {majority:.3f}",
+            ),
+            "outputs_vary": (
+                len(set(pred.tolist())) >= 5,
+                f"only {len(set(pred.tolist()))} distinct predicted classes — a constant artefact serves nobody",
+            ),
+            "artefact_deterministic": (
+                bool(np.array_equal(o1, o2)),
+                "two runs of the artefact on identical input differ",
+            ),
+        }
 
-def _finalize(score: dict) -> dict:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
-    return score
+    checks.guarded(
+        ["heldout_accuracy_at_least_0p88", "beats_majority", "outputs_vary", "artefact_deterministic"],
+        accuracy,
+    )
+    return finalize(checks, WEIGHT, seed, None, GATES)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("student", type=Path)
-    args = parser.parse_args()
-    result = grade(args.student)
-    print(json.dumps(result, indent=2))
-    sys.exit(0 if result["passed"] else 1)
+    main(grade)

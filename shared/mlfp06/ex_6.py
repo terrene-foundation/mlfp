@@ -4,12 +4,12 @@
 Shared infrastructure for Exercise 6 — Multi-Agent Orchestration and MCP.
 
 Contains: SQuAD 2.0 corpus loading, specialist Signature definitions,
-specialist BaseAgent classes, synthesis agent, output directory setup.
+specialist BaseAgent classes, synthesis agent, output directory setup, and
+run_checked() — the guard that turns a failed LLM call into a loud error.
 Technique-specific orchestration logic lives in the per-technique files.
 """
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,8 +29,15 @@ setup_environment()
 from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
 
 MODEL = DEFAULT_CHAT_MODEL
-LLM_PROVIDER_DEFAULT = os.environ.get("LLM_PROVIDER", "ollama")
-LLM_BASE_URL_DEFAULT = os.environ.get("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
+# Every M6 agent runs on the local Ollama daemon; the model comes from
+# OLLAMA_CHAT_MODEL and the address from OLLAMA_BASE_URL (both in .env).
+LLM_PROVIDER_DEFAULT = "ollama"
+LLM_BASE_URL_DEFAULT = OLLAMA_BASE_URL
+
+OLLAMA_HINT = (
+    "Is the local Ollama daemon running? Start it with `ollama serve` and "
+    f"pull the chat model with `ollama pull {MODEL}`."
+)
 
 # Output directory for all visualisation/trace artifacts
 OUTPUT_DIR = Path("outputs") / "ex6_multi_agent"
@@ -308,6 +315,30 @@ class InterpretationAgent(BaseAgent):
             config=config or InterpretationConfig(),
             signature=InterpretationSignature(),
         )
+
+
+async def run_checked(agent: BaseAgent, **inputs: object) -> dict:
+    """Await ``agent.run_async(**inputs)`` and raise if the LLM call failed.
+
+    ``BaseAgent.run_async`` reports a provider failure (daemon down, model
+    missing, unparseable reply) as ``{"error": ..., "success": False}``
+    instead of raising. Without this guard the failure only surfaces later
+    as a confusing ``KeyError`` on a missing output field.
+
+    Args:
+        agent: Any specialist / synthesis BaseAgent.
+        **inputs: The Signature's input fields.
+
+    Returns:
+        The agent's typed result dict.
+    """
+    result = await agent.run_async(**inputs)
+    if not isinstance(result, dict) or "error" in result or result.get("success") is False:
+        detail = result.get("error") if isinstance(result, dict) else repr(result)
+        raise RuntimeError(
+            f"{agent.__class__.__name__} LLM call failed: {detail}. {OLLAMA_HINT}"
+        )
+    return result
 
 
 def build_specialists() -> tuple[FactualAgent, SemanticAgent, StructuralAgent]:

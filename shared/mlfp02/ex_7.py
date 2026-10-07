@@ -3,9 +3,9 @@
 """
 Shared infrastructure for MLFP02 Exercise 7 — CUPED and Causal Inference.
 
-Contains: experiment data loading, SRM check, naive A/B baseline, CUPED
-math helpers, Bayesian decision utilities, mSPRT helpers, DiD scenario
-simulators, and plotting helpers. Technique-specific narration and
+Contains: experiment data loading, designed-allocation SRM checks, naive
+A/B baseline, CUPED reference helpers, Bayesian decision utilities, mSPRT
+helpers, DiD panel simulator and parallel-trends test. Technique-specific narration and
 checkpoints live in the per-technique files.
 
 Importable from any cwd after `uv sync`:
@@ -42,20 +42,45 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # ════════════════════════════════════════════════════════════════════════
 
 
+# The experiment was DESIGNED as a four-arm test with this traffic split.
+# (variant_c was meant to receive 10% of users; a bucketing bug sent it 15%.)
+# SRM checks must compare observed counts against THIS design, not 50/50.
+DESIGNED_ALLOCATION: dict[str, float] = {
+    "control": 0.40,
+    "treatment_a": 0.35,
+    "treatment_b": 0.15,
+    "variant_c": 0.10,
+}
+
+# Exercise 7 analyses ONE treatment arm against control. Pooling arms would
+# estimate a mixture of three different treatments, which answers no
+# product question.
+ANALYSIS_ARM = "treatment_a"
+
+
 def load_experiment() -> pl.DataFrame:
     """Load the MLFP02 experiment dataset.
 
-    Columns (required): experiment_group, revenue, pre_metric_value, timestamp
-    Optional: metric_value (additional covariate for multi-CUPED)
+    Columns: user_id, experiment_group, metric_value, pre_metric_value,
+    revenue, timestamp, segment, platform, country.
+
+    ``pre_metric_value`` is measured BEFORE assignment (a valid CUPED
+    covariate). ``metric_value`` is measured DURING the experiment and is
+    affected by treatment — it must never be used as a CUPED covariate.
     """
     loader = MLFPDataLoader()
     return loader.load("mlfp02", "experiment_data.parquet")
 
 
-def split_groups(experiment: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Return (control, treatment) sub-frames by experiment_group column."""
+def split_groups(
+    experiment: pl.DataFrame, treatment_arm: str = ANALYSIS_ARM
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Return (control, treatment) sub-frames for control vs ONE named arm."""
+    arms = set(experiment["experiment_group"].unique().to_list())
+    if treatment_arm not in arms:
+        raise ValueError(f"Unknown arm {treatment_arm!r}; available: {sorted(arms)}")
     control = experiment.filter(pl.col("experiment_group") == "control")
-    treatment = experiment.filter(pl.col("experiment_group") != "control")
+    treatment = experiment.filter(pl.col("experiment_group") == treatment_arm)
     return control, treatment
 
 
@@ -82,10 +107,53 @@ def get_covariate_arrays(
 # ════════════════════════════════════════════════════════════════════════
 
 
-def compute_srm(n_c: int, n_t: int) -> float:
-    """Chi-square SRM test. Returns p-value. p < 0.01 indicates SRM."""
-    expected = np.array([n_c + n_t] * 2) / 2
-    observed = np.array([n_c, n_t])
+def srm_allocation_check(
+    experiment: pl.DataFrame,
+    allocation: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    """Chi-square SRM test of ALL arms against the designed allocation.
+
+    Returns the chi-square statistic, p-value, and a per-arm table of
+    observed vs expected counts with standardised residuals
+    (observed - expected) / sqrt(expected), which localise the faulty arm.
+    """
+    allocation = allocation or DESIGNED_ALLOCATION
+    counts = experiment.group_by("experiment_group").len()
+    observed = {r["experiment_group"]: int(r["len"]) for r in counts.iter_rows(named=True)}
+    arms = list(allocation)
+    total = sum(observed.get(a, 0) for a in arms)
+    obs = np.array([observed.get(a, 0) for a in arms], dtype=np.float64)
+    exp = np.array([allocation[a] for a in arms]) * total
+    chi2, p = stats.chisquare(obs, f_exp=exp)
+    residuals = (obs - exp) / np.sqrt(exp)
+    table = [
+        {
+            "arm": a,
+            "observed": int(o),
+            "expected": float(e),
+            "observed_share": float(o / total),
+            "designed_share": float(allocation[a]),
+            "std_residual": float(r),
+        }
+        for a, o, e, r in zip(arms, obs, exp, residuals)
+    ]
+    return {"chi2": float(chi2), "p_value": float(p), "arms": table}
+
+
+def compute_srm(
+    n_c: int,
+    n_t: int,
+    design_c: float = DESIGNED_ALLOCATION["control"],
+    design_t: float = DESIGNED_ALLOCATION[ANALYSIS_ARM],
+) -> float:
+    """Pairwise chi-square SRM test against the DESIGNED ratio design_c:design_t.
+
+    Returns the p-value; p < 0.01 indicates sample ratio mismatch and the
+    comparison must not be analysed until the cause is found.
+    """
+    observed = np.array([n_c, n_t], dtype=np.float64)
+    share_c = design_c / (design_c + design_t)
+    expected = (n_c + n_t) * np.array([share_c, 1 - share_c])
     _, srm_p = stats.chisquare(observed, f_exp=expected)
     return float(srm_p)
 
@@ -284,15 +352,18 @@ def bayesian_decision(
         1 - stats.norm.cdf(practical_threshold, loc=lift, scale=se_lift)
     )
 
-    z = -lift / se_lift if se_lift > 0 else 0.0
-    exp_loss_treat = float(se_lift * stats.norm.pdf(z) + lift * stats.norm.cdf(z))
-    exp_loss_ctrl = float(se_lift * stats.norm.pdf(-z) - lift * stats.norm.cdf(-z))
+    # Posterior lift L ~ Normal(m = lift, s = se_lift). With z = m / s:
+    #   loss if we ship treatment  = E[max(0, -L)] = s*phi(z) - m*Phi(-z)
+    #   loss if we keep control    = E[max(0,  L)] = s*phi(z) + m*Phi(z)
+    z = lift / se_lift
+    exp_loss_treat = float(se_lift * stats.norm.pdf(z) - lift * stats.norm.cdf(-z))
+    exp_loss_ctrl = float(se_lift * stats.norm.pdf(z) + lift * stats.norm.cdf(z))
 
     return {
         "prob_treatment_better": prob_better,
         "prob_practical": prob_practical,
-        "expected_loss_treatment": max(0.0, exp_loss_treat),
-        "expected_loss_control": max(0.0, exp_loss_ctrl),
+        "expected_loss_treatment": exp_loss_treat,
+        "expected_loss_control": exp_loss_ctrl,
         "se_lift": se_lift,
         "ci_lo": float(lift - 1.96 * se_lift),
         "ci_hi": float(lift + 1.96 * se_lift),
@@ -313,15 +384,30 @@ def bayesian_decision_rule(prob_better: float, exp_loss_treat: float) -> str:
 # ════════════════════════════════════════════════════════════════════════
 
 
+def msprt_lambda(diff: float, v_n: float, tau_sq: float) -> float:
+    """mSPRT mixture likelihood ratio for a Normal mean difference.
+
+    Lambda_n = sqrt(V / (V + tau^2)) * exp(tau^2 * diff^2 / (2 V (V + tau^2)))
+    where V is the variance of the difference estimate at the current look.
+    """
+    return float(
+        np.sqrt(v_n / (v_n + tau_sq))
+        * np.exp(tau_sq * diff**2 / (2 * v_n * (v_n + tau_sq)))
+    )
+
+
 def msprt_sequential_pvalues(
     experiment: pl.DataFrame,
     tau_sq: float,
+    treatment_arm: str = ANALYSIS_ARM,
     min_per_group: int = 100,
     skip_first_days: int = 3,
 ) -> list[dict[str, float]]:
     """Walk the experiment day by day, computing fixed and mSPRT p-values.
 
     tau_sq is the mSPRT hyperparameter — typically set to se_naive**2.
+    The always-valid p-value is the running minimum of 1/Lambda_n, so it can
+    only go down as evidence accumulates.
     """
     if experiment["timestamp"].dtype in [pl.Utf8, pl.String]:
         exp_daily = experiment.with_columns(
@@ -337,6 +423,7 @@ def msprt_sequential_pvalues(
 
     days = sorted(exp_daily["day"].unique().to_list())
     results: list[dict[str, float]] = []
+    p_seq = 1.0
     for i, day in enumerate(days):
         if i < skip_first_days:
             continue
@@ -347,7 +434,7 @@ def msprt_sequential_pvalues(
             .astype(np.float64)
         )
         t = (
-            cumulative.filter(pl.col("experiment_group") != "control")["revenue"]
+            cumulative.filter(pl.col("experiment_group") == treatment_arm)["revenue"]
             .to_numpy()
             .astype(np.float64)
         )
@@ -358,11 +445,9 @@ def msprt_sequential_pvalues(
         se = float(np.sqrt(v_n))
         z = diff / se if se > 0 else 0.0
         p_fixed = float(2 * (1 - stats.norm.cdf(abs(z))))
-        # mSPRT always-valid p-value
-        lambda_n = np.sqrt(v_n / (v_n + tau_sq)) * np.exp(
-            tau_sq * z**2 / (2 * (v_n + tau_sq))
-        )
-        p_seq = float(min(1.0, 1.0 / lambda_n)) if lambda_n > 0 else 1.0
+        # mSPRT always-valid p-value: running minimum of 1 / Lambda_n
+        lambda_n = msprt_lambda(diff, v_n, tau_sq)
+        p_seq = float(min(p_seq, 1.0 / lambda_n))
         results.append(
             {
                 "day": i + 1,
@@ -388,8 +473,10 @@ def simulate_peeking(
 ) -> dict[str, float]:
     """Simulate A/A experiments (zero effect) with and without peeking.
 
-    Returns dict with false-positive rates for: no-peek, fixed-p peeking,
-    plus the theoretical peeking inflation for comparison.
+    Returns dict with false-positive rates for: no-peek and fixed-p peeking.
+    The looks are on ACCUMULATING data, so they are strongly correlated —
+    the inflation must be measured by simulation; the independent-tests
+    formula 1 - 0.95**k does not apply.
     """
     rng = np.random.default_rng(seed=seed)
     false_pos_fixed = 0
@@ -424,37 +511,76 @@ def simulate_peeking(
         "n_checks": n_checks,
         "rate_no_peek": false_pos_no_peek / n_sims,
         "rate_fixed_peek": false_pos_fixed / n_sims,
-        "theoretical_inflated_rate": 1 - (1 - 0.05) ** n_checks,
     }
 
 
 # ════════════════════════════════════════════════════════════════════════
-# DIFFERENCE-IN-DIFFERENCES — Singapore HDB cooling measures
+# DIFFERENCE-IN-DIFFERENCES — hypothetical HDB cooling measure (simulated)
 # ════════════════════════════════════════════════════════════════════════
 
 
-def simulate_hdb_cooling_measures(
-    n_per_cell: int = 500, seed: int = 99
-) -> dict[str, np.ndarray]:
-    """Simulate Singapore HDB prices around a stamp-duty cooling measure.
+def simulate_hdb_cooling_panel(
+    n_per_period: int = 200,
+    n_pre: int = 6,
+    n_post: int = 6,
+    central_base: float = 550_000,
+    noncentral_base: float = 450_000,
+    growth_per_period: float = 2_000,
+    central_extra_growth: float = 0.0,
+    policy_effect: float = -20_000,
+    seed: int = 99,
+) -> pl.DataFrame:
+    """Simulate quarterly HDB-style transactions around a HYPOTHETICAL measure.
 
-    Treatment group: Central area HDB transactions (hit by the policy).
-    Control group: Non-Central area transactions (exempt).
+    The scenario is illustrative: a cooling measure that applies only to
+    Central-region flats (treated) and not to Non-Central flats (control).
+    Both regions share a common price trend of ``growth_per_period``;
+    ``central_extra_growth`` adds a Central-only pre-existing trend, which
+    VIOLATES parallel trends (used to show the test can detect it).
+    ``policy_effect`` is the true causal effect on Central prices after
+    the measure (periods >= n_pre).
 
-    Returns the four cells as arrays: pre_central, post_central,
-    pre_noncentral, post_noncentral.
+    Returns one row per transaction: period, central (0/1), post (0/1), price.
     """
     rng = np.random.default_rng(seed=seed)
-    pre_central = rng.normal(550_000, 80_000, size=n_per_cell)
-    pre_noncentral = rng.normal(450_000, 70_000, size=n_per_cell)
-    # Policy effect: Central drops $20K; both grow $10K baseline.
-    post_central = rng.normal(540_000, 85_000, size=n_per_cell)
-    post_noncentral = rng.normal(460_000, 72_000, size=n_per_cell)
+    frames = []
+    for t in range(n_pre + n_post):
+        post = int(t >= n_pre)
+        for central, base, sd in ((1, central_base, 80_000), (0, noncentral_base, 70_000)):
+            mean = base + t * growth_per_period
+            if central:
+                mean += t * central_extra_growth + post * policy_effect
+            prices = rng.normal(mean, sd, size=n_per_period)
+            frames.append(
+                pl.DataFrame(
+                    {
+                        "period": np.full(n_per_period, t, dtype=np.int64),
+                        "central": np.full(n_per_period, central, dtype=np.int64),
+                        "post": np.full(n_per_period, post, dtype=np.int64),
+                        "price": prices,
+                    }
+                )
+            )
+    return pl.concat(frames)
+
+
+def did_cells(panel: pl.DataFrame) -> dict[str, np.ndarray]:
+    """Split the panel into the four DiD cells (group x pre/post) as arrays."""
+
+    def cell(central: int, post: int) -> np.ndarray:
+        return (
+            panel.filter((pl.col("central") == central) & (pl.col("post") == post))[
+                "price"
+            ]
+            .to_numpy()
+            .astype(np.float64)
+        )
+
     return {
-        "pre_central": pre_central,
-        "post_central": post_central,
-        "pre_noncentral": pre_noncentral,
-        "post_noncentral": post_noncentral,
+        "pre_central": cell(1, 0),
+        "post_central": cell(1, 1),
+        "pre_noncentral": cell(0, 0),
+        "post_noncentral": cell(0, 1),
     }
 
 
@@ -466,15 +592,7 @@ def diff_in_diff(cells: dict[str, np.ndarray]) -> dict[str, float]:
     y_cq = cells["post_noncentral"].mean()
 
     did = (y_tq - y_tp) - (y_cq - y_cp)
-    n = len(cells["pre_central"])
-    se = float(
-        np.sqrt(
-            cells["pre_central"].var(ddof=1) / n
-            + cells["post_central"].var(ddof=1) / n
-            + cells["pre_noncentral"].var(ddof=1) / n
-            + cells["post_noncentral"].var(ddof=1) / n
-        )
-    )
+    se = float(np.sqrt(sum(arr.var(ddof=1) / len(arr) for arr in cells.values())))
     z = did / se if se > 0 else 0.0
     p = float(2 * (1 - stats.norm.cdf(abs(z))))
     return {
@@ -496,53 +614,48 @@ def diff_in_diff(cells: dict[str, np.ndarray]) -> dict[str, float]:
 # ════════════════════════════════════════════════════════════════════════
 
 
-def parallel_trends_test(
-    n_periods: int = 6,
-    n_per_period: int = 200,
-    central_base: float = 530_000,
-    noncentral_base: float = 430_000,
-    growth_per_period: float = 2000,
-    seed: int = 99,
-) -> dict[str, Any]:
-    """Simulate pre-period trends and run a bootstrap test for parallel slopes.
+def parallel_trends_test(panel: pl.DataFrame, alpha: float = 0.05) -> dict[str, Any]:
+    """Test parallel PRE-period trends with a group x time interaction.
 
-    Returns pre-period means, slopes, slope difference, bootstrap p-value,
-    and a pass/fail flag at alpha=0.05.
+    Fits OLS on the pre-period transactions of the SAME panel used for DiD:
+        price = b0 + b1*period + b2*central + b3*(central*period) + e
+    b3 is the difference in pre-period slopes (Central minus Non-Central).
+    H0: b3 = 0 (parallel trends). The null distribution is centred at zero,
+    so a real slope difference produces a small p-value.
     """
-    rng = np.random.default_rng(seed=seed)
-    pre_central, pre_noncentral = [], []
-    for t in range(n_periods):
-        c = rng.normal(central_base + t * growth_per_period, 80_000, size=n_per_period)
-        nc = rng.normal(
-            noncentral_base + t * growth_per_period, 70_000, size=n_per_period
-        )
-        pre_central.append(c.mean())
-        pre_noncentral.append(nc.mean())
-    time_points = np.arange(n_periods)
-    slope_c = float(np.polyfit(time_points, pre_central, 1)[0])
-    slope_nc = float(np.polyfit(time_points, pre_noncentral, 1)[0])
-    slope_diff = slope_c - slope_nc
+    pre = panel.filter(pl.col("post") == 0)
+    t = pre["period"].to_numpy().astype(np.float64)
+    g = pre["central"].to_numpy().astype(np.float64)
+    y = pre["price"].to_numpy().astype(np.float64)
+    X = np.column_stack([np.ones_like(t), t, g, g * t])
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    resid = y - X @ beta
+    n, k = X.shape
+    sigma2 = resid @ resid / (n - k)
+    cov = sigma2 * np.linalg.inv(X.T @ X)
+    se_b3 = float(np.sqrt(cov[3, 3]))
+    t_stat = float(beta[3] / se_b3)
+    p = float(2 * stats.t.sf(abs(t_stat), df=n - k))
 
-    # Bootstrap
-    n_boot = 5000
-    boot_diffs = []
-    for _ in range(n_boot):
-        noise_c = rng.normal(0, 1000, size=n_periods)
-        noise_nc = rng.normal(0, 1000, size=n_periods)
-        s_c = np.polyfit(time_points, np.array(pre_central) + noise_c, 1)[0]
-        s_nc = np.polyfit(time_points, np.array(pre_noncentral) + noise_nc, 1)[0]
-        boot_diffs.append(s_c - s_nc)
-    boot_p = float(np.mean(np.abs(boot_diffs) >= np.abs(slope_diff)))
+    means = (
+        pre.group_by(["period", "central"])
+        .agg(pl.col("price").mean())
+        .sort(["central", "period"])
+    )
+    pre_central = means.filter(pl.col("central") == 1)["price"].to_list()
+    pre_noncentral = means.filter(pl.col("central") == 0)["price"].to_list()
 
     return {
         "pre_central": pre_central,
         "pre_noncentral": pre_noncentral,
-        "time_points": time_points,
-        "slope_central": slope_c,
-        "slope_noncentral": slope_nc,
-        "slope_diff": float(slope_diff),
-        "bootstrap_p": boot_p,
-        "passes": boot_p > 0.05,
+        "time_points": np.arange(len(pre_central)),
+        "slope_central": float(beta[1] + beta[3]),
+        "slope_noncentral": float(beta[1]),
+        "slope_diff": float(beta[3]),
+        "slope_diff_se": se_b3,
+        "t_stat": t_stat,
+        "p_value": p,
+        "passes": bool(p > alpha),
     }
 
 

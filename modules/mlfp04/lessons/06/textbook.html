@@ -37,10 +37,10 @@
   product reviews, support tickets, news articles, chat logs, legal
   contracts. Today you will turn raw text into numbers with TF-IDF and
   BM25, learn how LDA generates topics probabilistically, and watch
-  BERTopic combine transformer embeddings with clustering to produce
-  the most interpretable topic models available in 2026. By the end
-  you will be able to extract and evaluate topics from Singapore news
-  articles and explain what the numbers in a topic model actually mean.
+  BERTopic combine transformer embeddings with clustering. By the end
+  you will be able to extract topics from a real news corpus, score them
+  with NPMI coherence, and explain what the numbers in a topic model
+  actually mean.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -129,6 +129,16 @@
   compute.
 </p>
 
+<p>
+  Libraries use variants of this textbook form. scikit-learn's
+  <code>TfidfVectorizer</code> by default uses raw counts for tf, a
+  <em>smoothed</em> idf $\ln\frac{1 + N}{1 + \text{df}(t)} + 1$ (as if one
+  extra document contained every word, so no idf is zero), and then scales
+  each document vector to unit length. The ranking intuition is the same;
+  the numbers are not, so do not expect a hand-rolled TF-IDF to match the
+  library unless you copy its settings. Exercise 6.1 builds both.
+</p>
+
 <h3>BM25 — TF-IDF's smarter cousin</h3>
 
 <p>
@@ -148,9 +158,9 @@
   parameters. The term-frequency contribution saturates (no matter
   how many times a word appears, it contributes at most $k_1 + 1$),
   and document length is normalised against the corpus average.
-  BM25 is the ranking function behind Elasticsearch and Apache Lucene
-  — if you have used Google's search, you have used a variant of
-  BM25.
+  BM25 is the default ranking function in Apache Lucene and in search
+  engines built on it, such as Elasticsearch, and a standard baseline in
+  information retrieval.
 </p>
 
 <h3>Word embeddings — a preview</h3>
@@ -256,6 +266,12 @@
 <figcaption>LDA plate notation. Greek letters are hyperparameters (priors); $\theta$ and $\phi$ are learned; $z$ is latent; $w$ is observed. Plates denote repetition.</figcaption>
 </figure>
 
+<p>
+  Because LDA models <em>integer word counts</em>, fit it on a count matrix
+  (<code>CountVectorizer</code>), not on TF-IDF weights — TF-IDF values are
+  not counts and violate the model's likelihood.
+</p>
+
 <h3>NMF — the matrix factorisation view</h3>
 
 <p>
@@ -280,12 +296,32 @@
 </p>
 
 <pre><code class="language-python">from bertopic import BERTopic
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import CountVectorizer
+from umap import UMAP
+from shared.mlfp04.ex_6 import NEWS_STOP_WORDS, corpus_as_lists, load_corpus, topic_embedding_model
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
-topic_model = BERTopic(embedding_model=model, min_topic_size=15)
-topics, probs = topic_model.fit_transform(sg_news_articles)
-print(topic_model.get_topic_info().head(10))</code></pre>
+documents, categories = corpus_as_lists(load_corpus())     # AG News leads (worked example)
+
+# The sentence-embedding model name comes from TOPIC_EMBED_MODEL in .env (never hardcoded)
+topic_model = BERTopic(
+    embedding_model=topic_embedding_model(),
+    umap_model=UMAP(n_neighbors=15, n_components=5, min_dist=0.0, metric="cosine", random_state=42),
+    vectorizer_model=CountVectorizer(stop_words=NEWS_STOP_WORDS, min_df=2),
+    min_topic_size=15,
+    nr_topics="auto",
+)
+bert_topics, _ = topic_model.fit_transform(documents)
+n_topics = len(set(bert_topics) - {-1})
+print(f"BERTopic: {n_topics} topics, {sum(t == -1 for t in bert_topics):,} outlier documents")</code></pre>
+
+<p>
+  UMAP reduces the embeddings to about five dimensions for clustering (two
+  dimensions are used only for plotting), and documents that fit no dense
+  HDBSCAN cluster go to the outlier topic $-1$. With
+  <code>TOPIC_EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2</code>, one
+  run on the worked-example corpus produced 40 topics and about 25% outlier
+  documents; the exact topics depend on the embedding model you configure.
+</p>
 
 <h3>Coherence metrics — how good is a topic?</h3>
 
@@ -301,63 +337,139 @@ print(topic_model.get_topic_info().head(10))</code></pre>
 </div>
 
 <p>
-  NPMI lives in $[-1, 1]$: positive for words that co-occur more than
-  chance, negative otherwise. Average NPMI over the top 10 words of
-  each topic and across topics — higher is better. NPMI is the metric
-  reported in most modern topic modelling papers.
+  NPMI lives in $[-1, 1]$: $-1$ when the two words never appear in the
+  same document, 0 when they co-occur exactly as often as chance predicts,
+  $+1$ when they always co-occur. Average NPMI over all pairs of a topic's
+  top 10 words, then across topics — higher is better. The probabilities
+  are document frequencies in a reference corpus (here the corpus itself),
+  so compare models on the same setup rather than against published
+  "typical" values. You do not need an extra library: the course
+  implementation is <code>shared.mlfp04.ex_6.compute_npmi</code>.
+</p>
+
+<p>
+  <strong>UMass coherence</strong> (Mimno et al., 2011) is the other common
+  metric. For a topic's top words ordered by frequency it sums, over pairs
+  with $i &gt; j$,
+</p>
+
+<div class="annotated-equation">
+  $$ C_{\text{UMass}} \;=\; \sum_{i&gt;j}\ \log\frac{D(w_i, w_j) + 1}{D(w_j)} $$
+</div>
+
+<p>
+  where $D(w)$ is the number of documents containing $w$ and
+  $D(w_i, w_j)$ the number containing both; the $+1$ avoids $\log 0$. It is
+  computed on the training corpus, is at most about 0, and values closer to
+  0 are better. UMass is cheap but agrees less well with human judgements
+  than NPMI.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Kailash integration: ModelVisualizer for topics</h2>
+<h2>The Kailash Engine: DimReductionEngine (NMF)</h2>
 
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    Kailash's <code>ModelVisualizer</code> has a
-    <code>topic_heatmap()</code> helper that takes a fitted topic
-    model and produces a term × topic Plotly heatmap — the visual
-    equivalent of printing the top words per topic. For BERTopic, it
-    wraps BERTopic's own visualisation API. Use it in reports to
-    stakeholders who want to see the topics at a glance.
+    There is no Kailash "topic modelling" engine, and
+    <code>ModelVisualizer</code> has no topic-heatmap helper. Topic extraction
+    with NMF <em>is</em> dimensionality reduction of the document–term
+    matrix, so it runs through the same <code>DimReductionEngine</code> you
+    met in Lesson 4.3, with <code>algorithm="nmf"</code>. The engine takes a
+    polars frame (one column per vocabulary term), checks that the input is
+    non-negative, and returns the document–topic weights $W$ in
+    <code>transformed</code>. It does not return the topic–word matrix $H$;
+    for topic words use scikit-learn's <code>NMF</code> directly (worked
+    example) or rank terms by $W^\top X$. For BERTopic, use BERTopic's own
+    plots (<code>visualize_barchart</code>, <code>visualize_heatmap</code>).
+    The module assessment's topic task uses this engine.
   </p>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Singapore News Articles</h2>
-
-<pre><code class="language-python">import polars as pl
+<pre><code class="language-python">import numpy as np
+import polars as pl
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.decomposition import NMF, LatentDirichletAllocation
+from kailash_ml.engines.dim_reduction import DimReductionEngine
+from shared.mlfp04.ex_6 import NEWS_STOP_WORDS, corpus_as_lists, load_corpus
 
-from shared import MLFPDataLoader
+documents, categories = corpus_as_lists(load_corpus())
+tfidf = TfidfVectorizer(max_features=2000, stop_words=NEWS_STOP_WORDS, min_df=3, max_df=0.95)
+X_tfidf = tfidf.fit_transform(documents).toarray()          # dense: the engine takes a frame
+matrix_df = pl.from_numpy(X_tfidf, schema=[f"t{i}" for i in range(X_tfidf.shape[1])])
 
-loader = MLFPDataLoader()
-news = loader.load("mlfp04", "sg_news.parquet")
-corpus = news["article_body"].to_list()
+nmf_res = DimReductionEngine().reduce(matrix_df, algorithm="nmf", n_components=4, seed=42)
+W = np.asarray(nmf_res.transformed)                         # documents x topics
+print(f"documents per topic: {np.bincount(W.argmax(axis=1)).tolist()}")
 
-# Method 1: TF-IDF + NMF
-vec = TfidfVectorizer(max_features=5000, stop_words="english", min_df=5, max_df=0.7)
-X_tfidf = vec.fit_transform(corpus)
-nmf = NMF(n_components=10, random_state=42).fit(X_tfidf)
+vocab = tfidf.get_feature_names_out()
+for k, weights in enumerate(W.T @ X_tfidf):                 # term weight per topic
+    print(f"topic {k}: {', '.join(vocab[np.argsort(weights)[::-1][:6]])}")</code></pre>
 
-for k, topic in enumerate(nmf.components_):
-    top_words = [vec.get_feature_names_out()[i] for i in topic.argsort()[-10:][::-1]]
-    print(f"Topic {k}: {', '.join(top_words)}")
-
-# Method 2: LDA
-lda = LatentDirichletAllocation(n_components=10, random_state=42).fit(X_tfidf)
-for k, topic in enumerate(lda.components_):
-    top_words = [vec.get_feature_names_out()[i] for i in topic.argsort()[-10:][::-1]]
-    print(f"LDA Topic {k}: {', '.join(top_words)}")</code></pre>
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Topics in a Public News Corpus</h2>
 
 <p>
-  Typical outputs on Singapore news: topics emerge as "transport and
-  MRT", "HDB and property", "Budget and policy", "food and hawker
-  culture", "ASEAN diplomacy", etc. The LDA topics are usually softer
-  (each topic has broad word distributions), while NMF topics are
-  sparser and cleaner. Pick the method that matches your downstream
-  need — NMF for visualisation-friendly single themes, LDA when you
-  need soft topic assignments for mixture features.
+  The corpus is AG News (<code>mlfp05/ag_news.parquet</code>): the title and
+  lead sentence of 5,000 English news stories from 2004, each labelled by
+  humans with one of four sections — world, sports, business and sci/tech.
+  <code>load_corpus()</code> cleans encoding artefacts and removes duplicate
+  stories, leaving 4,967 documents. The section labels are <strong>never</strong>
+  used to fit a topic model, only afterwards to see what the topics line up
+  with.
+</p>
+
+<pre><code class="language-python">from sklearn.decomposition import NMF, LatentDirichletAllocation
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics import normalized_mutual_info_score
+from shared.mlfp04.ex_6 import compute_npmi
+
+N_TOPICS = 8
+
+# NMF works on TF-IDF weights
+tfidf_vec = TfidfVectorizer(max_features=3000, stop_words=NEWS_STOP_WORDS, min_df=3, max_df=0.95)
+tfidf_matrix = tfidf_vec.fit_transform(documents)
+tfidf_vocab = tfidf_vec.get_feature_names_out()
+nmf = NMF(n_components=N_TOPICS, init="nndsvd", max_iter=400, random_state=42)
+W_nmf = nmf.fit_transform(tfidf_matrix)       # document-topic matrix
+nmf_topics = [[tfidf_vocab[j] for j in comp.argsort()[::-1][:10]] for comp in nmf.components_]
+
+# LDA is a model of word COUNTS, so it gets a count matrix — never TF-IDF
+count_vec = CountVectorizer(max_features=3000, stop_words=NEWS_STOP_WORDS, min_df=3, max_df=0.95)
+count_matrix = count_vec.fit_transform(documents)
+count_vocab = count_vec.get_feature_names_out()
+lda = LatentDirichletAllocation(n_components=N_TOPICS, random_state=42)
+theta_lda = lda.fit_transform(count_matrix)   # document-topic proportions
+lda_topics = [[count_vocab[j] for j in comp.argsort()[::-1][:10]] for comp in lda.components_]
+
+for name, topics, vec, doc_topic in [("NMF", nmf_topics, tfidf_vec, W_nmf),
+                                     ("LDA", lda_topics, count_vec, theta_lda)]:
+    npmi = compute_npmi(documents, topics, analyzer=vec.build_analyzer())
+    nmi = normalized_mutual_info_score(categories, doc_topic.argmax(axis=1))
+    print(f"\n{name}: mean NPMI = {np.mean(npmi):+.3f}   NMI with sections = {nmi:.3f}")
+    for k, words in enumerate(topics):
+        print(f"  topic {k}: {', '.join(words[:8])}")</code></pre>
+
+<p>
+  The NMF topics are sharp and specific — <em>stories</em>, not sections: an
+  initial public offering by Google (<code>google, ipo, public, offering</code>),
+  oil prices (<code>oil, prices, crude, barrel</code>), the Athens Olympics
+  (<code>athens, gold, olympic, phelps, medal</code>), the fighting in Najaf, a
+  Windows XP security update, quarterly earnings and Israeli politics, plus
+  a leftover mixed topic. On short news leads, word co-occurrence is
+  dominated by the big stories of the week. Mean NPMI is about +0.41. The
+  LDA topics are broader and noisier, several blending unrelated stories, and
+  mean NPMI is about −0.02 because several top-word pairs never appear in the
+  same document. Neither model recovers the four human sections well (NMI
+  with the sections about 0.28 for NMF and 0.23 for LDA): topic models find
+  whatever co-occurrence structure is strongest, which need not be the
+  categorisation a human editor would use.
+</p>
+
+<p>
+  To choose $K$ for LDA, use <em>held-out</em> perplexity: fit on a training
+  split of the documents and call <code>lda.perplexity()</code> on the
+  held-out split (perplexity on the training documents always improves as
+  $K$ grows). Exercise 6.3 runs that sweep.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -366,7 +478,8 @@ for k, topic in enumerate(lda.components_):
 <ol>
   <li><strong>Skipping stopword removal.</strong> Without stopwords removed, your top words will be "the", "and", "to", "of". Always use a stopword list for the target language.</li>
   <li><strong>Too few or too many topics.</strong> LDA and NMF both require you to set $K$. Start with 10 – 20 and tune with coherence.</li>
-  <li><strong>Evaluating on perplexity.</strong> LDA's likelihood-based metric does not correlate with human judgments of topic quality. Use NPMI instead.</li>
+  <li><strong>Judging topic quality by perplexity.</strong> Held-out perplexity measures how well LDA predicts unseen words — useful for choosing $K$ — but it can disagree with human judgements of how interpretable the topics are. Report a coherence score (NPMI) as well, and never quote <em>training</em> perplexity as if it were held-out.</li>
+  <li><strong>Fitting LDA on TF-IDF.</strong> LDA is a model of word counts; give it a <code>CountVectorizer</code> matrix. TF-IDF is for NMF.</li>
   <li><strong>Running BERTopic on tiny datasets.</strong> BERTopic needs a few hundred documents minimum. For smaller corpora, fall back to TF-IDF + NMF.</li>
 </ol>
 
@@ -374,15 +487,27 @@ for k, topic in enumerate(lda.components_):
 <h2>Try It Yourself</h2>
 
 <div class="try-it">
-  <p><strong>Exercise 6.</strong></p>
+  <p><strong>Exercise 6</strong> (<code>modules/mlfp04/solutions/ex_6/</code>, five
+  scripts on the deduplicated AG News corpus from the worked example):</p>
   <ol>
-    <li>Load the Singapore news corpus.</li>
-    <li>Vectorise with TF-IDF (5000 features, English stopwords).</li>
-    <li>Fit NMF with $K = 10$ and LDA with $K = 10$. Print top-10 words per topic.</li>
-    <li>Fit BERTopic with a sentence-transformer model.</li>
-    <li>Compute NPMI coherence for all three and compare.</li>
-    <li>Interpret the topics — give each a human-readable label.</li>
+    <li><code>01_tfidf_bm25.py</code> — counts → TF-IDF → a hand-built BM25
+      with $k_1$ saturation and length normalisation; compare the rankings.</li>
+    <li><code>02_nmf_topics.py</code> — NMF on TF-IDF, NPMI coherence per topic,
+      and a topic-versus-section heatmap.</li>
+    <li><code>03_lda_topics.py</code> — LDA on word counts, a held-out
+      perplexity sweep over $K$, and one document's mixed membership.</li>
+    <li><code>04_bertopic.py</code> — the four-stage BERTopic pipeline with the
+      embedding model read from <code>TOPIC_EMBED_MODEL</code>, compared with
+      NMF on NPMI.</li>
+    <li><code>05_sentiment_word2vec.py</code> — real word vectors from PPMI + SVD
+      (the factorisation Word2Vec implicitly performs), averaged into
+      document vectors, and a sentiment classifier trained on human-labelled
+      SST-2 movie-review sentences and tested on unseen ones against a
+      lexicon and a TF-IDF baseline.</li>
   </ol>
+  <p>Stretch: give each NMF topic a human-readable label, then compute the
+  UMass coherence of the NMF and LDA topics and check whether it ranks them
+  the same way NPMI does.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -392,7 +517,7 @@ for k, topic in enumerate(lda.components_):
   <li><strong>Back to Lesson 4.3:</strong> NMF is a non-negative PCA relative — same low-rank idea, different constraint.</li>
   <li><strong>Back to Lesson 4.5:</strong> Topic modelling is association rule mining for words and documents. Same discovery mindset, different objects.</li>
   <li><strong>Forward to Lesson 4.7 (THE PIVOT):</strong> NMF is the closest classical technique to matrix factorisation — in 4.7 we will factorise user-item ratings the same way NMF factorises document-word counts.</li>
-  <li><strong>Forward to M5 (LLMs):</strong> BERTopic is a stepping stone to transformer-based NLP. The sentence embeddings it uses are produced by a frozen BERT model — we will train and fine-tune such models in M5.</li>
+  <li><strong>Forward to M5 and M6:</strong> BERTopic is a stepping stone to transformer-based NLP. The sentence embeddings it uses come from a frozen, pre-trained transformer; Module 5 covers transformers and transfer learning, and Module 6 large language models.</li>
 </ul>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -405,8 +530,8 @@ for k, topic in enumerate(lda.components_):
   "how does Word2Vec learn these vectors?" and promised to answer it
   in 4.8. That answer is the biggest pivot in the curriculum. You are
   now one lesson away from it. In 4.7 you will watch collaborative
-  filtering factorise a user-item matrix using the <em>same</em> math
-  that NMF uses to factorise a document-word matrix — and you will
+  filtering factorise a user-item matrix with the same low-rank idea
+  that NMF applies to a document-word matrix — and you will
   see for the first time that <em>optimisation discovers features</em>.
 </p>
 

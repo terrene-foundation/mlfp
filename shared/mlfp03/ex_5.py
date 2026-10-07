@@ -30,10 +30,10 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from kailash_ml import PreprocessingPipeline
 from kailash_ml.interop import to_sklearn_input
 
 from shared.data_loader import MLFPDataLoader
+from shared.kailash_helpers import split_then_preprocess
 
 # ════════════════════════════════════════════════════════════════════════
 # OUTPUT DIRECTORY — every technique writes visual proof to the same place
@@ -46,11 +46,18 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # ════════════════════════════════════════════════════════════════════════
 # BUSINESS CONTEXT — Singapore retail bank credit scoring
 # ════════════════════════════════════════════════════════════════════════
-# These constants drive every technique file. A 100:1 cost ratio is
-# realistic for SEA consumer lending: the average charged-off unsecured
-# loan in Singapore is ~S$10,000 (MAS consumer credit report 2024), and
-# the operational cost of a false decline (manual review + lost NPV of
-# the customer relationship) is roughly S$100.
+# These constants drive every technique file. They are ILLUSTRATIVE round
+# numbers for an unsecured personal-loan book, not figures from any bank:
+#
+#   FN (approve someone who defaults)  ≈ S$10,000 charged-off principal
+#   FP (decline someone who would repay) ≈ S$1,500 forgone net interest
+#        margin over the life of the loan (plus the lost relationship)
+#
+# A ~7:1 ratio puts the Bayes-optimal threshold t* = FP / (FP + FN) ≈ 0.13,
+# close to the default rate — so the threshold genuinely matters. (A much
+# cheaper FP, e.g. S$100, would make "decline almost everyone" optimal and
+# no model could beat that trivial policy — check your cost numbers before
+# you trust any threshold.)
 
 
 @dataclass(frozen=True)
@@ -58,15 +65,19 @@ class CostMatrix:
     """Dollar cost of each confusion-matrix cell.
 
     fn = cost of missing a default (charge-off loss)
-    fp = cost of a false alarm (manual review + lost relationship NPV)
+    fp = cost of a false decline (forgone interest margin + relationship)
     """
 
     fn: float = 10_000.0
-    fp: float = 100.0
+    fp: float = 1_500.0
 
     @property
     def optimal_threshold(self) -> float:
-        """Bayes-optimal threshold for this cost matrix: t* = fp / (fp + fn)."""
+        """Bayes-optimal threshold t* = fp / (fp + fn).
+
+        Valid only for CALIBRATED probabilities from an UNWEIGHTED loss —
+        a class-weighted model has already shifted its scores.
+        """
         return self.fp / (self.fp + self.fn)
 
     def total_cost(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -75,9 +86,9 @@ class CostMatrix:
         return float(fp * self.fp + fn * self.fn)
 
 
-DEFAULT_COSTS = CostMatrix(fn=10_000.0, fp=100.0)
+DEFAULT_COSTS = CostMatrix(fn=10_000.0, fp=1_500.0)
 
-# Annual volume for ROI analysis — calibrated to a mid-tier SG retail bank.
+# Annual application volume for ROI projections (illustrative).
 ANNUAL_APPLICATIONS = 100_000
 
 
@@ -87,22 +98,37 @@ ANNUAL_APPLICATIONS = 100_000
 # The dataset is loaded through the MLFPDataLoader so it works identically
 # in local (.data_cache) and Colab (Drive + gdown) formats.
 
+# Columns that MUST NOT be model inputs (Lesson 3.1 leakage rule):
+#   customer_id              — a row identifier, not a property of the applicant
+#   future_default_indicator — recorded AFTER the loan outcome is known; it
+#                              agrees with ``default`` on ~99% of rows, so a
+#                              model that sees it "predicts" default by
+#                              reading the answer (Exercise 4 screens for it).
+CREDIT_NON_FEATURE_COLUMNS: tuple[str, ...] = ("customer_id", "future_default_indicator")
+
 
 def load_credit_splits(
     seed: int = 42,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
     """Load the SG credit scoring dataset and return (X_train, y_train, X_test, y_test, pos_rate).
 
-    Uses kailash-ml PreprocessingPipeline for consistent preprocessing across
-    every technique file. Returns numpy arrays ready for sklearn-style fit.
+    Holds out a stratified 20% test split FIRST, then fits kailash-ml's
+    PreprocessingPipeline on the training rows only, so every technique file
+    gets the same leak-free preprocessing. Returns numpy arrays ready for
+    sklearn-style fit.
     """
     loader = MLFPDataLoader()
-    credit = loader.load("mlfp02", "sg_credit_scoring.parquet")
+    credit = loader.load("mlfp02", "sg_credit_scoring.parquet").drop(
+        CREDIT_NON_FEATURE_COLUMNS
+    )
 
-    pipeline = PreprocessingPipeline()
-    result = pipeline.setup(
+    # Split FIRST, then fit imputation/encoding on the training rows only:
+    # PreprocessingPipeline.setup() on the whole frame would fit them on the
+    # test rows too (it splits only after fitting).
+    result = split_then_preprocess(
         credit,
         target="default",
+        test_size=0.2,
         seed=seed,
         normalize=False,
         categorical_encoding="ordinal",
@@ -277,9 +303,9 @@ def print_roi(name: str, roi: dict[str, float]) -> None:
     print(f"    Defaults caught:    {roi['defaults_caught']:>12,.0f}")
     print(f"    Defaults missed:    {roi['defaults_missed']:>12,.0f}")
     print(f"    False alarms:       {roi['false_alarms']:>12,.0f}")
-    print(f"    Model cost:         ${roi['model_cost_usd']:>12,.0f}")
-    print(f"    No-model cost:      ${roi['no_model_cost_usd']:>12,.0f}")
-    print(f"    Annual savings:     ${roi['annual_savings_usd']:>12,.0f}")
+    print(f"    Model cost:        S${roi['model_cost_usd']:>12,.0f}")
+    print(f"    No-model cost:     S${roi['no_model_cost_usd']:>12,.0f}")
+    print(f"    Annual savings:    S${roi['annual_savings_usd']:>12,.0f}")
 
 
 # ════════════════════════════════════════════════════════════════════════

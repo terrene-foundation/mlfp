@@ -201,14 +201,14 @@
     <li>Each Jacobian has norm &lt; 1 → gradient shrinks exponentially (vanish)</li>
     <li>Each Jacobian has norm &gt; 1 → gradient blows up (explode)</li>
   </ul>
-  <p>Vanilla RNNs are unusable past ~20 time steps. The 1997 fix: LSTM.</p>
+  <p>Vanilla RNNs struggle to learn dependencies more than a few dozen steps back. The 1997 fix: LSTM.</p>
 </section>
 
 <!-- 6 -->
 <section>
   <h2>LSTM: cell state highway</h2>
-  <p>Adds a second state — the <strong>cell state</strong> — that flows forward with only additive updates, protected by three gates.</p>
-  <p>Additive path → gradient flows through almost unchanged. That is the magic.</p>
+  <p>Adds a second state — the <strong>cell state</strong> — that flows forward by a gated sum (scale the old by the forget gate, add new content), controlled by three gates.</p>
+  <p>Additive path → while the forget gate stays near 1, the gradient flows through almost unchanged. That is the magic.</p>
   <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px;">
     🔵 The cell state is the ancestor of ResNet's skip connections (2015).
   </div>
@@ -314,7 +314,7 @@
 
 <!-- 7 -->
 <section>
-  <h2>LSTM gate equations — all six</h2>
+  <h2>LSTM: three gates + candidate, six equations</h2>
   <div style="font-size: 0.72em; text-align: left; padding: 14px; background: #F8FAFC;">
     \[
     \begin{aligned}
@@ -346,7 +346,7 @@
 <section>
   <h2>Why it works: gradient highway</h2>
   <p>Vanilla RNN: \( \partial h_t / \partial h_{t-1} \) involves W_{hh} and a tanh derivative → decays exponentially.</p>
-  <p>LSTM: \( \partial C_t / \partial C_{t-1} \approx f_t \). If \( f_t \approx 1 \), gradient passes through unchanged.</p>
+  <p>LSTM: \( \partial C_t / \partial C_{t-1} \approx f_t \). When \( f_t \approx 1 \) the gradient passes through nearly unchanged.</p>
   <div style="background: #F0FDF4; padding: 14px 18px; border-left: 4px solid #22C55E; border-radius: 4px;">
     🟢 Same insight as ResNet: give the gradient an additive path back.
   </div>
@@ -401,7 +401,7 @@ for epoch in range(30):
             model.parameters(), max_norm=1.0)   # ★ essential
         opt.step()
   </code></pre>
-  <p>Without gradient clipping, RNNs explode on ~1% of batches and NaN your loss.</p>
+  <p>Without gradient clipping, an occasional exploding batch can turn your loss into NaN.</p>
 </section>
 
 <!-- 13 -->
@@ -419,14 +419,14 @@ context = (weights * out).sum(dim=1)          # (B, H)
 
 <!-- 14 -->
 <section>
-  <h2>Singapore scenario: forecasting SGX</h2>
-  <p>A synthetic price series: trend + seasonality + noise.</p>
+  <h2>Singapore scenario: forecasting the STI</h2>
+  <p>Exercise 5.3 uses real daily bars for the Straits Times Index (2010–2024, cached).</p>
   <ul>
-    <li>Input: 50 past daily "prices"</li>
-    <li>Target: next day's price</li>
-    <li>Features: price, RSI, MACD, Bollinger position (optional)</li>
+    <li>Input: 20 past trading days × 4 features (Close, High, Low, Volume), z-scored on the training period</li>
+    <li>Target: the next 5 closing prices</li>
+    <li>RSI / MACD / Bollinger features are a natural extension — not in the exercise feature set</li>
   </ul>
-  <p>Vanilla RNN plateaus high; GRU and LSTM both converge below it.</p>
+  <p>Daily prices are close to a random walk: always compare against "tomorrow = today" before claiming skill.</p>
 </section>
 
 <!-- 15 -->
@@ -459,7 +459,7 @@ context = (weights * out).sum(dim=1)          # (B, H)
   <h2>Reflection</h2>
   <ul style="font-size: 0.85em;">
     <li>✓ Explain the vanishing-gradient problem and why LSTMs solve it</li>
-    <li>✓ Write all six LSTM gate equations from memory</li>
+    <li>✓ Write the six LSTM equations (three gates + candidate) from memory</li>
     <li>✓ Build LSTM / GRU regressors with nn.LSTM and nn.GRU</li>
     <li>✓ Apply gradient clipping as standard practice</li>
     <li>✓ Add temporal attention as a weighted sum over time steps</li>

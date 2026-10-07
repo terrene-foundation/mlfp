@@ -11,7 +11,7 @@
 #   - Build bottleneck adapter modules that inject small trainable
 #     layers inside a frozen backbone
 #   - Compare parameter efficiency across methods: from-scratch,
-#     frozen head, adapter, and (preview) LoRA
+#     frozen head and adapter (LoRA follows in Module 6)
 #   - Visualise the performance-vs-parameters Pareto frontier
 #   - Apply adapter concepts to a multi-tenant AI platform scenario
 #
@@ -36,6 +36,7 @@ import torchvision
 from shared.mlfp05.ex_7 import (
     BATCH_SIZE,
     EPOCHS,
+    INPUT_SIZE,
     N_CLASSES,
     OUTPUT_DIR,
     count_params,
@@ -66,7 +67,8 @@ from shared.mlfp05.ex_7 import (
 #
 # ADAPTER MODULES (this section):
 #   - Inject small trainable bottleneck layers INSIDE the frozen backbone
-#   - ~5-10% of params trainable — good balance
+#   - A small fraction of params trainable (about 1% in this exercise —
+#     Checkpoint 2 prints the exact share), far more than a frozen head
 #   - Skip connection: adapter starts as identity, so training begins
 #     from the pre-trained features
 #   - Storage: only save the adapter weights (~1-5 MB) per task
@@ -122,18 +124,17 @@ class BottleneckAdapter(nn.Module):
 
     def __init__(self, dim: int, bottleneck: int = 64):
         super().__init__()
-        # TODO: Create two linear layers and zero-init the up-projection
-        # Steps:
-        #   1. self.down = nn.Linear(dim, bottleneck)
-        #   2. self.up = nn.Linear(bottleneck, dim)
-        #   3. nn.init.zeros_(self.up.weight)
-        #   4. nn.init.zeros_(self.up.bias)
+        # TODO: Create the down- and up-projection layers (self.down,
+        #   self.up) and zero-initialise BOTH the weight and bias of the
+        #   up-projection
+        # Hint: nn.Linear for each projection; nn.init has an in-place
+        #   zeros initialiser
         # Why zero-init? So the adapter starts as identity (output = input)
         ____
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Implement skip connection: x + up(relu(down(x)))
-        # Hint: return x + self.up(F.relu(self.down(x)))
+        # TODO: Return the input plus the bottleneck path
+        #   (down-project -> ReLU -> up-project)
         ____
 
 
@@ -179,12 +180,13 @@ class AdaptedBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # TODO: Run block, then apply adapter on channel-wise pooled features
         # Steps:
-        #   1. out = self.block(x)
-        #   2. b, c, h, w = out.shape
-        #   3. pooled = out.mean(dim=[2, 3])  -> (B, C)
-        #   4. adapted = self.adapter(pooled)  -> (B, C)
-        #   5. return out + adapted.unsqueeze(-1).unsqueeze(-1)
-        # Hint: unsqueeze broadcasts (B,C) back to (B,C,1,1) for addition
+        #   1. Run the wrapped block
+        #   2. Average its output over the spatial dims -> pooled (B, C)
+        #   3. Pass pooled through the adapter -> adapted (B, C)
+        #   4. Add ONLY the adapter's change to the block output. The
+        #      adapter already includes its skip connection, so adding
+        #      `adapted` itself would count the pooled features twice.
+        # Hint: reshape (B, C) to (B, C, 1, 1) so it broadcasts over H, W
         ____
 
 
@@ -193,17 +195,26 @@ def build_adapter_resnet(
     bottleneck: int = 64,
 ) -> nn.Module:
     """ResNet-18 with bottleneck adapters after layer3 and layer4."""
-    # TODO: Build adapter-augmented ResNet-18
-    # Steps:
-    #   1. Load pre-trained ResNet-18 (same as Part 2)
-    #   2. Freeze all parameters
-    #   3. Replace model.fc with nn.Linear(in_features, n_classes)
-    #   4. Wrap model.layer3 with AdaptedBlock(original_layer3, BottleneckAdapter(256, bottleneck))
-    #   5. Wrap model.layer4 with AdaptedBlock(original_layer4, BottleneckAdapter(512, bottleneck))
-    # Hint: Save original layers before replacing:
-    #   original_layer3 = model.layer3
-    #   model.layer3 = AdaptedBlock(original_layer3, BottleneckAdapter(256, bottleneck))
+    # No fallback to random weights: if the ImageNet download fails this
+    # raises — a random frozen backbone would make the comparison meaningless.
+    weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1
+    model = torchvision.models.resnet18(weights=weights)
+
+    # TODO: Freeze all original parameters
     ____
+
+    # TODO: Replace the fc head with a trainable n_classes head
+    in_features = model.fc.in_features
+    model.fc = ____
+
+    # TODO: Wrap layer3 (256 channels) and layer4 (512 channels) each in an
+    #   AdaptedBlock with a BottleneckAdapter of matching width
+    original_layer3 = model.layer3
+    original_layer4 = model.layer4
+    model.layer3 = ____
+    model.layer4 = ____
+
+    return model
 
 
 adapter_model = build_adapter_resnet(bottleneck=64)
@@ -220,9 +231,21 @@ print(
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert n_adapter_trainable > 5000, "Adapter should have more params than frozen head"
 assert n_adapter_trainable < n_adapter_total, "Should have fewer trainable than total"
-# INTERPRETATION: The adapter adds ~100K trainable parameters on top of
-# the ~5K frozen-head params. This is still far fewer than the ~11M
-# total, but gives the model more capacity to adapt to the task.
+# Identity at init for the WHOLE wrapped block, not just the bare adapter:
+# with zero-init adapters, AdaptedBlock must return exactly what the
+# wrapped ResNet stage returns, so training starts from ImageNet features.
+adapter_model.eval()
+with torch.no_grad():
+    stage_input = torch.randn(2, 128, INPUT_SIZE // 8, INPUT_SIZE // 8, device=device)
+    wrapped_out = adapter_model.layer3.block(stage_input)
+    adapted_out = adapter_model.layer3(stage_input)
+assert torch.allclose(
+    adapted_out, wrapped_out, atol=1e-6
+), "AdaptedBlock should leave the wrapped stage's output unchanged at init"
+# INTERPRETATION: The two adapters add 99,200 trainable parameters
+# (33,088 + 66,112) on top of the 5,130-param head — about 1% of the
+# ~11M total (the exact share is printed above). That is ~20x the
+# frozen head's capacity to adapt, at a tiny fraction of the model.
 print("--- Checkpoint 2 passed --- adapter ResNet built\n")
 
 
@@ -233,13 +256,6 @@ print("--- Checkpoint 2 passed --- adapter ResNet built\n")
 print("\n" + "=" * 70)
 print("  TRAINING: All three approaches on CIFAR-10")
 print("=" * 70)
-
-# TODO: Train all three models and collect results
-# Method 1: Adapter model (already built above)
-# Method 2: Frozen head (build_frozen_head function)
-# Method 3: From scratch (build_scratch_cnn function)
-# Hint: Use train_model() from helpers for each
-# Hint: train_model returns (losses, val_accs, train_accs)
 
 # Method 1: Adapter model
 adapter_losses, adapter_accs, _ = train_model(
@@ -256,7 +272,10 @@ best_adapter = max(adapter_accs)
 
 # Method 2: Frozen head (from Part 2)
 def build_frozen_head(n_classes: int = N_CLASSES) -> nn.Module:
-    # TODO: Same as Part 2 — load ResNet-18, freeze, replace fc
+    # No fallback to random weights: if the ImageNet download fails this
+    # raises — a random frozen backbone would make the comparison meaningless.
+    # TODO: Same as Part 2 — ImageNet ResNet-18, freeze everything,
+    #   fresh n_classes head; return the model
     ____
 
 
@@ -276,8 +295,8 @@ n_frozen_trainable = count_params(frozen_model, trainable_only=True)
 
 # Method 3: From scratch
 def build_scratch_cnn(n_classes: int = N_CLASSES) -> nn.Module:
-    # TODO: Same 3-layer CNN from Part 1
-    ____
+    # TODO: Return the same small CNN as Part 1
+    return ____
 
 
 scratch_model = build_scratch_cnn()
@@ -310,19 +329,50 @@ print(
 )
 print("\n--- Checkpoint 3 passed --- all three methods compared\n")
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# kailash-ml's run_diagnostic_checkpoint runs a few real forward/backward
+# passes (no optimiser step) with gradient, activation and dead-neuron
+# hooks attached, and replays the real per-epoch training losses. It
+# RETURNS the findings; print_prescription_pad prints them. The pass
+# puts the model in train mode, which updates BatchNorm running
+# statistics, so we diagnose a COPY and leave the trained model intact.
+import copy
+
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+
+from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05.ex_7 import classifier_diag_loss
+
+print("\n── Diagnostic Report (Adapter ResNet-18 (frozen backbone + bottleneck adapters)) ──")
+diag, findings = run_diagnostic_checkpoint(
+    copy.deepcopy(adapter_model),
+    train_loader,
+    classifier_diag_loss,
+    title="Adapter ResNet-18 (frozen backbone + bottleneck adapters)",
+    n_batches=8,
+    train_losses=adapter_losses,
+    show=False,
+)
+print_prescription_pad(findings, "Adapter ResNet-18 (frozen backbone + bottleneck adapters)")
+# HOW TO READ THE PRESCRIPTION PAD FOR THIS MODEL:
+#  Gradient flow — only the adapter bottlenecks and the fc head are
+#     trainable; the frozen backbone has no parameter gradients by design.
+#     Read this as: do the adapter layers carry gradient? A "vanishing"
+#     reading on the adapters' up-projections means they are still near
+#     their zero init and barely changing the backbone's features.
+#  Dead neurons — the adapters use ReLU inside the bottleneck; a high
+#     inactive fraction there wastes adapter capacity (try a smaller
+#     bottleneck or GELU).
+#  Loss trend — read from the real per-epoch losses of the adapter run.
+#  If any reading is UNKNOWN, the library could not compute it from this
+#  run; the message says why.
+
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Visualise: Parameter count vs performance Pareto chart
 # ════════════════════════════════════════════════════════════════════════
-
-# TODO: Create two visualisations:
-# 1. Pareto chart: trainable params (x, log scale) vs accuracy (y)
-#    - Scatter with 3 methods + LoRA preview point
-#    - LoRA estimate: ~2% of total params, ~98% of adapter accuracy
-# 2. Training curves: epoch vs accuracy for all three methods
-# Hint: fig_pareto = go.Figure()
-# Hint: fig_pareto.add_trace(go.Scatter(x=param_counts, y=accuracies, mode="markers+text"))
-# Hint: fig_pareto.update_layout(xaxis_type="log")
 
 methods = ["From Scratch", "Frozen Head", "Adapter (bottleneck=64)"]
 param_counts = [n_scratch_trainable, n_frozen_trainable, n_adapter_trainable]
@@ -330,7 +380,26 @@ accuracies = [best_scratch, best_frozen, best_adapter]
 colours = ["#FF5722", "#2196F3", "#4CAF50"]
 
 fig_pareto = go.Figure()
+
+# TODO: Scatter plot of trainable params (x) vs accuracy in % (y), one
+#   labelled marker per method, coloured with `colours`
+# Hint: go.Scatter with a "markers+text" mode; the layout below sets the
+#   log-scale x axis
 ____
+
+# (Only measured points are plotted. LoRA, the LLM-scale cousin of
+# adapters, is trained and measured in Module 6.)
+
+fig_pareto.update_layout(
+    title="Parameter Efficiency: Trainable Parameters vs Validation Accuracy",
+    xaxis_title="Trainable Parameters",
+    yaxis_title="Validation Accuracy (%)",
+    template="plotly_white",
+    xaxis_type="log",
+    showlegend=False,
+    width=800,
+    height=500,
+)
 
 pareto_path = OUTPUT_DIR / "04_parameter_pareto.html"
 fig_pareto.write_html(str(pareto_path))
@@ -339,8 +408,37 @@ print(f"  Saved: {pareto_path}")
 # Training curves comparison
 fig_curves = go.Figure()
 epochs_x = list(range(1, EPOCHS + 1))
-____
 
+for name, losses, accs, colour in [
+    ("From Scratch", scratch_losses, scratch_accs, "#FF5722"),
+    ("Frozen Head", frozen_losses, frozen_accs, "#2196F3"),
+    ("Adapter", adapter_losses, adapter_accs, "#4CAF50"),
+]:
+    fig_curves.add_trace(
+        go.Scatter(
+            x=epochs_x,
+            y=accs,
+            mode="lines+markers",
+            name=f"{name} val_acc",
+            line=dict(color=colour, width=2),
+        )
+    )
+    fig_curves.add_trace(
+        go.Scatter(
+            x=epochs_x,
+            y=losses,
+            mode="lines",
+            name=f"{name} loss",
+            line=dict(color=colour, width=1, dash="dot"),
+        )
+    )
+
+fig_curves.update_layout(
+    title="Training Curves: Three Transfer Learning Approaches",
+    xaxis_title="Epoch",
+    yaxis_title="Value",
+    template="plotly_white",
+)
 curves_path = OUTPUT_DIR / "04_training_curves.html"
 fig_curves.write_html(str(curves_path))
 print(f"  Saved: {curves_path}")
@@ -358,11 +456,12 @@ print("--- Checkpoint 4 passed --- visualisations complete\n")
 # multiple clients. Each client needs a custom image classifier, but
 # they share the same base architecture (ResNet-18).
 #
-# Full fine-tuning: store 11M params per client = ~44 MB per model
+# Full fine-tuning: store 11M params per client = ~43 MB per model
 # Adapter approach: store ~100K params per client = ~0.4 MB per adapter
 #
-# For 50 clients, that's 2.2 GB vs 20 MB. And at inference time, you
-# can keep ONE ResNet-18 in GPU memory and swap adapters per request.
+# For 50 clients, that's ~2.2 GB vs ~63 MB (one shared base + 50
+# adapters). And at inference time, you can keep ONE ResNet-18 in GPU
+# memory and swap adapters per request.
 
 print("\n" + "=" * 70)
 print("  APPLY: Multi-Tenant AI Platform — One Base, Many Adapters")
@@ -372,28 +471,42 @@ N_CLIENTS = 50
 FULL_MODEL_MB = n_adapter_total * 4 / (1024 * 1024)  # float32, 4 bytes each
 ADAPTER_MB = n_adapter_trainable * 4 / (1024 * 1024)
 
-# TODO: Print the multi-tenant storage analysis
-# Steps:
-#   1. Print per-client and 50-client storage for full fine-tuning
-#   2. Print per-client and 50-client storage for adapter approach
-#      (adapter: 1 base model + N tiny adapters)
-#   3. Calculate savings_storage and savings_gpu
-#   4. Print inference cost comparison
-# Hint: Full = N_CLIENTS * FULL_MODEL_MB
-# Hint: Adapter = FULL_MODEL_MB + N_CLIENTS * ADAPTER_MB (one shared base)
-# Hint: GPU at inference: full needs N models, adapter needs 1 base + swap
 print(f"\n  === Multi-Tenant Storage Analysis (50 clients) ===")
 print(f"  Base model (ResNet-18): {n_adapter_total:,} params = {FULL_MODEL_MB:.1f} MB")
 print(f"  Adapter weights: {n_adapter_trainable:,} params = {ADAPTER_MB:.2f} MB")
-____
+print()
+print(f"  {'Approach':<30} {'Per Client':>12} {'50 Clients':>14} {'GPU Memory':>14}")
+print("  " + "-" * 72)
+print(
+    f"  {'Full fine-tuning':<30} "
+    f"{FULL_MODEL_MB:>11.1f}MB "
+    f"{N_CLIENTS * FULL_MODEL_MB:>13.0f}MB "
+    f"{N_CLIENTS * FULL_MODEL_MB:>13.0f}MB"
+)
+print(
+    f"  {'Adapter (shared backbone)':<30} "
+    f"{ADAPTER_MB:>11.2f}MB "
+    f"{FULL_MODEL_MB + N_CLIENTS * ADAPTER_MB:>13.1f}MB "
+    f"{FULL_MODEL_MB + ADAPTER_MB:>13.1f}MB"
+)
 
-savings_storage = N_CLIENTS * FULL_MODEL_MB - (FULL_MODEL_MB + N_CLIENTS * ADAPTER_MB)
-savings_gpu = N_CLIENTS * FULL_MODEL_MB - (FULL_MODEL_MB + ADAPTER_MB)
+# TODO: Storage saved (N full models vs one shared base + N adapters) and
+#   GPU memory saved (N full models vs one base + one active adapter)
+savings_storage = ____
+savings_gpu = ____
 
 print(
     f"\n  Storage savings: {savings_storage:.0f} MB ({savings_storage / (N_CLIENTS * FULL_MODEL_MB) * 100:.0f}%)"
 )
 print(f"  GPU memory savings: {savings_gpu:.0f} MB (load one base + swap adapters)")
+print()
+print(f"  INFERENCE COST COMPARISON:")
+print(f"  Full fine-tuning: 50 separate models, each needing GPU memory")
+print(f"    -> Need multiple GPUs or sequential loading (slow)")
+print(f"  Adapter approach: 1 base model in GPU + swap {ADAPTER_MB:.2f} MB adapters")
+print(
+    f"    -> Single GPU serves all 50 clients with ~{ADAPTER_MB * 1000:.0f}KB swap per request"
+)
 print()
 print(f"  BRIDGE TO M6:")
 print(f"  In M6, you will learn LoRA (Low-Rank Adaptation) — the adapter")
@@ -451,64 +564,3 @@ print(
   and InferenceServer — the full pipeline from experiment to serving.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Frozen backbone + small adapter layers
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (Adapter modules — parameter-efficient fine-tuning) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        model,
-        train_loader,
-        _diag_loss,
-        title="Adapter modules — parameter-efficient fine-tuning",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): Only adapter layers receive gradient —
-#     RMS 2.3e-03 on adapter params, 0 on frozen backbone (expected).
-# [✓] 0.5% of parameters trainable, 85% val accuracy — same as full fine-tune.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST — ADAPTER-SPECIFIC] The "0 gradient on backbone"
-#     is by design, not a bug. Diagnostic correctly shows frozen
-#     layers as inactive. Only adapter bottlenecks receive gradient.
-#
-#  [PRESCRIPTION] Adapters = 200x fewer params to store per task.
-#     For production deployment: one frozen backbone + many
-#     per-task adapters. Training cost: fraction of full fine-tune.
-#     Quality: typically within 1% of full fine-tune.
-#     Slide 5.7 references this as the modern 2024+ approach
-#     (HuggingFace PEFT library, LoRA).
-
-

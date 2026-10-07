@@ -149,34 +149,45 @@
 <section>
   <h2>FP-Growth — faster cousin</h2>
   <ul>
-    <li>Builds a compressed <em>FP-tree</em> in a single pass.</li>
+    <li>Builds a compressed <em>FP-tree</em> in two passes (count items; insert each basket in frequency order), then mines the tree recursively.</li>
     <li>Avoids candidate generation.</li>
-    <li>Typically 2–10× faster than Apriori on dense data.</li>
+    <li>Usually much faster than Apriori on large or dense data — no candidate sets to count.</li>
     <li>Same output — same frequent itemsets.</li>
   </ul>
-  <p style="font-size: 0.85em; color: #64748B;">Default in modern libraries. Use it unless you have a specific reason for Apriori.</p>
+  <p style="font-size: 0.85em; color: #64748B;">The usual choice in practice (mlxtend, Spark MLlib). Apriori is the one to implement by hand to understand pruning.</p>
 </section>
 
 <section>
-  <h2>Worked example: Singapore retail</h2>
+  <h2>Worked example: Singapore retail baskets</h2>
   <pre><code class="language-python" data-trim>
+import polars as pl
 from mlxtend.frequent_patterns import fpgrowth, association_rules
+from shared.mlfp04.ex_5 import generate_transactions, transactions_to_onehot
 
-freq = fpgrowth(baskets_df, min_support=0.01, use_colnames=True)
+baskets = generate_transactions()           # 2,500 synthetic SG baskets
+onehot = transactions_to_onehot(baskets)    # polars: one bool column per product
+freq = fpgrowth(onehot.to_pandas(), min_support=0.03, use_colnames=True)
 rules = association_rules(freq, metric="lift", min_threshold=2.0)
 
-top = rules.sort_values("lift", ascending=False).head(10)
-print(top[["antecedents", "consequents", "confidence", "lift"]])
+top = pl.DataFrame({                        # back to polars straight away
+    "rule": [f"{sorted(a)} -> {sorted(c)}"
+             for a, c in zip(rules["antecedents"], rules["consequents"])],
+    "confidence": rules["confidence"].tolist(),
+    "lift": rules["lift"].tolist(),
+}).sort("lift", descending=True)
   </code></pre>
+  <p style="font-size: 0.8em; color: #64748B;">mlxtend only accepts pandas, so convert <em>at the call boundary</em> and return to polars. Here: 159 frequent itemsets, 126 rules with lift ≥ 2.</p>
 </section>
 
 <section>
   <h2>Interpreting a rule</h2>
   <pre><code class="language-text" data-trim>
-{instant_noodles, canned_tuna} → {rice}
-  support: 0.035   confidence: 0.72   lift: 3.4
+{cooking_oil, rice} → {fish}
+  support: 0.044   confidence: 0.69   lift: 5.1
+{fish} → {cooking_oil, rice}
+  support: 0.044   confidence: 0.33   lift: 5.1
   </code></pre>
-  <p>Business reading: "Customers buying instant noodles and canned tuna are 3.4× more likely than average to also buy rice."</p>
+  <p>Business reading: "69% of baskets with cooking oil and rice also hold fish — 5.1× the base rate." Same lift both ways; confidence is not.</p>
   <p>Action: three-item promo, shelf placement, recommendation widget.</p>
 </section>
 
@@ -184,13 +195,13 @@ print(top[["antecedents", "consequents", "confidence", "lift"]])
   <h2>Rules as features — the feed-forward</h2>
   <pre><code class="language-python" data-trim>
 # Materialise a binary feature from the rule
-baskets = baskets.with_columns(
-    (pl.col("noodles") & pl.col("tuna")).alias("has_noodles_tuna")
+onehot = onehot.with_columns(
+    (pl.col("cooking_oil") &amp; pl.col("rice")).alias("rule_oil_rice_to_fish")
 )
 # Now train a classifier on enriched features
   </code></pre>
   <div class="callout-slide kailash">
-    <strong>⚙ Kailash:</strong> <code>FeatureEngineer</code> materialises discovered rules as feature columns in the feature store.
+    <strong>⚙ Kailash:</strong> there is no association-rule engine — mine with mlxtend, materialise flags with polars. Exercise 5.4 predicts a shopper's <em>next</em> trip: the product-presence baseline reaches AUC ≈ 0.69, and whether rule flags add signal is a real empirical question ("no lift" is a valid finding).
   </div>
 </section>
 

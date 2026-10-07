@@ -3,6 +3,7 @@
 **Description**: Statistical foundations including regression models. Following R5 Deck 3A: regression and logistic regression are taught as inference tools BEFORE the ML pipeline.
 
 **Module Learning Objectives**: By the end of M2, students can:
+
 - Reason about probability, conditional probability, and Bayes' theorem
 - Estimate parameters using MLE and bootstrap methods
 - Design and analyse A/B tests with proper hypothesis testing
@@ -21,6 +22,7 @@
 **Spectrum Position**: Uncertainty quantification — foundation for all statistical reasoning
 
 **Topics**:
+
 - Probability fundamentals: truth tables, composite events, P(A) + P(A') = 1
 - Independent vs dependent events (steps to decide: order possible? one affects other?)
 - Conditional probability: P(A|B), P(A,B) = P(A) x P(B|A)
@@ -32,6 +34,7 @@
 - Sampling bias (friendship paradox from Deck 2A: your friends have more friends than you)
 
 **Key Formulas**:
+
 - Bayes' theorem: P(A|B) = P(B|A) x P(A) / P(B)
 - Expected value: E[X] = Sum(p_i * x_i)
 - Conditional probability: P(A,B) = P(A) x P(B|A)
@@ -39,6 +42,7 @@
 **Bridge from M1**: "In M1 you explored data and computed summary statistics. Now we ask: how confident are we in those numbers? Statistics gives us the language of uncertainty."
 
 **Learning Objectives**: Students can:
+
 - Construct truth tables for probability problems
 - Apply Bayes' theorem to real-world scenarios (medical tests, A/B test results)
 - Identify and correct for sampling bias
@@ -58,6 +62,7 @@
 **Spectrum Position**: Model fitting — connecting distributions to data
 
 **Topics**:
+
 - Population vs sample: parameter (mu, sigma) vs statistic (x-bar, s)
 - Sampling distributions: taking many samples, calculating statistics
 - Law of Large Numbers (LLN), Central Limit Theorem (CLT)
@@ -68,12 +73,14 @@
 - When MLE fails: small n, multimodal, misspecified
 
 **Key Formulas**:
+
 - Population variance: sigma^2 = Sum((x_i - mu)^2) / N
 - Sample variance: s^2 = Sum((x_i - x_bar)^2) / (n-1) (Bessel's correction)
 - Degrees of freedom: n-1 (one value determined by the sample mean)
 - Log-likelihood: L(theta) = Sum(log(P(x_i | theta)))
 
 **Learning Objectives**: Students can:
+
 - Distinguish population parameters from sample statistics
 - Compute confidence intervals and explain their meaning correctly
 - Implement MLE for a simple distribution (e.g., Normal parameters)
@@ -93,6 +100,7 @@
 **Spectrum Position**: Resampling and decision-making — when theory isn't enough
 
 **Topics**:
+
 - **Bootstrapping**:
   - Problem: can't get more samples, costly, one sample available
   - Solution: resample with replacement (bootstrap sample), compute statistic (bootstrap replicate)
@@ -111,11 +119,13 @@
   - Multiple testing: Bonferroni correction, BH-FDR
 
 **Key Formulas**:
+
 - Bootstrap CI: [percentile(alpha/2), percentile(1 - alpha/2)]
 - Test statistic: T = (x_bar - mu_0) / (s / sqrt(n))
 - Bonferroni correction: alpha_adjusted = alpha / m (m = number of tests)
 
 **Learning Objectives**: Students can:
+
 - Implement bootstrap resampling and compute CIs
 - Formulate null and alternative hypotheses for business questions
 - Compute and interpret p-values correctly
@@ -135,6 +145,7 @@
 **Spectrum Position**: Experimental design — structured learning from interventions
 
 **Topics**:
+
 - A/B test design from Deck 3A:
   - Hypothesis formulation (e.g., "BOGO gives higher average spend")
   - Experiment setup: randomisation, equal allocation
@@ -152,6 +163,7 @@
 **Key Concepts**: Experiment design, data collection strategy, DataOps, SRM
 
 **Learning Objectives**: Students can:
+
 - Design an A/B test with proper randomisation and power analysis
 - Create a data collection plan (what, where, how, frequency)
 - Detect SRM in experiment data
@@ -173,6 +185,7 @@
 **Bridge**: "In M2.3 you tested whether a sample statistic differs from zero. Regression coefficients ARE sample statistics — the t-statistic you already know is the same test applied to each coefficient."
 
 **Topics**:
+
 - OLS (Ordinary Least Squares): fit a line, minimise squared residuals
 - Regression formula: y = beta_0 + beta_1 * x_1 + ... + beta_n * x_n + epsilon
 - Coefficients: direction (sign) and magnitude (size)
@@ -187,12 +200,14 @@
 - Cross-validation basics: train/test split, k-fold (introduced, detailed in M3.2)
 
 **Key Formulas**:
+
 - OLS: minimise Sum((y_i - y_hat_i)^2)
 - T-statistic: t = beta_hat / SE(beta_hat)
 - R-squared: R^2 = 1 - SS_res / SS_tot
 - F-statistic: F = (SS_reg / k) / (SS_res / (n - k - 1))
 
 **Learning Objectives**: Students can:
+
 - Build and interpret a multivariate linear regression
 - Test coefficient significance using t-statistics
 - Evaluate model fit using R-squared and F-statistic
@@ -213,6 +228,7 @@
 **Spectrum Position**: Binary prediction — from continuous to categorical outcomes
 
 **Topics**:
+
 - **Logistic Regression** (primary, ~3 hours):
   - When outcome is binary (0/1, yes/no): linear regression predicts outside [0,1]
   - Log-odds transformation: link function maps {0,1} to {-inf, +inf}
@@ -228,6 +244,7 @@
   - Two-way ANOVA and repeated measures: mention as extensions (reference material)
 
 **Key Formulas**:
+
 - Sigmoid: sigma(z) = 1 / (1 + exp(-z))
 - Log-odds: log(P / (1-P)) = beta_0 + beta_1 * x_1 + ...
 - Odds ratio: exp(beta_1) = multiplicative change in odds per unit change in x_1
@@ -236,6 +253,7 @@
 **Design Note**: Logistic regression gets full depth because it's foundational for M3 classification and M4.8 neural networks (sigmoid is the activation function). ANOVA is scoped to one-way only because it's rarely used in the ML pipeline — students who need advanced ANOVA can reference supplementary material.
 
 **Learning Objectives**: Students can:
+
 - Build and interpret a logistic regression model
 - Explain the sigmoid function and log-odds transformation
 - Compute and interpret odds ratios
@@ -256,6 +274,7 @@
 **Spectrum Position**: Advanced experiment analysis — beyond basic A/B testing
 
 **Topics**:
+
 - **CUPED** (Control Using Pre-Experiment Data) (~2.5 hours):
   - The single most impactful A/B test technique
   - Derive: Var(Y_adj) = Var(Y)(1 - rho^2)
@@ -273,6 +292,7 @@
   - Placebo tests
 
 **Key Formulas**:
+
 - CUPED: Var(Y_adj) = Var(Y)(1 - rho^2)
 - CUPED estimator: Y_adj = Y - theta * (X_pre - E[X_pre]), where theta = Cov(Y, X_pre) / Var(X_pre)
 - DiD: ATT = (Y_treat_post - Y_treat_pre) - (Y_control_post - Y_control_pre)
@@ -280,6 +300,7 @@
 **Design Note**: Propensity score matching deferred to reference material (complex, less commonly used than DiD in practice). CUPED prioritised because every A/B testing practitioner should know it.
 
 **Learning Objectives**: Students can:
+
 - Implement CUPED to reduce A/B test variance by up to 50%
 - Detect SRM in experiment data
 - Apply DiD when randomisation is impossible
@@ -299,15 +320,17 @@
 **Spectrum Position**: Integration — applying all statistical tools to a real problem
 
 **Topics**:
+
 - End-to-end statistical analysis: load -> describe -> hypothesise -> test -> model -> interpret -> report
 - Feature engineering preview: temporal features, interaction terms (bridges to M3.1)
 - FeatureEngineer: generate features, select features
 - FeatureStore: point-in-time correctness, data lineage, lifecycle
-- Project options (student choice): wine quality analysis (from R5 PCML3-6), economic indicator prediction, experiment design and analysis
+- Project options (student choice): HDB resale valuation (`mlfp01/hdb_resale.parquet`; the guided path in Exercise 8 — replaces the R5 PCML3-6 wine-quality option, whose dataset is not in the course data), economic indicator prediction (`mlfp01/economic_indicators.csv`), experiment design and analysis (`mlfp02/experiment_data.parquet`)
 
 **Key Concepts**: Feature engineering as a discipline, feature store lifecycle, point-in-time correctness
 
 **Learning Objectives**: Students can:
+
 - Execute a complete statistical analysis from data to recommendations
 - Engineer temporal and interaction features
 - Store and retrieve features with point-in-time correctness

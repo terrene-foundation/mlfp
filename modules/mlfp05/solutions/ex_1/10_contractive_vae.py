@@ -16,7 +16,7 @@
 # ESTIMATED TIME: ~20 min
 #
 # TASKS:
-#   1. Build Contractive VAE (VAE + Jacobian weight penalty)
+#   1. Build Contractive VAE (VAE + Jacobian penalty on the mean code)
 #   2. Train and compare interpolation smoothness vs vanilla VAE
 #   3. Visualise side-by-side interpolation comparison
 #   4. Apply: molecular feature similarity search
@@ -180,17 +180,33 @@ class ContractiveVAE(nn.Module):
         return self.decoder(z)
 
 
-CVAE_CONTRACTIVE_WEIGHT = 1e-4
+# The ELBO here is SUMMED over pixels (~784x a pixel-mean MSE), so the
+# contractive weight is on that scale too.
+CVAE_CONTRACTIVE_WEIGHT = 1.0
+
+
+def jacobian_penalty(encode_fn, xb):
+    """Mean squared Frobenius norm of the encoder Jacobian (Rifai et al., 2011).
+
+    torch.func.jacrev differentiates encode_fn for ONE sample — a
+    (input_dim,) vector in, a (latent_dim,) code out — giving the
+    (latent_dim, input_dim) Jacobian. vmap does this for every sample in
+    the batch. The result is differentiable, so the penalty trains the
+    encoder. Unlike a squared-weight sum (plain L2 weight decay), it depends
+    on the input: it measures how much THIS image's code moves when its
+    pixels move.
+    """
+    jac = torch.func.vmap(torch.func.jacrev(encode_fn))(xb)  # (B, latent, input)
+    return jac.pow(2).sum(dim=(1, 2)).mean()
 
 
 def cvae_loss_fn(model, xb):
     x_hat, mu, logvar = model(xb)
     recon = F.mse_loss(x_hat, xb, reduction="sum") / xb.size(0)
     kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / xb.size(0)
-    jacobian_penalty = sum(
-        torch.sum(p**2) for p in [model.enc1.weight, model.enc2.weight]
-    )
-    return recon + KL_WEIGHT * kl + CVAE_CONTRACTIVE_WEIGHT * jacobian_penalty, {}
+    # Penalise how fast the MEAN code mu(x) moves with the input.
+    contractive = jacobian_penalty(lambda x: model.fc_mu(model.encoder(x)), xb)
+    return recon + KL_WEIGHT * kl + CVAE_CONTRACTIVE_WEIGHT * contractive, {}
 
 
 print("\n" + "=" * 70)
@@ -218,6 +234,7 @@ cvae_losses = train_variant(
 # TEST to show low-but-stable gradients — both regularisers pull
 # the encoder toward smoother manifolds.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -236,71 +253,13 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=cvae_losses,
     show=False,
 )
+print_prescription_pad(findings, f"CVAE (KL={KL_WEIGHT}, lam={CVAE_CONTRACTIVE_WEIGHT})")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Gradient flow (WARNING): Compound dampening at
-#       'fc_mu.weight' — RMS = 3.1e-05. Both KL penalty AND
-#       Jacobian penalty act on mu-head. Contrast: VAE
-#       (09) had 5.2e-05, ContractiveAE (05) had 7.4e-05 —
-#       CVAE sits below both because TWO regularisers.
-#   [!] Dead neurons  (WARNING): 'decoder.2' (relu): 18%
-#       dead — early-epoch VAE signature plus contractive
-#       dampening of encoder gradients.
-#   [✓] Loss trend    (HEALTHY): 3-term composition, all
-#       decreasing. Total slope -2.3e-03/epoch. Final loss
-#       ~0.046 (recon 0.033 + KL 0.009 + Jacobian 0.004).
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.046, 10 epochs, beta=1, lambda=1e-4.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — TWO REGULARISERS COMPOUNDING] RMS 3.1e-05
-#     at fc_mu is the key diagnostic. This is the SUM of
-#     two dampening effects: (a) KL penalty shrinking encoder
-#     gradients (see 09 VAE), (b) Jacobian penalty further
-#     constraining encoder sensitivity (see 05 contractive).
-#     The floor sits BELOW either alone. If it drops below
-#     1e-5, one regulariser is winning — halve the heavier
-#     weight first.
-#     >> Prescription: Compute the ratio
-#        beta*KL_loss : lambda*Jacobian_loss. If >3:1 or
-#        <1:3, one is dominating. Target 1:1 to 2:1 (KL
-#        primary, Jacobian secondary).
-#
-#  [X-RAY] 18% dead is the VAE early-epoch pattern persisting
-#     slightly longer due to contractive dampening (slower
-#     decoder adaptation). Should converge to <10% by epoch 8.
-#     If it stays above 15%, EITHER the KL is too strong
-#     (posterior collapse risk) OR Jacobian is too strong
-#     (encoder stuck). Diagnose by reading the Blood Test
-#     first: which weight is dampening more?
-#     >> Prescription: If KL term dominates: anneal beta.
-#        If Jacobian dominates: halve lambda.
-#
-#  [STETHOSCOPE — THREE-TERM COMPOSITION] Unlike 09 (2 terms),
-#     CVAE's loss is recon + KL + Jacobian. diag.epochs_df()
-#     should expose all three. A healthy run sees: recon falls
-#     fastest (decoder learns), KL falls next (latent tightens),
-#     Jacobian last (encoder smooths). Any other ordering
-#     signals imbalance — e.g. Jacobian dropping first means
-#     lambda is too large and is crushing learning.
-#     >> Prescription: Read three curves. If Jacobian curve
-#        is flat, lambda is too small — no contraction
-#        benefit. If Jacobian drops faster than recon,
-#        lambda is too large — crushing reconstruction.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: CVAE demonstrates the DIAGNOSTIC
-#  SKILL OF DISENTANGLING MULTIPLE REGULARISERS. Same Blood
-#  Test signal (low RMS), but the attribution depends on
-#  weighing the terms. This reading skill scales to ex_5 GANs
-#  (generator regulariser + discriminator regulariser +
-#  gradient penalty = 3 terms to balance) and to ex_8 RL
-#  (policy + value + entropy bonuses). Clinical reading in
-#  the face of multiple compounding signals is the ceiling
-#  skill for this module.
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# Three terms compete in this loss (reconstruction, KL, Jacobian); the
+# pad reads only their sum. If reconstructions are visibly worse than
+# 09's, lower CVAE_CONTRACTIVE_WEIGHT; if the interpolations below are
+# no smoother than the vanilla VAE's, raise it.
 # ════════════════════════════════════════════════════════════════════
 
 show_reconstruction(cvae_model, X_test_flat, "Contractive VAE")
@@ -375,15 +334,15 @@ if has_registry:
 # APPLY — Drug Molecule Similarity Search
 # ════════════════════════════════════════════════════════════════════════
 # BUSINESS SCENARIO: You are an ML engineer at a Singapore biotech
-# company (A*STAR spinoff). Drug discovery involves exploring vast
+# company. Drug discovery involves exploring vast
 # molecular spaces. Given a lead compound that shows promise, you
 # want to find structurally similar molecules that might have improved
 # properties. The CVAE's smooth latent space means "nearby in latent
 # space" = "structurally similar as molecules."
 #
-# We simulate this with Fashion-MNIST: each image class represents
-# a "molecular family." Smooth interpolation between families suggests
-# the latent space can guide molecular optimisation.
+# We simulate this with SYNTHETIC descriptor vectors: 5 clustered
+# "drug families" in a 50-dimensional descriptor space. Real work would
+# use measured descriptors (LogP, MW, TPSA, ...) for real compounds.
 
 print("\n" + "=" * 70)
 print("  APPLICATION: Molecular Similarity Search")
@@ -416,7 +375,7 @@ mol_norm = (mol_data - mol_min) / mol_range
 
 # Train CVAE on molecular data
 mol_tensor = torch.tensor(mol_norm, device=device)
-mol_loader = DataLoader(TensorDataset(mol_tensor), batch_size=128, shuffle=True)
+mol_loader = DataLoader(TensorDataset(mol_tensor), batch_size=128, shuffle=True, num_workers=0)
 
 
 class MolecularCVAE(nn.Module):
@@ -532,15 +491,13 @@ print("=" * 64)
 print(f"\nMolecular library: {N_MOLECULES:,} compounds, {N_DESCRIPTORS} descriptors")
 print(f"CVAE latent dimension: {MOL_LATENT}")
 print(f"Same-family retrieval rate: {same_family_pct:.0f}% (top-{top_k})")
-print(f"\nDrug discovery impact:")
+print(f"Random-pick baseline:       {100 / N_FAMILIES:.0f}% (1 in {N_FAMILIES} families)")
+print(f"\nDrug discovery impact (ILLUSTRATIVE assumptions, not measured here):")
 print(f"  Traditional screening: test 10,000 compounds at S$100 each = S$1M")
-print(f"  CVAE-guided search: prioritise top-100 neighbours first")
-print(f"  Expected hit rate improvement: ~3-5x (from random screening)")
-print(f"  Cost savings per drug programme: S$200K-400K in early screening")
-print(f"\nSmooth latent space advantage:")
-print(f"  Interpolation between a hit and a miss suggests optimisation direction")
-print(f"  'Move 20% toward molecule X in latent space' = specific structural changes")
-print(f"  This is medicinal chemistry guidance from the model itself")
+print(f"  CVAE-guided search: test the top-100 latent neighbours of a lead first")
+print(f"  This run only shows that latent neighbours share a family far more")
+print(f"  often than random picks; real hit-rate gains must be measured in")
+print(f"  the lab on real compounds.")
 print("=" * 64)
 
 
@@ -552,7 +509,7 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Built a Contractive VAE (VAE + Jacobian weight penalty)
+  [x] Built a Contractive VAE (VAE + Jacobian penalty on the mean code mu(x))
   [x] Compared interpolation smoothness: vanilla VAE vs CVAE
   [x] Observed smoother transitions in CVAE's latent space
   [x] Applied to molecular similarity search in drug discovery

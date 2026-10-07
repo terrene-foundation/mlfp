@@ -55,8 +55,10 @@ from shared.mlfp05.ex_8 import (
     evaluate_policy,
     make_cartpole,
     moving_average,
+    rl_diagnostic_checkpoint,
     setup_engines,
 )
+from shared.mlfp05 import create_visualizer
 from kailash_ml import ModelVisualizer
 
 
@@ -161,7 +163,9 @@ async def _train_dqn_timed():
                         action = ____  # TODO
                 next_state, reward, terminated, truncated, _ = cartpole_env.step(action)
                 done = terminated or truncated
-                replay.push(state, action, reward, next_state, done)
+                # `terminated`, not `done`: a 500-step truncation must still
+                # bootstrap from Q(s') (see 01_dqn.py).
+                replay.push(state, action, reward, next_state, terminated)
                 state = next_state
                 total_reward += reward
                 env_steps += 1
@@ -238,8 +242,8 @@ async def _train_ppo_timed():
 
             n = s_t.size(0)
             idxs = np.arange(n)
-            # TODO: PPO update — multiple epochs over minibatches
-            # Hint: same clipped surrogate pattern as 02_ppo.py
+            # TODO: PPO update — same clipped surrogate as 02_ppo.py, with the
+            # clip range fixed at [0.8, 1.2] (clip_eps = 0.2)
             for _ in range(4):
                 np.random.shuffle(idxs)
                 for start in range(0, n, 256):
@@ -247,12 +251,12 @@ async def _train_ppo_timed():
                     logits, vpred = model(s_t[mb])
                     dist = Categorical(logits=logits)
                     new_lp = dist.log_prob(a_t[mb])
-                    ratio = ____  # TODO: torch.exp(new_lp - old_lp_t[mb])
+                    ratio = ____  # TODO
                     surr1 = ____  # TODO
-                    surr2 = ____  # TODO: torch.clamp(ratio, 0.8, 1.2) * adv_t[mb]
-                    policy_loss = ____  # TODO: -torch.min(surr1, surr2).mean()
-                    value_loss = ____  # TODO: F.mse_loss(vpred, ret_t[mb])
-                    entropy = ____  # TODO: dist.entropy().mean()
+                    surr2 = ____  # TODO
+                    policy_loss = ____  # TODO
+                    value_loss = ____  # TODO
+                    entropy = ____  # TODO
                     loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
                     opt.zero_grad()
                     loss.backward()
@@ -286,6 +290,25 @@ assert len(ppo_returns) == N_PPO_ITERS
 print("--- Checkpoint 1 passed --- both algorithms trained with timing\n")
 
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — RL instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# One RLDiagnostics report per algorithm, from the reward history each
+# training run recorded (DQN: one entry per episode; PPO: one entry per
+# iteration = that iteration's mean episode return).
+dqn_rl_report = rl_diagnostic_checkpoint(
+    "DQN (comparison run)", "dqn", dqn_rewards, window=20
+)
+ppo_rl_report = rl_diagnostic_checkpoint(
+    "PPO (comparison run)", "ppo", ppo_returns, window=10
+)
+# HOW TO READ THEM (the numbers come from YOUR run; nothing is predicted):
+#   Compare each algorithm's late mean with its own peak — the gap is how
+#   much it gave back. A [CRIT] episode_reward_collapse on DQN can be one
+#   exploratory episode (epsilon is still ~0.37 at episode 200); check
+#   the training curves in Task 3 before calling it a collapse.
+
+
 # ════════════════════════════════════════════════════════════════════════
 # TASK 2 — Evaluate Random vs DQN vs PPO side-by-side
 # ════════════════════════════════════════════════════════════════════════
@@ -312,7 +335,7 @@ def ppo_policy(state):
         return int(logits.argmax().item())
 
 
-N_EVAL = 50  # more episodes for statistical significance
+N_EVAL = 50  # greedy episodes per policy (no significance test is run)
 random_returns = evaluate_policy(cartpole_env, random_policy, n_episodes=N_EVAL)
 dqn_eval_returns = evaluate_policy(cartpole_env, dqn_policy, n_episodes=N_EVAL)
 ppo_eval_returns = evaluate_policy(cartpole_env, ppo_policy, n_episodes=N_EVAL)
@@ -348,13 +371,14 @@ print("=" * 70)
 print("  TASK 3: Comprehensive Comparison Visualisations")
 print("=" * 70)
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # ── Plot 1: Evaluation reward box plot ───────────────────────────────
 # TODO: Create box plot comparing Random, DQN, PPO evaluation returns
-# Hint: pl.DataFrame with "Policy" and "Evaluation Return" columns
+# Hint: long-format polars DataFrame ("Policy", "Evaluation Return"), then
+# ModelVisualizer's box plot grouped by policy
 comparison_df = ____  # TODO
-fig1 = ____  # TODO: viz.box_plot(...)
+fig1 = ____  # TODO
 fig1.write_html(str(OUTPUT_DIR / "04_policy_comparison_boxplot.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_policy_comparison_boxplot.html'}")
 # INTERPRETATION: The box plot shows final policy quality. Random is
@@ -363,23 +387,35 @@ print(f"  Saved: {OUTPUT_DIR / '04_policy_comparison_boxplot.html'}")
 
 # ── Plot 2: Training curves on a common x-axis (env steps) ──────────
 # Normalise both algorithms to environment interactions for fair comparison
-dqn_cumulative_steps = np.cumsum([max(10, r) for r in dqn_rewards]).tolist()
+# CartPole pays +1 per step, so an episode's reward IS its length and the
+# cumulative sum of DQN episode rewards is the exact env-step count. The
+# 20-episode moving average starts at episode 20, so its x-values start
+# there too (dqn_ma_steps) — otherwise the curve is shifted left.
+dqn_cumulative_steps = np.cumsum(dqn_rewards).tolist()
+dqn_ma_rewards = moving_average(dqn_rewards, 20)
+dqn_ma_steps = dqn_cumulative_steps[len(dqn_rewards) - len(dqn_ma_rewards) :]
 ppo_cumulative_steps = [(i + 1) * STEPS_PER_ITER for i in range(len(ppo_returns))]
 
-# TODO: Create a line plot with DQN and PPO training curves on env-steps x-axis
-# Hint: go.Figure() with two go.Scatter traces + random baseline hline
+# TODO: Line plot of both training curves against env steps: DQN's moving
+# average (dqn_ma_rewards at dqn_ma_steps) and PPO's per-iteration returns
+# (at ppo_cumulative_steps), plus a dashed horizontal line at the random
+# policy's mean return
+# Hint: plotly graph_objects Scatter traces; Figure.add_hline
 fig2 = ____  # TODO
 fig2.write_html(str(OUTPUT_DIR / "04_sample_efficiency.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_sample_efficiency.html'}")
-# INTERPRETATION: Sample efficiency measures how many environment
-# interactions are needed to reach a given performance level. PPO
-# uses more steps per iteration (1024 batch) but often reaches good
-# performance with fewer total iterations. DQN learns from replay
-# (data-efficient) but takes more episodes to converge.
+# INTERPRETATION: Sample efficiency = how many environment interactions
+# an algorithm needs to reach a given return. Read it off YOUR plot: pick
+# a return level (say 150) and see which curve crosses it at fewer env
+# steps. Expect a trade-off rather than a fixed winner: DQN re-uses every
+# transition many times from its replay buffer, while PPO throws each
+# 1024-step rollout away after 4 epochs but makes steadier updates. Note
+# the training curves include exploration (DQN's epsilon, PPO's sampling);
+# the greedy evaluation in Task 2 is the fair final-quality comparison.
 
 # ── Plot 3: Wall-clock training time comparison ──────────────────────
 # TODO: Create bar chart comparing DQN and PPO training times
-# Hint: go.Figure(data=[go.Bar(x=["DQN", "PPO"], y=[dqn_time, ppo_time], ...)])
+# Hint: plotly graph_objects Bar, labelled with the seconds
 fig3 = ____  # TODO
 fig3.write_html(str(OUTPUT_DIR / "04_training_time.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_training_time.html'}")
@@ -416,13 +452,13 @@ print("=" * 70)
 decision_framework = pl.DataFrame(
     {
         "Business Problem": [
-            "Inventory reorder (FairPrice)",
-            "Surge pricing (Grab)",
-            "Customer churn (Singtel)",
+            "Inventory reorder (supermarket)",
+            "Surge pricing (ride-hailing)",
+            "Customer churn (telco)",
             "Portfolio rebalancing",
-            "Queue staffing (Changi)",
-            "Traffic signals (LTA)",
-            "Energy trading (SP Group)",
+            "Queue staffing (airport)",
+            "Traffic signals (road authority)",
+            "Energy trading (electricity retailer)",
             "LLM alignment (M6)",
         ],
         "Action Space": [
@@ -433,13 +469,13 @@ decision_framework = pl.DataFrame(
             "Discrete (7 shifts)",
             "Discrete (5 allocations)",
             "Discrete (5 trade sizes)",
-            "Continuous (token probs)",
+            "Discrete (vocabulary tokens)",
         ],
         "Recommended": [
             "DQN",
             "PPO",
             "DQN",
-            "PPO",
+            "DQN or PPO",
             "DQN",
             "DQN",
             "DQN or PPO",
@@ -447,13 +483,13 @@ decision_framework = pl.DataFrame(
         ],
         "Why": [
             "Small discrete space, clear reward signal, replay buffer helps with sparse reorders",
-            "Continuous prices need policy gradients; PPO handles smoothly",
+            "A continuous price needs a policy network (DQN cannot argmax over a continuum); 02_ppo.py discretises it into 5 levels",
             "Small discrete space, DQN learns value of each intervention",
-            "Large action space (27); PPO scales better than DQN",
+            "27 joint actions is still fine for DQN; PPO copes better if the joint action set grows combinatorially",
             "Small discrete space, DQN works well",
             "Small discrete space, fast convergence needed",
             "Either works; PPO if extending to continuous trade sizes",
-            "PPO is standard for RLHF — directly optimises token policy",
+            "Classic RLHF optimiser over a vocabulary of tens of thousands of tokens; a separate KL penalty to the reference model keeps outputs fluent",
         ],
     }
 )
@@ -482,7 +518,8 @@ print(
 )
 print(f"  {'Uses replay buffer':<30} {'Yes':>12} {'No':>12}")
 print(f"  {'On/off policy':<30} {'Off-policy':>12} {'On-policy':>12}")
-print(f"  {'Continuous actions':<30} {'No':>12} {'Yes':>12}")
+print(f"  {'Continuous actions':<30} {'No':>12} {'Yes*':>12}")
+print("  * with a Gaussian policy head; this file's PPO uses a Categorical head")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
 assert len(decision_framework) == 8, "Decision framework should cover 8 problems"
@@ -495,31 +532,25 @@ asyncio.run(conn.close())
 
 
 # ════════════════════════════════════════════════════════════════════════
-# DESTINATION-FIRST CLOSE — km.diagnose
+# DESTINATION-FIRST CLOSE — the library path: km.rl_train
 # ════════════════════════════════════════════════════════════════════════
-# This lesson walked the journey of reinforcement learning algorithms —
-# Random baseline, DQN with replay buffers, PPO with GAE — each with its
-# own training loop, environment-step accounting, and decision framework.
-# The kailash-ml SDK ships a single-call diagnostic primitive that
-# closes the production loop: km.diagnose inspects a trained model and
-# emits an auto-dashboard (loss curves, gradient flow, dead neurons,
-# activation stats, weight distributions). One cell. Every diagnostic
-# students would otherwise hand-roll, ready to surface in a Plotly
-# dashboard.
+# You hand-wrote DQN and PPO so every moving part is visible. In
+# production the same comparison is one call per algorithm:
+#   km.rl_train("CartPole-v1", algo="dqn", total_timesteps=...)
+#   km.rl_train("CartPole-v1", algo="ppo", total_timesteps=...)
+# rl_train also accepts "a2c", "sac", "td3" and "ddpg" (SAC/TD3/DDPG need
+# a continuous action space), and RLDiagnostics.as_sb3_callback() plugs
+# the same diagnostics you used above into that training loop. Its
+# backend is Stable-Baselines3, an optional extra
+# (`pip install kailash-ml[rl]`); we report whether it is installed
+# rather than assume it.
+import importlib.util
 
-from kailash_ml import diagnose
-
-# RL networks are torch.nn.Module — `kind='auto'` correctly dispatches
-# them to DLDiagnostics (verified empirically; no rl-specific kind needed
-# for the policy network's gradient/activation surface). We feed a small
-# iterable of observation-shaped tensors as the diagnostic batch.
-obs_iter = [torch.randn(64, obs_dim, device=device) for _ in range(4)]
-report = diagnose(dqn_model, kind="auto", data=obs_iter, show=False)
-report.plot_training_dashboard()
-print()
-print("km.diagnose: 1 line of code -> the same observability the lesson")
-print("body hand-rolled in 200+ lines. This is what 'destination-first'")
-print("means — when the journey is internalised, the SDK is one call.")
+sb3_installed = importlib.util.find_spec("stable_baselines3") is not None
+print("Library path: km.rl_train(env, algo='dqn' | 'ppo' | 'a2c' | ...)")
+print(f"  Stable-Baselines3 backend installed here: {sb3_installed}")
+if not sb3_installed:
+    print("  (install kailash-ml[rl] to run km.rl_train; this file did not use it)")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -553,81 +584,26 @@ print(
         - Supervised learning can solve the problem (simpler, cheaper)
 
   BRIDGE TO M6 (RLHF — Reinforcement Learning from Human Feedback):
-  Everything you've learned here IS the foundation for RLHF:
-    - PPO (this exercise) = the optimisation algorithm
-    - Reward model (M6) = trained on human preference rankings
-    - Policy (M6) = the language model's next-token distribution
-    - DPO (M6) = a shortcut that skips the reward model entirely
+  The PPO you built here is the optimiser of classic RLHF:
+    - Policy = the language model's next-token distribution
+    - Action = the next token — a DISCRETE choice from the vocabulary
+    - Reward model = trained on human preference rankings, scores
+      each finished response
+    - DPO (M6) = reaches the preference goal without a reward model
+      or PPO at all
 
-  The core loop is identical:
-    1. Agent (LLM) takes action (generates text)
-    2. Environment (human/reward model) provides reward
+  The RLHF loop:
+    1. The LLM generates a response, one token (action) at a time
+    2. The reward model scores the response
     3. PPO updates the policy to maximise expected reward
-    4. Clipping prevents catastrophic forgetting of language ability
+    4. TWO separate brakes keep it stable:
+       - PPO clipping bounds each update relative to the PREVIOUS
+         policy (the same clip_eps you used on CartPole)
+       - a KL penalty to the frozen reference (SFT) model keeps the
+         LLM close to its starting point, so it does not drift into
+         reward-hacking gibberish — clipping alone does not do this
 
-  You now understand RL from first principles. M6 applies it to
-  language models — the only difference is the environment.
+  You now understand RL from first principles. M6 adds what RLHF
+  needs on top: a learned reward model and the KL-to-reference term.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Best-of-3 algorithm
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (RL Algorithm Comparison (DQN / PPO / SAC)) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        best_agent,
-        rollout_loader,
-        _diag_loss,
-        title="RL Algorithm Comparison (DQN / PPO / SAC)",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# Comparative report across 3 algorithms:
-#  DQN:  reward 287 ± 42, sample-efficient on discrete actions
-#  PPO:  reward 312 ± 28, most stable (clipped objective)
-#  SAC:  reward 298 ± 35, best for continuous actions
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [STETHOSCOPE] PPO wins on stability (lowest variance) —
-#     that's why it dominates in production RL (ChatGPT RLHF,
-#     robotics at OpenAI/Anthropic).
-#     DQN wins on sample efficiency for discrete actions.
-#     SAC wins on continuous-action exploration via max-entropy.
-#
-#  [PRESCRIPTION — CHOOSING]
-#     Discrete actions + offline RL → DQN
-#     Discrete or continuous + online + stability priority → PPO
-#     Continuous + hard exploration → SAC
-#     Slide 5.8 Prescription Pad for RL.

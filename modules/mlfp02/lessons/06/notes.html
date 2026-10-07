@@ -32,262 +32,340 @@
 
 <h1 class="lesson-title">
   <span class="lesson-number">Speaker Notes — Lesson 2.6</span>
-  Logistic Regression and Classification Foundations
+  Logistic Regression and Classification
 </h1>
 
-<p class="lead">~60 minutes · 14 slides · ~4 min per slide</p>
+<p class="lead">
+  Total time: ~60 minutes &nbsp;·&nbsp; 19 slides &nbsp;·&nbsp; ~3 min per slide average
+</p>
 
 <p>
-  Logistic regression is the most practically important model in MLFP.
-  Every bank credit decision, every clinical risk score, every churn
-  prediction you will meet uses it or a close cousin. Land three things
-  today: the sigmoid shape, the odds ratio interpretation, and the
-  numerical MLE pattern (which reappears in Module 4 for neural nets).
+  OLS's other half: the outcome is now yes/no. The lesson has three
+  parts — the model (sigmoid, log-odds, Bernoulli MLE), evaluation
+  (confusion matrix, ROC, AUC), and the ANOVA + Tukey bridge back to
+  group comparisons. The worked example is the same HDB above-median
+  target as Exercise 6, so students can compare notes with their own
+  runs: odds ratio ≈ 54 per SD of floor area, accuracy 0.81, AUC 0.92.
 </p>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
   <h3>Logistic Regression and Classification</h3>
   <p>
-    Open: "Linear regression is for continuous outcomes. But half the
-    interesting questions in business and medicine are binary — did the
-    customer convert, did the patient survive, will the loan default.
-    Today: logistic regression. Same coefficient-and-$t$-test story,
-    different link function."
+    Open with the bridge from 2.5: "Yesterday the outcome was a number —
+    price. Today it's a yes/no: will this flat sell <em>above</em> the
+    median? Same linear machinery inside, one new twist outside."
+    Agenda: sigmoid, log-odds, odds ratios, then ANOVA and Tukey HSD
+    for comparing 3+ groups.
   </p>
-  <div class="transition">→ "Why can't we just use linear regression?"</div>
+  <div class="transition">→ "Why not just use linear regression?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Motivation</span></div>
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Why not linear</span></div>
   <h3>Binary outcomes — why not linear?</h3>
   <p>
-    Three reasons. One, linear regression will predict probabilities
-    outside $[0, 1]$ — nonsense. Two, the variance of a binary outcome is
-    $p(1-p)$, not constant — so OLS standard errors are wrong. Three, the
-    right likelihood is Bernoulli, and MLE under Bernoulli gives us
-    logistic regression directly.
+    Walk the three bullets. One: linear predictions can exceed 1 or
+    drop below 0 — no probability interpretation, and you can't take
+    logs of the impossible. Two: constant variance is wrong for binary
+    data — the variance of a Bernoulli is $p(1-p)$, which changes with
+    $p$. Three: MLE under the Bernoulli likelihood is cleaner and more
+    efficient.
   </p>
-  <div class="transition">→ "Enter the sigmoid."</div>
+  <p>
+    "We need a model that bounds the output in $(0,1)$ and uses the
+    right likelihood. Both fixes arrive together."
+  </p>
+  <div class="transition">→ "The bounding function."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Sigmoid picture</span></div>
+  <div class="meta"><span class="badge">Slide 3</span><span>~2 min</span><span>Sigmoid</span></div>
   <h3>The sigmoid</h3>
   <p>
-    Walk the curve. "At $z=0$, probability is 0.5. As $z$ goes positive,
-    probability climbs toward 1 — asymptotically. As $z$ goes negative,
-    it drops toward 0. It's S-shaped — the middle is approximately linear,
-    the tails flatten out."
+    Walk the S-curve. As $z \to -\infty$, $\sigma(z) \to 0$; as
+    $z \to +\infty$, $\sigma(z) \to 1$; at $z = 0$ it crosses exactly
+    0.5. "Any real number goes in; a probability comes out. The slope
+    is steepest at 0.5 — most sensitive where the decision is hardest."
   </p>
-  <p>
-    "This is the function that squashes the linear predictor into a
-    valid probability. Every logistic regression you'll ever see is: take
-    the linear combination $\beta_0 + \beta_1 x_1 + \cdots$, push it
-    through sigmoid, get a probability."
-  </p>
-  <div class="transition">→ "Where does the sigmoid come from?"</div>
+  <div class="transition">→ "Where does $z$ come from?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>Log-odds derivation</span></div>
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Log-odds link</span></div>
   <h3>From log-odds to sigmoid</h3>
   <p>
-    Do the derivation live. "Start with the assumption: the log-odds is
-    a linear function of the predictors. Log-odds lives in the full real
-    line, so this is a sensible thing to model with linear regression."
+    This is the conceptual heart of the lesson. "We assume the
+    <em>log-odds</em> — not the probability — is linear in the
+    predictors." Remind them from 2.4's odds aside: odds $= p/(1-p)$.
+    Log-odds lives on the whole real line, so a linear model fits it
+    legally.
   </p>
   <p>
-    Then solve for $p$. Four algebra steps. "$p/(1-p) = e^z$. Multiply out.
-    Collect. Divide. You get $p = 1/(1 + e^{-z})$. That's the sigmoid."
+    Then solve for $p$ step by step: exponentiate both sides, rearrange,
+    and the sigmoid appears. "The sigmoid isn't an arbitrary choice —
+    it's what you get when log-odds is linear. Log-odds in
+    $(-\infty, \infty)$, sigmoid maps back to $(0,1)$."
   </p>
   <div class="audience-cue beginner">
-    <strong>If beginners freeze on algebra:</strong> "You don't need to
-    redo this at home. What you need is: log-odds in, sigmoid out. The
-    derivation is on the slide for reference."
+    <strong>If beginners glaze over:</strong> "Probability is a weird
+    ruler — squashed at both ends. Log-odds is the unstretched ruler.
+    We do the linear fit on the unstretched ruler, then re-squash to
+    read the answer."
   </div>
-  <div class="transition">→ "The likelihood."</div>
+  <div class="transition">→ "What the fitted model looks like."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Bernoulli likelihood</span></div>
-  <h3>Bernoulli log-likelihood</h3>
+  <div class="meta"><span class="badge">Slide 5</span><span>~2 min</span><span>Boundary picture</span></div>
+  <h3>Logistic regression draws a probability boundary</h3>
   <p>
-    Write the Bernoulli. "For each observation, the probability of
-    seeing $y_i$ is $p^{y_i}(1-p)^{1-y_i}$. When $y_i = 1$, that's $p$;
-    when $y_i = 0$, that's $1 - p$. One formula for both cases."
+    Walk the figure. Two features, two classes — blue circles, rose
+    squares. The dashed line is $p = 0.5$: the decision boundary. The
+    shading deepens away from the line — darker means more confident.
+    "Logistic regression is still a <em>linear</em> model — the boundary
+    is a straight line. What changed is that we now read off a
+    probability of class membership, not just a side."
   </p>
-  <p>
-    Take log and sum. "Sum over all observations gives the log-likelihood.
-    But here's the problem: the gradient with respect to $\beta$ is not
-    linear — the sigmoid makes it non-linear. No closed form."
-  </p>
-  <p>
-    Connection back: "In 2.2 I told you we'd come back to scipy.optimize.
-    Here we are. Logistic regression is why you learned the numerical
-    MLE pattern."
-  </p>
-  <div class="audience-cue expert">
-    <strong>For experts:</strong> mention that the loss is convex — so
-    there's a unique global minimum. BFGS or Newton-Raphson both find it
-    reliably. With $L_2$ regularisation (coming in M3), you also get
-    strict convexity and numerical stability.
-  </div>
-  <div class="transition">→ "Interpret the coefficients."</div>
+  <div class="transition">→ "Fit it by MLE."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Odds ratios</span></div>
+  <div class="meta"><span class="badge">Slide 6</span><span>~2 min</span><span>Bernoulli likelihood</span></div>
+  <h3>Bernoulli likelihood</h3>
+  <p>
+    Walk the one-line formula: $p_i^{y_i}(1-p_i)^{1-y_i}$. "When
+    $y_i = 1$, this is $p_i$. When $y_i = 0$, it's $1 - p_i$. One
+    compact expression for 'the model should be confident in the right
+    direction'." The product over all observations is the likelihood —
+    same MLE game as 2.2.
+  </p>
+  <div class="transition">→ "Take the log."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Cross-entropy</span></div>
+  <h3>The log-likelihood (cross-entropy)</h3>
+  <p>
+    Sum the logs: $\ell(\beta) = \sum_i [y_i \log p_i + (1-y_i)\log(1-p_i)]$.
+    Then the amber box: "No closed form this time — the gradient is
+    non-linear in $\beta$. We optimise numerically: BFGS or IRLS. This
+    is why 2.2's <code>scipy.minimize</code> pattern mattered."
+  </p>
+  <p>
+    Point at the footer: "Negate $\ell$ and you have the <em>binary
+    cross-entropy loss</em> — the exact function deep learning
+    frameworks minimise. When you meet it in M5, remember you derived
+    it here from a Bernoulli."
+  </p>
+  <div class="transition">→ "Reading the coefficients."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Odds ratios</span></div>
   <h3>Odds ratios — the multiplicative story</h3>
   <p>
-    Walk the derivation on the slide. "A one-unit increase in $x_j$ adds
-    $\beta_j$ to the log-odds. Exponentiate: it multiplies the odds by
-    $e^{\beta_j}$. That number is called the odds ratio."
+    Derive quickly: increasing $x_j$ by one unit multiplies the odds by
+    $e^{\beta_j}$. Walk the table: $\beta = 0.69$ → $e^\beta \approx 2$,
+    odds double per unit. $\beta = 0.10$ → about 10% more odds.
+    $\beta = 0$ → exactly 1, no effect. $\beta = -0.22$ → odds drop 20%
+    per unit.
   </p>
   <p>
-    Read the table. "+0.69 → OR 2.0, odds double. −0.22 → OR 0.80, odds
-    drop 20%. Zero → odds unchanged. These are the reporting units for
-    logistic regression in medicine and finance."
+    "Coefficients add in log-odds space, which means they
+    <em>multiply</em> in odds space. Report $e^\beta$, not $\beta$."
   </p>
-  <div class="transition">→ "But odds ≠ probability."</div>
+  <div class="transition">→ "And the warning that saves your credibility."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Odds not probability</span></div>
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Odds ≠ probability</span></div>
   <h3>Odds ≠ probability</h3>
   <p>
-    This is the trap. "Doctor tells a patient 'this drug doubles your
-    odds of recovery'. Patient hears 'doubles my probability'. They're
-    different. At baseline 10%, doubling the odds goes 1/9 → 2/9, which
-    is 18% — not 20%."
+    Read the red box verbatim: "Odds ratio of 2 does NOT mean 'twice as
+    likely'. For a baseline probability of 10%, doubling the odds gives
+    about 18% — not 20%." Do the arithmetic on the board if needed:
+    odds 0.1/0.9 = 0.111; doubled = 0.222; back to probability:
+    0.222/1.222 ≈ 0.18.
   </p>
   <p>
-    Tell them to always convert back. "When reporting results to clinicians
-    or product managers, give them the predicted probabilities at
-    representative inputs. Don't leave them to compute
-    $e^\beta / (1 + e^\beta)$ in their heads."
+    Read the footer: "Always convert back to probabilities when
+    reporting to non-specialists. Coefficients live in log-odds space;
+    audiences live in probability space. You are the translator."
   </p>
-  <div class="transition">→ "Evaluation."</div>
+  <div class="transition">→ "Evaluating the classifier."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Confusion matrix</span></div>
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Confusion matrix</span></div>
   <h3>Evaluation: confusion matrix</h3>
   <p>
-    Walk the 2x2. "Threshold probabilities at 0.5 to get binary predictions.
-    Then count TN, FP, FN, TP. Accuracy is the diagonal sum divided by
-    total. Precision is TP over predicted positives — 'how often was I
-    right when I said yes'. Recall is TP over actual positives — 'how
-    many of the real yeses did I catch'."
+    Walk the 2×2 grid: TN, FP, FN, TP. Then the footer definitions:
+    accuracy is everything correct over the total; precision is
+    TP/(TP+FP) — of the ones you flagged, how many were real; recall is
+    TP/(TP+FN) — of the real ones, how many you caught. And AUC is
+    threshold-independent — next slide.
   </p>
   <p>
-    Warn: "Accuracy is misleading on imbalanced data. If 5% of patients
-    die in the ICU, a classifier that always predicts 'survives' has 95%
-    accuracy and is useless. Always report the confusion matrix."
+    "Precision and recall trade off through the threshold. You can't
+    raise both at once without a better model."
   </p>
-  <div class="audience-cue beginner">
-    <strong>Quick mnemonic:</strong> "Precision: was I right when I
-    pointed? Recall: did I point at everything I should have?"
-  </div>
-  <div class="transition">→ "Hands on the ICU data."</div>
+  <div class="transition">→ "Sweep every threshold at once."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>ICU worked</span></div>
-  <h3>Worked: ICU mortality (MLE by hand)</h3>
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>ROC</span></div>
+  <h3>ROC: threshold sweep from strict to lenient</h3>
   <p>
-    Walk the code. Numerically stable sigmoid (two branches). The
-    negative log-likelihood with small epsilon for numerical safety.
-    Call <code>minimize</code>. Print coefficients and odds ratios.
+    Walk the curve. Every point is one threshold: the strict end (high
+    threshold) sits bottom-left — few false positives, few catches; the
+    lenient end sits top-right. The diagonal is random — AUC 0.5. The
+    shaded area under the teal curve is the AUC; the circled top-left
+    corner is the perfect classifier.
   </p>
   <p>
-    "This is logistic regression from scratch — no sklearn. Twelve lines.
-    Everything fits on the screen. Now you know what sklearn is doing
-    under the hood."
+    "Higher AUC means better class separation at <em>all</em>
+    thresholds. Report AUC to compare models; then pick the operating
+    threshold from business costs — that's 3.5's topic."
   </p>
-  <div class="transition">→ "Evaluate."</div>
+  <div class="transition">→ "Worked example — the Exercise 6 target."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Evaluate</span></div>
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Worked setup</span></div>
+  <h3>Worked: is this HDB resale above the median price?</h3>
+  <p>
+    Walk the code. Load the HDB parquet, keep 2020-onwards, build flat
+    age. The target: resale price above the median — the same binary
+    target Exercise 6 uses, so students can compare their own runs.
+    Features: floor area and age, <em>standardised</em>.
+  </p>
+  <p>
+    "Why standardise? So each odds ratio is 'per one standard
+    deviation' — comparable across features with different units. One SD
+    of floor area is about 27 sqm."
+  </p>
+  <div class="transition">→ "Fit it by hand."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Worked MLE</span></div>
+  <h3>Worked: MLE by hand</h3>
+  <p>
+    Walk the code. The sigmoid is written branch-wise for numerical
+    stability — the naive form overflows for large $|z|$. The negative
+    log-likelihood adds a tiny epsilon inside the logs so
+    $\log 0$ never fires. BFGS from zeros.
+  </p>
+  <p>
+    Report the result on the slide: <strong>area OR ≈ 54 per SD</strong>
+    (one standard deviation, ≈27 sqm, multiplies the odds of an
+    above-median sale by about 54); age OR ≈ 1.0 — no effect once area
+    is in the model, the same ceteris paribus story as 2.5.
+  </p>
+  <div class="transition">→ "Score it."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Worked evaluation</span></div>
   <h3>Worked: evaluate the classifier</h3>
   <p>
-    Compute predictions, threshold at 0.5, confusion matrix, accuracy,
-    AUC. Read the numbers aloud. "Accuracy 0.82. AUC 0.88. Confusion
-    matrix shows we miss some deaths — the false negative rate is a
-    concern in medical settings."
+    Walk the code. Probabilities from the fitted model, threshold at 0.5
+    for the class predictions. Accuracy comes out at 0.81; AUC from the
+    stateless <code>roc_auc_score</code> at 0.92. Then the Kailash
+    visualisation: <code>ModelVisualizer</code> renders the confusion
+    matrix and ROC curve from the polars-native arrays.
   </p>
   <p>
-    "For production, you might move the threshold lower than 0.5 to catch
-    more deaths at the cost of more false alarms. The right threshold
-    depends on business or clinical cost, not on statistics."
+    Read the footer: "Always report accuracy <em>with</em> the confusion
+    matrix. 0.81 sounds modest until you see where the errors land —
+    and on imbalanced data, accuracy alone lies outright."
   </p>
-  <div class="transition">→ "Switching gears to ANOVA."</div>
+  <div class="transition">→ "Bridge back to group comparisons: ANOVA."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>ANOVA</span></div>
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>ANOVA</span></div>
   <h3>ANOVA: generalising the $t$-test</h3>
   <p>
-    Motivate: "With two groups, you run a $t$-test. With four groups,
-    you could run six pairwise $t$-tests — but that inflates your
-    false-positive rate. ANOVA asks one question instead: are any of the
-    groups different?"
+    "The $t$-test compares two means. What about three or more — 3-room,
+    4-room, 5-room, executive prices?" Decompose the variance: total
+    sum of squares splits into between-group and within-group. The
+    $F$-statistic is their ratio, scaled by degrees of freedom. Under
+    the null that all group means are equal, $F \sim F_{k-1,\,n-k}$.
   </p>
   <p>
-    Walk the variance decomposition. "Total variance splits into
-    between-group and within-group. If the groups are really different,
-    between-group variance dominates. The $F$-statistic is the ratio."
+    Nice footnote on the slide: with 2 groups, ANOVA's $F$ is exactly
+    the square of the $t$-statistic — the same test, generalised.
   </p>
-  <p>
-    Key fact: "With two groups, ANOVA's $F$ equals $t^2$. ANOVA is not
-    a different test — it's the same test generalised."
-  </p>
-  <div class="transition">→ "And Tukey tells you which groups."</div>
+  <div class="transition">→ "ANOVA says 'some differ'. Tukey says which."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Tukey HSD</span></div>
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Tukey HSD</span></div>
   <h3>Post-hoc: Tukey's HSD</h3>
   <p>
-    Walk the formula. "HSD is a threshold. Any pair of means whose
-    difference exceeds HSD is significantly different, with family-wise
-    error control built in. No Bonferroni needed."
+    Walk the formula: HSD uses $q$ from the <em>studentized range</em>
+    distribution times the within-group standard error. Two means
+    differ significantly if their gap exceeds HSD. Family-wise error
+    control is built in.
   </p>
   <p>
-    Show the statsmodels one-liner. "This is what you'll use in practice.
-    The math is under the hood."
+    Read the footer carefully — this is a common misconception: "Tukey's
+    HSD is <em>not</em> Bonferroni-corrected pairwise $t$-tests. That's
+    a separate, more conservative method. Tukey uses the studentized
+    range, which accounts for the distribution of the <em>largest</em>
+    gap among all pairs."
   </p>
-  <div class="transition">→ "Run it on HDB."</div>
+  <div class="transition">→ "Run it on flat types."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>HDB ANOVA</span></div>
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Worked ANOVA</span></div>
   <h3>Worked: HDB prices across flat types</h3>
   <p>
-    Walk the code. ANOVA first, huge $F$ and tiny $p$ because the sample
-    is large and the differences are obvious. Then Tukey to get the
-    pairwise table.
+    Walk the code. Pull the four flat-type groups as arrays,
+    <code>stats.f_oneway</code> gives $F$ in the thousands with
+    $p \approx 0$ — flat types absolutely differ in price. No surprise;
+    the interesting question is <em>which pairs</em> differ, and
+    <code>stats.tukey_hsd</code> answers with pairwise differences,
+    p-values, and confidence intervals.
   </p>
   <p>
-    "All six pairs will come back significant because the groups are
-    genuinely different. In smaller samples or smaller effects, Tukey
-    is where you find the actual story."
+    "The printout indexes groups positionally — 0 is 3 ROOM, 1 is 4
+    ROOM, and so on. Read the intervals: any CI that excludes zero is a
+    significant pair, with family-wise control baked in."
   </p>
-  <div class="transition">→ "Rookie mistakes and recap."</div>
+  <div class="transition">→ "Three ways classification goes wrong."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~2 min</span><span>Recap</span></div>
-  <h3>Mistakes + what you can now do</h3>
+  <div class="meta"><span class="badge">Slide 18</span><span>~2 min</span><span>Rookie mistakes</span></div>
+  <h3>Three rookie mistakes</h3>
   <p>
-    Walk the three mistakes. Walk the skills list. Tease 2.7: "You can
-    run A/B tests and you can build regression models. Tomorrow we
-    combine them: use linear regression on pre-experiment data to reduce
-    the variance of an A/B test by up to 50%. It's called CUPED and
-    every major tech company uses it."
+    Walk the three red boxes. One: the blind 0.5 threshold — it's
+    arbitrary; the right threshold comes from business costs. Two:
+    accuracy on imbalanced data — 95% accuracy sounds great until you
+    learn the base rate is 95%. Three: multiple pairwise $t$-tests —
+    that's 2.3's multiple-testing trap wearing a lab coat; use ANOVA
+    plus Tukey.
   </p>
-  <div class="transition">→ End. 15-min break.</div>
+  <div class="transition">→ "Recap and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 19</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the bullets: derive the sigmoid from the log-odds link, write
+    and optimise the Bernoulli log-likelihood, interpret coefficients as
+    odds ratios, evaluate with confusion matrix/accuracy/AUC, run
+    one-way ANOVA, and use Tukey HSD for post-hoc pairs. Tease 2.7:
+    "You've been analysing experiments as they come. Next lesson: how to
+    squeeze more signal out of the same experiment — CUPED — and what to
+    do when randomisation is impossible — difference-in-differences."
+  </p>
+  <div class="transition">→ End of Lesson 2.6. Ten-minute break.</div>
 </div>
 
 <nav class="lesson-nav">

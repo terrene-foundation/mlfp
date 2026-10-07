@@ -221,6 +221,67 @@ fig1.update_layout(
 fig1.write_html(str(OUTPUT_DIR / "prior_vs_posterior.html"))
 print("Saved: prior_vs_posterior.html")
 
+# -- Plot 1b: prior × likelihood = posterior on ONE axis --
+# The prior-vs-posterior pair hides the third actor: the LIKELIHOOD
+# L(μ) = Π N(xᵢ | μ, σ̂), the data's own voice. On the full sample the
+# likelihood is a needle (SE = σ/√n is tiny), so for this panel only we
+# use a seeded n=50 subsample — its likelihood is wide enough to see
+# alongside the prior. All three curves are peak-normalised so SHAPE and
+# POSITION (not area) carry the comparison.
+rng_lik = np.random.default_rng(42)
+# TODO: Seeded n=50 subsample of prices (without replacement)
+# Hint: rng_lik.choice(prices, size=50, replace=False)
+small = ____
+sigma_hat = mle.mle_std
+mu_grid_lik = np.linspace(300_000, 700_000, 600)
+# TODO: The likelihood curve — for each μ on the grid, the TOTAL log
+# density of the subsample under N(μ, σ̂), then exponentiate and
+# peak-normalise (divide by the max so the peak is 1)
+# Hint: loglik = np.array([np.sum(stats.norm.logpdf(small, loc=mu,
+#   scale=sigma_hat)) for mu in mu_grid_lik]); lik = np.exp(loglik - loglik.max())
+loglik_grid = ____
+lik_curve = ____
+
+prior_curve = stats.norm.pdf(mu_grid_lik, mu_0, sigma_0)
+prior_curve = prior_curve / prior_curve.max()
+
+# TODO: Recompute the posterior on the SUBSAMPLE (not the full data)
+# Hint: normal_normal_posterior(small, mu_0, sigma_0, sigma_hat)
+post_small = ____
+post_curve = stats.norm.pdf(mu_grid_lik, post_small.mean, post_small.std)
+post_curve = post_curve / post_curve.max()
+
+fig1b = go.Figure()
+fig1b.add_trace(
+    go.Scatter(
+        x=mu_grid_lik,
+        y=prior_curve,
+        name=f"Prior N({fmt_money(mu_0)}, {fmt_money(sigma_0)}²)",
+        line={"color": "blue", "dash": "dash"},
+    )
+)
+# TODO: Add the likelihood trace (green solid line)
+fig1b.add_trace(____)
+# TODO: Add the posterior trace (red solid line)
+fig1b.add_trace(____)
+fig1b.update_layout(
+    title=(
+        "Prior × Likelihood = Posterior (n=50 subsample, "
+        "peak-normalised — shapes comparable, areas not)"
+    ),
+    xaxis_title="μ ($)",
+    yaxis_title="Peak-normalised density / likelihood",
+    height=420,
+)
+fig1b.write_html(str(OUTPUT_DIR / "prior_likelihood_posterior.html"))
+print("Saved: prior_likelihood_posterior.html")
+# INTERPRETATION: the posterior sits BETWEEN the prior and the
+# likelihood, pulled toward whichever has more precision (1/variance).
+# With n=50 the likelihood dominates but the prior still tugs the
+# posterior mean a little toward $500K; with the full sample (fig1) the
+# tug is invisible. The likelihood's width is σ/√n — that shrinkage is
+# the whole story of "data overwhelming the prior".
+
 # -- Plot 2: Sensitivity heatmap (μ₀ × σ₀ → posterior mean) --
 mu_grid = np.linspace(300_000, 700_000, 20)
 sigma_grid = np.linspace(20_000, 300_000, 20)
@@ -246,6 +307,12 @@ print("Saved: sensitivity_heatmap.html")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 assert z_sensitivity.shape == (20, 20), "Heatmap should be 20×20"
+_lo, _hi = min(mu_0, float(small.mean())), max(mu_0, float(small.mean()))
+assert _lo <= post_small.mean <= _hi, (
+    "Posterior mean must lie between the prior mean and the subsample mean "
+    "(precision-weighted average)"
+)
+assert abs(lik_curve.max() - 1.0) < 1e-12, "Likelihood curve is peak-normalised"
 print("\n✓ Checkpoint 3 passed — visualisations saved\n")
 
 
@@ -369,6 +436,9 @@ print("═" * 70)
 print(
     """
   ✓ Normal-Normal conjugate: prior + likelihood → closed-form posterior
+  ✓ The likelihood curve IS the data's voice: L(μ) = Π N(xᵢ | μ, σ̂),
+    width σ/√n — and the posterior is the precision-weighted compromise
+    between it and the prior
   ✓ Precision weighting: posterior precision = prior + data precision
   ✓ Prior sensitivity: sweeping μ₀ and σ₀ proves conclusions are
     robust — with large n, prior barely moves the posterior

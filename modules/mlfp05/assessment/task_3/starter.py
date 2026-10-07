@@ -1,119 +1,75 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP05 — Assessment Task 3: GRU Time-Series Forecasting
+MLFP05 — Assessment Task 3: One-Step-Ahead Load Forecast
 
-Complete the `solve()` function. Read problem.md for the full specification.
+Implement `solve()`. problem.md holds the model contract and the acceptance
+criteria. The grader regenerates fresh series from the same process with
+fresh seeds and scores your RETURNED model against its own naive forecast —
+an untrained net or a constant predictor fails.
 
-Build a small GRU that forecasts the next value of a structured time series and
-BEATS the naive last-value baseline on held-out test MSE (model MSE <= 0.97 * naive
-MSE).
-
-    python grader.py starter.py     # grade your attempt
-    python grader.py solution.py    # verify the reference passes
-
-No GPU required — trains on CPU in well under 25 seconds.
+    python starter.py               # (you) train + smoke-test your model
+    python grader.py starter.py     # (instructor) grade an attempt
 """
 from __future__ import annotations
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
 
-SEQ_LEN = 20
-SEED = 13
+torch.set_num_threads(2)  # tiny CPU model; two threads is plenty
 
 
-def make_dataset():
-    """Deterministic windowed forecasting set with learnable structure — DO NOT EDIT.
+def make_series(seed: int, n: int = 1200) -> np.ndarray:
+    """The load-series generator: damped AR(2) + daily seasonality + noise.
 
-    A pure random walk (raw STI returns) cannot be beaten by ANY model, so we use a
-    synthetic series with genuine temporal structure: a damped AR(2) oscillator plus a
-    short seasonal cycle plus modest noise. The next value depends on the SHAPE of the
-    recent window (not just the last value), so a GRU clears the naive last-value
-    baseline with a real margin while the baseline stays honestly hard.
+    x_t = 0.75 x_{t-1} - 0.20 x_{t-2} + 0.35 sin(2 pi t / 24) + 0.15 e_t
 
-    Returns (X_train, y_train, X_test, y_test, naive_pred):
-      X_* (N, SEQ_LEN, 1) float32 — windows of the series.
-      y_* (N,) float32           — next value.
-      naive_pred (Nte,) float32  — last observed value in each test window.
+    Train on `make_series(7)`. The grader uses fresh seeds of its own.
     """
-    rng = np.random.default_rng(SEED)
-    n = 3000
-    a1, a2 = 1.35, -0.55  # complex-conjugate roots => oscillation
-    series = np.zeros(n, dtype=np.float64)
-    noise = rng.normal(0.0, 0.5, size=n)
+    rng = np.random.default_rng(seed)
+    x = np.zeros(n, dtype=np.float64)
+    x[0], x[1] = rng.normal(0.0, 0.3, size=2)
     for t in range(2, n):
-        season = 0.6 * np.sin(2.0 * np.pi * t / 11.0)
-        series[t] = a1 * series[t - 1] + a2 * series[t - 2] + season + noise[t]
-    series = series.astype(np.float32)
+        x[t] = (
+            0.75 * x[t - 1]
+            - 0.20 * x[t - 2]
+            + 0.35 * np.sin(2 * np.pi * t / 24)
+            + 0.15 * rng.normal()
+        )
+    return x.astype(np.float32)
 
-    xs, ys = [], []
-    for i in range(len(series) - SEQ_LEN - 1):
-        xs.append(series[i : i + SEQ_LEN])
-        ys.append(series[i + SEQ_LEN])
-    X = np.array(xs, dtype=np.float32)[:, :, None]  # (N, SEQ_LEN, 1)
-    y = np.array(ys, dtype=np.float32)
 
-    split = int(len(X) * 0.8)
-    X_train, X_test = X[:split], X[split:]
-    y_train, y_test = y[:split], y[split:]
-    naive_pred = X_test[:, -1, 0].astype(np.float32)  # last observed value in window
-    return X_train, y_train, X_test, y_test, naive_pred
+def make_windows(series: np.ndarray, window: int) -> tuple[np.ndarray, np.ndarray]:
+    """Sliding-window pairs: X[i] = series[i:i+window], y[i] = series[i+window].
+
+    Returns X as (N, window, 1) float32 and y as (N,) float32.
+    """
+    s = np.asarray(series, dtype=np.float32)
+    xs = np.stack([s[i : i + window] for i in range(len(s) - window)])
+    ys = s[window:]
+    return xs.reshape(-1, window, 1), ys
 
 
 def solve() -> dict:
-    """Build + train a GRU forecaster; return predictions on the test split."""
-    torch.manual_seed(SEED)
-    X_train, y_train, X_test, y_test, naive_pred = make_dataset()
+    """Train a recurrent one-step-ahead forecaster.
 
-    # TODO 1: build a recurrent forecaster as a torch.nn.Module.
-    #         It MUST contain an nn.GRU (or nn.LSTM / nn.RNN).
-    #         Recipe: nn.GRU(input_size=1, hidden_size=16, batch_first=True)
-    #                 -> take the LAST timestep's hidden state -> Linear(16, 1).
-    class GRUForecaster(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            # self.rnn = nn.GRU(1, 16, batch_first=True)
-            # self.head = nn.Linear(16, 1)
-
-        def forward(self, x):
-            # out, _ = self.rnn(x); return self.head(out[:, -1, :]).squeeze(-1)
-            return torch.zeros(x.shape[0])  # <- replace
-
-    model = GRUForecaster()
-
-    # TODO 2: report whether the model uses a recurrent layer (it must).
-    uses_recurrent = False  # <- replace with True once you add the GRU
-
-    # TODO 3: train with MSE on (X_train, y_train).
-    #         ~60 epochs of Adam (lr=1e-3), batch size 64 works well.
-    #         loss = F.mse_loss(model(xb), yb)
-    # train_ds = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
-    # loader = DataLoader(train_ds, batch_size=64, shuffle=True)
-    # optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
-    # for epoch in range(60): ...
-
-    # TODO 4: predict the next value on X_test.
-    test_pred = np.zeros(len(y_test), dtype=np.float32)  # <- replace
-
-    return {
-        "model": model,
-        "test_pred": test_pred,
-        "y_test": y_test,
-        "naive_pred": naive_pred,
-        "uses_recurrent": uses_recurrent,
-    }
+    Returns:
+        {"model": nn.Module, "window": int} where the model maps
+        (N, window, 1) float32 to (N,) or (N, 1) next-reading forecasts.
+    """
+    raise NotImplementedError("Implement solve() — see problem.md")
 
 
 if __name__ == "__main__":
+    series = make_series(7)
+    print(f"Training series: {series.shape}, mean {series.mean():.3f}, std {series.std():.3f}")
     out = solve()
-    yt = out["y_test"]
-    mse = float(((out["test_pred"] - yt) ** 2).mean())
-    naive = float(((out["naive_pred"] - yt) ** 2).mean())
-    print(
-        f"gru  test_mse={mse:.2e}  naive_mse={naive:.2e}  "
-        f"ratio={mse / max(naive, 1e-12):.2f}"
-    )
+    model, window = out["model"], int(out["window"])
+    dev = make_series(99)  # your own development series — NOT the grader's
+    X, y = make_windows(dev, window)
+    model.eval()
+    with torch.no_grad():
+        preds = model(torch.tensor(X)).reshape(-1).numpy()
+    mse = float(((preds - y) ** 2).mean())
+    naive = float(((X.reshape(len(X), window)[:, -1] - y) ** 2).mean())
+    print(f"Your dev MSE {mse:.4f} vs naive {naive:.4f}  (ratio {mse / naive:.3f})")

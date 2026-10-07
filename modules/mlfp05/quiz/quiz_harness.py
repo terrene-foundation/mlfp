@@ -11,9 +11,10 @@ Design principles:
 * Works on CPU, MPS (Apple Silicon), and CUDA (Colab T4).
 * Download-once caching: MNIST / Fashion-MNIST live under ``/content/data/``
   on Colab and ``data/mlfp05/`` locally so re-runs are fast.
-* Diagnostic thresholds for Q5 were calibrated by running the TARGET
-  architecture and capturing its actual ``report()`` verdicts (see the
-  module docstring in ``mlfp05_quiz_solutions.ipynb``).
+* Q4/Q5 behaviour was calibrated by running the shipped models through
+  ``train_and_diagnose`` against kailash-ml's ``DLDiagnostics``; the measured
+  verdicts are recorded in the ``Q4BrokenCNN`` / ``Q5TargetMLP`` /
+  ``Q5BrokenStarter`` docstrings and in ``README.md``.
 """
 from __future__ import annotations
 
@@ -55,9 +56,11 @@ def _resolve_data_root(kind: str) -> Path:
         colab_root.mkdir(parents=True, exist_ok=True)
         return colab_root
 
-    # Walk up to find a repo containing modules/mlfp05/
-    here = Path(__file__).resolve()
-    for ancestor in here.parents:
+    # Walk up to find a repo containing modules/mlfp05/. Inlined into a
+    # notebook cell there is no ``__file__``, so start from the cwd instead
+    # (local Jupyter runs from modules/mlfp05/quiz/).
+    start = Path(globals().get("__file__") or Path.cwd()).resolve()
+    for ancestor in (start, *start.parents):
         candidate = ancestor / "data" / "mlfp05" / kind
         if (ancestor / "modules" / "mlfp05").exists():
             candidate.mkdir(parents=True, exist_ok=True)
@@ -240,17 +243,21 @@ def check_q3(test_acc: float) -> tuple[bool, float, str]:
 
 
 # ── Q4 fuzzy-keyword checker ──────────────────────────────────────────────
-# The Q4 setup is a CNN with stride>1 and NO padding that collapses spatial
-# dims so badly the final conv feature map can become 0×0. The primary fix
-# is adding padding (or reducing stride). We accept multiple phrasings.
+# The Q4 setup is a 4-conv CNN with Sigmoid after every conv. Sigmoid's
+# derivative is at most 0.25 and near zero once a unit saturates, so the
+# backward signal shrinks at every block: the first conv sees gradient RMS
+# ~1e-6 (vanishing), most sigmoid outputs pin at 0 or 1 (saturated), and the
+# network never leaves chance accuracy. The fix is a non-saturating
+# activation (ReLU / GELU / LeakyReLU / SiLU). A correct answer names the
+# cause (Sigmoid) plus its mechanism (saturation or vanishing gradients) and
+# the replacement activation.
 _Q4_ISSUE_KEYWORDS: tuple[tuple[str, ...], ...] = (
-    ("stride",),
-    ("padding",),
-    ("dimension", "dim", "spatial", "collapse", "shrink"),
+    ("sigmoid",),
+    ("saturat",),
+    ("vanish",),
 )
 _Q4_FIX_KEYWORDS: tuple[tuple[str, ...], ...] = (
-    ("padding",),
-    ("stride",),
+    ("relu", "gelu", "silu", "swish", "elu"),
 )
 
 
@@ -265,7 +272,8 @@ def _fuzzy_match(answer: str, keyword_groups: tuple[tuple[str, ...], ...]) -> in
 
 
 def check_q4(answer: str) -> tuple[bool, str]:
-    """Pass iff the answer mentions the issue (stride/padding) AND a fix."""
+    """Pass iff the answer names the cause (2 of: sigmoid / saturation /
+    vanishing) AND a non-saturating replacement activation."""
     if not isinstance(answer, str) or len(answer.strip()) < 10:
         return False, (
             "Q4 — answer too short. Explain both the diagnosed issue and "
@@ -276,13 +284,15 @@ def check_q4(answer: str) -> tuple[bool, str]:
     passed = issue_hits >= 2 and fix_hits >= 1
     msg = (
         f"Q4 — issue keywords matched: {issue_hits}/3, "
-        f"fix keywords matched: {fix_hits}/2 — "
+        f"fix keywords matched: {fix_hits}/1 — "
         f"{'PASS' if passed else 'FAIL'}"
     )
     if not passed:
         msg += (
-            "\n      Hint: the bug involves **stride without padding** causing "
-            "spatial dimensions to collapse; fix by adding padding or reducing stride."
+            "\n      Hint: read the X-Ray (dead_neurons) and Blood Test "
+            "(gradient_flow) lines together — which activation is saturating, "
+            "what does that do to the gradient reaching conv layer 1, and "
+            "which activation family does not saturate? (slides 5F, 5H, 5J)"
         )
     return passed, msg
 
@@ -316,13 +326,18 @@ def train_and_diagnose(
 ) -> tuple[dict[str, Any], float]:
     """Train ``model`` for ``epochs`` epochs, recording DL diagnostics.
 
-    Returns ``(findings_dict, test_accuracy)``. ``findings_dict`` is the
-    dict returned by ``DLDiagnostics.report()``; each value is a dict with
-    keys ``severity`` and ``message``.
+    Returns ``(findings_dict, test_accuracy)``. ``findings_dict`` holds the
+    three verdicts from ``DLDiagnostics.report()`` — ``gradient_flow``,
+    ``dead_neurons``, ``loss_trend`` — each a dict with keys ``severity``
+    and ``message``. ``report()`` also returns run metadata (``run_id``,
+    ``batches``, ``epochs``, ...) as plain scalars; those are dropped here
+    so callers can iterate the findings uniformly.
 
-    This is the Q5 primary instrument. Deliberately wraps the full TRAIN
-    → DIAGNOSE → EVAL cycle so the student never touches the diagnostic
-    scaffolding — only the model and hyperparameters.
+    Used by Q4 (diagnose a pre-built model) and Q5 (iterate until PASS).
+
+    Deliberately wraps the full TRAIN → DIAGNOSE → EVAL cycle so the
+    student never touches the diagnostic scaffolding — only the model and
+    hyperparameters.
     """
     # Import lazily so module import never triggers a diagnostics init on
     # import error in downstream repos without the shared package.
@@ -377,7 +392,12 @@ def train_and_diagnose(
                     f"val_loss={val_loss:.4f}"
                 )
 
-        findings = diag.report()
+        report = diag.report()
+        findings = {
+            key: value
+            for key, value in report.items()
+            if isinstance(value, dict) and "severity" in value
+        }
 
     test_acc = accuracy(model, test_loader, device)
     if verbose:
@@ -392,14 +412,23 @@ Q5_TEST_ACC_THRESHOLD = 0.82
 #
 # ``gradient_flow`` is deliberately NOT in this list even though we print its
 # verdict for student feedback. Rationale: the ``DLDiagnostics`` gradient_flow
-# check trips CRITICAL whenever the OUTPUT layer's gradient RMS exceeds 1e-2,
-# which is a fundamental property of cross-entropy on a 10-way classifier —
-# ``dL/dlogits ≈ softmax − one_hot`` has RMS near 0.06, and the output linear
-# layer's per-element grad RMS lands around 1.5e-2 on Fashion-MNIST at TARGET
-# hyperparameters. Requiring HEALTHY here would force a fix that is not in
-# fact a bug. Instead we require the two verdicts that DO differentiate the
-# TARGET from the BROKEN STARTER at a 50× gap: dead_neurons and loss_trend,
-# plus the downstream test accuracy.
+# check trips CRITICAL ("exploding") when any layer's grad RMS exceeds 1e-2 OR
+# its ``‖∇W‖/‖W‖`` exceeds 0.1. The output layer of a 10-way softmax head
+# crosses both on healthy runs — ``dL/dlogits ≈ softmax − one_hot`` keeps its
+# gradient large relative to its small weights. Measured on the TARGET:
+# RMS 1.8e-2, ratio 1.1 at ``net.20`` while training cleanly to 0.87.
+# Requiring HEALTHY here would force a fix for something that is not a bug.
+#
+# What the required checks actually discriminate (3 epochs, measured):
+#   * dead_neurons — the X-Ray counts the share of activation outputs that
+#     are exactly zero. The starter (ReLU, LR 0.1) collapses to 100%; GELU
+#     layers sit near 0%. ReLU zeroes ~half its inputs by design, so a
+#     *healthy* ReLU MLP lands at 40–55% — right on the 50% line.
+#   * loss_trend — with 3 epochs the library can only flag OVERFITTING
+#     (val loss rising while train loss falls); underfitting needs ≥5 epochs
+#     and there is no oscillation check. It guards against over-fitting
+#     regressions; it does NOT catch the starter's divergence.
+#   * test_acc — catches divergence: the starter sits at chance (0.10).
 Q5_REQUIRED_VERDICTS = ("dead_neurons", "loss_trend")
 
 # Verdicts whose severity is surfaced in the Prescription Pad output but does
@@ -411,20 +440,19 @@ def check_q5_pass(findings: dict[str, Any], test_acc: float) -> tuple[bool, str]
     """Pass iff the required verdicts are HEALTHY and test_acc ≥ threshold.
 
     Required (blocking):
-        * ``dead_neurons`` == HEALTHY  (the ReLU→GELU fix)
-        * ``loss_trend`` == HEALTHY    (the warmup/LR fix)
-        * ``test_acc`` >= ``Q5_TEST_ACC_THRESHOLD``
+        * ``dead_neurons`` == HEALTHY  (the ReLU→GELU / LeakyReLU fix)
+        * ``loss_trend`` == HEALTHY    (no overfitting in the 3-epoch run)
+        * ``test_acc`` >= ``Q5_TEST_ACC_THRESHOLD`` (the LR / warmup fix)
 
     Advisory (printed but not blocking):
-        * ``gradient_flow`` — the output-layer grad RMS naturally exceeds the
-          library's 1e-2 threshold on a 10-way softmax head, so we surface the
-          verdict for educational purposes but do not require HEALTHY.
+        * ``gradient_flow`` — the output layer of a 10-way softmax head
+          naturally exceeds the library's exploding thresholds, so we surface
+          the verdict for educational purposes but do not require HEALTHY.
 
     Threshold is 0.82 (not 0.85) because Fashion-MNIST with a plain 6-layer
     MLP caps out around 0.87 even on TARGET hyperparameters — we leave some
-    headroom for run-to-run variance. Calibrated by running ``Q5TargetMLP``
-    on Fashion-MNIST for 3 epochs and capturing its ``report()`` verdicts
-    (see ``mlfp05_quiz_solutions.ipynb`` module docstring).
+    headroom for run-to-run variance. Measured: ``Q5TargetMLP`` at the
+    solution hyperparameters reaches 0.867 on Fashion-MNIST in 3 epochs.
     """
     reasons: list[str] = []
     advisory_notes: list[str] = []
@@ -460,9 +488,9 @@ def check_q5_pass(findings: dict[str, Any], test_acc: float) -> tuple[bool, str]
             msg += "\n  Advisory (non-blocking):\n" + "\n".join(advisory_notes)
             msg += (
                 "\n      Note: the gradient_flow CRITICAL verdict is expected "
-                "at this threshold — the output layer's gradient RMS on a "
-                "10-way softmax head naturally exceeds the 1e-2 library "
-                "cut-off. See slide 5F for a discussion of this bias."
+                "here — the output layer of a 10-way softmax head naturally "
+                "exceeds the library's exploding cut-offs (RMS > 1e-2 or "
+                "‖∇W‖/‖W‖ > 0.1). Slide 5F shows the thresholds."
             )
         return True, msg
 
@@ -473,36 +501,59 @@ def check_q5_pass(findings: dict[str, Any], test_acc: float) -> tuple[bool, str]
         fail_msg += "\n  Advisory (non-blocking):\n" + "\n".join(advisory_notes)
     fail_msg += (
         "\n  Hints:\n"
-        "    * Exploding gradients ⇒ lower LR, add weight decay, or add warmup.\n"
-        "    * Dead neurons (ReLU) ⇒ switch to GELU or apply Kaiming init.\n"
-        "    * Loss oscillation ⇒ add LayerNorm, add warmup, or lower LR."
+        "    * test_acc near 0.10 (chance) ⇒ training diverged: lower the LR "
+        "(≤ 1e-3) and add warmup (slides 5J, 5L).\n"
+        "    * dead_neurons WARNING ⇒ switch the activation to GELU / "
+        "LeakyReLU / SiLU (slide 5H). Kaiming init alone will not clear it — "
+        "ReLU zeroes ~half its inputs by design.\n"
+        "    * loss_trend WARNING (overfitting) ⇒ add dropout or weight decay."
     )
     return False, fail_msg
 
 
 # ── Q4 static model (used by both student & instructor notebooks) ────────
 class Q4BrokenCNN(nn.Module):
-    """A CNN with stride=2 and NO padding. After two such layers starting from
-    28×28, spatial dims become (28-3)/2 + 1 = 13, then (13-3)/2 + 1 = 6; the
-    final conv feature map (6×6) is small enough that the flatten+linear head
-    still runs, but the diagnostics toolkit surfaces the unhealthy gradient
-    flow + saturated activations caused by the aggressive stride.
+    """A 4-conv MNIST CNN with ``nn.Sigmoid`` after every convolution.
 
-    Students are asked to identify the issue from the diagnostics report;
-    we grade on two keyword groups (stride/padding + fix).
+    The spatial plumbing is correct (padding=1 keeps 28×28, two MaxPool2d
+    halve it to 7×7), so the bug is NOT a shape bug — it is the activation.
+    Sigmoid saturates and its derivative is at most 0.25, so the gradient
+    shrinks block by block on its way back to ``net.0``. On MNIST, 3 epochs,
+    Adam 1e-3 the diagnostics report:
+
+        * gradient_flow = CRITICAL — vanishing at ``net.0.weight``
+          (RMS ~1e-6, update ratio ~1e-5)
+        * dead_neurons  = WARNING  — ~80% of sigmoid outputs saturated
+        * test_acc      ≈ 0.11 (chance) — the loss never leaves ln(10)≈2.30
+
+    Swapping every ``nn.Sigmoid`` for ``nn.GELU`` (same everything else)
+    reaches ≈0.99 with dead_neurons HEALTHY and no vanishing verdict.
+
+    The activations MUST be ``nn.Module`` layers, not ``torch.sigmoid`` /
+    ``F.relu`` calls inside ``forward``: ``DLDiagnostics`` hooks activation
+    *modules*, so a functional call leaves the X-Ray with nothing to measure
+    ("No activation layers tracked").
     """
 
     def __init__(self) -> None:
         super().__init__()
-        # Kernel 3, stride 2, NO padding — collapses spatial dimensions fast.
-        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=0)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=0)
-        self.fc = nn.Linear(32 * 6 * 6, 10)
+        self.net = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, padding=1),
+            nn.Sigmoid(),
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
+            nn.Sigmoid(),
+            nn.MaxPool2d(2),  # 28 → 14
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.Sigmoid(),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.Sigmoid(),
+            nn.MaxPool2d(2),  # 14 → 7
+            nn.Flatten(),
+            nn.Linear(32 * 7 * 7, 10),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        return self.fc(x.flatten(1))
+        return self.net(x)
 
 
 # ── Q5 target (instructor answer) & student starter ──────────────────────
@@ -515,17 +566,16 @@ class Q5TargetMLP(nn.Module):
     SMALL non-zero bias on every parameter (including LayerNorm biases)
     so the diagnostics' ``update_ratio = ‖∇W‖/‖W‖`` stays finite at step 0.
 
-    Trained with Adam, lr=5e-4, weight decay 1e-4, warmup 300 steps, and
-    gradient clipping at 1.0 norm — the full prescription pad from deck
-    slides 5C–5J. On Fashion-MNIST, 3 epochs, MPS/T4:
+    Trained with Adam, lr=5e-4, weight decay 1e-4, warmup 300 steps (no
+    gradient clipping — ``train_and_diagnose`` does not clip). Measured on
+    Fashion-MNIST, 3 epochs, seed 0:
 
-        * dead_neurons  = HEALTHY (~0–5% inactive on worst layer)
-        * loss_trend    = HEALTHY (monotonic decrease)
-        * gradient_flow = CRITICAL (advisory only — see ``check_q5_pass``
-          docstring; the output layer's grad RMS exceeds the library's
-          1e-2 cut-off, which is a diagnostic quirk on 10-way softmax,
-          not a training pathology)
-        * test_acc      ≈ 0.87 (well above the 0.82 threshold)
+        * dead_neurons  = HEALTHY (worst layer 0% inactive)
+        * loss_trend    = HEALTHY (train loss 0.97 → 0.40)
+        * gradient_flow = CRITICAL (advisory only — output layer RMS 1.8e-2,
+          ‖∇W‖/‖W‖ 1.1; see ``Q5_REQUIRED_VERDICTS``, not a training
+          pathology)
+        * test_acc      = 0.867 (above the 0.82 threshold)
     """
 
     def __init__(self, dropout: float = 0.1) -> None:
@@ -573,11 +623,18 @@ class Q5BrokenStarter(nn.Module):
     """The starter architecture students begin with for Q5.
 
     6 linear layers with ReLU, no LayerNorm, no dropout, default init.
-    Combined with lr=0.1 and no warmup this produces:
-        * exploding gradients (gradient_flow = CRITICAL)
-        * many dead ReLU neurons (dead_neurons = WARNING)
-        * oscillating loss (loss_trend may be WARNING or UNKNOWN)
-        * ~0.3–0.4 Fashion-MNIST test accuracy
+    Combined with lr=0.1 and no warmup, measured (Fashion-MNIST, 3 epochs):
+        * training diverges in epoch 1 (train loss 9.5) and then sits at
+          ln(10) ≈ 2.30 — test_acc = 0.10 (chance)
+        * dead_neurons  = WARNING (last ReLU layer 100% zero)
+        * gradient_flow = CRITICAL (exploding, RMS 0.35 at the output layer)
+        * loss_trend    = HEALTHY — the 9.5 → 2.3 drop reads as a downward
+          slope; the 3-epoch check only detects overfitting
+
+    Lowering the LR to 5e-4 with warmup alone (ReLU kept) reaches 0.859 and
+    passes with the worst ReLU layer at 41% zero — close to the 50% line,
+    so ReLU solutions can flip between PASS and FAIL across runs/devices.
+    Adding Kaiming init to that ReLU model pushed it to 55% (FAIL).
 
     Students must edit the architecture AND hyperparameters on Cell 1
     until ``check_q5_pass`` returns True on Cell 2's output.

@@ -20,7 +20,7 @@
 #   2. Build — fit four linkage methods on a subsample
 #   3. Train — score each linkage partition against the others
 #   4. Visualise — the Ward dendrogram
-#   5. Apply — Singapore NTUC FairPrice store-cluster taxonomy
+#   5. Apply — Singapore supermarket store-cluster taxonomy
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -89,7 +89,7 @@ n_samples = X_scaled.shape[0]
 X_hier, idx_hier = subsample(X_scaled, n=2000, seed=RANDOM_STATE)
 n_hier = X_hier.shape[0]
 
-# Cut at K=5 (a reasonable default for 6-dim customer data)
+# Cut at K=5 (a reasonable starting point for 7-feature customer data)
 CUT_K = 5
 LINKAGE_METHODS = ["single", "complete", "average", "ward"]
 
@@ -197,7 +197,14 @@ try:
         p=30,
         ax=ax,
         leaf_font_size=9,
-        color_threshold=0.7 * hier_results["ward"]["Z"][-CUT_K, 2],
+        # Z[-CUT_K] is the merge that leaves CUT_K clusters and Z[-(CUT_K-1)]
+        # the next one; any height strictly between them colours exactly
+        # CUT_K branches, so use the midpoint.
+        color_threshold=(
+            hier_results["ward"]["Z"][-CUT_K, 2]
+            + hier_results["ward"]["Z"][-(CUT_K - 1), 2]
+        )
+        / 2,
     )
     ax.set_title(f"Ward Dendrogram — cut at K={CUT_K}")
     ax.set_xlabel("Cluster size (leaves)")
@@ -227,40 +234,39 @@ print("\n  [ok] Checkpoint 3 passed — dendrogram rendered\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: NTUC FairPrice Store-Cluster Taxonomy
+# TASK 5 — APPLY: Supermarket Store-Cluster Taxonomy
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: NTUC FairPrice (Singapore's largest supermarket chain) runs
-# ~230 stores across Xtra, Finest, Value, and express formats. The
+# SCENARIO: A Singapore supermarket chain runs ~230 stores across
+# hypermarket, premium, value and express formats. The
 # merchandising team wants a data-driven taxonomy of store behaviour —
 # which stores move together on promotions, which are dead-zones for
 # non-grocery, which over-index on fresh produce.
 #
 # Why hierarchical is the right tool here:
 #   - 230 stores is a TINY dataset — O(n² log n) is trivial
-#   - Merchandising thinks in a TREE ("all Finest stores" contains a
-#     sub-branch "Finest with strong wine sales") — a dendrogram is the
+#   - Merchandising thinks in a TREE ("all premium stores" contains a
+#     sub-branch "premium with strong wine sales") — a dendrogram is the
 #     natural representation of their mental model
 #   - Different K values are useful for different decisions (4 clusters
 #     for national campaigns, 12 clusters for regional planograms)
 #   - Ward's linkage matches their expectation of compact store-type groups
 #
-# BUSINESS IMPACT: NTUC's public sustainability report discloses ~S$3.2B
-# in annual revenue. Category-level promotion mix-ups (stocking the wrong
-# SKU ratio per cluster) wastes an estimated 1.5-2% of promotional spend.
-# FairPrice spends ~4% of revenue on trade promotion (S$128M/year). Data-
-# driven store clustering reduces waste by ~10%:
+# BUSINESS IMPACT (illustrative assumptions, not reported figures): assume
+# ~S$3.2B annual revenue and ~4% of it spent on trade promotion
+# (S$128M/year). If data-driven store clustering cuts promotion waste by
+# ~10%:
 #     S$128M × 0.10 = S$12.8M / year recovered promotional budget
 # The tree-structured taxonomy also lets the team explore "what if we cut
 # at K=8 instead of K=5" without refitting — one-time cost, permanent asset.
 
-print("  APPLY — NTUC FairPrice Store Taxonomy")
+print("  APPLY — Supermarket Store Taxonomy")
 print("  ─────────────────────────────────────────────────────────────────")
 ward_labels = hier_results["ward"]["labels"]
 sizes = np.bincount(ward_labels)
 for i, n in enumerate(sizes):
     print(f"    Ward cluster {i}: {n:>5,} customers ({n/n_hier:6.1%})")
-print("    (In the FairPrice scenario each node is a STORE, not a customer.)")
-print("    Estimated annual promo waste recovery: S$12.8M (10% of S$128M).")
+print("    (In the supermarket scenario each node is a STORE, not a customer.)")
+print("    Illustrative annual promo waste recovery: S$12.8M (10% of S$128M).")
 
 
 # ── Checkpoint 4 ──────────────────────────────────────────────────────────
@@ -299,7 +305,7 @@ print(
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — engine surface honesty for hierarchical
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1 ClusteringEngine ships kmeans/dbscan/spectral/gmm but
+# kailash-ml's ClusteringEngine ships kmeans/dbscan/spectral/gmm but
 # NOT hierarchical/agglomerative — it's the one mainstream clustering
 # family the engine doesn't yet wrap. The engine-first surface for THIS
 # lesson is therefore the ExperimentTracker we just used: every linkage
@@ -309,7 +315,7 @@ print(
 
 from kailash_ml.engines.clustering import ClusteringEngine
 
-print("  ClusteringEngine 1.5.1 algorithms:", ClusteringEngine.__doc__ or "")
+print("  ClusteringEngine algorithms:", ClusteringEngine.__doc__ or "")
 print("    Supported: kmeans, dbscan, spectral, gmm")
 print(
     "    Hierarchical / agglomerative: use scipy.cluster.hierarchy until"
@@ -335,8 +341,8 @@ print(
       single (chains), complete (spheres), average (balanced), Ward (variance)
   [x] Read a dendrogram: height = merge distance; cut = partition
   [x] Ward's is the production default for compact, K-means-like clusters
-  [x] Mapped the tree onto an NTUC FairPrice store taxonomy with an
-      estimated S$12.8M / year promotional-waste recovery
+  [x] Mapped the tree onto a supermarket store taxonomy with an
+      illustrative S$12.8M / year promotional-waste recovery
 
   KEY INSIGHT: When the business thinks in a TREE, give them a tree.
   K-means forces a single K; a dendrogram lets a team explore many K

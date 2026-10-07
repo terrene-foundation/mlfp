@@ -2,14 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP06 — Exercise 5.1: ReActAgent — Tool-Using Autonomous Reasoning
+# MLFP06 — Exercise 5.1: ReAct Agent — Tool-Using Autonomous Reasoning
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Build a ReActAgent with the Thought -> Action -> Observation loop
-#   - Hand the agent tools with structured docstrings (tools as API)
+#   - Build a ReAct agent: the Thought -> Action -> Observation loop
+#   - Register Python tools with JSON schemas in a Kaizen ToolRegistry
 #   - Run multi-step analysis where the LLM chooses the tool order
-#   - Inspect and interpret the reasoning trace for quality signals
+#   - Capture and interpret the REAL reasoning trace with the agent lens
 #   - Understand function-calling protocol (auto / required / specific)
 #
 # PREREQUISITES: MLFP06 Ex 1-4 (Delegate, Signature, prompt engineering)
@@ -17,9 +17,9 @@
 #
 # TASKS:
 #   1. Load HotpotQA multi-hop dataset + bind tools
-#   2. Build a ReActAgent with a cost budget
-#   3. Run a multi-step analysis task
-#   4. Visualise the reasoning trace
+#   2. Register the tools and build a tool-using Delegate
+#   3. Run multi-step analysis tasks under trace capture
+#   4. Visualise the real reasoning trace
 #   5. Apply: Singapore banking research analyst scenario
 #
 # ════════════════════════════════════════════════════════════════════════
@@ -27,15 +27,21 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
-from kaizen_agents.agents.specialized.react import ReActAgent
+import matplotlib.pyplot as plt
+import polars as pl
 
-from shared.mlfp06._ollama_bootstrap import OLLAMA_BASE_URL
+from shared.mlfp06._ollama_bootstrap import make_delegate, preflight_ollama
+from shared.mlfp06.diagnostics import LLMObservatory
 from shared.mlfp06.ex_5 import (
     MODEL,
+    OUTPUT_DIR,
+    build_tool_registry,
     load_hotpotqa,
     make_tools,
     print_tool_registry,
+    require_llm_trace,
     tool_schemas,
 )
 
@@ -64,10 +70,34 @@ print("\n✓ Checkpoint 1 passed — 4 tools registered with HotpotQA\n")
 # ════════════════════════════════════════════════════════════════════════
 # ReAct = Reasoning + Acting.  The agent interleaves thinking and doing:
 #
-#   1. THOUGHT -> 2. ACTION -> 3. OBSERVATION -> repeat -> FINAL ANSWER
+#   1. THOUGHT: "I need to understand the dataset first."
+#   2. ACTION:  data_summary(dataset_name="qa_data")
+#   3. OBSERVATION: <tool output: rows, columns, average text lengths>
+#   4. THOUGHT: "Now I know the columns.  Let me count question types."
+#   5. ACTION:  run_query("count question types")
+#   6. OBSERVATION: <bridge / comparison counts>
+#   7. THOUGHT: "I have enough — let me synthesise the answer."
+#   8. FINAL ANSWER: <synthesised response>
 #
 # Unlike an if-else pipeline, the agent decides WHICH tool and WHAT
 # arguments at each step.  The loop is autonomous — no human choreography.
+#
+# HOW KAIZEN RUNS IT: a Kaizen Delegate is a ReAct loop.  Each LLM turn
+# either (a) emits one or more tool calls — the Thought + Action — which
+# the Delegate executes against its ToolRegistry and feeds back as the
+# Observation, or (b) answers in plain text, which ends the loop.  A
+# tool only exists for the model if it is REGISTERED: name, description,
+# JSON schema for the arguments, and an async executor.  Handing the
+# Delegate bare Python functions registers nothing — the model then has
+# no tools and simply guesses.  (Kaizen also ships a ReActAgent class,
+# but in the installed release its tool executor only dispatches MCP
+# tools, not Python functions — so for Python tools we use the Delegate.)
+#
+# ANALOGY: A research analyst with a filing cabinet.  You ask "which
+# clients are at risk of churn?"  The analyst doesn't follow a script.
+# They open the cabinet, pull a summary, realise they need the activity
+# log, pull that, cross-reference — each step informed by the last.
+# ReAct is that analyst, but the filing cabinet is your tool registry.
 #
 # WHY IT MATTERS: Business questions rarely decompose into fixed pipelines.
 # ReAct lets one agent handle a whole class of questions without you
@@ -75,69 +105,116 @@ print("\n✓ Checkpoint 1 passed — 4 tools registered with HotpotQA\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Build the ReActAgent
+# TASK 2 — Register the tools and build the tool-using Delegate
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: Instantiate ReActAgent with model=MODEL
-#       (kaizen_agents 0.9: tools and budget are set AFTER construction,
-#        not via constructor kwargs — see the provided wiring below)
-react_agent = ____
-# LLM wiring (provided): ReActConfig defaults to provider="openai", so point it
-# at the local Ollama daemon. kaizen 2.28 also needs use_async_llm=True for the
-# run_async() call in TASK 3. config is mutable post-construction.
-react_agent.config.llm_provider = "ollama"
-react_agent.config.base_url = OLLAMA_BASE_URL
-react_agent.config.use_async_llm = True
-react_agent.config.budget_limit_usd = 2.0
-for tool in tools:
-    react_agent.available_tools.append(tool)
-print(f"ReActAgent built:")
-print(f"  Model:   {MODEL}")
-print(f"  Tools:   {[t.__name__ for t in tools]}")
-print(f"  Budget:  $2.00 (hard stop)")
+REACT_SYSTEM_PROMPT = (
+    "You are a research analyst working on the HotpotQA dataset. "
+    "Use the available tools to gather evidence before you answer. "
+    "Call a tool whenever you need data; do not invent numbers. "
+    "When you have enough evidence, reply with a concise plain-text report."
+)
+MAX_TURNS = 8  # hard ceiling on Thought->Action->Observation cycles
+
+
+def build_react_agent():
+    """Fresh Ollama-backed Delegate with the four tools registered.
+
+    A Delegate keeps its conversation history between runs, so every
+    independent task in this file gets its own instance.
+    """
+    # TODO: Wrap the Python tools in a Kaizen ToolRegistry
+    # Hint: a shared.mlfp06.ex_5 helper does the registration
+    registry = ____
+    # TODO: Build the Ollama-backed Delegate with the registry, the system
+    #       prompt and the turn ceiling (no model= — it comes from .env)
+    # Hint: make_delegate(tools=..., system_prompt=..., max_turns=...)
+    return ____
+
+
+react_agent = build_react_agent()
+print("ReAct agent built:")
+print(f"  Model:      {MODEL}  (from OLLAMA_CHAT_MODEL)")
+print(f"  Tools:      {react_agent.tool_registry.tool_names}")
+print(f"  Max turns:  {MAX_TURNS}")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
 assert react_agent is not None, "Task 2: agent should be created"
-print("\n✓ Checkpoint 2 passed — ReActAgent ready\n")
+assert react_agent.tool_registry.tool_names == [
+    t.__name__ for t in tools
+], "Task 2: every tool must be registered — an unregistered tool is invisible"
+print("\n✓ Checkpoint 2 passed — ReAct agent ready with 4 registered tools\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — Train (run) the agent on a multi-step task
+# TASK 3 — Train (run) the agent on multi-step tasks, capturing the trace
 # ════════════════════════════════════════════════════════════════════════
+# "Train" here means exercise the agent end-to-end — LLM agents are not
+# gradient-trained at runtime; the "training" is the reasoning trajectory.
+# The Observatory's agent lens records every tool call the Delegate makes.
 
+preflight_ollama(required_models=[MODEL])  # fails loudly if Ollama is down
+obs = LLMObservatory(run_id="ex_5_react")
 
-async def run_multi_step_analysis() -> object:
-    """Let the ReActAgent answer a multi-step HotpotQA research question."""
-    sample_q = qa_data["question"][0]
-    task = f"""Analyse the HotpotQA multi-hop reasoning dataset to understand
+sample_q = qa_data["question"][0]
+comparison_q = qa_data.filter(pl.col("type") == "comparison")["question"][0]
+bridge_q = qa_data.filter(pl.col("type") == "bridge")["question"][1]
+
+TASKS = {
+    "multi_step": f"""Analyse the HotpotQA multi-hop reasoning dataset to understand
 its structure and answer the question: "{sample_q}"
 
 Steps:
 1. Get a dataset summary to understand the columns and types
 2. Count question types (comparison vs bridge) and difficulty levels
 3. Search for documents relevant to the question above
-4. Look up the ground-truth answer
-5. Synthesise your findings into a clear report."""
-
-    print(f"Task: {task[:200]}...\n")
-    # TODO: Await react_agent.run(task) to execute the ReAct loop
-    result = ____
-
-    if hasattr(result, "content"):
-        output = result.content
-    elif isinstance(result, str):
-        output = result
-    else:
-        output = str(result)
-    print(f"Agent output (first 500 chars):\n{output[:500]}...")
-    return result
+4. Extract the answer evidence (the tool never sees answer labels)
+5. Synthesise your findings into a clear report.""",
+    "comparison": f'Find evidence in the corpus and answer: "{comparison_q}"',
+    "bridge": f'Find evidence in the corpus and answer: "{bridge_q}"',
+}
 
 
-analysis_result = asyncio.run(run_multi_step_analysis())
+async def run_traced(label: str, task: str) -> dict:
+    """Run one task on a fresh agent and return measured trace statistics."""
+    agent = build_react_agent()
+    t0 = time.perf_counter()
+    # TODO: Run the task on `agent` under the Observatory's agent lens
+    # Hint: await obs.agent.capture_run(agent, task, run_id=...)
+    trace = ____
+    latency_s = time.perf_counter() - t0
+    require_llm_trace(trace)
+    # TODO: List the tool names in call order from the trace events
+    # Hint: events whose kind is "tool_start" carry the tool name
+    tool_sequence = ____
+    answer = "".join(ev.content or "" for ev in trace.events if ev.kind == "token")
+    return {
+        "label": label,
+        "run_id": trace.run_id,
+        "tool_sequence": tool_sequence,
+        "llm_turns": agent.loop.usage.turns,
+        "total_tokens": agent.loop.usage.total_tokens,
+        "latency_s": latency_s,
+        "answer": answer,
+    }
+
+
+async def run_all() -> list[dict]:
+    return [await run_traced(label, task) for label, task in TASKS.items()]
+
+
+print(f"Main task: {TASKS['multi_step'][:200]}...\n")
+runs = asyncio.run(run_all())
+main_run = runs[0]
+print(f"Agent answer (first 500 chars):\n{main_run['answer'][:500]}...")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert analysis_result is not None, "Task 3: analysis should produce a result"
-print("\n✓ Checkpoint 3 passed — multi-step analysis complete\n")
+assert main_run["answer"].strip(), "Task 3: the agent should produce an answer"
+assert len(main_run["tool_sequence"]) >= 1, (
+    "Task 3: the agent answered without calling a single tool — check that "
+    "the tools are registered and the model is tool-capable"
+)
+print("\n✓ Checkpoint 3 passed — multi-step analysis ran real tool calls\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -145,8 +222,21 @@ print("\n✓ Checkpoint 3 passed — multi-step analysis complete\n")
 # ════════════════════════════════════════════════════════════════════════
 
 print("=" * 70)
-print("  Trace inspection — what quality looks like")
+print("  Measured reasoning traces")
 print("=" * 70)
+for run in runs:
+    print(
+        f"  {run['label']:11s} turns={run['llm_turns']}  "
+        f"tool calls={len(run['tool_sequence'])}  "
+        f"latency={run['latency_s']:.1f}s  tokens={run['total_tokens']}"
+    )
+    print(f"              order: {' -> '.join(run['tool_sequence']) or '(none)'}")
+
+print("\nTool usage on the main task (agent lens):")
+print(obs.agent.tool_usage(main_run["run_id"]))
+loops = obs.agent.detect_loops(main_run["run_id"])
+print(f"Stuck loops detected (same tool + args 3x in a row): {loops.height}")
+
 print(
     """
 Good trace signals:
@@ -154,37 +244,134 @@ Good trace signals:
   ✓ No redundant tool calls
   ✓ Arguments match the tool schema
   ✓ Final answer synthesises ALL observations, not just the last one
+
+Bad trace signals:
+  ✗ Random tool ordering
+  ✗ Same tool called twice with identical args
+  ✗ Arguments that don't match schema
+  ✗ Final answer ignores some observations
 """
 )
 
+# The structured JSON schemas the model actually receives.
 # TODO: Call tool_schemas(tools) to generate the JSON Schema descriptors
 schemas = ____
 print(f"Function-calling schemas ({len(schemas)} tools):")
 for s in schemas:
     print(f"  {s['name']:20s} params={list(s['parameters']['properties'].keys())}")
 
+print(
+    """
+Function-calling protocol (tool_choice, as exposed by most chat APIs):
+  auto      — model decides whether to call a tool or respond directly
+  required  — model MUST call at least one tool (force data grounding)
+  specific  — pin to one named function (pipeline step)
+
+Parallel calls — a model may emit several tool calls in ONE turn, e.g.
+  [search_documents("churn"), run_query("count types")]
+The Delegate executes all of them concurrently (asyncio.gather) before
+the next LLM turn and returns every observation together.
+"""
+)
+
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
 assert len(schemas) == 4, "Task 4: should generate schemas for all 4 tools"
 assert all(
     "name" in s and "parameters" in s for s in schemas
 ), "Every schema needs name + parameters"
-print("\n✓ Checkpoint 4 passed — trace interpretation and schemas visualised\n")
+print("✓ Checkpoint 4 passed — trace interpretation and schemas visualised\n")
+
+# INTERPRETATION: read the "order" lines above.  A good agent goes
+# general -> specific (summary, then query, then search).  A poor agent
+# repeats the same call or skips to an answer without looking at the
+# data — a signal the prompt or the tool docstrings need work.
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Apply: Singapore banking research analyst
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A private bank in Singapore hires a research desk to answer
-# wealth-advisor questions.  Before ReAct: 4 analysts at ~S$120K each
-# (S$480K/year) to answer 2,000 questions/year.  With ReActAgent:
-# ~$100/year in LLM cost.  5,000x cost reduction, 1-2 days -> 15 sec.
+# SCENARIO (illustrative figures): A private bank in Singapore runs a
+# research desk that answers wealth-advisor questions like "which
+# regions had the most regulatory changes last quarter?"  Each question
+# decomposes into search, filter, count, and synthesis — the same shape
+# as the HotpotQA tasks above.
 #
-# THE RISK: An unconstrained agent can still loop and spend $100 on one
-# question.  Technique 2 (02_cost_budget_agent.py) adds the guardrail.
+# BEFORE REACT: 4 research analysts at ~S$120K/year each (S$480K/year)
+# answer ~2,000 such questions per year — ~S$240 per answer with a
+# 1-2 day turnaround, and answers go stale before advisors use them.
+#
+# WITH REACT: one tool-using agent over the bank's internal search,
+# summary, and lookup tools answers in the latency you measured above.
+# On a self-hosted model the marginal cost is compute, not per-token
+# fees; analysts move to reviewing and extending the agent's reports.
+#
+# BUSINESS IMPACT:
+#   - Turnaround:         1-2 days -> the per-task latency printed above
+#   - Advisor experience: stale reports -> live conversation support
+#   - Analysts pivot to   higher-value qualitative work (fund manager
+#                         interviews, thesis development)
+#
+# THE RISK: an unconstrained agent can loop.  Technique 2
+# (02_cost_budget_agent.py) bounds the loop.
+
 
 print("=" * 70)
-print("  KEY TAKEAWAY: ReActAgent turns a pipeline into a conversation")
+print("  KEY TAKEAWAY: a ReAct agent turns a pipeline into a conversation")
 print("=" * 70)
+print(
+    """
+  Before: one pipeline per question shape, brittle and expensive.
+  After:  one agent + N registered tools, answers any question that
+          composes them.
+
+  The tool docstring + schema is now your most important artifact.
+  It's the contract the LLM reads to decide what to do next.  Precise
+  tool docs = accurate agents.  Vague tool docs = wrong tool, wrong
+  arguments, wasted turns.
+"""
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISATION — Agent reasoning step profile (measured)
+# ════════════════════════════════════════════════════════════════════════
+
+labels = [r["label"] for r in runs]
+tool_calls = [len(r["tool_sequence"]) for r in runs]
+latencies_s = [r["latency_s"] for r in runs]
+
+fig, ax1 = plt.subplots(figsize=(8, 4))
+x = range(len(labels))
+ax1.bar(x, tool_calls, color="#2196F3", alpha=0.8, label="Tool calls")
+ax1.set_ylabel("Tool calls (measured)", color="#2196F3")
+ax1.set_xticks(x)
+ax1.set_xticklabels(labels, rotation=15, ha="right")
+
+ax2 = ax1.twinx()
+ax2.plot(x, latencies_s, "o-", color="#FF5722", linewidth=2, label="Latency (s)")
+ax2.set_ylabel("Latency (s, measured)", color="#FF5722")
+
+ax1.set_title("ReAct Agent: Tool Calls & Latency per Task")
+fig.legend(loc="upper left", bbox_to_anchor=(0.12, 0.88))
+fig.tight_layout()
+fig.savefig(OUTPUT_DIR / "01_react_steps.png", dpi=150)
+plt.close(fig)
+print(f"\nSaved: {OUTPUT_DIR / '01_react_steps.png'}")
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — the agent lens on this run
+# ══════════════════════════════════════════════════════════════════
+# The LLM Observatory has six lenses (Output, Attention, Retrieval,
+# Agent Trace, Alignment, Governance).  Only the Agent Trace lens
+# applies to a tool-using agent, and it already recorded every run
+# above — this is its plain-text Prescription Pad over those runs.
+print("\n── LLM Observatory — agent lens ──")
+print(obs.agent.report())
+# Reading it: tools_used should be > 1 for the multi-step task; an
+# error event means a tool raised; a "stuck loop" line means the model
+# called the same tool with the same arguments 3+ times — tighten the
+# tool docstrings so the model knows what each tool returns.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -195,65 +382,17 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Built a ReActAgent with tools and a cost budget
-  [x] Ran a multi-step task where the LLM chose the tool order
-  [x] Inspected the reasoning trace for quality signals
+  [x] Built a ReAct agent: a Delegate with registered, schema-typed tools
+  [x] Ran multi-step tasks where the LLM chose the tool order
+  [x] Inspected the real reasoning trace (tool order, loops, latency)
   [x] Understood function-calling protocol and parallel calls
   [x] Mapped the technique to a Singapore private-banking use case
 
-  Next: 02_cost_budget_agent.py adds the guardrail that prevents a
-  looping agent from spending $100 on a $0.05 task...
+  KEY INSIGHT: Agents are LLMs with the ability to call functions.
+  No new AI — just LLMs that observe and act instead of just responding.
+  The novelty is that YOU design the tool surface; the LLM orchestrates.
+
+  Next: 02_cost_budget_agent.py bounds the loop so a confused agent
+  cannot run forever...
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Agent Trace (TAOD capture, tool-call success, stuck-loop
-# detection). Secondary: Output (final answer quality).
-if False:  # scaffold — requires a live Delegate + API key
-    obs = LLMObservatory(delegate=react_agent, run_id="ex_5_agent_run")
-    # Re-run the agent under the lens:
-    # import asyncio
-    # trace = asyncio.run(obs.agent.capture_run(react_agent, task=prompt))
-    # obs.output.evaluate(prompts=[prompt], responses=[trace.final_answer])
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Agent      (HEALTHY): 5 TAOD steps, tool-call success 1.00,
-#       no stuck loops, total cost $0.017 (budget $2.00).
-#   [✓] Output     (HEALTHY): judge faithfulness 0.89 on final answer.
-#   [?] Retrieval / Alignment / Governance / Attention (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [AGENT LENS] 5 TAOD steps for a multi-hop question is the healthy
-#     signature — general (data_summary) -> specific (run_query) ->
-#     targeted (search_documents) -> grounded (lookup_answer) ->
-#     synthesis. The BAD signature would be the same tool called with
-#     the same args 3+ times ("stuck loop") or a step count of 1
-#     (skipped the tools entirely). The loop detector in AgentDiagnostics
-#     flags both.
-#     >> Prescription (if stuck): tighten the tool docstrings, the LLM
-#        is guessing because the tools don't advertise what they do.
-#  [OUTPUT LENS] Faithfulness 0.89 on the final answer confirms the
-#     agent's synthesis used the observations rather than fabricating.
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

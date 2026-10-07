@@ -1,249 +1,275 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Automated grader for MLFP03 Assessment Task 3 — Evaluation, Imbalance & Interpretability.
+"""Grader for MLFP03 Assessment Task 3 — Decisions Priced in Dollars
+(instructor-side; not distributed to students).
 
-Usage:
-    python grader.py starter.py
-    python grader.py solution.py
+    python grader.py submission.py [--seed N]
 
-The grader independently re-trains the baseline and class-balanced models and
-recomputes per-class recall via km.diagnose, then verifies the submission's
-reported minority-recall lift matches reality (defeats hardcoded dicts).
+``build_decision_model`` is called twice per run on a secret 8,000-row sample
+of the credit file, each time with secret costs (a missed default and a
+declined good applicant) and a fresh, empty registry directory.
+
+Everything is then measured on fresh applications drawn from the dataset's
+generating process with a secret seed. Because the process is known, the
+grader holds every fresh applicant's TRUE default probability, so:
+
+- calibration is measured against the true probabilities, not noisy outcomes;
+- the expected cost of the decisions is computed exactly
+  (approve: p_true x c_missed; decline: (1 - p_true) x c_declined);
+- references are the grader's own L2 logistic model (fitted on the same
+  sample) with the Bayes-optimal threshold for the same costs.
+
+The registry is opened by the grader after the call: the production version's
+artifact must reproduce the submission's probabilities.
 """
 from __future__ import annotations
 
-import argparse
 import asyncio
-import importlib.util
-import json
 import pickle
+import shutil
 import sys
+import tempfile
 import warnings
 from pathlib import Path
 
 import numpy as np
 import polars as pl
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 
-from shared import MLFPDataLoader
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _solution_heldout import (  # noqa: E402
+    LEAK_COLUMN,
+    TARGET,
+    TRUE_PROBABILITY,
+    as_submitted,
+    auc,
+    fresh_applications,
+    sample_history,
+)
+from grading_harness import Checks, finalize, load_student_module, main  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
-N_ROWS = 10_000
-SEED = 42
-TARGET = "premium_response"
-TOP_K = 6
-BASE_FEATURES = [
-    "satisfaction_score",
-    "avg_order_value",
-    "num_returns",
-    "order_count",
-    "loyalty_int",
-    "total_revenue",
-    "days_since_last_order",
-    "customer_tenure_days",
+WEIGHT = 30
+MODULE = "student_task3"
+N_HISTORY, N_FRESH = 8_000, 10_000
+AUC_MARGIN = 0.015
+CAL_LARGE_TOL = 0.01  # |mean predicted - mean true probability|
+ECE_TOL = 0.015  # decile-binned |predicted - true probability|
+BRIER_MARGIN = 0.0015
+COST_SLACK = 0.03  # relative to the reference's expected cost
+ESTIMATE_TOL = 0.20  # relative error of the reported expected cost
+GATE = "well_formed_result"
+NAMES = [
+    GATE,
+    "ranks_applicants",
+    "calibrated_on_average",
+    "calibrated_across_the_range",
+    "probabilities_score_well",
+    "decisions_near_cost_optimal",
+    "decisions_follow_the_costs",
+    "cost_estimate_is_honest",
+    "predictions_follow_the_applicant",
+    "production_model_registered",
+    "registered_model_reproduces_scores",
 ]
-REQUIRED_KEYS = {
-    "baseline_minority_recall",
-    "balanced_minority_recall",
-    "baseline_recall_macro",
-    "balanced_recall_macro",
-    "baseline_accuracy",
-    "balanced_accuracy",
-    "roc_auc",
-    "top_features",
-    "n_features",
-}
 
 
-def _model_frame() -> pl.DataFrame:
-    df = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
-    df = df.sort("customer_id").head(N_ROWS)
-    rng = np.random.default_rng(SEED)
-
-    def z(col: str) -> np.ndarray:
-        a = df[col].to_numpy().astype(float)
-        return (a - a.mean()) / (a.std() + 1e-9)
-
-    loyal = df["loyalty_member"].cast(pl.Int64).to_numpy().astype(float)
-    sat_high = (df["satisfaction_score"] >= 4).cast(pl.Int64).to_numpy().astype(float)
-    logit = (
-        1.0 * z("satisfaction_score")
-        + 0.9 * loyal
-        + 0.8 * z("avg_order_value")
-        - 0.7 * z("num_returns")
-        + 0.5 * z("order_count")
-        + 1.4 * (loyal * sat_high)
-        + rng.normal(0.0, 1.3, size=df.height)
-    )
-    df = df.with_columns(
-        [
-            pl.col("loyalty_member").cast(pl.Int64).alias("loyalty_int"),
-            pl.Series(TARGET, (logit > 2.0).astype(np.int64)),
-            pl.int_range(0, df.height, dtype=pl.Int64).alias("row_id"),
-        ]
-    )
-    return df.select(BASE_FEATURES + ["row_id", TARGET])
+def _costs(rng, regime: int) -> dict:
+    if regime == 0:  # defaults are expensive: threshold around 0.1-0.25
+        return {"missed_default": float(rng.uniform(8_000, 12_000)), "declined_good": float(rng.uniform(1_000, 2_500))}
+    # defaults are very expensive: threshold around 0.02-0.05
+    return {"missed_default": float(rng.uniform(20_000, 30_000)), "declined_good": float(rng.uniform(500, 1_000))}
 
 
-async def _reference_recalls() -> dict:
-    """Independently train baseline + balanced; return per-class recalls."""
+def _expected_cost(approve: np.ndarray, p_true: np.ndarray, costs: dict) -> float:
+    return float(np.mean(np.where(approve, p_true * costs["missed_default"], (1 - p_true) * costs["declined_good"])))
+
+
+def _ece(p: np.ndarray, p_true: np.ndarray) -> float:
+    edges = np.quantile(p, np.linspace(0, 1, 11))
+    b = np.clip(np.searchsorted(edges, p, side="right") - 1, 0, 9)
+    return float(sum(abs(p[b == k].mean() - p_true[b == k].mean()) * (b == k).mean() for k in range(10) if (b == k).any()))
+
+
+def _expected_brier(p: np.ndarray, p_true: np.ndarray) -> float:
+    return float(np.mean(p * p - 2 * p * p_true + p_true))
+
+
+def _reference(history: pl.DataFrame, fresh: pl.DataFrame) -> np.ndarray:
+    cols = [c for c, t in history.schema.items() if t.is_numeric() and c not in (TARGET, LEAK_COLUMN)]
+    med = {c: history[c].median() for c in cols}
+
+    def mat(df):
+        return df.select([pl.col(c).cast(pl.Float64).fill_null(med[c]) for c in cols]).to_numpy()
+
+    sc = StandardScaler().fit(mat(history))
+    lr = LogisticRegression(max_iter=3000).fit(sc.transform(mat(history)), history[TARGET].to_numpy())
+    return lr.predict_proba(sc.transform(mat(fresh)))[:, 1]
+
+
+def _probabilities(fn, apps: pl.DataFrame) -> np.ndarray:
+    p = np.asarray(fn(apps.clone()), dtype=float).reshape(-1)
+    if p.shape != (apps.height,):
+        raise ValueError(f"predict_proba returned {p.shape[0]} values for {apps.height} applications")
+    if not np.all(np.isfinite(p)) or p.min() < 0 or p.max() > 1:
+        raise ValueError("predict_proba must return finite probabilities in [0, 1]")
+    return p
+
+
+def _decisions(fn, apps: pl.DataFrame) -> np.ndarray:
+    a = np.asarray(fn(apps.clone())).reshape(-1)
+    if a.shape != (apps.height,):
+        raise ValueError(f"decide returned {a.shape[0]} values for {apps.height} applications")
+    if a.dtype != bool:
+        raise ValueError(f"decide must return booleans (True = approve), got dtype {a.dtype}")
+    return a
+
+
+def _valid(out) -> str | None:
+    keys = {"predict_proba", "decide", "expected_cost", "model_name"}
+    if not isinstance(out, dict) or not keys <= set(out):
+        return f"return a dict with keys {sorted(keys)}"
+    if not callable(out["predict_proba"]) or not callable(out["decide"]):
+        return "'predict_proba' and 'decide' must be callable"
+    try:
+        est = float(out["expected_cost"])
+    except (TypeError, ValueError):
+        return "'expected_cost' must be a number"
+    if not np.isfinite(est):
+        return "'expected_cost' is not finite"
+    if not isinstance(out["model_name"], str) or not out["model_name"]:
+        return "'model_name' must be a non-empty string"
+    return None
+
+
+async def _production_artifact(registry_dir: Path, name: str):
     from kailash.db import ConnectionManager
-    from kailash_ml import ModelRegistry, TrainingPipeline, diagnose
-    from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
-    from kailash_ml.types import FeatureField, FeatureSchema
+    from kailash_ml import ModelRegistry
+    from kailash_ml.engines.model_registry import LocalFileArtifactStore
 
-    frame = _model_frame()
-    schema = FeatureSchema(
-        name="premium_eval",
-        features=[FeatureField(name=f, dtype="float64") for f in BASE_FEATURES],
-        entity_id_column="row_id",
-    )
-    n = frame.height
-    idx = np.arange(n)
-    np.random.RandomState(42).shuffle(idx)
-    test = frame[idx[int(n * 0.75):].tolist()]
-    x_test, y_test = test.select(BASE_FEATURES).to_numpy(), test[TARGET].to_numpy()
-    ev = EvalSpec(metrics=["accuracy", "f1", "auc"], split_strategy="holdout", test_size=0.25)
-
-    conn = ConnectionManager("sqlite:///:memory:")
+    db = registry_dir / "registry.db"
+    if not db.exists():
+        raise FileNotFoundError("no registry.db in the registry directory")
+    conn = ConnectionManager(f"sqlite:///{db.as_posix()}")
     await conn.initialize()
     try:
-        reg = ModelRegistry(conn)
-        pipe = TrainingPipeline(feature_store=None, registry=reg)
-        base = await pipe.train(
-            data=frame, schema=schema,
-            model_spec=ModelSpec(
-                model_class="sklearn.ensemble.RandomForestClassifier", framework="sklearn",
-                hyperparameters={"n_estimators": 150, "random_state": SEED, "n_jobs": -1},
-            ), eval_spec=ev, experiment_name="b",
-        )
-        bal = await pipe.train(
-            data=frame, schema=schema,
-            model_spec=ModelSpec(
-                model_class="sklearn.ensemble.RandomForestClassifier", framework="sklearn",
-                hyperparameters={
-                    "n_estimators": 150, "random_state": SEED, "n_jobs": -1,
-                    "class_weight": "balanced",
-                },
-            ), eval_spec=ev, experiment_name="bl",
-        )
-        bm = pickle.loads(await reg.load_artifact(base.model_version.name, base.model_version.version))
-        blm = pickle.loads(await reg.load_artifact(bal.model_version.name, bal.model_version.version))
-        brep = diagnose(bm, kind="classical_classifier", data=(x_test, y_test), show=False)
-        blrep = diagnose(blm, kind="classical_classifier", data=(x_test, y_test), show=False)
-        return {
-            "base_minor": float(brep.per_class["1.0"]["recall"]),
-            "bal_minor": float(blrep.per_class["1.0"]["recall"]),
-            "auc": float(bal.metrics["auc"]),
-        }
+        registry = ModelRegistry(conn, LocalFileArtifactStore(registry_dir / "artifacts"))
+        mv = await registry.get_model(name, stage="production")
+        blob = await registry.load_artifact(mv.name, mv.version)
     finally:
         await conn.close()
+    return mv, blob
 
 
-def load_student_module(path: Path):
-    spec = importlib.util.spec_from_file_location("student_t3", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
+def grade(path: Path, seed: int) -> dict:
+    checks = Checks()
     try:
-        student = load_student_module(student_path)
+        st = load_student_module(path, MODULE)
     except Exception as e:
-        score["error"] = f"Failed to import: {type(e).__name__}: {e}"
-        return score
-    if not hasattr(student, "solve"):
-        score["error"] = "Module does not define a solve() function"
-        return score
+        return finalize(checks, WEIGHT, seed, f"Failed to import: {type(e).__name__}: {e}")
+    if not callable(getattr(st, "build_decision_model", None)):
+        return finalize(checks, WEIGHT, seed, "Missing function: build_decision_model")
+    sys.modules[MODULE] = st  # so artefacts pickled from the submission can be loaded
+
+    rng = np.random.default_rng(seed)
+    history = sample_history(N_HISTORY, int(rng.integers(1 << 31)))
+    fresh = fresh_applications(N_FRESH, int(rng.integers(1 << 31)))
+    apps = as_submitted(fresh)
+    y = fresh[TARGET].to_numpy()
+    p_true = fresh[TRUE_PROBABILITY].to_numpy()
+    costs = [_costs(rng, 0), _costs(rng, 1)]
+    workdir = Path(tempfile.mkdtemp(prefix="mlfp03_t3_"))
+    state: dict = {}
+
     try:
-        r = student.solve()
-    except Exception as e:
-        score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
-        return score
 
-    c = score["checks"]
-    c["returns_dict"] = isinstance(r, dict) and REQUIRED_KEYS.issubset(r.keys())
-    if not c["returns_dict"]:
-        return _finalize(score)
+        def gate():
+            out = st.build_decision_model(history.clone(), dict(costs[0]), str(workdir / "registry"))
+            why = _valid(out)
+            if why:
+                return {GATE: (False, why)}
+            p = _probabilities(out["predict_proba"], apps)
+            if np.std(p) == 0:
+                return {GATE: (False, "predict_proba returns the same value for every applicant")}
+            state.update(out=out, p=p, a=_decisions(out["decide"], apps))
+            return {GATE: (True, "")}
 
-    def fget(k: float) -> float:
-        try:
-            return float(r[k])
-        except Exception:
-            return float("nan")
+        checks.guarded([GATE], gate)
+        if not checks.results[GATE]:
+            for n in NAMES[1:]:
+                checks.add(n, False, "gate failed")
+            return finalize(checks, WEIGHT, seed)
+        out, p, a = state["out"], state["p"], state["a"]
+        ref = _reference(history, fresh)
 
-    base_min = fget("baseline_minority_recall")
-    bal_min = fget("balanced_minority_recall")
-    base_macro = fget("baseline_recall_macro")
-    bal_macro = fget("balanced_recall_macro")
-    base_acc = fget("baseline_accuracy")
-    bal_acc = fget("balanced_accuracy")
-    auc = fget("roc_auc")
-    top = r.get("top_features")
+        def probabilities():
+            got, want = auc(y, p), auc(y, ref)
+            gap = abs(float(p.mean()) - float(p_true.mean()))
+            ece, ece_ref = _ece(p, p_true), _ece(ref, p_true)
+            br, br_ref = _expected_brier(p, p_true), _expected_brier(ref, p_true)
+            return {
+                "ranks_applicants": (got >= want - AUC_MARGIN, f"AUC {got:.4f} on unseen applicants; reference {want:.4f}; need >= {want - AUC_MARGIN:.4f}"),
+                "calibrated_on_average": (gap <= CAL_LARGE_TOL, f"mean predicted default probability {p.mean():.4f} vs true {p_true.mean():.4f}"),
+                "calibrated_across_the_range": (ece <= ECE_TOL, f"decile calibration error {ece:.4f} against the true probabilities (reference {ece_ref:.4f}; need <= {ECE_TOL})"),
+                "probabilities_score_well": (br <= br_ref + BRIER_MARGIN, f"expected Brier score {br:.5f}; reference {br_ref:.5f}; need <= {br_ref + BRIER_MARGIN:.5f}"),
+            }
 
-    finite = [base_min, bal_min, base_macro, bal_macro, base_acc, bal_acc, auc]
-    c["values_finite_in_range"] = all(
-        np.isfinite(v) and 0.0 <= v <= 1.0 for v in finite
-    )
+        def decisions():
+            c = costs[0]
+            t = c["declined_good"] / (c["declined_good"] + c["missed_default"])
+            got, want = _expected_cost(a, p_true, c), _expected_cost(ref < t, p_true, c)
+            est = float(out["expected_cost"])
+            return {
+                "decisions_near_cost_optimal": (got <= want * (1 + COST_SLACK), f"expected cost S${got:,.1f} per application; reference S${want:,.1f}; need <= S${want * (1 + COST_SLACK):,.1f}"),
+                "cost_estimate_is_honest": (abs(est - got) <= ESTIMATE_TOL * got, f"reported S${est:,.1f} per application; measured S${got:,.1f} (tolerance {ESTIMATE_TOL:.0%})"),
+            }
 
-    # 1. imbalance handling lifts minority recall
-    c["balanced_lifts_minority_recall"] = bool(
-        np.isfinite(base_min) and np.isfinite(bal_min) and bal_min > base_min + 0.02
-    )
-    # 2. balanced minority recall clears an honest floor
-    c["balanced_minority_recall_floor"] = bool(bal_min >= 0.68)
-    # 3. baseline minority recall sits in the un-handled band
-    c["baseline_minority_recall_band"] = bool(0.55 <= base_min <= 0.67)
-    # 4. macro recall improves under balancing
-    c["macro_recall_improves"] = bool(bal_macro > base_macro)
-    # 5. the accuracy / recall tradeoff: balanced accuracy drops
-    c["accuracy_tradeoff"] = bool(bal_acc < base_acc + 1e-9)
-    # 6. held-out AUC above floor
-    c["roc_auc_floor"] = bool(auc >= 0.85)
+        def other_costs():
+            c = costs[1]
+            out2 = st.build_decision_model(history.clone(), dict(c), str(workdir / "registry_2"))
+            why = _valid(out2)
+            if why:
+                return {"decisions_follow_the_costs": (False, why)}
+            a2 = _decisions(out2["decide"], apps)
+            t = c["declined_good"] / (c["declined_good"] + c["missed_default"])
+            got, want = _expected_cost(a2, p_true, c), _expected_cost(ref < t, p_true, c)
+            return {"decisions_follow_the_costs": (got <= want * (1 + COST_SLACK), f"with costs {c}: expected cost S${got:,.1f}; reference S${want:,.1f}; need <= S${want * (1 + COST_SLACK):,.1f}")}
 
-    # 7. interpretability output shape
-    c["top_features_shape"] = (
-        isinstance(top, list)
-        and len(top) == TOP_K
-        and set(top).issubset(set(BASE_FEATURES))
-    )
-    # 8. SHAP surfaced the dominant driver
-    c["top_feature_is_driver"] = bool(
-        isinstance(top, list)
-        and len(top) >= 3
-        and "satisfaction_score" in set(top[:3])
-    )
-    # 9. n_features correct
-    c["n_features_correct"] = r.get("n_features") == len(BASE_FEATURES)
+        def alignment():
+            perm = rng.permutation(apps.height)[:2000]
+            q = _probabilities(out["predict_proba"], apps[perm.tolist()])
+            moved = float(np.max(np.abs(q - p[perm])))
+            return {"predictions_follow_the_applicant": (moved < 1e-9, f"shuffling the applications changed probabilities by {moved:.3g}")}
 
-    # 10/11. anti-stub: re-derive recalls and match reported values
-    try:
-        ref = asyncio.run(_reference_recalls())
-        c["baseline_recall_matches"] = abs(base_min - ref["base_minor"]) < 0.03
-        c["balanced_recall_matches"] = abs(bal_min - ref["bal_minor"]) < 0.03
-    except Exception:
-        c["baseline_recall_matches"] = False
-        c["balanced_recall_matches"] = False
+        def registry():
+            mv, blob = asyncio.run(_production_artifact(workdir / "registry", out["model_name"]))
+            res = {"production_model_registered": (str(mv.stage) .lower().endswith("production"), f"stage is {mv.stage!r}")}
+            art = pickle.loads(blob)
+            if not callable(getattr(art, "predict_proba", None)):
+                res["registered_model_reproduces_scores"] = (False, "the production artefact has no predict_proba")
+                return res
+            sub = apps.head(2000)
+            q = np.asarray(art.predict_proba(sub.clone()), dtype=float).reshape(-1)
+            if q.shape != (sub.height,):
+                res["registered_model_reproduces_scores"] = (False, f"production artefact returned shape {q.shape}")
+                return res
+            moved = float(np.max(np.abs(q - p[: sub.height])))
+            res["registered_model_reproduces_scores"] = (moved < 1e-9, f"production artefact differs from predict_proba by {moved:.3g}")
+            return res
 
-    return _finalize(score)
-
-
-def _finalize(score: dict) -> dict:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
-    return score
+        checks.guarded(["ranks_applicants", "calibrated_on_average", "calibrated_across_the_range", "probabilities_score_well"], probabilities)
+        checks.guarded(["decisions_near_cost_optimal", "cost_estimate_is_honest"], decisions)
+        checks.guarded(["decisions_follow_the_costs"], other_costs)
+        checks.guarded(["predictions_follow_the_applicant"], alignment)
+        checks.guarded(["production_model_registered", "registered_model_reproduces_scores"], registry)
+        return finalize(checks, WEIGHT, seed)
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+        sys.modules.pop(MODULE, None)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("student", type=Path)
-    args = parser.parse_args()
-    result = grade(args.student)
-    print(json.dumps(result, indent=2))
-    sys.exit(0 if result["passed"] else 1)
+    main(grade)

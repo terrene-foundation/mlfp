@@ -31,7 +31,8 @@
 #   10. Cross-column analysis — temperature vs rainfall relationship
 #
 # DATASET: Singapore monthly weather data (temperature, rainfall)
-#   Source: Meteorological Service Singapore (data.gov.sg)
+#   Source: approximate monthly climate averages prepared for this course
+#   (illustrative — not official station records)
 #   Rows: 12 monthly records | Columns: month, mean_temperature_c,
 #   total_rainfall_mm
 #
@@ -163,7 +164,7 @@ print(f"Center:      {'Singapore':^20} | end")
 report_header = f"""
 ╔{'═' * 40}╗
 ║{'Singapore Weather Report':^40}║
-║{'Data from Meteorological Service':^40}║
+║{'Illustrative monthly averages':^40}║
 ╚{'═' * 40}╝
 """
 print(report_header)
@@ -389,7 +390,8 @@ print(f"  Minimum:  {min_temp:.2f}°C")
 print(f"  Maximum:  {max_temp:.2f}°C")
 print(f"  Std dev:  {std_temp:.2f}°C")
 # INTERPRETATION: Std dev measures how spread out the values are.
-# Singapore's tropical climate means low temperature variation (~1°C std).
+# Singapore's tropical climate keeps the monthly averages within about a
+# degree of each other — compare the std with the range (max - min).
 
 mean_rain = df["total_rainfall_mm"].mean()
 max_rain = df["total_rainfall_mm"].max()
@@ -430,8 +432,8 @@ print(f"  50th percentile (Q2): {temp_q50:.2f}°C  (this is the median)")
 print(f"  75th percentile (Q3): {temp_q75:.2f}°C")
 print(f"  Interquartile range:  {temp_iqr:.2f}°C  (Q3 - Q1)")
 # INTERPRETATION: The IQR tells you the range of the "middle 50%" of values.
-# For Singapore temperature, IQR ≈ 1°C means the middle half of all monthly
-# temperatures span just 1 degree — remarkably stable.
+# For Singapore temperature, an IQR under 1°C means the middle half of all
+# monthly temperatures fit inside a single degree — remarkably stable.
 
 # --- 7b: Quantiles for rainfall ---
 rain_series = df["total_rainfall_mm"]
@@ -523,8 +525,9 @@ print(f"\n=== Deviations from Average ===")
 print(f"Hottest month is {hottest_pct_above:+.1f}% above average temperature")
 print(f"Wettest month is {wettest_pct_above:+.1f}% above average rainfall")
 
-# INTERPRETATION: Singapore's hottest months are May-Jun (pre-monsoon),
-# coldest are Dec-Jan (NE monsoon), and wettest are Nov-Jan (monsoon peak).
+# INTERPRETATION: In this data the hottest months are May-June, the
+# coolest are December-January, and the wettest are November-December —
+# the start of the Northeast Monsoon.
 # Temperature deviation is small while rainfall deviation is large.
 
 # ── Checkpoint 8 ─────────────────────────────────────────────────────
@@ -548,7 +551,7 @@ separator = "═" * 60
 print(f"\n{separator}")
 print(f"  SINGAPORE WEATHER SUMMARY REPORT")
 print(f"{separator}")
-print(f"  Source:     Meteorological Service Singapore")
+print(f"  Source:     Illustrative monthly climate averages")
 print(f"  Records:    {rows:>6,} monthly observations")
 print(f"  Variables:  {cols:>6} columns")
 print(f"")
@@ -596,8 +599,11 @@ cool_avg_rain = cool_months_df["total_rainfall_mm"].mean()
 print("=== Temperature vs Rainfall ===")
 print(f"Warm months (>= {temp_q50:.1f}°C):  avg rainfall = {warm_avg_rain:.1f} mm")
 print(f"Cool months (<  {temp_q50:.1f}°C):  avg rainfall = {cool_avg_rain:.1f} mm")
+# if / else picks which line to print depending on a condition. You'll
+# learn it properly in Lesson 1.4 — for now, read it as "if this is
+# true, do the first thing; otherwise do the second".
 if cool_avg_rain > warm_avg_rain:
-    print("  → Cool months are wetter — this aligns with the NE monsoon (Dec-Feb)")
+    print("  → Cool months are wetter — the cool, wet Northeast Monsoon months")
 else:
     print("  → Warm months are wetter")
 
@@ -668,6 +674,6 @@ print(
   NEXT: In Exercise 2, you'll learn to filter and transform data
   using Polars expressions — selecting rows by condition, creating
   new columns, and chaining operations together. The HDB resale
-  dataset (500K+ transactions) will be your playground.
+  dataset (~50,000 transactions) will be your playground.
 """
 )

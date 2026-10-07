@@ -28,6 +28,7 @@ import torchvision
 from kailash.db import ConnectionManager
 from kailash_ml import ExperimentTracker, ModelVisualizer
 from kailash_ml import ModelRegistry
+from kailash_ml.engines.model_registry import LocalFileArtifactStore
 from kailash_ml.types import MetricSpec
 from shared.kailash_helpers import get_device, setup_environment
 
@@ -48,6 +49,11 @@ except NameError:
     REPO_ROOT = Path.cwd()
     ARTIFACT_DIR = Path.cwd()
 DATA_DIR = REPO_ROOT / "data" / "mlfp05" / "cifar10"
+
+# The ModelRegistry stores artifact files (model.pkl, model.onnx) in an
+# ArtifactStore. We construct the store explicitly so exercises can attach
+# an ONNX serving artifact to a registered version (see attach_onnx_artifact).
+ARTIFACT_STORE = LocalFileArtifactStore(".kailash_ml/artifacts")
 
 N_CLASSES = 10
 BATCH_SIZE = 128
@@ -120,8 +126,8 @@ def load_cifar10() -> tuple[
 
     train_ds = TensorDataset(X_train, y_train)
     val_ds = TensorDataset(X_val, y_val)
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE)
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, num_workers=0)
 
     print(
         f"CIFAR-10: train {tuple(X_train.shape)}, val {tuple(X_val.shape)}, "
@@ -158,7 +164,7 @@ async def setup_engines(db_name: str = "mlfp05_cnns.db") -> tuple[
     tracker = await ExperimentTracker.create(store_url=db)
     conn = ConnectionManager(registry_db)
     await conn.initialize()
-    registry = ModelRegistry(conn)
+    registry = ModelRegistry(conn, artifact_store=ARTIFACT_STORE)
     return conn, tracker, "m5_cnns", registry, True
 
 
@@ -379,8 +385,14 @@ def register_model(
 # Visualisation Helpers
 # ═══════════════════════════════════════════════════════════════════════
 def create_visualizer() -> ModelVisualizer:
-    """Return a configured ModelVisualizer instance."""
-    return ModelVisualizer()
+    """Return a configured ModelVisualizer instance.
+
+    Delegates to the canonical factory in shared.mlfp05 — the P2
+    experimental notice is acknowledged there.
+    """
+    from shared.mlfp05 import create_visualizer as _canonical
+
+    return _canonical()
 
 
 def save_training_plots(
@@ -421,3 +433,63 @@ def denormalise_cifar(img_tensor: torch.Tensor) -> torch.Tensor:
         mean = CIFAR_MEAN
         std = CIFAR_STD
     return (img_tensor * std + mean).clamp(0, 1)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Serving Helpers (ONNX export + InferenceServer)
+# ═══════════════════════════════════════════════════════════════════════
+IMAGE_SHAPE = (3, 32, 32)
+N_PIXELS = 3 * 32 * 32
+
+
+class FlatImageAdapter(nn.Module):
+    """Wrap an image classifier so it accepts flat pixel rows.
+
+    InferenceServer's ONNX runtime turns each request record into ONE row of
+    a 2-D float array, so the exported graph must take ``(batch, 3072)``.
+    This adapter reshapes rows back to ``(batch, 3, 32, 32)`` before calling
+    the wrapped CNN. ``predict(X)`` is the method ``OnnxBridge.validate``
+    calls to get the native (PyTorch) outputs for comparison.
+    """
+
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model(x.reshape(-1, *IMAGE_SHAPE))
+
+    def predict(self, X) -> np.ndarray:
+        device = next(self.model.parameters()).device
+        with torch.no_grad():
+            x = torch.as_tensor(np.asarray(X), dtype=torch.float32, device=device)
+            return self.forward(x).cpu().numpy()
+
+
+def images_to_records(images: torch.Tensor) -> list[dict[str, float]]:
+    """Turn a batch of images into InferenceServer request records.
+
+    One record per image, one key per pixel. Keys are zero-padded so the
+    record order is the pixel order the ONNX graph expects.
+    """
+    rows = images.reshape(len(images), -1).cpu().tolist()
+    return [{f"px{j:04d}": float(v) for j, v in enumerate(row)} for row in rows]
+
+
+def attach_onnx_artifact(name: str, version: int, onnx_path: Path) -> None:
+    """Store an exported ONNX file as ``model.onnx`` for a registered version.
+
+    ``ModelRegistry.register_model`` saves the training artifact as
+    ``model.pkl``; ``InferenceServer.from_registry(..., runtime="onnx")``
+    loads ``model.onnx`` from the same ArtifactStore.
+
+    OnnxBridge writes large weights to a sibling ``<file>.onnx.data`` file
+    (ONNX external data); storing only the ``.onnx`` bytes would serve a model
+    without its weights, so it is stored as ONE self-contained protobuf.
+    """
+    import onnx
+
+    model_proto = onnx.load(str(onnx_path))  # pulls in any .onnx.data weights
+    asyncio.run(
+        ARTIFACT_STORE.save(name, version, model_proto.SerializeToString(), "model.onnx")
+    )

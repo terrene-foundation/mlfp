@@ -1,92 +1,100 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP05 — Assessment Task 2: Tiny CNN for Image Classification (REFERENCE SOLUTION)
+MLFP05 — Assessment Task 2: Triage a Ward of Failing Training Runs
+(Reference Solution)
 
-Two-block CNN built from scratch on bundled 8x8 digits. Deterministic, CPU-only, <25s.
+Withheld from students. Verified to pass grader.py across seeds.
+
+Decision rule, applied to the kailash-ml DLDiagnostics readings (each
+instrument reports HEALTHY / WARNING / CRITICAL / UNKNOWN):
+
+  1. dead neurons fire      -> "dead_neurons"     (the ward's clearest signal;
+     a zeroed layer also starves gradients downstream, so read this first)
+  2. gradient flow fires    -> "vanishing_gradients"
+  3. loss trend fires AND the recorded loss ends higher than it started
+                            -> "diverging_loss"
+  4. otherwise              -> "healthy"
+
+The increasing-history clause separates a diverged run from a plateaued one
+(plateau is a *symptom* of vanishing gradients, caught at step 2).
+
+Raw torch.nn for model handling per the module's DL rules; the measuring
+instruments are kailash-ml's.
 """
 from __future__ import annotations
 
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from sklearn.datasets import load_digits
-from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, TensorDataset
 
-N_CLASSES = 10
-SEED = 42
+torch.set_num_threads(2)
+
+LABELS = ("healthy", "dead_neurons", "vanishing_gradients", "diverging_loss")
 
 
-def make_dataset() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Deterministic 8x8 digit split — identical to starter."""
-    digits = load_digits()
-    X = (digits.images / 16.0).astype(np.float32)[:, None, :, :]
-    y = digits.target.astype(int)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.30, random_state=SEED, stratify=y
+def diagnose_model(
+    model: torch.nn.Module,
+    loader,
+    loss_fn,
+    *,
+    train_losses: list[float] | None = None,
+    val_losses: list[float] | None = None,
+) -> str:
+    from kailash_ml.diagnostics import run_diagnostic_checkpoint
+
+    _, findings = run_diagnostic_checkpoint(
+        model,
+        loader,
+        loss_fn,
+        title="triage",
+        show=False,
+        n_batches=4,
+        train_losses=list(train_losses) if train_losses is not None else None,
+        val_losses=list(val_losses) if val_losses is not None else None,
     )
-    return X_train, y_train, X_test, y_test
 
+    def severity(instrument: str) -> str:
+        reading = findings.get(instrument, {})
+        if isinstance(reading, dict):
+            return str(reading.get("severity", "UNKNOWN"))
+        return "UNKNOWN"
 
-def solve() -> dict:
-    torch.manual_seed(SEED)
-    X_train, y_train, X_test, y_test = make_dataset()
-
-    class TinyCNN(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            self.features = nn.Sequential(
-                nn.Conv2d(1, 16, kernel_size=3, padding=1),
-                nn.BatchNorm2d(16),
-                nn.ReLU(),
-                nn.MaxPool2d(2),  # 8 -> 4
-                nn.Conv2d(16, 32, kernel_size=3, padding=1),
-                nn.BatchNorm2d(32),
-                nn.ReLU(),
-                nn.MaxPool2d(2),  # 4 -> 2
-            )
-            self.head = nn.Sequential(
-                nn.Flatten(),
-                nn.Linear(32 * 2 * 2, 64),
-                nn.ReLU(),
-                nn.Linear(64, N_CLASSES),
-            )
-
-        def forward(self, x):
-            return self.head(self.features(x))
-
-    model = TinyCNN()
-    n_conv = sum(1 for m in model.modules() if isinstance(m, nn.Conv2d))
-
-    train_ds = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
-    loader = DataLoader(train_ds, batch_size=64, shuffle=True)
-    optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
-
-    model.train()
-    for _epoch in range(25):
-        for xb, yb in loader:
-            logits = model(xb)
-            loss = F.cross_entropy(logits, yb)
-            optimiser.zero_grad()
-            loss.backward()
-            optimiser.step()
-
-    model.eval()
-    with torch.no_grad():
-        logits = model(torch.tensor(X_test))
-        preds = logits.argmax(dim=1).cpu().numpy()
-
-    return {
-        "model": model,
-        "preds": preds,
-        "y_test": y_test,
-        "n_conv": n_conv,
-    }
+    if severity("dead_neurons") in ("WARNING", "CRITICAL"):
+        return "dead_neurons"
+    if severity("gradient_flow") in ("WARNING", "CRITICAL"):
+        return "vanishing_gradients"
+    if severity("loss_trend") in ("WARNING", "CRITICAL"):
+        losses = [float(v) for v in (train_losses or [])]
+        if len(losses) >= 2 and losses[-1] > losses[0]:
+            return "diverging_loss"
+    return "healthy"
 
 
 if __name__ == "__main__":
-    out = solve()
-    acc = (out["preds"] == out["y_test"]).mean()
-    print(f"conv_layers={out['n_conv']}  test_acc={acc:.3f}")
+    import numpy as np
+    import torch.nn.functional as F
+
+    rng = np.random.default_rng(3)
+    X = rng.normal(size=(256, 20)).astype(np.float32)
+    y = (X @ rng.normal(size=(20, 4))).argmax(1).astype(np.int64)
+    loader = torch.utils.data.DataLoader(
+        torch.utils.data.TensorDataset(torch.tensor(X), torch.tensor(y)),
+        batch_size=64,
+    )
+
+    def ce(m, batch):
+        xb, yb = batch
+        return F.cross_entropy(m(xb), yb)
+
+    torch.manual_seed(0)
+    demo = nn.Sequential(nn.Linear(20, 32), nn.ReLU(), nn.Linear(32, 4))
+    opt = torch.optim.Adam(demo.parameters(), lr=2e-3)
+    losses = []
+    for _ in range(20):
+        for xb, yb in loader:
+            loss = ce(demo, (xb, yb))
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+        losses.append(float(loss))
+    print("trained example ->", diagnose_model(demo, loader, ce, train_losses=losses))

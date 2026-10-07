@@ -10,8 +10,8 @@
 #   - Use mutual information to rank features by any (linear or non-linear)
 #     dependency with the target
 #   - Use chi-squared to rank features by statistical independence
-#   - Intersect top-k rankings to find ROBUST features that survive both
-#     methods
+#   - Intersect top-k rankings to find features that survive both methods
+#   - Test a ranking against a shuffled-target noise floor
 #   - Apply filter selection to high-dimensional clinical data in a
 #     cost-sensitive healthcare setting
 #
@@ -23,7 +23,7 @@
 #   2. Build — prepare X, y_binary from the feature matrix
 #   3. Train — score every feature with MI and chi-squared
 #   4. Visualise — ranked bar chart + top-20 intersection
-#   5. Apply — SingHealth radiology triage (S$ impact)
+#   5. Apply — radiology triage for a Singapore hospital cluster
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -114,6 +114,21 @@ chi2_ranking = sorted(
     key=lambda x: x[1],
     reverse=True,
 )
+
+# --- Noise floor: what MI does a feature get when the target is RANDOM? ---
+# Shuffle y (breaking any real relationship) and re-score. MI is never
+# negative and its estimator is noisy, so even pure noise gets small
+# positive scores. A feature only carries signal if it beats this floor.
+rng = np.random.default_rng(42)
+null_max_mi = []
+for _ in range(5):
+    y_shuffled = rng.permutation(y_binary)
+    null_mi = mutual_info_classif(X_sel, y_shuffled, random_state=42)
+    null_max_mi.append(float(np.nanmax(null_mi)))
+mi_noise_floor = float(np.mean(null_max_mi))
+features_above_floor = [name for name, score in mi_ranking if score > mi_noise_floor]
+print(f"\nMI noise floor (mean of max MI over 5 shuffled targets): {mi_noise_floor:.4f}")
+print(f"Features scoring above the noise floor: {len(features_above_floor)}")
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────────
 assert len(mi_ranking) == len(feature_cols), "Task 3: MI must score every feature"
@@ -227,9 +242,18 @@ assert (
 ), f"Task 4: expected at least 3 consensus features, got {len(filter_consensus)}"
 print("\n[ok] Checkpoint 2 passed — filter consensus found\n")
 
-# INTERPRETATION: A feature that ranks high under BOTH mutual information
-# and chi-squared is almost certainly informative — the two methods
-# disagree on noise but agree on signal.
+# INTERPRETATION: agreement between two filters is only evidence of
+# signal if the scores themselves beat the noise floor. Computed here:
+print(
+    f"  Top MI score {mi_ranking[0][1]:.4f} vs noise floor {mi_noise_floor:.4f}; "
+    f"{len(features_above_floor)} of {len(feature_cols)} features beat it."
+)
+if not features_above_floor:
+    print(
+        "  → No feature beats a shuffled target: these rankings order NOISE.\n"
+        "    Every selection method will still return a 'top 20' — always\n"
+        "    compare against a permutation baseline before trusting one."
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -258,36 +282,29 @@ print(f"\n  ExperimentTracker run: {run_id}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: SingHealth Radiology Triage
+# TASK 5 — APPLY: radiology triage for a Singapore hospital cluster
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: SingHealth runs a tele-radiology network across seven
-# Singapore hospitals. ~4,000 chest X-rays/day land in a shared queue;
-# radiologists want a priority score that surfaces the likely-abnormal
-# studies to the top of the queue within two minutes of upload.
+# SCENARIO (illustrative): a Singapore hospital cluster runs a shared
+# tele-radiology queue receiving ~4,000 chest X-rays a day. Radiologists
+# want a priority score that surfaces likely-abnormal studies within two
+# minutes of upload.
 #
-# The production feature matrix has ~180 candidate features — patient
-# demographics, prior admissions, current vitals, medication flags,
-# referring specialty. The data-science team cannot afford to run a
-# wrapper method on every new patient cohort (too slow) and a CNN on
-# the image alone is over-indexed on the pixel distribution.
+# The candidate feature matrix has ~180 columns — patient demographics,
+# prior admissions, current vitals, medication flags, referring
+# specialty. Running a wrapper method for every new cohort is too slow.
 #
 # Why filter selection is the right tool:
-#   - Filter scoring runs in milliseconds per feature, so the ranking
-#     can be refreshed nightly without infrastructure investment
+#   - Filter scoring is cheap, so the ranking can be refreshed nightly
 #   - The MI + chi-squared intersection is explainable — a clinician
 #     reviewing the feature list can veto any feature they don't trust
 #   - Filters are model-agnostic: the downstream priority model can be
 #     swapped (LogReg today, GBM tomorrow) without re-running selection
 #
-# BUSINESS IMPACT: SingHealth estimates a one-minute reduction in
-# radiologist time-to-read for urgent studies is worth S$45 per study
-# (through earlier downstream interventions: thrombolytics, surgery
-# prep, ICU bed allocation). At 4,000 studies/day and a conservative
-# 15% urgent rate, a 90-second improvement yields:
-#     600 urgent/day x 1.5 min x S$0.75/min x 365 days ~ S$246K/year
-# Plus an estimated S$1.2M/year in avoided missed findings on
-# high-priority cases. Filter-selection infra cost: one analyst-week
-# to wire + nightly Airflow job. ~30x ROI in year one.
+# ILLUSTRATIVE ARITHMETIC (assumed values, not the cluster's figures):
+# value one minute of faster reading on an urgent study at S$0.75
+# (S$45 per hour of delay avoided). With 15% of 4,000 studies urgent
+# and 1.5 minutes saved each:
+#     600 urgent/day × 1.5 min × S$0.75/min × 365 days ≈ S$246K/year
 #
 # LIMITATIONS:
 #   - Filter methods miss INTERACTION effects (the whole point of
@@ -310,9 +327,10 @@ print(
     """
   [x] Scored every engineered feature with mutual information
   [x] Scored every engineered feature with chi-squared (MinMax-scaled)
-  [x] Found the ROBUST top-20 intersection as a model-free shortlist
+  [x] Found the top-20 intersection as a model-free shortlist
+  [x] Checked the scores against a shuffled-target noise floor
   [x] Logged the filter run to ExperimentTracker for later comparison
-  [x] Applied filter selection to SingHealth radiology triage at scale
+  [x] Applied filter selection to a radiology triage queue
 
   KEY INSIGHT: Filters are the cheapest, fastest, most explainable
   feature-selection tool. Reach for them first. Only graduate to

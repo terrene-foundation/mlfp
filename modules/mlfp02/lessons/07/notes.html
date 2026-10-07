@@ -36,185 +36,295 @@
 </h1>
 
 <p class="lead">
-  Total time: ~55 minutes &nbsp;·&nbsp; 14 slides &nbsp;·&nbsp; ~4 min per slide average
+  Total time: ~55 minutes &nbsp;·&nbsp; 15 slides &nbsp;·&nbsp; ~3.5 min per slide average
 </p>
 
 <p>
-  This is the most technically advanced lesson in Module 2. CUPED is
-  straightforward once the derivation clicks, but the derivation itself
-  requires comfort with variance algebra. Spend time on Slides 3-5
-  making the formula intuitive. DiD is conceptually simpler but the
-  parallel trends assumption needs careful framing. SRM is the easiest
-  section — use it as a breather between the two heavier topics.
+  Two advanced tools today. CUPED: use pre-experiment data to shrink
+  experiment variance — the theory promises big wins (ρ = 0.7 halves the
+  variance), and the honest lesson is that our real experiment data only
+  delivers ≈4%, so teach both the promise and the measurement. Then
+  difference-in-differences for when randomisation is impossible, with
+  the parallel-trends assumption front and centre.
 </p>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
   <h3>CUPED and Causal Inference</h3>
   <p>
-    "You can run A/B tests (2.4) and build regression models (2.5-2.6). Today
-    we combine them. CUPED uses regression to make A/B tests more powerful.
-    DiD uses the same comparison logic to measure causal effects when you
-    cannot randomise. And SRM tells you when your experiment is broken
-    before you waste time analysing it."
+    Open with the outcome line from the slide: "Today you'll learn to
+    cut A/B test variance with data you already have — and what to do
+    when you can't run an experiment at all." Agenda: variance
+    reduction, the SRM check again (it matters enough to revisit),
+    difference-in-differences, and parallel trends.
   </p>
-  <div class="audience-cue beginner">
-    <strong>For beginners:</strong> "CUPED is a trick that lets you detect
-    smaller effects with the same data. DiD is a trick for measuring
-    effects from observational data. SRM is a safety check."
-  </div>
-  <div class="transition">→ "Why do A/B tests fail to reach significance?"</div>
+  <div class="transition">→ "The problem that motivates everything."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>The problem</span></div>
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Noisy experiments</span></div>
   <h3>The problem: noisy experiments</h3>
   <p>
-    Start with the practical pain: "You run an A/B test for two weeks.
-    The treatment shows a +3% lift in spending. But $p = 0.12$. Your
-    manager says 'not significant, kill the feature'. But you know the
-    effect is real — there is just too much noise."
+    Set the scene: "Your A/B test shows a +3% lift in spending, but
+    $p = 0.12$. Not significant. The effect might be real — you just
+    can't tell." Walk the three options: run longer (expensive, delays
+    launch), get more users (not always possible), or <strong>reduce the
+    variance</strong> — free and immediate.
   </p>
   <p>
-    "Three options: run longer (expensive), get more users (not possible),
-    or reduce the noise. CUPED does the third — for free."
+    Read the green box: "CUPED uses data you already have —
+    pre-experiment behaviour — to shrink the noise. Same data, more
+    power."
   </p>
   <div class="transition">→ "The formula."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 3</span><span>~5 min</span><span>CUPED formula</span></div>
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>CUPED formula</span></div>
   <h3>CUPED: the key formula</h3>
   <p>
-    This is the critical slide. Walk the derivation slowly:
+    Walk the adjustment: $Y_{\text{adj}} = Y - \theta(X - E[X])$. "Take
+    each user's outcome and subtract the part that's predictable from
+    their pre-experiment behaviour $X$. What remains is purer signal."
+    The optimal $\theta^* = \text{Cov}(Y,X)/\text{Var}(X)$ minimises
+    the variance — it's just the OLS coefficient of $Y$ on $X$ from
+    2.5.
   </p>
-  <ol>
-    <li>"We define an adjusted metric: $Y_{\text{adj}} = Y - \theta(X - E[X])$."</li>
-    <li>"We want to choose $\theta$ to minimise variance of $Y_{\text{adj}}$."</li>
-    <li>"Take the variance: $\text{Var}(Y) - 2\theta\text{Cov}(Y,X) + \theta^2\text{Var}(X)$."</li>
-    <li>"This is quadratic in $\theta$ — set derivative to zero."</li>
-    <li>"Optimal: $\theta^* = \text{Cov}(Y,X)/\text{Var}(X)$."</li>
-    <li>"Plug back in: $\text{Var}(Y_{\text{adj}}) = \text{Var}(Y)(1 - \rho^2)$."</li>
-  </ol>
-  <p>Walk the table: "$\rho = 0.7$ gives 51% reduction — the same as doubling your sample size."</p>
+  <p>
+    Then the blue box — the money formula:
+    $\text{Var}(Y_{\text{adj}}) = \text{Var}(Y)(1 - \rho^2)$. "The
+    variance shrinks by one minus the <em>squared</em> correlation
+    between pre and post. Everything rides on $\rho$."
+  </p>
   <div class="audience-cue beginner">
-    <strong>If the algebra is overwhelming:</strong> "The punchline is this:
-    if your pre-experiment spending correlates 0.7 with post-experiment
-    spending, CUPED halves the variance. That is the only number you need
-    to remember."
+    <strong>Intuition:</strong> "Two users with identical pre-experiment
+    spending would have spent identically without the treatment. Their
+    difference <em>after</em> is nearly pure treatment effect. CUPED
+    applies that logic to everyone at once."
   </div>
-  <div class="audience-cue expert">
-    <strong>For experts:</strong> "Note that $\theta^*$ is exactly the OLS
-    coefficient from regressing $Y$ on $X$. CUPED is regression adjustment.
-    The adjusted metric is the residual."
-  </div>
-  <div class="transition">→ "The visual."</div>
+  <div class="transition">→ "How much does it buy, in numbers?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 4</span><span>~2 min</span><span>Before/after diagram</span></div>
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Rho table</span></div>
+  <h3>How much does CUPED buy you?</h3>
+  <p>
+    Walk the table row by row: $\rho = 0.3$ removes 9% of variance
+    (like getting 1.10× the sample), 0.5 removes 25% (1.33×), 0.7
+    removes 49% (1.96× — nearly double the sample for free), 0.9
+    removes 81% (5.26×).
+  </p>
+  <p>
+    Read the green box: "E-commerce: pre-experiment spend typically
+    correlates 0.6–0.8 with post-experiment spend — that's 36% to 64%
+    variance reduction, for free. This is why every large experiment
+    platform runs CUPED or something like it by default."
+  </p>
+  <div class="transition">→ "The picture."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~2 min</span><span>Before/after</span></div>
   <h3>Before vs after CUPED</h3>
   <p>
-    "Left: wide distribution, $p = 0.12$. Right: narrow distribution after
-    CUPED, $p = 0.003$. Same data, same effect, more power."
+    Walk the two panels. Left: the raw difference-in-means — wide
+    distribution, $p = 0.12$, not significant. Right: after CUPED, the
+    same effect size with a much tighter distribution — $p = 0.003$.
+    "Same data, same effect estimate, smaller standard error. The
+    treatment didn't change; our ability to see it did."
   </p>
-  <div class="transition">→ "Now in code."</div>
+  <div class="transition">→ "Let's do it in code — on the real experiment data."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>CUPED code</span></div>
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>CUPED code</span></div>
   <h3>CUPED in code</h3>
   <p>
-    Run the code live. Five lines. Point out the variance reduction
-    printout and connect it to the formula: "We got $\rho = 0.71$, so
-    the expected reduction is $1 - 0.71^2 = 50\%$. And we see 49.8%.
-    The formula works."
+    Walk the code. Load the experiment data, keep control and
+    treatment_a — the SRM-clean pair from 2.4. The outcome is revenue;
+    the covariate is <code>pre_metric_value</code>, measured
+    <em>before</em> randomisation. Compute $\theta$ pooled over both
+    arms, adjust, and compare the raw and CUPED standard errors.
   </p>
-  <div class="transition">→ "When does CUPED work?"</div>
+  <p>
+    Now the honest moment — read the printed numbers: raw effect 3.16
+    (SE 0.164), CUPED effect 3.18 (SE 0.160). "On this data,
+    $\rho = 0.21$, so CUPED removes only about 4% of the variance.
+    The effect estimate barely moves. Teach the disappointment: CUPED
+    is only as good as your pre-metric's correlation. Check $\rho$
+    before you promise anything."
+  </p>
+  <p>
+    Close with the blue theory box: "CUPED is the residual from
+    regressing $Y$ on $X$. The optimal $\theta$ is the regression
+    coefficient — you already knew it from 2.5."
+  </p>
+  <div class="transition">→ "So when does it work?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>CUPED requirements</span></div>
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Requirements</span></div>
   <h3>When does CUPED work?</h3>
   <p>
-    Walk the three requirements. Emphasise the warning about post-experiment
-    covariates: "This is the most common mistake. If you adjust for
-    post-experiment purchase frequency, and the treatment increased purchase
-    frequency, you have just adjusted away the treatment effect."
+    Walk the three requirements. High $\rho$ — the pre-metric must
+    correlate with the post-metric; e-commerce spending sits at
+    0.6–0.8. Pre-experiment only — the covariate must be measured
+    before randomisation. Same users — you need pre and post
+    measurements for the same individuals.
   </p>
-  <div class="transition">→ "Before CUPED, a safety check."</div>
+  <p>
+    Read the amber warning slowly: "<em>Never</em> use a post-experiment
+    covariate. It may be affected by the treatment — adjusting for it
+    removes the very effect you're measuring. This is the CUPED
+    equivalent of peeking: seductive and fatal."
+  </p>
+  <div class="transition">→ "Back to the check that guards everything: SRM."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 7-8</span><span>~5 min</span><span>SRM</span></div>
-  <h3>SRM: Sample Ratio Mismatch</h3>
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>SRM recap</span></div>
+  <h3>SRM: is your experiment broken?</h3>
   <p>
-    "Before you analyse any A/B test, check the split. This takes 30
-    seconds and can save you from a completely invalid analysis."
+    Walk the code: chi-squared the observed arm counts against the
+    <em>designed</em> split — flag at $p &lt; 0.01$. Then walk the
+    table: 5000/5000 is clean ($p = 1.0$), 4900/5100 is borderline
+    ($p = 0.046$ — above the 0.01 flag), 4800/5200 is SRM
+    ($p = 0.00006$ — do not trust results).
   </p>
   <p>
-    Walk the code and the table. "5000/5000 is perfect. 4900/5100 is
-    borderline — probably fine but worth checking. 4800/5200 is a clear
-    SRM — something is broken."
+    Read the footer — it's the point students miss in the exercises:
+    "Our exercise data is <em>designed</em> 40/35/15/10. Test against
+    those shares. A 50/50 test would flag SRM on a perfectly correct
+    split — you'd be rejecting good data."
   </p>
-  <p>
-    Walk the causes on Slide 8. Bot filtering is the most common in
-    Singapore e-commerce.
-  </p>
-  <div class="transition">→ "What if you cannot randomise at all?"</div>
+  <div class="transition">→ "What causes it in the wild?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 9-12</span><span>~12 min</span><span>DiD</span></div>
-  <h3>Difference-in-Differences</h3>
+  <div class="meta"><span class="badge">Slide 9</span><span>~2 min</span><span>SRM causes</span></div>
+  <h3>Common SRM causes</h3>
   <p>
-    <strong>Slide 9:</strong> Frame the problem. "Singapore's cooling measures
-    apply to everyone. You cannot randomise. But you can compare districts
-    that were more affected (central, high-value) to those less affected
-    (suburban, lower-value)."
+    Walk the four causes: bot filtering (bots disproportionately hit
+    one variant), redirect bugs (one variant's page fails to load for
+    some users), population filters applied after randomisation that
+    exclude users unevenly, and bucketing errors — a hash function
+    that isn't uniform.
   </p>
   <p>
-    <strong>Slide 10:</strong> Walk the diagram carefully. "Blue line is
-    control. Green line is treated. Before the policy, both trend upward at
-    similar rates. After the policy, the treated group changes slope — the
-    gap between actual and counterfactual is the ATT."
+    Read the red rule: "Always check SRM <em>before</em> computing
+    treatment effects. It costs one chi-squared test and it invalidates
+    everything downstream."
   </p>
-  <p>
-    <strong>Slide 11:</strong> "The parallel trends assumption is everything.
-    If the control group was going to change slope anyway (for reasons
-    unrelated to the policy), DiD gives you the wrong answer."
-  </p>
-  <p>
-    <strong>Slide 12:</strong> Walk the code. It is just four means and one
-    subtraction.
-  </p>
-  <div class="audience-cue expert">
-    <strong>For experts:</strong> "DiD can be implemented as a regression
-    with group, time, and group-time interaction terms. The interaction
-    coefficient is the ATT. This generalises to multiple periods and
-    multiple groups."
-  </div>
-  <div class="transition">→ "Mistakes."</div>
+  <div class="transition">→ "Now: what if you can't randomise at all?"</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Mistakes</span></div>
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>DiD concept</span></div>
+  <h3>When you cannot randomise</h3>
+  <p>
+    "A policy cannot be randomly assigned — you can't randomly decide
+    which flats get a cooling measure." Exercise 7.4 simulates a
+    <em>hypothetical</em> cooling measure on Central-region flats only;
+    the analysis compares Central (treated) with Non-Central (control),
+    before and after.
+  </p>
+  <p>
+    Walk the ATT formula:
+    $(\bar{Y}_{T,\text{post}} - \bar{Y}_{T,\text{pre}}) -
+    (\bar{Y}_{C,\text{post}} - \bar{Y}_{C,\text{pre}})$.
+    "The first difference removes the group level — Central flats were
+    already pricier. The second removes the time trend — the whole
+    market moved. What remains is the policy."
+  </p>
+  <div class="transition">→ "See it."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>DiD picture</span></div>
+  <h3>DiD: the picture</h3>
+  <p>
+    Walk the figure. Blue is control — drifting gently upward through
+    the policy date. Teal is treated — tracking the control until the
+    dashed amber policy line, then breaking sharply upward. The dashed
+    teal extension is the counterfactual: where treated <em>would have
+    been</em> without the policy. The red bracket between the treated
+    line and its counterfactual is the ATT.
+  </p>
+  <p>
+    "DiD is a bet about that dashed line: that treated would have
+    followed control's trend. Everything hangs on that bet — next
+    slide."
+  </p>
+  <div class="transition">→ "The assumption you cannot test."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Parallel trends</span></div>
+  <h3>The parallel trends assumption</h3>
+  <p>
+    State it plainly: "DiD assumes that <em>without</em> treatment,
+    both groups would have followed the same trend." Walk the three
+    bullets. Check: plot pre-period trends for both groups — they
+    should be parallel. Placebo test: run DiD on a fake treatment date
+    inside the pre-period — it should find no effect. If violated: DiD
+    is biased; consider synthetic control instead.
+  </p>
+  <p>
+    Read the blue box carefully — it's the epistemically honest point:
+    "Parallel trends is untestable — it's a claim about a
+    counterfactual that never happened. Pre-period parallelism is
+    necessary but not sufficient. You gather evidence; you never get
+    proof."
+  </p>
+  <div class="transition">→ "Run it on the simulated panel."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>DiD code</span></div>
+  <h3>DiD in code</h3>
+  <p>
+    Walk the code. <code>simulate_hdb_cooling_panel</code> from the
+    ex_7 helpers builds the simulated panel — the <em>true</em> policy
+    effect is −20,000 dollars, so we can check the method's answer
+    against ground truth. Group by region and period, take the four
+    cell means, and difference twice.
+  </p>
+  <p>
+    Read the output: ATT ≈ −23,208 against a true −20,000. "Off by
+    about 3,200 — that's sampling noise, not bias. The method recovers
+    the truth up to noise, which is all we can ever ask. In the
+    exercise you'll also see the placebo check and what happens when
+    parallel trends breaks."
+  </p>
+  <div class="transition">→ "Three ways these tools get abused."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~2 min</span><span>Mistakes</span></div>
   <h3>Three mistakes to avoid</h3>
-  <p>Walk each one. All three are high-stakes errors that invalidate the entire analysis.</p>
-  <div class="transition">→ "Reflection."</div>
+  <p>
+    Walk the three red boxes. One: post-experiment covariate in CUPED
+    — removes part of the treatment effect; always pre-experiment.
+    Two: skipping the SRM check — a broken experiment gives meaningless
+    p-values; check the split first. Three: DiD without a parallel
+    trends check — divergent pre-trends bias the estimate; always plot
+    and placebo-test.
+  </p>
+  <div class="transition">→ "Recap and bridge to the capstone."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Reflection + bridge</span></div>
+  <div class="meta"><span class="badge">Slide 15</span><span>~2 min</span><span>Recap</span></div>
   <h3>What you can now do</h3>
   <p>
-    Walk the bullets. Bridge to 2.8: "Tomorrow is the capstone. You will
-    choose a project — wine quality, economic indicators, or experiment
-    design — and execute a complete statistical analysis from data to
-    recommendations. You will use FeatureStore for point-in-time
-    correctness and FeatureEngineer to create features automatically."
+    Walk the bullets: derive and implement CUPED, quantify variance
+    reduction from $\rho$, detect SRM, apply DiD when randomisation is
+    impossible, and check parallel trends with placebos. Tease 2.8:
+    "Next lesson is the M2 capstone — an end-to-end statistical
+    analysis of HDB resale with FeatureStore and FeatureEngineer doing
+    the heavy lifting."
   </p>
-  <div class="transition">→ End of Lesson 2.7. Break.</div>
+  <div class="transition">→ End of Lesson 2.7. Ten-minute break.</div>
 </div>
 
 <nav class="lesson-nav">

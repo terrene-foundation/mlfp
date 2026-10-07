@@ -119,12 +119,14 @@ def fit_ols(X: np.ndarray, y: np.ndarray) -> dict[str, Any]:
     sigma_hat = float(np.sqrt(sigma_sq))
     se_beta = np.sqrt(sigma_sq * np.diag(XtX_inv))
     t_stats = beta / se_beta
-    p_values = 2 * (1 - stats.t.cdf(np.abs(t_stats), df=n - k))
+    # sf (survival function) keeps precision in the far tail; 1 - cdf
+    # rounds to exactly 0 once the tail drops below ~1e-16.
+    p_values = 2 * stats.t.sf(np.abs(t_stats), df=n - k)
 
     r2 = 1 - SSR / SST
     adj_r2 = 1 - (1 - r2) * (n - 1) / (n - k)
     f_stat = (SSE / (k - 1)) / (SSR / (n - k))
-    f_p = 1 - stats.f.cdf(f_stat, dfn=k - 1, dfd=n - k)
+    f_p = stats.f.sf(f_stat, dfn=k - 1, dfd=n - k)
 
     return {
         "beta": beta,
@@ -147,6 +149,169 @@ def fit_ols(X: np.ndarray, y: np.ndarray) -> dict[str, Any]:
     }
 
 
+def format_p_value(p: float) -> str:
+    """Render a p-value for printing, including the underflow case.
+
+    Returns e.g. "= 3.20e-05", or "< 1e-300" when the tail probability is
+    smaller than the smallest representable double and evaluates to 0.
+    """
+    return f"= {p:.2e}" if p > 0 else "< 1e-300"
+
+
+# ════════════════════════════════════════════════════════════════════════
+# K-FOLD CROSS-VALIDATION — fold assignment, from scratch
+# ════════════════════════════════════════════════════════════════════════
+
+
+def kfold_indices(
+    n: int, k: int = 5, seed: int = 42
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Return k (train_idx, test_idx) pairs from a seeded shuffle.
+
+    Fold sizes differ by at most one row. The shuffle makes folds
+    exchangeable — required because the HDB frame is sorted by month and
+    an unshuffled split would make the last fold a different time period
+    (that is a DIFFERENT technique: out-of-time validation, ex_8).
+    """
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(n)
+    folds = np.array_split(order, k)
+    pairs: list[tuple[np.ndarray, np.ndarray]] = []
+    for i in range(k):
+        test_idx = folds[i]
+        train_idx = np.concatenate([folds[j] for j in range(k) if j != i])
+        pairs.append((train_idx, test_idx))
+    return pairs
+
+
+def ols_r2_on(
+    X: np.ndarray, y: np.ndarray, train_idx: np.ndarray, test_idx: np.ndarray
+) -> float:
+    """Fit OLS on train_idx, return R² computed on test_idx (out-of-sample)."""
+    beta = np.linalg.lstsq(X[train_idx], y[train_idx], rcond=None)[0]
+    y_true = y[test_idx]
+    y_pred = X[test_idx] @ beta
+    ss_res = float(np.sum((y_true - y_pred) ** 2))
+    ss_tot = float(np.sum((y_true - y_true.mean()) ** 2))
+    return 1.0 - ss_res / ss_tot
+
+
+# ════════════════════════════════════════════════════════════════════════
+# GEO FEATURES — town centroids and haversine distance to the CBD
+# ════════════════════════════════════════════════════════════════════════
+#
+# The resale file has no coordinates, so locations come from a lookup of
+# approximate TOWN-CENTRE coordinates (public geographic facts; teaching
+# proxy — a production pipeline would geocode block + street via OneMap).
+# Distance is to Raffles Place, the centre of the Central Business
+# District.
+
+CBD_RAFFLES_PLACE: tuple[float, float] = (1.2844, 103.8510)
+
+TOWN_CENTROIDS: dict[str, tuple[float, float]] = {
+    "ANG MO KIO": (1.3691, 103.8454),
+    "BEDOK": (1.3236, 103.9273),
+    "BISHAN": (1.3526, 103.8352),
+    "BOON LAY": (1.3366, 103.7039),
+    "BUKIT BATOK": (1.3490, 103.7496),
+    "BUKIT MERAH": (1.2819, 103.8239),
+    "BUKIT PANJANG": (1.3774, 103.7719),
+    "BUKIT TIMAH": (1.3294, 103.8021),
+    "CENTRAL AREA": (1.2903, 103.8520),
+    "CHOA CHU KANG": (1.3840, 103.7470),
+    "CLEMENTI": (1.3162, 103.7649),
+    "GEYLANG": (1.3201, 103.8871),
+    "HOUGANG": (1.3612, 103.8863),
+    "JURONG EAST": (1.3329, 103.7436),
+    "JURONG WEST": (1.3404, 103.7090),
+    "KALLANG/WHAMPOA": (1.3100, 103.8651),
+    "MARINE PARADE": (1.3017, 103.9057),
+    "PASIR RIS": (1.3721, 103.9474),
+    "PUNGGOL": (1.3984, 103.9072),
+    "QUEENSTOWN": (1.2942, 103.7861),
+    "SEMBAWANG": (1.4491, 103.8185),
+    "SENGKANG": (1.3868, 103.8914),
+    "SERANGOON": (1.3554, 103.8679),
+    "TAMPINES": (1.3496, 103.9568),
+    "TOA PAYOH": (1.3343, 103.8563),
+    "WOODLANDS": (1.4382, 103.7890),
+    "YISHUN": (1.4304, 103.8354),
+}
+
+
+def haversine_km(
+    lat1: np.ndarray, lon1: np.ndarray, lat2: float, lon2: float
+) -> np.ndarray:
+    """Great-circle distance in km (mean Earth radius 6371 km)."""
+    r = 6371.0
+    p1, p2 = np.radians(lat1), np.radians(lat2)
+    dp = np.radians(lat2 - lat1)
+    dl = np.radians(lon2 - lon1)
+    a = np.sin(dp / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2) ** 2
+    return 2.0 * r * np.arcsin(np.sqrt(a))
+
+
+def add_geo_features(df: pl.DataFrame) -> pl.DataFrame:
+    """Add town centroid lat/lon and haversine distance-to-CBD (km).
+
+    Rows whose town is missing from the centroid lookup become null and
+    are dropped by the model frame's drop_nulls downstream.
+    """
+    towns = pl.DataFrame(
+        {
+            "town": list(TOWN_CENTROIDS.keys()),
+            "town_lat": [c[0] for c in TOWN_CENTROIDS.values()],
+            "town_lon": [c[1] for c in TOWN_CENTROIDS.values()],
+        }
+    )
+    out = df.join(towns, on="town", how="left")
+    lat = out["town_lat"].to_numpy().astype(np.float64)
+    lon = out["town_lon"].to_numpy().astype(np.float64)
+    dist = haversine_km(lat, lon, *CBD_RAFFLES_PLACE)
+    return out.with_columns(
+        pl.Series("dist_to_cbd_km", dist).cast(pl.Float64)
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════
+# EXPERIMENT TRACKING — kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+
+TRACKER_STORE_URL = (
+    f"sqlite:///{(OUTPUT_DIR / 'experiments.db').resolve().as_posix()}"
+)
+
+
+def track_train_run(
+    experiment: str,
+    run_name: str,
+    params: dict[str, str],
+    metrics: dict[str, float],
+) -> str:
+    """Log one Train-phase run to ExperimentTracker (sync wrapper).
+
+    Returns the run_id. The tracker is closed in a finally block — kailash-ml
+    holds the store connection open until close() is called.
+    """
+    import asyncio
+
+    async def _log() -> str:
+        from kailash_ml import ExperimentTracker
+
+        tracker = await ExperimentTracker.create(store_url=TRACKER_STORE_URL)
+        try:
+            async with tracker.track(
+                experiment=experiment, run_name=run_name
+            ) as run:
+                await run.log_params(params)
+                await run.log_metrics(metrics)
+                return run.run_id
+        finally:
+            await tracker.close()
+
+    return asyncio.run(_log())
+
+
 def print_coef_table(names: list[str], fit: dict[str, Any]) -> None:
     """Print coefficient / SE / t / p table for an OLS fit."""
     beta = fit["beta"]
@@ -166,7 +331,7 @@ def print_coef_table(names: list[str], fit: dict[str, Any]) -> None:
             sig = "ns"
         print(
             f"{name:<25} {beta[i]:>14,.2f} {se[i]:>12,.2f} "
-            f"{t[i]:>8.2f} {p[i]:>10.2e} {sig:>4}"
+            f"{t[i]:>8.2f} {(f'{p[i]:.2e}' if p[i] > 0 else '<1e-300'):>10} {sig:>4}"
         )
 
 
@@ -205,7 +370,7 @@ def breusch_pagan(residuals: np.ndarray, X_raw: np.ndarray) -> tuple[float, floa
     sst = np.sum((e_sq - e_sq.mean()) ** 2)
     r2 = 1 - sse / sst
     bp_stat = n * r2
-    p = 1 - stats.chi2.cdf(bp_stat, df=X_raw.shape[1])
+    p = stats.chi2.sf(bp_stat, df=X_raw.shape[1])
     return float(bp_stat), float(p)
 
 

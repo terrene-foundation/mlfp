@@ -18,6 +18,7 @@
   </style>
 </head>
 <body>
+
 <nav class="top-nav">
   <span class="brand">MLFP — Module 3 — Speaker Notes</span>
   <span>
@@ -31,109 +32,252 @@
 
 <h1 class="lesson-title">
   <span class="lesson-number">Speaker Notes — Lesson 3.8</span>
-  Production Pipeline — DataFlow, Drift, and Deployment
+  Production Pipeline
 </h1>
 
-<p class="lead">Total time: ~60 minutes &nbsp;·&nbsp; 13 slides &nbsp;·&nbsp; ~4.5 min per slide average</p>
+<p class="lead">
+  Total time: ~60 minutes &nbsp;·&nbsp; 11 slides &nbsp;·&nbsp; ~5 min per slide average
+</p>
 
 <p>
-  This is the final lesson of the Foundation Certificate. It carries
-  emotional weight — learners have been building toward this for 24
-  lessons. Make the production pipeline feel like the culmination it is.
-  Every engine from M1-M3 appears in the pipeline. End with a celebration
-  of how far they have come.
+  The M3 capstone: from training to monitored production. The centre of
+  gravity is the architecture diagram on slide 2 — everything else is a
+  component of it. The operational facts students must leave with:
+  DataFlow needs an absolute SQLite path, DriftMonitor needs its
+  <em>own</em> database file, the alert line is PSI &gt; 0.2 or KS
+  p &lt; 0.001 (Bonferroni-tightened for 33 features), and rollback is
+  <code>promote_model</code> re-walking archived → staging →
+  production.
 </p>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
   <h3>Production Pipeline</h3>
-  <p>"This is the last lesson of the Foundation Certificate. By the end of today you will have deployed a model to a database, set up drift monitoring, added prediction intervals, and generated a Model Card. This is what production ML looks like."</p>
-  <div class="transition">→ "What production means."</div>
+  <p>
+    Open: "3.7 versioned the model. Today it goes to work — serving
+    predictions, persisting everything, monitored for drift, with
+    uncertainty attached and a rollback plan. Capstone: from training
+    to monitored production."
+  </p>
+  <div class="transition">→ "The whole system on one slide."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Pipeline overview</span></div>
+  <div class="meta"><span class="badge">Slide 2</span><span>~6 min</span><span>Architecture</span></div>
   <h3>What production means</h3>
-  <p>Walk the pipeline diagram. "Train (3.7), persist (DataFlow), calibrate (conformal), register (ModelRegistry), monitor (DriftMonitor), document (Model Card). Each step uses an engine you have seen before."</p>
-  <div class="transition">→ "DataFlow."</div>
+  <p>
+    Walk the diagram in zones. Left — the training pipeline: Train
+    (XGBoost/LightGBM, CV + early stopping) and Calibrate (Platt or
+    isotonic, plus conformal). Centre — the ModelRegistry holding
+    v1 (archived), v2 (staging), v3 (production); the artifact flows
+    in from training, promotion flows out. Right — Inference:
+    <code>POST /predict</code> returning a probability <em>and a
+    prediction set</em> — that's conformal, coming later.
+  </p>
+  <p>
+    Below inference, the DriftMonitor watches every batch: PSI per
+    feature, KS test, <code>check_drift()</code> per batch. Follow the
+    dashed blue feedback loop all the way left: "Alert at PSI &gt;
+    0.2 or KS p &lt; 0.001 → retrain. The system is a loop, not a
+    line."
+  </p>
+  <p>
+    Then the foundation: "Everything persists through DataFlow —
+    training data and features, model artifacts and signatures,
+    predictions and drift history. And the Model Card rides along:
+    metrics, fairness, limits. If it isn't persisted, it didn't
+    happen."
+  </p>
+  <div class="transition">→ "Component one: the persistence layer."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 3-4</span><span>~6 min</span><span>DataFlow</span></div>
+  <div class="meta"><span class="badge">Slide 3</span><span>~5 min</span><span>DataFlow</span></div>
   <h3>DataFlow: zero-config persistence</h3>
-  <p><strong>Slide 3:</strong> Walk the model definition and create operation. "Decorate a class with @db.model and DataFlow generates the database table and CRUD operations. No SQL, no ORM configuration."</p>
-  <p><strong>Slide 4:</strong> Walk the read, update, delete operations. "This is how you persist predictions in production. Every prediction is timestamped and versioned so you can audit later."</p>
-  <div class="audience-cue beginner">
-    <strong>Note on async:</strong> "The <code>await</code> keyword means the operation runs asynchronously — the program can do other work while waiting for the database. For now, just use it; we will explain async fully in the Advanced Certificate."
-  </div>
-  <div class="transition">→ "Drift monitoring."</div>
+  <p>
+    Walk the code, starting with the comment that saves an hour of
+    debugging: "DataFlow needs an <em>absolute</em> sqlite path — a
+    relative URL gets mangled into a path at the filesystem root and
+    fails with 'unable to open database file'. The
+    <code>Path(...).resolve()</code> in the f-string is not
+    decorative."
+  </p>
+  <p>
+    Then the model: decorate a plain class with
+    <code>@db.model</code>, <code>initialize()</code>, and CRUD is
+    free — <code>express.create</code> writes a prediction row with
+    customer, probability, and model version. "Define a model, get
+    CRUD for free. No SQL."
+  </p>
+  <div class="transition">→ "The rest of the CRUD."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 5-7</span><span>~10 min</span><span>DriftMonitor</span></div>
-  <h3>DriftMonitor: PSI and KS</h3>
-  <p><strong>Slide 5:</strong> Walk the PSI formula. "PSI bins the feature values and compares the proportions between reference and current. A PSI above 0.25 means the distributions have shifted significantly."</p>
-  <p><strong>Slide 6:</strong> Walk the KS test diagram. "The KS test finds the maximum vertical distance between two CDFs. The further apart they are, the more the distribution has shifted."</p>
-  <p><strong>Slide 7:</strong> Walk the code. "You define a DriftSpec with features and thresholds, create a DriftMonitor, and call check(). The report tells you which features have drifted and by how much."</p>
-  <div class="audience-cue expert">
-    <strong>For experts:</strong> "PSI is symmetric and always non-negative. KS gives a p-value but can be overpowered on large datasets. In practice, use both: PSI for the magnitude of shift, KS for statistical significance."
-  </div>
-  <div class="transition">→ "Prediction uncertainty."</div>
+  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>DataFlow ops</span></div>
+  <h3>DataFlow operations</h3>
+  <p>
+    Walk the three operations. Read — <code>express.list</code> with a
+    filter for high-risk predictions. Update — by primary key.
+    Delete — same shape. "Same API for training frames, predictions,
+    drift reports — one persistence pattern for the whole system."
+  </p>
+  <p>
+    Read the green box: "<code>express</code> is the simple API. Each
+    <code>@db.model</code> also generates CRUD workflow nodes for
+    WorkflowBuilder — the persistence layer plugs straight into 3.7's
+    DAGs with no hand-written SQL."
+  </p>
+  <div class="transition">→ "Component two: drift. PSI first."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>Conformal prediction</span></div>
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>PSI</span></div>
+  <h3>DriftMonitor: PSI</h3>
+  <p>
+    Walk the formula: bin the reference distribution, then sum
+    $(p_i - q_i)\ln(p_i/q_i)$ over the bins — reference $p$, current
+    $q$. "It's a symmetric-ish divergence between the two
+    histograms: zero when identical, growing as they separate."
+  </p>
+  <p>
+    Walk the action table: below 0.1, no shift — continue. 0.1 to
+    0.25, moderate — investigate. Above 0.25, significant — retrain.
+    "Print this table and tape it to the monitoring dashboard. The
+    number without the action is trivia; the action is the system."
+  </p>
+  <div class="transition">→ "The second test."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>KS test</span></div>
+  <h3>DriftMonitor: KS test</h3>
+  <p>
+    Walk the figure: reference and current distributions, and the
+    amber gap at the point of maximum separation — the KS statistic.
+    "PSI bins the distributions and compares; KS compares their
+    cumulative curves directly and comes with a p-value. Two lenses
+    on the same question: has the data moved?"
+  </p>
+  <div class="transition">→ "Wire it up."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>DriftMonitor code</span></div>
+  <h3>DriftMonitor code</h3>
+  <p>
+    Walk the code, comment first: "DriftMonitor needs its <em>own</em>
+    SQLite file — sharing the registry's database fails with a
+    missing-column error. One store per concern."
+  </p>
+  <p>
+    Then the thresholds: <code>psi_threshold=0.2</code> — inside the
+    'investigate' band from the table — and
+    <code>ks_threshold=0.001</code>. "Why 0.001 and not 0.05?
+    Bonferroni from 2.3: we're testing 33 features at once, so the
+    per-feature alpha is tightened to keep the family-wise false-alarm
+    rate sane."
+  </p>
+  <p>
+    Then the flow: <code>set_reference_data</code> once with the
+    training frame, <code>check_drift</code> per batch, iterate the
+    flagged features. "Reference is the training distribution — the
+    thing the model was promised the world would look like."
+  </p>
+  <div class="transition">→ "Component three: honest uncertainty."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>Conformal</span></div>
   <h3>Conformal prediction</h3>
-  <p>"Most models give a point prediction: 'the price is $450,000'. Conformal prediction adds an interval: '$420,000 to $480,000 with 90% coverage'. The interval is distribution-free — no Normal assumption, no parametric model."</p>
-  <p>Walk the code. "Compute residuals on a calibration set. Take the 90th percentile. That is your interval width. Three lines of code."</p>
-  <div class="audience-cue beginner">
-    <strong>If beginners are confused by 'distribution-free':</strong> "It means the interval works regardless of whether your errors are Normal, skewed, or any other shape. That is rare and powerful."
-  </div>
-  <div class="transition">→ "Model Cards."</div>
+  <p>
+    Walk the code — split conformal for a classifier. On the
+    calibration rows, compute the nonconformity score: one minus the
+    probability of the <em>true</em> class. Take the
+    $\lceil(n+1)(1-\alpha)\rceil/n$ quantile as $\hat{q}$. A new
+    prediction then includes every class whose score fits under
+    $\hat{q}$ — when both classes qualify, the set is
+    {repay, default} and the case routes to a human.
+  </p>
+  <p>
+    Read the blue box carefully — two conditions and one caveat:
+    "No model assumptions, but calibration and new data must be
+    <em>exchangeable</em> — drift breaks the guarantee, which is
+    exactly why the drift monitor exists. And coverage ≥ 1 − α is
+    <em>marginal</em>: 90% over applicants on average, not guaranteed
+    inside each sub-group. 3.6's fairness lens applies here too."
+  </p>
+  <div class="transition">→ "Component four: the document."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Model Card</span></div>
+  <div class="meta"><span class="badge">Slide 9</span><span>~5 min</span><span>Model Card</span></div>
   <h3>Model Card template</h3>
-  <p>Walk the table. "Every section serves a different audience. Model details for engineers. Intended use for product managers. Fairness for compliance. Limitations for everyone."</p>
-  <div class="transition">→ "Mistakes."</div>
+  <p>
+    Walk the table. Model details: name, version, type, date.
+    Intended use: primary case and out-of-scope. Training data:
+    source, size, date range. Evaluation: AUC, AP, Brier, conformal
+    coverage — and the decision threshold, 0.130, documented as
+    $c_{FP}/(c_{FP} + c_{FN})$ so nobody 'corrects' it back to 0.5.
+    Fairness: DI and TPR/FPR per group — <em>measured, not
+    asserted</em>, from 3.6's audit. Limitations: known failure
+    modes. Monitoring: drift thresholds and retrain triggers.
+  </p>
+  <p>
+    Read the footer: "Exercises 8.4–8.5: rollback is
+    <code>promote_model</code> re-walking archived → staging →
+    production — there is no magic revert button, only the lifecycle
+    run in reverse. And production readiness is 11 gates computed
+    from evidence plus a human sign-off — the same lesson as 3.6's
+    age-band fail: automation surfaces, humans decide."
+  </p>
+  <div class="transition">→ "Three mistakes."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Mistakes</span></div>
-  <h3>Three mistakes</h3>
-  <p>Walk each. Mistake 1 is the most important: "Silent degradation is the number one way production ML fails. Without drift monitoring, your model could be wrong for weeks before anyone notices."</p>
-  <div class="transition">→ "Module 3 complete."</div>
+  <h3>Three mistakes to avoid</h3>
+  <p>
+    Walk the three red boxes. One: no drift monitoring — silent
+    degradation is the number-one production ML failure; the model
+    doesn't crash, it just gets politely worse. Two: PSI on unused
+    features — monitor the features the model actually consumes;
+    alarm fatigue from irrelevant features buries the real drift.
+    Three: point predictions without uncertainty — conformal adds
+    calibrated prediction sets almost for free.
+  </p>
+  <div class="transition">→ "Close out the module."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 11</span><span>~5 min</span><span>Reflection + celebration</span></div>
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Module close</span></div>
   <h3>Module 3 complete</h3>
   <p>
-    Walk the lesson list. Pause at each title. Let the weight of 24
-    lessons land.
+    Walk the list: features, bias-variance, the zoo, boosting,
+    evaluation, interpretability and fairness, orchestration, and
+    today's production pipeline. "You now own the full supervised
+    loop — from a messy CSV to a monitored, versioned, reversible
+    deployment."
   </p>
   <p>
-    "You started this course in Lesson 1.1 typing <code>city = 'Singapore'</code>.
-    Today you deployed a credit scoring model to a database with drift
-    monitoring, conformal prediction intervals, and a Model Card. That is
-    the entire supervised ML pipeline from zero to production."
+    Read the closing box: "Module 4 finishes the Foundation
+    Certificate — clustering, mixture models, dimensionality
+    reduction, anomaly detection, association rules, topic models,
+    recommenders, and a first look at neural networks. Then the
+    Advanced Certificate: deep learning and vision in M5, LLMs and
+    agents in M6."
   </p>
-  <p>
-    "The Foundation Certificate is complete. If you stop here, you have
-    a working ML engineering skillset. The Advanced Certificate (Modules
-    4-6) adds unsupervised learning, deep learning, NLP, LLMs, RL, and
-    AI governance."
-  </p>
-  <p>
-    Take time for questions and celebration. This is a milestone.
-  </p>
-  <div class="transition">→ End of Module 3 and the Foundation Certificate.</div>
+  <div class="transition">→ End of Module 3. Well done.</div>
 </div>
 
 <nav class="lesson-nav">
-  <a href="../07/notes.html" class="prev"><span class="label">← Previous</span>3.7 Speaker Notes</a>
-  <a href="../../index.html" class="next"><span class="label">Next →</span>Module 3 Index</a>
+  <a href="../07/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    3.7 Speaker Notes
+  </a>
+  <a href="../../index.html" class="next">
+    <span class="label">Module →</span>
+    Module 3 Index
+  </a>
 </nav>
 
 </main>

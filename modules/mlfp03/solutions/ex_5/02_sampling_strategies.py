@@ -9,9 +9,11 @@
 #   - How SMOTE generates synthetic minority samples (k-NN interpolation)
 #   - The three failure modes of SMOTE (Lipschitz, noise, dimensionality)
 #   - Cost-sensitive learning via scale_pos_weight and sample weights
-#   - Why cost-sensitive learning dominates SMOTE for tabular finance data
+#   - How each strategy changes ranking (AUC-PR) AND calibration (Brier)
+#   - How to catch SMOTE fabricating impossible rows in your own data
 #
-# PREREQUISITES: 01_metrics_and_baseline.py (saves the baseline)
+# PREREQUISITES: 01_metrics_and_baseline.py (saves the baseline — this
+#                file reads it back for the calibration comparison)
 # ESTIMATED TIME: ~30 min
 #
 # 5-PHASE STRUCTURE:
@@ -19,7 +21,7 @@
 #   Build    — imblearn SMOTE pipeline + LightGBM with sample_weight
 #   Train    — fit both strategies on the same splits
 #   Visualise — side-by-side metrics table + class-balance diagram
-#   Apply    — Singapore fraud scenario where SMOTE fails in production
+#   Apply    — an illustrative card-fraud scenario where SMOTE misleads
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -35,6 +37,7 @@ from shared.mlfp03.ex_5 import (
     DEFAULT_COSTS,
     OUTPUT_DIR,
     load_credit_splits,
+    load_strategy_proba,
     metrics_row,
     print_metrics_table,
     save_strategy_proba,
@@ -72,18 +75,21 @@ load_dotenv()
 #     "Between two neighbours" loses meaning. The interpolated row is
 #     just a random blob in feature space.
 #
-# EMPIRICAL RECORD: SMOTE is cited in 92% of imbalanced-learning papers
-# but appears in <10% of production deployments (Fernandez et al. 2018).
-# The reason: calibration almost always gets WORSE, even when AUC-PR
-# stays flat. For credit scoring, that's disqualifying.
+# SMOTE is hugely popular in the research literature (Fernández et al.,
+# 2018, review its first 15 years) — but by construction it trains the
+# model on a 50/50 world, so its raw probabilities no longer describe the
+# real ~13% default rate unless you correct them afterwards.
 #
 # COST-SENSITIVE ALTERNATIVE: instead of faking new data, we tell the
 # loss function how much each mistake costs. LightGBM supports two
-# equivalent mechanisms:
+# mechanisms:
 #   - `scale_pos_weight = n_neg / n_pos` (class-balanced)
 #   - `sample_weight = cost_matrix[y]`   (from the business cost matrix)
-# The second form is STRICTLY more general: you can encode any
-# asymmetric cost, not just the class ratio.
+# The second form is more general: you can encode any asymmetric cost,
+# not just the class ratio. BUT reweighting has a price too: up-weighting
+# defaulters tells the model defaults are more common than they are, so
+# it OVER-predicts default probability. Better recall at 0.5, worse
+# calibration — which 5.5 repairs with Platt/isotonic calibration.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -193,7 +199,7 @@ fig.add_trace(
     )
 )
 fig.update_layout(
-    title="Sampling Strategy Comparison: AUC-PR vs Brier (lower Brier = better calibration)",
+    title="Sampling Strategy Comparison: AUC-PR (higher = better ranking) vs Brier (lower = better probabilities)",
     barmode="group",
     yaxis_title="Score",
     height=450,
@@ -241,53 +247,69 @@ viz_path2 = OUTPUT_DIR / "ex5_02_smote_scatter.html"
 fig2.write_html(str(viz_path2))
 print(f"  Saved: {viz_path2}")
 
-# INTERPRETATION: Look at the Brier column. Cost-sensitive usually keeps
-# Brier close to the baseline; SMOTE frequently makes Brier WORSE even
-# when AUC-PR is unchanged. SMOTE bought ranking improvements with
-# calibration damage — and credit scoring cares about calibration because
-# we price loans from the predicted probability.
+# ── Calibration at a glance: does each strategy's AVERAGE predicted
+# probability still match the real default rate? (A calibrated model's
+# mean prediction ≈ the base rate.)
+y_proba_base = load_strategy_proba("baseline")
+calib_rows = [("Baseline (01)", y_proba_base)] + [
+    (r["strategy"], p)
+    for r, p in zip(rows, [y_proba_smote, y_proba_cost_a, y_proba_cost_b])
+]
+print(f"\n  Real default rate in test: {y_test.mean():.3f}")
+print(f"  {'Strategy':<24} {'mean p':>8} {'Brier':>8} {'AUC-PR':>8}")
+for name, p in calib_rows:
+    r = metrics_row(name, y_test, p)
+    print(f"  {name:<24} {p.mean():>8.3f} {r['brier']:>8.4f} {r['auc_pr']:>8.4f}")
+
+# ── SMOTE forensics: can the model tell a synthetic row from a real one?
+# 22 of our columns only ever hold whole numbers (counts, ordinal-encoded
+# categories). SMOTE interpolates between two rows, so it writes values
+# like gender = 0.37 that no real applicant can have.
+integer_cols = [j for j in range(X_train.shape[1]) if np.all(np.mod(X_train[:, j], 1) == 0)]
+X_synthetic = X_smote[len(X_train) :]
+impossible_share = float(np.any(np.mod(X_synthetic[:, integer_cols], 1) != 0, axis=1).mean())
+p_synthetic = float(smote_model.predict_proba(X_synthetic[:2000])[:, 1].mean())
+p_real_defaulters = float(smote_model.predict_proba(X_train[y_train == 1][:2000])[:, 1].mean())
+print(f"\n  Synthetic rows with an impossible fractional value: {impossible_share:.1%}")
+print(f"  SMOTE model's mean P(default) on synthetic rows:   {p_synthetic:.3f}")
+print(f"  SMOTE model's mean P(default) on REAL defaulters:  {p_real_defaulters:.3f}")
+# INTERPRETATION: read the two tables above. If the synthetic rows score
+# far higher than real defaulters, the model has partly learned to spot
+# SMOTE's fingerprints (fractional category codes) rather than default
+# risk. If the weighted models' mean p sits well above the real default
+# rate, reweighting has inflated the probabilities — fine for ranking,
+# wrong for pricing until recalibrated.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — UOB card-fraud detection (why SMOTE fails in production)
+# APPLY — Card-fraud detection (illustrative): where SMOTE misleads
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: UOB card-issuing runs a real-time fraud filter on every
-# Singapore tap/swipe. ~0.2% of transactions are fraudulent. A naive
-# data-scientist team tries SMOTE to fix imbalance and ships it.
+# SCENARIO (illustrative): a Singapore card issuer scores every tap/swipe
+# in real time; ~0.2% of transactions are fraudulent. A team "fixes" the
+# imbalance with SMOTE and ships the model.
 #
-# What happens in the first month:
-#   - AUC-ROC on the offline test: 0.96 (looks great!)
-#   - Online precision: collapses from 40% to 8%
-#   - Customer complaints: +340% (cards declining on real purchases)
-#   - Synthetic row leakage: SMOTE generated "fake fraud" rows in the
-#     high-ticket luxury segment. The model now blocks every genuine
-#     S$5,000 Chanel purchase at Marina Bay Sands.
-#   - Root cause: in 45-dim feature space, SMOTE's nearest-neighbour
-#     interpolation created samples that don't correspond to any real
-#     cardholder behaviour. The bank rolled back the model within 10
-#     days.
+# The forensics you just ran show the risks in miniature:
+#   - Offline metrics can look fine while the model has partly learned
+#     SMOTE's fingerprints (impossible interpolated values) instead of
+#     fraud behaviour — patterns that never occur in live traffic.
+#   - The model was trained on a 50/50 world, so its scores cannot be
+#     read as fraud probabilities without recalibration.
+#   - Every synthetic row is a "customer" an auditor cannot trace back to
+#     a real transaction.
 #
-# What the cost-sensitive alternative delivers:
-#   - Same AUC-PR as SMOTE (within 0.005)
-#   - Brier 2-3x better (proper probability calibration)
-#   - Per-transaction fraud probability that can be thresholded by
-#     merchant category without re-training
-#   - No synthetic rows to audit or explain to MAS
-#
-# BUSINESS IMPACT (UOB 2023 annual report, Singapore card volume
-# ~S$28B/year): a 2pp lift in fraud capture at no precision cost is
-# roughly S$14M/year in avoided chargebacks. A precision COLLAPSE,
-# on the other hand, is an unquantified brand risk that lands the CRO
-# on a panel at the Business Times banking summit for all the wrong
-# reasons. Cost-sensitive learning is almost always the correct
-# choice for production financial ML.
+# Class weighting avoids the fabricated rows (nothing to audit) but, as
+# the mean-p column shows, inflates the probabilities: the issuer would
+# still need 5.4 (re-choose the threshold) and 5.5 (recalibrate) before
+# using the scores to set per-merchant decline rules.
 
-worst_brier = max(r["brier"] for r in rows)
-best_brier = min(r["brier"] for r in rows)
-print("\n  Singapore card-fraud implication:")
-print(f"    Brier gap between best/worst strategy: {worst_brier - best_brier:+.4f}")
-print("    Cost-sensitive delivered better-calibrated probabilities")
-print("    — required for per-merchant thresholding without re-training.")
+best = min(rows, key=lambda r: r["brier"])
+base_brier = metrics_row("baseline", y_test, y_proba_base)["brier"]
+print("\n  Card-fraud implication (computed from the tables above):")
+print(f"    Baseline Brier (no correction):      {base_brier:.4f}")
+for r in rows:
+    verdict = "better" if r["brier"] < base_brier else "worse"
+    print(f"    {r['strategy']:<24} Brier {r['brier']:.4f} ({verdict} than baseline)")
+print(f"    Best-calibrated imbalance strategy:  {best['strategy']}")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -302,12 +324,16 @@ print(
   [x] Trained cost-sensitive LightGBM via scale_pos_weight (class-balanced)
   [x] Trained cost-sensitive LightGBM via explicit sample_weight (matrix)
   [x] Compared all three strategies on the complete metrics taxonomy
-  [x] Saw why cost-sensitive beats SMOTE on calibration (Brier)
-  [x] Traced SMOTE's three failure modes to a real UOB card-fraud story
+  [x] Measured how each strategy moves ranking (AUC-PR) AND calibration
+      (Brier, mean predicted probability vs the real default rate)
+  [x] Caught SMOTE fabricating impossible rows in this very dataset
+  [x] Mapped SMOTE's failure modes onto an illustrative card-fraud case
 
-  KEY INSIGHT: Don't fake data. Change the loss function. Cost-sensitive
-  learning is the production-grade imbalance fix. SMOTE is a paper-grade
-  fix that almost always damages calibration.
+  KEY INSIGHT: Neither trick gives you probabilities you can price from.
+  SMOTE fabricates rows (and here the model learned their fingerprints);
+  class weighting fabricates nothing but inflates the scores. Weighting
+  is the auditable choice — then re-choose the threshold (5.4) and
+  recalibrate (5.5).
 
   Next: 03_loss_functions.py — focal loss goes further, down-weighting
   easy examples automatically with a single gamma parameter.

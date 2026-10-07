@@ -6,43 +6,47 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Wire kailash-ml DriftMonitor against a production traffic sample
+#   - Wire kailash-ml DriftMonitor against in-distribution AND shifted
+#     production traffic, and measure PSI for each
 #   - Read PSI thresholds: < 0.1 no drift, 0.1-0.2 moderate, > 0.2 alert
 #   - Debug an agent call by extracting input/output/governance traces
-#   - Run an automated test harness across several governance paths
-#   - Apply drift monitoring to a Singapore e-commerce fraud scenario
+#   - Run a test harness whose tests can FAIL, including deny cases
+#   - Apply drift monitoring to a regional e-commerce dispute scenario
 #
 # PREREQUISITES: Exercises 8.1-8.3
 # ESTIMATED TIME: ~30 min
 #
 # TASKS:
 #   1. Rebuild the governed agent stack via build_capstone_stack(engine)
-#   2. Configure DriftMonitor with MMLU as the reference distribution
+#   2. Configure DriftMonitor with validated QA traffic as the reference
 #   3. Debug a single governed call (input -> output -> governance trace)
-#   4. Run the automated test harness (5 tests)
-#   5. Visualise the PSI dashboard and apply to Shopee-scale fraud
+#   4. Run the automated test harness (5 tests, allow AND deny paths)
+#   5. Visualise measured PSI under a traffic shift and apply it
 #
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import os
-import time
 
 import matplotlib.pyplot as plt
 import polars as pl
 from kailash.db.connection import ConnectionManager
 from kailash_ml import DriftMonitor
-from pact import GovernanceEngine, load_org_yaml
 
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, preflight_ollama
+from shared.mlfp06.ex_6 import load_squad_corpus
 from shared.mlfp06.ex_8 import (
     OUTPUT_DIR,
     build_capstone_stack,
+    compile_capstone_governance,
     handle_qa,
     load_mmlu_eval,
     run_async,
-    write_org_yaml,
 )
+
+# Tasks 3-4 make real LLM calls; fail loudly now if Ollama is not running.
+preflight_ollama(required_models=[DEFAULT_CHAT_MODEL])
 
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Drift and Observability
@@ -69,10 +73,9 @@ from shared.mlfp06.ex_8 import (
 
 eval_data = load_mmlu_eval(n_rows=100)
 
-org_path = write_org_yaml()
-loaded = load_org_yaml(org_path)
-governance_engine = GovernanceEngine(loaded.org_definition)
+governance_engine, _loaded = compile_capstone_governance()
 agents_by_role, tiers = build_capstone_stack(governance_engine)
+tier_by_role = {t.role: t for t in tiers}
 
 print("Governed stack rebuilt:")
 for tier in tiers:
@@ -83,81 +86,102 @@ for tier in tiers:
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────────
 assert len(agents_by_role) == 3, "Task 1: governed stack should rebuild"
-print("\u2713 Checkpoint 1 passed — governed stack rebuilt\n")
+print("✓ Checkpoint 1 passed — governed stack rebuilt\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Configure DriftMonitor
+# TASK 2 — Configure DriftMonitor and measure PSI on real traffic
 # ════════════════════════════════════════════════════════════════════════
-
-
+#
 # kailash-ml's DriftMonitor persists reference distributions and drift
-# reports through a `ConnectionManager`. We back it with a local SQLite
-# file so this exercise runs offline without Postgres. The DB URL matches
-# the repo-local data cache used elsewhere in MLFP06.
+# reports through a `ConnectionManager` (a local SQLite file here).
+#
+# Feature: question length in characters — numeric, cheap, and it moves
+# when the population of users or question types changes.
+#   reference       = SQuAD 2.0 questions 0-149   (the QA traffic the
+#                     model was validated on: short factual questions)
+#   in-distribution = SQuAD 2.0 questions 150-299 (same population, unseen)
+#   shifted         = the 100 MMLU exam questions (a different population:
+#                     long multiple-choice questions with four options)
+# Comparing both samples against the same reference is the test that the
+# monitor can tell "same" from "shifted".
+
 _DRIFT_DB_PATH = os.path.abspath("data/mlfp06/ex8_drift.db")
 os.makedirs(os.path.dirname(_DRIFT_DB_PATH), exist_ok=True)
-# Clear main DB + any stale WAL/SHM side files from a previous run so
-# SQLite starts with a clean journal. Leftover .db-wal / .db-shm files
-# can surface as "disk I/O error" on re-run.
+# Start from a clean database (stale -wal/-shm files cause I/O errors).
 for _sfx in ("", "-wal", "-shm"):
     _p = _DRIFT_DB_PATH + _sfx
     if os.path.exists(_p):
         os.remove(_p)
 
-# The reference distribution is a numeric feature the PSI calculator can
-# bin. We use question length (characters) as a stable proxy for the
-# MMLU instruction distribution — it is numeric, stable, and correlates
-# with subject-area complexity.
-reference_df = eval_data.with_columns(
-    pl.col("instruction").str.len_chars().cast(pl.Float64).alias("question_length")
-).select(["question_length"])
+
+def question_length(df: pl.DataFrame, col: str) -> pl.DataFrame:
+    return df.select(pl.col(col).str.len_chars().cast(pl.Float64).alias("question_length"))
 
 
-async def setup_drift_monitoring() -> tuple[DriftMonitor, object]:
+squad = load_squad_corpus()
+reference_df = question_length(squad.head(150), "question")
+in_dist_df = question_length(squad.tail(150), "question")
+shifted_df = question_length(eval_data, "instruction")
+
+# A traffic shift: the share of exam-style questions in a window of 150
+# requests grows from 0% to 60%. The mix is constructed; every PSI below
+# is MEASURED by DriftMonitor on the real rows in each window.
+WINDOW = 150
+SHIFT_FRACTIONS = [0.0, 0.05, 0.1, 0.2, 0.4, 0.6]
+windows = [
+    pl.concat(
+        [in_dist_df.head(WINDOW - int(WINDOW * f)), shifted_df.head(int(WINDOW * f))]
+    )
+    for f in SHIFT_FRACTIONS
+]
+
+
+async def measure_drift() -> tuple[dict, list[float]]:
     conn = ConnectionManager(f"sqlite:///{_DRIFT_DB_PATH}")
     await conn.initialize()
-    monitor = DriftMonitor(conn, tenant_id="mlfp_demo", psi_threshold=0.2)
-
-    # Store the reference distribution keyed by model name.
-    await monitor.set_reference_data(
-        "capstone_qa_model", reference_df, ["question_length"]
-    )
-
-    # Production sample — first 50 rows with their question lengths.
-    production_df = reference_df.head(50)
-    report = await monitor.check_drift("capstone_qa_model", production_df)
-
-    psi = report.feature_results[0].psi if report.feature_results else 0.0
-    print("DriftMonitor report:")
-    print("  Model:              capstone_qa_model")
-    print(f"  Reference samples:  {reference_df.height}")
-    print(f"  Production samples: {production_df.height}")
-    print(f"  Drift detected:     {report.overall_drift_detected}")
-    print(f"  Overall severity:   {report.overall_severity}")
-    print(f"  PSI (question_len): {psi:.4f}")
-    print(
-        "  Status:             "
-        + (
-            "ALERT — retrain needed"
-            if report.overall_drift_detected
-            else "OK — no drift"
+    try:
+        monitor = DriftMonitor(conn, tenant_id="mlfp_demo", psi_threshold=0.2)
+        await monitor.set_reference_data(
+            "capstone_qa_model", reference_df, ["question_length"]
         )
-    )
-    # Close the SQLite pool inside the loop so the finalizer does not
-    # fire against a closed event loop on interpreter shutdown — this
-    # was hanging the script for ~minutes at exit before the explicit
-    # close was added.
-    await conn.close()
-    return monitor, report
+        reports = {}
+        for name, prod in [("in_distribution", in_dist_df), ("shifted", shifted_df)]:
+            rep = await monitor.check_drift("capstone_qa_model", prod)
+            reports[name] = rep
+            print(
+                f"  {name:<16} n={prod.height}  PSI={rep.feature_results[0].psi:.3f}  "
+                f"severity={rep.overall_severity}  drift={rep.overall_drift_detected}"
+            )
+        window_psi = []
+        for frac, win in zip(SHIFT_FRACTIONS, windows):
+            rep = await monitor.check_drift("capstone_qa_model", win)
+            window_psi.append(rep.feature_results[0].psi)
+        return reports, window_psi
+    finally:
+        # Close inside the loop so the pool finaliser does not hang at exit.
+        await conn.close()
 
 
-monitor, drift_report = run_async(setup_drift_monitoring())
+print("DriftMonitor reports (reference = SQuAD questions 0-149):")
+drift_reports, window_psi = run_async(measure_drift())
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
-assert monitor is not None, "Task 2: DriftMonitor should be created"
-assert drift_report is not None, "Task 2: drift report should be produced"
-print("\u2713 Checkpoint 2 passed — DriftMonitor wired\n")
+psi_in = drift_reports["in_distribution"].feature_results[0].psi
+psi_shift = drift_reports["shifted"].feature_results[0].psi
+assert drift_reports["shifted"].overall_drift_detected, "Task 2: shift must alert"
+assert not drift_reports["in_distribution"].overall_drift_detected, (
+    "Task 2: same-population traffic must not alert"
+)
+assert psi_shift > psi_in, "Task 2: shifted traffic must score higher PSI"
+print(
+    f"✓ Checkpoint 2 passed — PSI {psi_in:.3f} (same population) vs "
+    f"{psi_shift:.3f} (shifted)\n"
+)
+# INTERPRETATION: with 150 rows per sample, same-population PSI is still
+# not 0 (sampling noise can put it in the 'moderate' band). Read PSI
+# against a baseline measured on known-good traffic, not against 0 — and
+# use samples of at least a few hundred rows in production.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -167,122 +191,85 @@ print("\u2713 Checkpoint 2 passed — DriftMonitor wired\n")
 
 async def debug_agent_call() -> dict:
     question = eval_data["instruction"][0]
+    tier = tier_by_role["qa"]
     print(f"\nDebugging call for: {question[:80]}...")
 
     print("\n  INPUT TRACE:")
     print(f"    Question:  {question[:100]}...")
-    print("    Role:      qa (governed_qa)")
-    print("    Budget:    $1.00")
-    print("    Clearance: public")
+    print(f"    Role:      {tier.role} ({tier.address})")
+    print(f"    Budget:    ${tier.budget_usd:.2f}")
+    print(f"    Clearance: {tier.clearance}")
 
-    t0 = time.time()
-    result = await handle_qa(question, role="qa", agents_by_role=agents_by_role)
-    latency = (time.time() - t0) * 1000
+    result = await handle_qa(
+        question, role="qa", agents_by_role=agents_by_role, engine=governance_engine
+    )
 
     print("\n  OUTPUT TRACE:")
-    if "error" in result:
+    if result["blocked"]:
         print(f"    Status:    BLOCKED ({result['error']})")
     else:
         print(f"    Answer:    {result['answer'][:150]}...")
-        print(f"    Confidence:{result.get('confidence', 'N/A')}")
-        print(f"    Sources:   {result.get('sources', [])[:3]}")
-        print(f"    Latency:   {latency:.0f} ms")
+        print(f"    Confidence (self-reported): {result['confidence']}")
+        print(f"    Sources:   {result['sources'][:3]}")
+        print(f"    Latency:   {result['latency_ms']:.0f} ms")
 
     print("\n  GOVERNANCE TRACE:")
     print(f"    Role:      {result['role']}")
-    print(f"    Governed:  {result['governed']}")
-    print(f"    Blocked:   {result.get('blocked', False)}")
+    print(f"    Verdict:   {result['verdict']}")
+    print(f"    Blocked:   {result['blocked']}")
     return result
 
 
 debug_result = run_async(debug_agent_call())
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert debug_result is not None, "Task 3: debug call should return a result"
-assert "role" in debug_result, "Task 3: result dict shape must be preserved"
 assert debug_result["governed"] is True
-print("\u2713 Checkpoint 3 passed — debug trace produced\n")
+assert debug_result["verdict"] == "served", "Task 3: a normal qa call is served"
+assert debug_result["answer"].strip(), "Task 3: the LLM must return an answer"
+print("✓ Checkpoint 3 passed — debug trace produced\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — Automated test harness
+# TASK 4 — Automated test harness (every test can fail)
 # ════════════════════════════════════════════════════════════════════════
+# Each test states the EXPECTED governance outcome and compares it with
+# what handle_qa actually returned. Two of the five are deny cases.
 
 
 async def run_test_harness() -> pl.DataFrame:
+    async def ask(question: str, role: str, action: str = "generate_answer") -> dict:
+        return await handle_qa(
+            question,
+            role=role,
+            agents_by_role=agents_by_role,
+            engine=governance_engine,
+            action=action,
+        )
+
+    cases = [
+        ("Normal QA served", "qa", "generate_answer", "served"),
+        ("Unknown role refused", "invalid_role", "generate_answer", "unknown_role"),
+        ("Admin may update_model", "admin", "update_model", "served"),
+        ("QA may NOT update_model", "qa", "update_model", "blocked"),
+        ("QA may NOT read audit log", "qa", "access_audit_log", "blocked"),
+    ]
     results: list[dict] = []
-
-    # Test 1 — Normal QA query
-    r = await handle_qa(
-        eval_data["instruction"][0], role="qa", agents_by_role=agents_by_role
-    )
-    results.append(
-        {
-            "test": "Normal QA",
-            "passed": "error" not in r,
-            "detail": "Answer received" if "error" not in r else r.get("error", ""),
-        }
-    )
-
-    # Test 2 — Invalid role falls back to lowest privilege
-    r = await handle_qa(
-        "Test question", role="invalid_role", agents_by_role=agents_by_role
-    )
-    results.append(
-        {
-            "test": "Invalid role fallback",
-            "passed": True,
-            "detail": f"Role used: {r.get('role', 'unknown')}",
-        }
-    )
-
-    # Test 3 — Admin tier should reach the admin-only tool surface
-    r = await handle_qa(
-        "Show model performance metrics", role="admin", agents_by_role=agents_by_role
-    )
-    results.append(
-        {
-            "test": "Admin access",
-            "passed": "error" not in r,
-            "detail": "Admin access granted" if "error" not in r else "Blocked",
-        }
-    )
-
-    # Test 4 — Budget cascade across 5 queries
-    budget_ok = True
-    for q in eval_data["instruction"].to_list()[:5]:
-        rr = await handle_qa(q, role="qa", agents_by_role=agents_by_role)
-        if rr.get("blocked"):
-            budget_ok = False
-            break
-    results.append(
-        {
-            "test": "Budget cascade (5 queries)",
-            "passed": budget_ok,
-            "detail": "All passed" if budget_ok else "Budget exceeded",
-        }
-    )
-
-    # Test 5 — Same question, different tiers, different envelopes
-    q = "What are the internal model training parameters?"
-    qa_r = await handle_qa(q, role="qa", agents_by_role=agents_by_role)
-    admin_r = await handle_qa(q, role="admin", agents_by_role=agents_by_role)
-    results.append(
-        {
-            "test": "Cross-role governance",
-            "passed": True,
-            "detail": (
-                f"QA: {'answered' if 'error' not in qa_r else 'blocked'}, "
-                f"Admin: {'answered' if 'error' not in admin_r else 'blocked'}"
-            ),
-        }
-    )
+    for name, role, action, expected in cases:
+        r = await ask(eval_data["instruction"][1], role, action)
+        results.append(
+            {
+                "test": name,
+                "expected": expected,
+                "actual": r["verdict"],
+                "passed": r["verdict"] == expected,
+                "detail": r.get("error", "") or r.get("answer", "")[:40],
+            }
+        )
 
     df = pl.DataFrame(results)
-    passed = int(df["passed"].sum())
     print("\n--- Test Results ---")
-    print(df)
-    print(f"\n  Result: {passed}/{df.height} passed")
+    print(df.select("test", "expected", "actual", "passed"))
+    print(f"\n  Result: {int(df['passed'].sum())}/{df.height} passed")
     return df
 
 
@@ -291,88 +278,80 @@ test_df.write_parquet(OUTPUT_DIR / "test_harness_results.parquet")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
 assert test_df.height >= 5, "Task 4: at least 5 tests should run"
-print("\u2713 Checkpoint 4 passed — automated test harness complete\n")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Visualise and Apply: Shopee-scale fraud detection
-# ════════════════════════════════════════════════════════════════════════
-
-current_psi = (
-    drift_report.feature_results[0].psi if drift_report.feature_results else 0.0
+assert test_df["passed"].all(), (
+    f"Task 4: failing tests: {test_df.filter(~pl.col('passed'))['test'].to_list()}"
 )
+assert (test_df["expected"] != "served").sum() >= 2, "Task 4: include deny cases"
+print("✓ Checkpoint 4 passed — automated test harness complete\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 5 — Visualise and Apply: Regional E-commerce Dispute Handling
+# ════════════════════════════════════════════════════════════════════════
+
+
+def psi_zone(psi: float) -> str:
+    return "Safe" if psi < 0.10 else ("Investigate" if psi <= 0.20 else "Alert")
+
+
 psi_dashboard = pl.DataFrame(
     {
-        "Zone": ["Safe", "Investigate", "Alert"],
-        "PSI range": ["< 0.10", "0.10 - 0.20", "> 0.20"],
-        "Action": [
-            "Continue serving",
-            "Root-cause within 24h",
-            "Rollback or retrain",
-        ],
-        "Current": [current_psi, current_psi, current_psi],
+        "window": [f"{int(f * 100)}% shifted" for f in SHIFT_FRACTIONS],
+        "PSI": window_psi,
+        "zone": [psi_zone(p) for p in window_psi],
     }
 )
 psi_dashboard.write_parquet(OUTPUT_DIR / "psi_dashboard.parquet")
-print("\nPSI dashboard:")
+print("\nPSI by traffic window (measured):")
 print(psi_dashboard)
+first_alert = psi_dashboard.filter(pl.col("zone") == "Alert")["window"].to_list()
+print(f"  First window in the Alert zone: {first_alert[0] if first_alert else 'none'}")
 
-# SCENARIO: A Singapore-based e-commerce platform (think Shopee scale)
-# uses the governed QA agent as part of a customer-dispute resolution
-# bot. The bot answers merchant questions about fraud flags. Drift
-# appears during the 11.11 and 12.12 sales — traffic distribution
-# shifts 4-7x, fraud-dispute text patterns change, and the underlying
-# model's training distribution no longer matches reality.
+# SCENARIO: A regional e-commerce marketplace uses the governed QA agent
+# in a merchant-dispute bot. During its biggest sale events the mix of
+# questions changes sharply — new merchants, new fraud patterns, much
+# longer, multi-part questions — and the model's training distribution no longer
+# matches what it sees. The window table above is exactly that kind of
+# shift: PSI rises as the share of "new population" questions grows.
 #
-# BUSINESS IMPACT: Without drift monitoring, the bot's dispute
-# responses silently degrade during the highest-revenue window of
-# the year. With PSI > 0.2 alerting, operations auto-route to a
-# human agent for the 72-hour shift window and queue a retraining
-# run. One 72-hour window of bad automated dispute handling has
-# been priced internally at S$250,000 of merchant goodwill (10% of
-# disputed merchants churn at ~S$2,500 LTV each). Drift detection
-# converts that S$250,000 into a S$5,000 human-handling surge cost.
+# BUSINESS IMPACT (illustrative figures): if one 72-hour window of
+# degraded automated dispute handling costs ~S$250,000 in merchant
+# goodwill, while routing those disputes to human agents for the window
+# costs ~S$5,000, a PSI > 0.2 alert that triggers the re-route is worth
+# ~S$245,000 per event.
 
 print("\n" + "=" * 70)
-print("  APPLY — Shopee-scale 11.11 Dispute Handling")
+print("  APPLY — Sale-Event Dispute Handling")
 print("=" * 70)
 print(
-    """
-  Normal window:  PSI ~0.05, governed QA handles 95% of disputes.
-  11.11 surge:    PSI climbs toward 0.25, DriftMonitor ALERTS.
-  Auto action:    Route to human agent pool + queue retrain job.
+    f"""
+  Same-population PSI:  {psi_in:.3f} ({psi_zone(psi_in)})
+  Fully shifted PSI:    {psi_shift:.3f} ({psi_zone(psi_shift)})
+  Auto action on Alert: route to human agents + queue a retrain job
 
-  Churn avoided:  ~S$250,000 merchant goodwill
-  Cost incurred:  ~S$5,000 human surge handling
-  Net saving:     ~S$245,000 per 72-hour alert window
+  Illustrative economics per alert window:
+    goodwill protected ~S$250,000 vs human surge cost ~S$5,000
 """
 )
 
 
 # ════════════════════════════════════════════════════════════════════════
-# VISUALISATION — Drift score timeline with alert threshold
+# VISUALISATION — Measured PSI as the traffic shifts
 # ════════════════════════════════════════════════════════════════════════
 
-days = list(range(1, 8))
-psi_values = [0.03, 0.05, 0.08, 0.12, 0.15, 0.22, 0.31]
 threshold = 0.2
-
+x = [int(f * 100) for f in SHIFT_FRACTIONS]
 fig, ax = plt.subplots(figsize=(8, 4))
-ax.plot(days, psi_values, "o-", color="#1976D2", linewidth=2, label="PSI score")
-ax.axhline(
-    y=threshold,
-    color="red",
-    linestyle="--",
-    linewidth=1.5,
-    label=f"Alert threshold ({threshold})",
-)
-ax.fill_between(days, 0, 0.1, alpha=0.1, color="green", label="Safe zone")
-ax.fill_between(days, 0.1, 0.2, alpha=0.1, color="orange", label="Investigate zone")
-ax.fill_between(days, 0.2, 0.4, alpha=0.1, color="red", label="Alert zone")
-ax.set_xlabel("Day")
-ax.set_ylabel("PSI Score")
-ax.set_title("Drift Monitoring: PSI Timeline with Alert Threshold")
-ax.set_ylim(0, 0.4)
+ax.plot(x, window_psi, "o-", color="#1976D2", linewidth=2, label="Measured PSI")
+ax.axhline(y=threshold, color="red", linestyle="--", linewidth=1.5, label=f"Alert ({threshold})")
+top = max(max(window_psi) * 1.1, 0.4)
+ax.axhspan(0, 0.1, alpha=0.1, color="green", label="Safe")
+ax.axhspan(0.1, 0.2, alpha=0.1, color="orange", label="Investigate")
+ax.axhspan(0.2, top, alpha=0.1, color="red", label="Alert")
+ax.set_xlabel("Share of exam-style (MMLU) questions in the window (%)")
+ax.set_ylabel("PSI (question length)")
+ax.set_yscale("symlog", linthresh=0.5)
+ax.set_title("Drift Monitoring: Measured PSI vs Traffic Shift")
 ax.legend(fontsize=8, loc="upper left")
 fig.tight_layout()
 fig.savefig(OUTPUT_DIR / "04_drift_timeline.png", dpi=150)
@@ -381,61 +360,14 @@ print(f"\nSaved: {OUTPUT_DIR / '04_drift_timeline.png'}")
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# DIAGNOSTIC CHECKPOINT — Governance lens over the qa tier's audit trail
 # ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
 from shared.mlfp06.diagnostics import LLMObservatory
 
-# Primary lens: ALL SIX — the capstone wires Align + Kaizen + PACT +
-# Nexus + RAG + Agents end-to-end, so every lens should be lit.
-if False:  # scaffold — requires the full capstone stack
-    obs = LLMObservatory(run_id="ex_8_capstone_run")
-    # obs.output.evaluate(prompts=[...], responses=[...])
-    # obs.retrieval.evaluate(queries=[...], retrieved_contexts=[...], answers=[...])
-    # for run_id, trace in supervisor.all_traces.items():
-    #     obs.agent.register_trace(trace)
-    # obs.alignment.log_training_step(...)
-    # obs.governance.verify_chain(audit_df)
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-    # obs.plot_dashboard().show()  # all six panels at once
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad (CAPSTONE)
-# ════════════════════════════════════════════════════════════════
-#   [✓] Output     (HEALTHY): faithfulness 0.88, judge coherence 0.91
-#   [✓] Retrieval  (HEALTHY): recall@5 = 0.79, context util 0.72
-#   [✓] Agent      (HEALTHY): 14 TAOD steps, no stuck loops, cost $0.04
-#   [✓] Alignment  (HEALTHY): KL 0.6 nats, win-rate 0.61 vs base
-#   [!] Governance (WARNING): 1 of 8 drills escalated; budget at 71%
-#       Fix: raise escalation threshold or narrow data_access envelope.
-#   [?] Attention  (UNKNOWN): API-only judge/prod model — enable the
-#       open-weight evaluator to light up this panel.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [CAPSTONE COMPOSITE] The capstone is the first exercise where you
-#     see the full six-lens dashboard. Five lenses GREEN + one YELLOW
-#     is a realistic "ship it with a watch-item" disposition. The
-#     governance WARNING is the escalation on 1/8 drills — investigate
-#     which drill escalated before production rollout; that's exactly
-#     the kind of pre-deploy check the dashboard is designed for.
-#  [CROSS-LENS READING] Notice how each lens is answering a different
-#     question: Output says "is the answer good?"; Retrieval says "did
-#     we give it the right context?"; Agent says "did it use the right
-#     steps?"; Alignment says "is the fine-tune pulling its weight?";
-#     Governance says "did we stay inside the envelope?". A single
-#     aggregate "quality score" would hide all of this.
-# ════════════════════════════════════════════════════════════════════
+obs = LLMObservatory(governance=agents_by_role["qa"].audit, run_id="ex_8_4_drift")
+print("\n── LLM Observatory: qa-tier audit snapshot ──")
+print(obs.governance.audit_snapshot(last_n=20).select("action", "verdict"))
+print(f"  qa audit chain verifies: {agents_by_role['qa'].audit.verify_chain()}")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -446,10 +378,10 @@ print("  WHAT YOU'VE MASTERED")
 print("═" * 70)
 print(
     """
-  [x] Wired DriftMonitor with MMLU as the reference distribution
-  [x] Read PSI thresholds as business-actionable zones
+  [x] Wired DriftMonitor with validated QA traffic as the reference
+  [x] Measured PSI on same-population vs shifted traffic
   [x] Debugged a governed agent call end-to-end
-  [x] Ran an automated test harness covering 5 governance paths
+  [x] Ran a test harness whose 5 tests include deny paths
   [x] Applied drift monitoring to a regional e-commerce scenario
 
   KEY INSIGHT: Drift monitoring and testing are the only things
@@ -458,7 +390,7 @@ print(
   drift + tests prove the envelope still MATCHES reality.
 
   Next: 05_compliance_audit.py closes the loop with a regulatory
-  audit report mapping technical controls to EU AI Act, AI Verify,
+  audit report mapping evidence from this run to EU AI Act, AI Verify,
   and MAS TRM requirements.
 """
 )

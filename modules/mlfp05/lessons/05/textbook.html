@@ -39,8 +39,11 @@
   alternatives: the <strong>Generative Adversarial Network</strong>,
   which trains a generator and a discriminator in a minimax game, and
   the <strong>diffusion model</strong>, which noises data progressively
-  and learns to reverse the process. You implement a DCGAN-style MLP
-  generator and a WGAN-GP, debug mode collapse, and get a tour of DDPM.
+  and learns to reverse the process. You implement an MLP GAN and a
+  WGAN-GP on a small synthetic 2‑D problem, measure mode collapse, see
+  the convolutional DCGAN and the wider GAN family (cGAN, CycleGAN,
+  StyleGAN), learn how FID and Inception Score evaluate generators, and
+  get a tour of DDPM.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -125,9 +128,13 @@
     $2 \cdot \mathrm{JS}(p_{\text{data}} \| p_G) - \log 4$, where JS is
     the Jensen-Shannon divergence — a symmetric variant of KL. So
     minimising the original GAN loss with respect to G is minimising
-    JS divergence between real and generated. Unlike KL, JS is always
-    finite, which is (one) reason GANs can be trained on supports that
-    don't overlap.
+    JS divergence between real and generated. JS is always finite, but
+    that does not help: when the real and generated supports don't
+    overlap (typical early in training, and for images that live on
+    thin manifolds), JS saturates at the constant $\log 2$, so its
+    gradient with respect to G's parameters is zero. The Wasserstein
+    distance below still varies smoothly with how far apart the two
+    distributions are — that is the motivation for WGAN.
   </p>
 </div>
 
@@ -146,19 +153,27 @@
 </ol>
 
 <p>
-  The loss for G is often written as
-  $\max \; \mathbb{E}_z[\log D(G(z))]$ rather than
-  $\min \; \mathbb{E}_z[\log(1 - D(G(z)))]$ — mathematically equivalent
-  at the optimum but gives a stronger gradient when D is confident the
-  fakes are fake (early training).
+  In practice the loss for G is the <strong>non‑saturating</strong>
+  $\max \; \mathbb{E}_z[\log D(G(z))]$ (i.e. minimise
+  $-\log D(G(z))$) rather than the minimax
+  $\min \; \mathbb{E}_z[\log(1 - D(G(z)))]$. Both have the same fixed
+  point, but the minimax form <em>saturates</em>: when D confidently
+  rejects the fakes (early training), $\log(1 - D(G(z)))$ is flat and G
+  gets almost no gradient. The non‑saturating form gives a gradient of
+  about −1 with respect to D's logit in exactly that situation. The code
+  below — and Exercise 5 — use it. It fixes the vanishing gradient of the
+  minimax form, but not the instability from non‑overlapping supports
+  described above.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>DCGAN-style Generator and Discriminator</h2>
+<h2>An MLP Generator and Discriminator</h2>
 
 <p>
-  A DCGAN (Radford et al. 2015) uses convolutions for image data. For
-  the simple 2-D distribution we will use today, MLPs are enough.
+  For the simple 2‑D distribution of today's worked example, small MLPs
+  are enough. (Exercise 5 also uses MLP generators and discriminators,
+  on flattened 28×28 MNIST digits; the convolutional DCGAN is shown
+  after the worked example.)
 </p>
 
 <pre><code class="language-python">import torch
@@ -169,9 +184,9 @@ class Generator(nn.Module):
     def __init__(self, z_dim=8, out_dim=2):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(z_dim, 64), nn.ReLU(),
-            nn.Linear(64, 64), nn.ReLU(),
-            nn.Linear(64, out_dim),
+            nn.Linear(z_dim, 128), nn.ReLU(),
+            nn.Linear(128, 128), nn.ReLU(),
+            nn.Linear(128, out_dim),
         )
     def forward(self, z):
         return self.net(z)
@@ -180,9 +195,9 @@ class Discriminator(nn.Module):
     def __init__(self, in_dim=2):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(in_dim, 64), nn.LeakyReLU(0.2),
-            nn.Linear(64, 64), nn.LeakyReLU(0.2),
-            nn.Linear(64, 1),      # logit, no sigmoid
+            nn.Linear(in_dim, 128), nn.LeakyReLU(0.2),
+            nn.Linear(128, 128), nn.LeakyReLU(0.2),
+            nn.Linear(128, 1),     # logit, no sigmoid
         )
     def forward(self, x):
         return self.net(x).squeeze(-1)
@@ -337,25 +352,32 @@ for epoch in range(200):
   The penalty term pushes the gradient norm of D along a random line
   between real and fake toward 1 — the Lipschitz constraint. Works far
   better than weight clipping: it preserves model capacity, trains
-  more stably, and almost eliminates mode collapse in practice.
+  more stably, and in practice greatly reduces (though does not
+  guarantee against) mode collapse.
 </p>
 
-<pre><code class="language-python">def gradient_penalty(D, real, fake, device):
+<pre><code class="language-python">def gradient_penalty(D, real, fake):
+    """Works for any input shape: (B, 2) points or (B, C, H, W) images."""
     batch_size = real.size(0)
-    alpha = torch.rand(batch_size, 1, device=device)
-    interpolated = alpha * real + (1 - alpha) * fake
-    interpolated.requires_grad_(True)
-    d_inter = D(interpolated)
+    alpha = torch.rand(batch_size, *[1] * (real.dim() - 1), device=real.device)
+    x_hat = (alpha * real + (1 - alpha) * fake).requires_grad_(True)
+    d_hat = D(x_hat)
     grads = torch.autograd.grad(
-        outputs=d_inter,
-        inputs=interpolated,
-        grad_outputs=torch.ones_like(d_inter),
-        create_graph=True,
-        retain_graph=True,
+        outputs=d_hat,
+        inputs=x_hat,
+        grad_outputs=torch.ones_like(d_hat),
+        create_graph=True,          # the penalty itself must be differentiable
     )[0]
-    gp = ((grads.norm(2, dim=1) - 1) ** 2).mean()
-    return gp
+    # norm over the WHOLE input of each sample, not per pixel or per channel
+    return ((grads.reshape(batch_size, -1).norm(2, dim=1) - 1) ** 2).mean()
 </code></pre>
+
+<p>
+  The flatten before the norm matters for images: <code>grads.norm(2,
+  dim=1)</code> on a $(B, C, H, W)$ tensor would take a per‑pixel norm
+  over channels and constrain the wrong thing. Exercise 5 (file 02)
+  flattens exactly like this.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Evaluating Generative Models: FID</h2>
@@ -379,8 +401,59 @@ for epoch in range(200):
   FID passes both real and generated images through a pre-trained
   Inception network, extracts a pool of activations, fits Gaussians to
   both, and measures the Fréchet distance between them. Lower is
-  better. FID below 20 is "you can probably ship it"; below 5 is
-  "very close to real".
+  better; 0 means identical feature statistics. FID values are only
+  comparable with the same feature network, image resolution and sample
+  count — there is no universal "good" threshold. Exercise 5 (file 03)
+  computes FID in the 64‑D feature space of a small LeNet trained on
+  MNIST, so its numbers compare its own generators with each other, not
+  with published Inception FIDs.
+</p>
+
+<p>
+  Two things FID is <em>not</em>. It is not a per‑image quality score
+  (it compares whole distributions), and it is not a privacy test: a
+  generator that memorises and replays its training images gets an
+  excellent FID.
+</p>
+
+<h3>Inception Score (IS)</h3>
+
+<p>
+  The older <strong>Inception Score</strong> (Salimans et al., 2016)
+  uses only generated images. A classifier gives each image a class
+  distribution $p(y \mid x)$. Good samples are <em>confident</em>
+  (peaked $p(y \mid x)$) and <em>diverse</em> (the average over samples,
+  $p(y)$, is spread out):
+</p>
+
+<div class="annotated-equation">
+  $$\text{IS} \;=\; \exp\Bigl(\mathbb{E}_{x \sim p_G}\, \mathrm{KL}\bigl(p(y \mid x) \,\|\, p(y)\bigr)\Bigr)$$
+  <div class="annotations">
+    <span>1 = worst</span>
+    <span>number of classes = best</span>
+    <span>never looks at real data</span>
+  </div>
+</div>
+
+<pre><code class="language-python">import numpy as np
+
+def inception_score(probs, eps=1e-12):
+    """probs: (N, K) class probabilities from a classifier, one row per generated image."""
+    p_y = probs.mean(axis=0, keepdims=True)
+    kl = (probs * (np.log(probs + eps) - np.log(p_y + eps))).sum(axis=1)
+    return float(np.exp(kl.mean()))
+
+print(inception_score(np.eye(10)[np.arange(1000) % 10]))       # ~10: confident AND all 10 classes
+print(inception_score(np.eye(10)[np.zeros(1000, dtype=int)]))  # 1.0: confident but one class (collapse)
+print(inception_score(np.full((1000, 10), 0.1)))               # 1.0: diverse but never confident</code></pre>
+
+<p>
+  Because IS never compares with real data, it cannot tell whether the
+  samples look like <em>your</em> data, and it rewards a generator that
+  produces one perfect image per class. FID is the standard today;
+  quote IS alongside it only with a stated classifier. (For MNIST you
+  would use an MNIST classifier rather than Inception, as Exercise 5
+  does for FID; Exercise 5 does not compute IS.)
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -404,8 +477,8 @@ for epoch in range(200):
 
 <p>
   The training objective is simply MSE between the predicted noise and
-  the actual noise added at each step. There is no adversary, no mode
-  collapse, and the quality is generally higher than GANs. The cost is
+  the actual noise added at each step. There is no adversary, mode
+  collapse is rare, and sample quality is typically higher than GANs'. The cost is
   that sampling requires $T$ forward passes (typically 50–1000 steps),
   whereas a GAN samples in one forward pass. Recent distillation
   techniques (consistency models) bring diffusion sampling down to
@@ -416,84 +489,310 @@ for epoch in range(200):
   <span class="label">🟣 Advanced — Diffusion vs GAN vs VAE decision</span>
   <p>
     For high-quality image generation with large models and compute,
-    diffusion is the current SOTA. For fast sampling, GANs are still
-    competitive. For structured representations (where you want the
-    latent to mean something), VAEs remain the tool of choice. For
-    conditional generation with text (Stable Diffusion, Midjourney),
-    diffusion plus a text encoder is the dominant stack.
+    diffusion is the current state of the art. For fast sampling, GANs
+    are still competitive. For structured representations (where you
+    want the latent to mean something), VAEs remain the tool of choice.
+    For text‑to‑image generation (e.g. the open Stable Diffusion
+    models), diffusion plus a text encoder is the dominant stack.
   </p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: DCGAN and WGAN-GP on Eight Gaussians</h2>
+<h2>Worked Example: GAN vs WGAN-GP on Eight Gaussians</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Build a GAN and a WGAN-GP on a 2-D "eight Gaussians on a ring"
-    toy distribution. Observe mode collapse in the vanilla GAN.
-    Observe WGAN-GP recovering all eight modes. This mirrors
-    exercise 5 of M5.
+    Train the MLP GAN and a WGAN‑GP on a <strong>synthetic</strong> 2‑D
+    "eight Gaussians on a ring" distribution and <em>measure</em> mode
+    collapse: how many of the eight modes each generator covers, and how
+    many samples land close to a real mode. A 2‑D toy is used because you
+    can see every sample; Exercise 5 applies the same two models to MNIST
+    digits.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1 — the target distribution.</span>
-    <pre><code class="language-python">def make_eight_gaussians(n):
+    <pre><code class="language-python">import math
+import torch
+import torch.nn.functional as F
+
+torch.manual_seed(42)
+z_dim = 8
+# Tiny MLPs run faster on the CPU than on a GPU (kernel-launch overhead dominates)
+
+def make_eight_gaussians(n):
     angles = torch.linspace(0, 2 * math.pi, 9)[:-1]
     centers = torch.stack([torch.cos(angles), torch.sin(angles)], dim=1)
     idx = torch.randint(0, 8, (n,))
-    points = centers[idx] + 0.05 * torch.randn(n, 2)
-    return points</code></pre>
+    return centers[idx] + 0.05 * torch.randn(n, 2), centers
+
+data, centers = make_eight_gaussians(8192)
+
+def real_batch(bs=256):
+    return data[torch.randint(0, len(data), (bs,))]</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2 — vanilla GAN training (as shown above).</span>
-    <p>Expect to see the generator collapse onto one or two of the
-       eight modes after a few hundred steps. Plot the generated
-       samples every 100 steps to watch it happen.</p>
-  </div>
-
-  <div class="step">
-    <span class="step-label">Step 3 — WGAN-GP update rule.</span>
-    <pre><code class="language-python">for epoch in range(200):
-    for real in real_loader:
-        # ── Critic (D) update ──
-        z = torch.randn(bs, z_dim, device=device)
-        fake = G(z).detach()
-        d_real = D(real)
-        d_fake = D(fake)
-        gp = gradient_penalty(D, real, fake, device)
-        loss_d = d_fake.mean() - d_real.mean() + 10.0 * gp
-        opt_d.zero_grad(); loss_d.backward(); opt_d.step()
-
-        # ── Generator update (every n_critic steps) ──
-        z = torch.randn(bs, z_dim, device=device)
-        loss_g = -D(G(z)).mean()
-        opt_g.zero_grad(); loss_g.backward(); opt_g.step()</code></pre>
+    <span class="step-label">Step 2 — one training function for both losses.</span>
+    <pre><code class="language-python">def train(kind, g_steps=3000, seed=0):
+    torch.manual_seed(seed)
+    G, D = Generator(z_dim), Discriminator()
+    if kind == "gan":      # DCGAN defaults, one D step per G step
+        opt_g = torch.optim.Adam(G.parameters(), lr=2e-4, betas=(0.5, 0.999))
+        opt_d = torch.optim.Adam(D.parameters(), lr=2e-4, betas=(0.5, 0.999))
+        n_critic = 1
+    else:                  # WGAN-GP defaults (Gulrajani et al.): 5 critic steps per G step
+        opt_g = torch.optim.Adam(G.parameters(), lr=1e-4, betas=(0.5, 0.9))
+        opt_d = torch.optim.Adam(D.parameters(), lr=1e-4, betas=(0.5, 0.9))
+        n_critic = 5
+    for step in range(g_steps):
+        for _ in range(n_critic):
+            real = real_batch()
+            fake = G(torch.randn(real.size(0), z_dim)).detach()
+            d_real, d_fake = D(real), D(fake)
+            if kind == "gan":
+                loss_d = (F.binary_cross_entropy_with_logits(d_real, torch.ones_like(d_real))
+                          + F.binary_cross_entropy_with_logits(d_fake, torch.zeros_like(d_fake)))
+            else:
+                loss_d = d_fake.mean() - d_real.mean() + 10.0 * gradient_penalty(D, real, fake)
+            opt_d.zero_grad(); loss_d.backward(); opt_d.step()
+        d_gen = D(G(torch.randn(256, z_dim)))
+        if kind == "gan":  # non-saturating generator loss
+            loss_g = F.binary_cross_entropy_with_logits(d_gen, torch.ones_like(d_gen))
+        else:              # G wants large critic values on its fakes
+            loss_g = -d_gen.mean()
+        opt_g.zero_grad(); loss_g.backward(); opt_g.step()
+    return G</code></pre>
     <p>
-      The critic loss is just the difference of means plus gradient
-      penalty. The generator loss is the negative critic output — G
-      wants to make the critic produce large values on its fakes.
-      Typically you take $n_{\text{critic}} = 5$ critic steps per
-      generator step, though the 1:1 ratio works fine on this toy
-      problem.
+      The critic loss is the difference of means plus the gradient
+      penalty; the generator loss is the negative critic output. WGAN‑GP
+      takes $n_{\text{critic}} = 5$ critic steps per generator step so the
+      critic stays close to the optimal one that measures the
+      Wasserstein distance.
     </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 4 — visualise the samples.</span>
-    <pre><code class="language-python">G.eval()
-with torch.no_grad():
-    z = torch.randn(2000, z_dim, device=device)
-    samples = G(z).cpu()
+    <span class="step-label">Step 3 — measure mode coverage.</span>
+    <pre><code class="language-python">def mode_report(G, n=2000):
+    with torch.no_grad():
+        s = G(torch.randn(n, z_dim))
+    dist = torch.cdist(s, centers)                          # (n, 8) distance to each mode
+    share = torch.bincount(dist.argmin(1), minlength=8).float() / n
+    close = (dist.min(1).values &lt; 0.15).float().mean().item()   # within 3 std of a mode
+    return s, share, close
 
-# scatter plot real vs generated — the eight modes should be visible
+for seed in (0, 1, 2):
+    for kind in ("gan", "wgan-gp"):
+        s, share, close = mode_report(train(kind, seed=seed))
+        print(seed, kind, "modes covered:", int((share &gt;= 0.02).sum()), " near a mode:", round(close, 2))</code></pre>
+    <p>
+      A mode counts as covered if it attracts at least 2% of the samples
+      (a perfect generator gives each 12.5%). Results from our CPU runs
+      (each GAN run takes seconds; each 3,000‑step WGAN‑GP run about half
+      a minute):
+    </p>
+    <table>
+      <thead>
+        <tr><th>Run</th><th>GAN modes</th><th>GAN near a mode</th><th>WGAN‑GP modes</th><th>WGAN‑GP near a mode</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>seed 0, 3,000 G steps</td><td>8</td><td>59%</td><td>2</td><td>0%</td></tr>
+        <tr><td>seed 1, 3,000 G steps</td><td>4</td><td>29%</td><td>2</td><td>0%</td></tr>
+        <tr><td>seed 2, 3,000 G steps</td><td>2</td><td>0%</td><td>3</td><td>4%</td></tr>
+        <tr><td>seed 2, 15,000 G steps</td><td>2</td><td>0%</td><td>8</td><td>13%</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Three honest lessons. <strong>Mode collapse is seed‑dependent</strong>:
+      the same GAN code covered all eight modes with one seed and
+      collapsed onto two neighbouring modes (the samples sat on the arc
+      between them, near neither) with another — and 12,000 more steps
+      did not rescue it. <strong>WGAN‑GP is slow but keeps
+      coverage</strong>: at 3,000 generator steps it had not converged,
+      but at 15,000 steps it covered all eight modes on seeds 0 and 2,
+      with samples still spread around the ring rather than tight on each
+      mode (7–13% near a mode); the toy experiments in the WGAN‑GP paper
+      ran for 100,000 iterations. And <strong>always measure</strong>:
+      a single good‑looking run proves little about a GAN recipe.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — visualise real vs generated.</span>
+    <pre><code class="language-python">import polars as pl
 from kailash_ml import ModelVisualizer
-viz = ModelVisualizer()
-viz.plot_2d_distribution(real.cpu(), samples,
-                         title="Real vs WGAN-GP samples")</code></pre>
+
+G = train("wgan-gp", g_steps=15000, seed=2)               # ~2-3 minutes on a laptop CPU
+s, share, close = mode_report(G)
+real = real_batch(2000)
+points = pl.DataFrame({
+    "x": real[:, 0].tolist() + s[:, 0].tolist(),
+    "y": real[:, 1].tolist() + s[:, 1].tolist(),
+    "source": ["real"] * 2000 + ["generated"] * 2000,
+})
+fig = ModelVisualizer().scatter(points, x="x", y="y", color="source",
+                                title="Eight Gaussians: real vs WGAN-GP samples")
+fig.write_html("/tmp/eight_gaussians.html")</code></pre>
+    <p>
+      <code>ModelVisualizer.scatter</code> takes a polars frame and
+      returns a plotly figure; colouring by <code>source</code> overlays
+      the two clouds so you can see covered and missing modes at a
+      glance.
+    </p>
   </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>DCGAN: Convolutions for Images</h2>
+
+<p>
+  The <strong>DCGAN</strong> (Radford et al., 2015) is what made GANs
+  work on images. Its recipe: the generator <em>upsamples</em> a noise
+  vector with transposed convolutions; the discriminator downsamples
+  with strided convolutions (no pooling); batch norm in both (but not on
+  G's output or D's input); ReLU in G with a Tanh output, LeakyReLU in D.
+  For 28×28 greyscale images such as MNIST:
+</p>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+from torchvision import transforms
+
+class DCGenerator(nn.Module):
+    """z (100) -&gt; 1x28x28 image in [-1, 1]."""
+    def __init__(self, z_dim=100):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.ConvTranspose2d(z_dim, 128, 7, 1, 0, bias=False),   # 1x1   -&gt; 7x7
+            nn.BatchNorm2d(128), nn.ReLU(True),
+            nn.ConvTranspose2d(128, 64, 4, 2, 1, bias=False),      # 7x7   -&gt; 14x14
+            nn.BatchNorm2d(64), nn.ReLU(True),
+            nn.ConvTranspose2d(64, 1, 4, 2, 1),                    # 14x14 -&gt; 28x28
+            nn.Tanh(),
+        )
+    def forward(self, z):
+        return self.net(z.view(z.size(0), -1, 1, 1))
+
+class DCDiscriminator(nn.Module):
+    """1x28x28 image -&gt; one logit. Drop the BatchNorm when used as a WGAN-GP critic."""
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(1, 64, 4, 2, 1), nn.LeakyReLU(0.2, True),    # 28 -&gt; 14
+            nn.Conv2d(64, 128, 4, 2, 1, bias=False),               # 14 -&gt; 7
+            nn.BatchNorm2d(128), nn.LeakyReLU(0.2, True),
+            nn.Conv2d(128, 1, 7, 1, 0),                            # 7  -&gt; 1
+        )
+    def forward(self, x):
+        return self.net(x).view(-1)                                # logit: no sigmoid
+
+# Real images must share the generator's [-1, 1] range
+to_tensor = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+
+fake = DCGenerator()(torch.randn(16, 100))
+print(fake.shape, DCDiscriminator()(fake).shape)   # torch.Size([16, 1, 28, 28]) torch.Size([16])</code></pre>
+<p>
+  Two details that silently break GANs: the real data must be scaled to
+  the generator's output range (<code>ToTensor()</code> alone gives
+  $[0, 1]$, a Tanh generator gives $[-1, 1]$, and D can then separate
+  real from fake by brightness alone), and the discriminator should end
+  in a logit, not a sigmoid — use <code>binary_cross_entropy_with_logits</code>
+  for a standard GAN and the raw value for a WGAN critic. Batch norm in a
+  WGAN‑GP critic breaks the per‑sample gradient penalty, which is why
+  WGAN‑GP critics use layer norm or no normalisation. Exercise 5 trains
+  MLP generators on flattened MNIST with the same $[-1, 1]$ scaling; this
+  DCGAN is the convolutional upgrade (the training loop is unchanged).
+</p>
+
+<h3>The wider GAN family</h3>
+<table>
+  <thead>
+    <tr><th>Variant</th><th>Key idea</th><th>Typical use</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>cGAN</strong> (Mirza &amp; Osindero, 2014)</td><td>Feed a label $y$ to both G and D: $G(z, y)$, $D(x, y)$, so you choose what to generate</td><td>"Generate a 7"; class‑balanced synthetic data</td></tr>
+    <tr><td><strong>DCGAN</strong> (Radford et al., 2015)</td><td>All‑convolutional G and D with batch norm</td><td>The baseline image GAN</td></tr>
+    <tr><td><strong>WGAN / WGAN‑GP</strong> (2017)</td><td>Wasserstein critic + Lipschitz constraint</td><td>Stabler training</td></tr>
+    <tr><td><strong>CycleGAN</strong> (Zhu et al., 2017)</td><td>Two generators $G: X \to Y$, $F: Y \to X$ trained with <em>unpaired</em> images and a cycle‑consistency loss $\|F(G(x)) - x\|_1 + \|G(F(y)) - y\|_1$</td><td>Style or domain translation (day↔night, scanner A↔scanner B) without paired examples</td></tr>
+    <tr><td><strong>StyleGAN</strong> (Karras et al., 2019)</td><td>A mapping network turns $z$ into a style vector $w$ that modulates every generator layer; noise inputs add fine detail</td><td>High‑resolution faces and objects; controllable coarse vs fine attributes</td></tr>
+  </tbody>
+</table>
+<p>
+  A cGAN needs only one change to the code you have: concatenate a
+  one‑hot label to $z$ before G, and to the (flattened) input before D.
+  CycleGAN's cycle loss is what removes the need for paired data: a
+  horse turned into a zebra must turn back into the same horse.
+</p>
+
+<div class="try-it">
+  <h3>🎯 Drill — make the MLP GAN conditional</h3>
+  <p>
+    Modify the worked example's <code>Generator</code> and
+    <code>Discriminator</code> so they take the mode index (0–7) as a
+    condition. What has to change in the training loop?
+  </p>
+  <details>
+    <summary>Solution</summary>
+    <pre><code class="language-python">class CondGenerator(nn.Module):
+    def __init__(self, z_dim=8, n_classes=8):
+        super().__init__()
+        self.n_classes = n_classes
+        self.net = nn.Sequential(nn.Linear(z_dim + n_classes, 64), nn.ReLU(),
+                                 nn.Linear(64, 64), nn.ReLU(), nn.Linear(64, 2))
+    def forward(self, z, y):
+        return self.net(torch.cat([z, F.one_hot(y, self.n_classes).float()], dim=1))
+
+class CondDiscriminator(nn.Module):
+    def __init__(self, n_classes=8):
+        super().__init__()
+        self.n_classes = n_classes
+        self.net = nn.Sequential(nn.Linear(2 + n_classes, 64), nn.LeakyReLU(0.2),
+                                 nn.Linear(64, 64), nn.LeakyReLU(0.2), nn.Linear(64, 1))
+    def forward(self, x, y):
+        return self.net(torch.cat([x, F.one_hot(y, self.n_classes).float()], dim=1)).squeeze(-1)
+
+z, y = torch.randn(5, 8), torch.randint(0, 8, (5,))
+print(CondDiscriminator()(CondGenerator()(z, y), y).shape)   # torch.Size([5])</code></pre>
+    <p>
+      The data loader must now yield each point together with its mode
+      index (keep the <code>idx</code> that
+      <code>make_eight_gaussians</code> draws). D scores real points with
+      their true labels and fakes with the labels they were generated
+      for; G is trained with the same random labels. At sampling time you
+      pick the label, so "generate mode 3" becomes possible — and mode
+      collapse across labels is much rarer because every label is asked
+      for.
+    </p>
+  </details>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Synthetic Data: What Generators Can and Cannot Do</h2>
+
+<p>
+  The most common business use of generative models is <strong>synthetic
+  data</strong>: enlarging a rare class (fraudulent transactions, rare
+  defects, rare conditions in medical images), building test data for
+  software, or simulating scenarios (traffic, demand) for planning
+  models. Three rules keep it honest:
+</p>
+<ul>
+  <li><strong>Evaluate on real data.</strong> Synthetic examples may
+      help a classifier train, but the only valid test set is real,
+      held‑out data. A gain measured on synthetic test data is
+      circular.</li>
+  <li><strong>Synthetic is not private by default.</strong> GANs and
+      diffusion models can memorise and regenerate training examples;
+      extraction attacks on diffusion models are documented (Carlini et
+      al., 2023). Sharing a generator trained on sensitive records is
+      sharing those records unless the training gives a formal guarantee
+      (e.g. differentially private training such as DP‑SGD) and the
+      outputs pass memorisation and membership‑inference tests.</li>
+  <li><strong>FID is not a privacy or compliance metric.</strong> It
+      measures fidelity and diversity; a generator that copies its
+      training set scores <em>well</em>.</li>
+</ul>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Common Mistakes</h2>
@@ -522,9 +821,13 @@ viz.plot_2d_distribution(real.cpu(), samples,
   <span class="label">⚠ Mistake 3: Wrong gradient penalty target</span>
   <p>
     WGAN-GP penalises the gradient norm toward 1, not toward 0. The
-    penalty is $(\|\nabla\|_2 - 1)^2$, not $\|\nabla\|_2^2$.
-    Targetting zero is a "one-sided" variant sometimes used in
-    WGAN-LP but it is not the canonical WGAN-GP loss.
+    penalty is $(\|\nabla\|_2 - 1)^2$, not $\|\nabla\|_2^2$. Both
+    alternatives exist under other names: the <em>one‑sided</em> penalty
+    of WGAN‑LP (Petzka et al., 2018) is $\max(0, \|\nabla\|_2 - 1)^2$,
+    which only punishes norms above 1; the zero‑centred
+    $\|\nabla\|_2^2$ penalty on real data is <em>R1</em> regularisation
+    (Mescheder et al., 2018), used with ordinary (non‑Wasserstein) GAN
+    losses. Neither is the canonical WGAN‑GP loss.
   </p>
 </div>
 
@@ -544,21 +847,23 @@ viz.plot_2d_distribution(real.cpu(), samples,
 <div class="try-it">
   <h3>🎯 Exercise A — Induce mode collapse</h3>
   <p>
-    Train the vanilla GAN for 500 steps. Plot the generated samples
-    every 50 steps as a scatter. Identify the exact step where the
-    generator abandons all but one mode. What does the discriminator
-    look like at that moment?
+    Train the vanilla GAN with seed 2 and call <code>mode_report</code>
+    every 250 generator steps (move it inside <code>train</code>). Plot
+    the number of covered modes against the step. Does the generator
+    ever cover all eight modes before collapsing, or does it collapse
+    from the start? Repeat with seed 0, which converged.
   </p>
 </div>
 
 <div class="try-it">
   <h3>🎯 Exercise B — Recover with WGAN-GP</h3>
   <p>
-    Run WGAN-GP on the same data for the same number of steps. Verify
-    that all eight modes are populated in the final samples. Quantify:
-    bin the samples into the eight nearest-mode categories and compute
-    the proportion in each. Compare to the true uniform-over-modes
-    ground truth.
+    Compare the per‑mode shares from <code>mode_report</code> with the
+    ideal 12.5% each, for WGAN‑GP at 3,000, 6,000 and 15,000 generator
+    steps. Summarise the gap with one number (for example the total
+    variation distance $\tfrac12\sum_k |\text{share}_k - 0.125|$). How
+    does it change with training length, and how does the "near a mode"
+    fraction change?
   </p>
 </div>
 
@@ -581,23 +886,26 @@ viz.plot_2d_distribution(real.cpu(), samples,
   optimise an adversarial game. Diffusion models descend from the
   denoising autoencoder (also 5.1): the forward process is just
   progressive corruption and the reverse process is progressive
-  denoising. The discriminator is a standard classifier CNN
-  (Lesson 5.2). In Module 6, we use diffusion as a building block for
-  text-to-image systems and revisit FID for alignment metrics.
+  denoising. An image discriminator is a standard classifier CNN
+  (Lesson 5.2). Module 6 moves on to language models, agents and
+  alignment; it does not return to diffusion or FID.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <div class="reflection">
 <h2>Reflection</h2>
 <p>
-  You built a vanilla GAN, diagnosed mode collapse on eight Gaussians,
-  upgraded to WGAN-GP with a gradient penalty, and restored coverage of
-  all eight modes. You derived the original GAN minimax objective and
+  You built a vanilla GAN and a WGAN-GP on eight Gaussians and measured
+  mode coverage across seeds — collapse in some GAN runs, slower but
+  fuller coverage from WGAN‑GP. You saw the convolutional DCGAN and the
+  cGAN / CycleGAN / StyleGAN family, evaluated generators with FID and
+  Inception Score (and what neither can tell you), and learned why
+  synthetic data is not private by default. You derived the original GAN minimax objective and
   its WGAN replacement, understood why the Wasserstein formulation
   needs a Lipschitz constraint, and met the gradient penalty as the
   practical way to enforce it. You also met diffusion models as the
-  current high-quality alternative — no adversary, no mode collapse,
-  higher sample quality, slower sampling.
+  current high-quality alternative — no adversary, far less prone to
+  mode collapse, typically higher sample quality, slower sampling.
 </p>
 <p>
   Lesson 5.6 takes deep learning to its most unusual data structure:

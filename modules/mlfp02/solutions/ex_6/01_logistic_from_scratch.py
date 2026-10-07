@@ -287,17 +287,17 @@ print("\n[ok] Checkpoint 3 passed — sigmoid + comparison visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: HDB valuation classification
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore property valuation firm (e.g. Knight Frank,
-# Edmund Tie) needs to quickly triage incoming HDB resale transactions
-# into "high-value" vs "standard" categories for resource allocation.
+# SCENARIO: A Singapore property valuation firm needs to quickly triage
+# incoming HDB resale transactions into "high-value" vs "standard"
+# categories for resource allocation.
 #
-# The logistic regression model replaces the current manual process
-# where senior valuers review every transaction — roughly 300 per week
-# in a busy market.
+# The logistic regression model replaces a manual process where senior
+# valuers review every transaction. The volumes and rates below are
+# ILLUSTRATIVE assumptions for a mid-sized firm, not published figures.
 
-n_weekly = 300
-time_per_manual_min = 15  # minutes of senior valuer time per transaction
-valuer_hourly_rate = 85  # S$ per hour
+n_weekly = 300  # illustrative: transactions per week
+time_per_manual_min = 15  # illustrative: minutes of senior valuer time each
+valuer_hourly_rate = 85  # illustrative: S$ per hour
 weekly_manual_cost = n_weekly * time_per_manual_min / 60 * valuer_hourly_rate
 
 # With the model, only uncertain cases (P near 0.5) need human review
@@ -317,13 +317,16 @@ print(
     f"    Savings: S${weekly_manual_cost - weekly_model_cost:,.0f}/week "
     f"(S${(weekly_manual_cost - weekly_model_cost) * 52:,.0f}/year)"
 )
-print(f"  Model accuracy on clear cases: {acc_scratch:.1%}")
+# Accuracy on the cases the model handles alone (outside the 0.35-0.65 band)
+acc_clear = accuracy_score(y[~uncertain_mask], (p_all[~uncertain_mask] >= 0.5).astype(float))
+print(f"  Model accuracy on clear cases (auto-triaged): {acc_clear:.1%}")
+print(f"  Model accuracy on all cases:                  {acc_scratch:.1%}")
 
-# BUSINESS IMPACT: At {acc_scratch:.1%} accuracy, the model confidently
-# classifies the non-borderline transactions. Only ~{pct_uncertain:.0%}
-# of cases fall in the uncertain band and need senior valuer review. The
-# annual saving in valuer time alone is significant — and the model
-# improves as more transaction data accumulates.
+# BUSINESS IMPACT: The model auto-triages the transactions outside the
+# uncertain band (accuracy printed above for exactly those cases); only
+# the uncertain share goes to a senior valuer. The saving scales with
+# that share, so a model that pushes fewer cases into the 0.35-0.65
+# band saves more valuer time.
 #
 # LIMITATIONS:
 #   - Three features only (area, storey, lease). Adding town/location
@@ -332,6 +335,11 @@ print(f"  Model accuracy on clear cases: {acc_scratch:.1%}")
 #     valuations need dollar-level precision for mortgage lending.
 #   - Retraining needed quarterly as the median shifts with market.
 
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert 0 < pct_uncertain < 1, "Some but not all cases should be uncertain"
+assert acc_clear >= acc_scratch, "Confident cases should be classified at least as well as all cases"
+print("\n[ok] Checkpoint 4 passed — triage economics computed\n")
+
 
 # ══════════════════════════════════════════════════════════════════════
 # REFLECTION
@@ -339,10 +347,13 @@ print(f"  Model accuracy on clear cases: {acc_scratch:.1%}")
 print(
     """
 What you've mastered in this technique:
-  ✓ The concepts and implementation covered above
-  ✓ Visual proof of how the technique works
-  ✓ Real-world application with business impact
+  ✓ A numerically stable sigmoid, with its symmetry and derivative checked
+  ✓ Logistic regression as Bernoulli MLE, fitted with L-BFGS-B and an
+    analytical gradient
+  ✓ Validating a from-scratch model against sklearn's coefficients
+  ✓ Using predicted probabilities to route only uncertain cases to humans
 
-Next: Continue to the next technique file in this exercise...
+Next: In 02_interpretation.py you'll turn these coefficients into odds
+ratios and choose a decision threshold from a cost matrix.
 """
 )

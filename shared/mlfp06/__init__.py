@@ -5,7 +5,7 @@
 Exercise-specific infrastructure (LLM setup, datasets, metrics, classifiers)
 that technique files import. Each exercise gets its own submodule:
 
-    from shared.mlfp06.ex_1 import load_sst2, zero_shot_classify, compute_metrics
+    from shared.mlfp06.ex_1 import load_sst2, normalise_label, compute_metrics
     ...
 
 Available after `uv sync` from any directory.
@@ -194,3 +194,6 @@ try:  # pragma: no cover - environment shim
         _OllamaProvider._client = None
 except Exception:  # kaizen absent or provider API changed — nothing to patch
     pass
+
+# Re-export the canonical factory (shared/kailash_helpers.py).
+from shared.kailash_helpers import create_visualizer

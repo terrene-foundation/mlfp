@@ -1,92 +1,70 @@
-# MLFP05 — Task 1: Autoencoder Anomaly Detection on Sensor Telemetry
+# MLFP05 — Task 1: Handwritten Postcode Reader That Beats the Classical Baseline
 
-**Weight**: 25 marks · **Difficulty**: Hard · **No GPU required** (trains on CPU in < 15s)
+**Weight**: 25 marks · **Data**: the 8×8 digits dataset bundled with scikit-learn
+(no download) · **Outcomes assessed**: convolutional architectures, training a
+real model to a measurable outcome (5.2)
 
 ## Scenario
 
-A Singapore precision-manufacturing line streams **12 sensor channels** (vibration,
-temperature, current draw, acoustic, ...) per machine cycle. You have **no labelled
-failures** — only the engineering assumption that _healthy_ cycles all "look alike"
-and that an impending bearing fault produces telemetry the line has never emitted
-before.
+A mail-sorting contractor reads handwritten Singapore postal codes. Their
+legacy pipeline — a classical model on raw pixels — is the system to beat.
+You are asked to deliver a **convolutional neural network**, trained from
+scratch, that outperforms it on held-out mail.
 
-This is the classic unsupervised anomaly-detection setup from Exercise 1: train an
-**undercomplete autoencoder on healthy-only data**, then score every incoming cycle
-by its **reconstruction error**. Healthy cycles reconstruct well (low error);
-anomalous cycles reconstruct poorly (high error) because the encoder never learned
-their structure. The reconstruction error is the anomaly score.
+The 8×8 grayscale digits in `sklearn.datasets.load_digits` stand in for the
+mail scans: 1,797 images, pixel intensities 0–16. Nobody is handing you an
+architecture or a training recipe. Choosing them is the task.
 
-Implement `solve()`. It must train the AE and return the scored test set so the
-grader can verify the detector actually separates the planted anomalies.
+Your model will be graded on **held-out mail you never see**: the grader makes
+its own stratified split with a fresh secret seed, trains its own classical
+baseline on its own training slice, and scores **your returned model's
+predictions** against **its own labels**. No number your code reports about
+itself is read. An untrained network, a constant predictor, or a model whose
+convolution is declared but never used in the forward pass will fail.
 
-## Dataset
-
-**Synthetic, generated in-process with a fixed seed** (`numpy.random.default_rng(7)`)
-— no download, fully deterministic. Provided to you by `make_dataset()` in the
-starter:
-
-- `X_train` — `(800, 12)` float32, **healthy cycles only** (a low-rank correlated
-  signal + small Gaussian noise). Train the AE on this.
-- `X_test` — `(400, 12)` float32, a mix of healthy and anomalous cycles.
-- `y_test` — `(400,)` int, ground-truth labels (`0` = healthy, `1` = anomaly).
-  **Use this ONLY to compute the final AUC** — never as a training signal.
-
-Anomalies are planted by breaking the healthy correlation structure (off-manifold
-shifts), so a bottleneck AE that learned the healthy manifold will score them high.
-
-## Contract
+## Interface
 
 ```python
-def solve() -> dict:
-    ...
-    return {
-        "model":       <trained torch.nn.Module>,   # the autoencoder
-        "scores":      <np.ndarray (400,) float>,   # per-test-row reconstruction MSE
-        "y_test":      <np.ndarray (400,) int>,     # labels, passed straight through
-        "input_dim":   12,                          # int
-        "latent_dim":  <int>,                       # bottleneck size you chose, < 12
-    }
+def solve() -> dict: ...
 ```
 
-Requirements baked into the grading:
+Returns a dict with at least:
 
-1. **Bottleneck is undercomplete** — `latent_dim < input_dim` (a non-compressing AE
-   can learn the identity and will fail to separate anomalies).
-2. **`scores` are genuine reconstruction errors** — the grader re-runs your returned
-   `model` on a fresh healthy batch and a fresh anomalous batch and checks that the
-   model itself (not just your array) assigns higher error to anomalies.
-3. **Detector quality** — ROC-AUC of `scores` vs `y_test` **>= 0.90**.
-4. **Honest split** — mean reconstruction error on healthy test rows must be clearly
-   below the mean on anomalous test rows (separation ratio >= 1.5x).
+- `"model"`: your trained model, a `torch.nn.Module` in eval-ready state.
+- `"history"`: `{"train_loss": [...], "val_loss": [...]}` — the recorded
+  training log (for your own debugging; the grader does not score it).
 
-## Performance target
+**Model contract** (the serving contract the sorter's loader expects):
 
-- ROC-AUC (`scores` vs `y_test`) **>= 0.90**
-- Reconstruction-error separation (anomaly mean / healthy mean) **>= 1.5x**
+- input: a `(N, 1, 8, 8)` float32 tensor, pixels scaled to `[0, 1]`
+  (raw intensity divided by 16);
+- output: a `(N, 10)` tensor of class logits (raw scores, not probabilities).
 
-A correctly-built undercomplete AE trained ~40 epochs reaches AUC ~0.98 here.
+`starter.py` provides `load_digits_train()` — the training mail (a fixed,
+documented split) — and the `solve()` signature. Work only in PyTorch.
 
-## Visible sanity check
+## Acceptance criteria (what the grader measures)
 
-`solution.py` prints, when run directly:
+| #   | Check                                                                      |
+| --- | -------------------------------------------------------------------------- |
+| 1   | A `torch.nn.Module` is returned (gate)                                     |
+| 2   | The model honours the input/output contract on grader-built batches (gate) |
+| 3   | At least one `Conv2d` actually fires during the forward pass               |
+| 4   | Eval-mode forward is deterministic (same input twice → identical logits)   |
+| 5   | Accuracy on the grader's held-out split ≥ 0.90                             |
+| 6   | Accuracy beats the grader's majority-class baseline                        |
+| 7   | Accuracy ≥ grader's own classical baseline − 0.05 (trained by the grader)  |
+| 8   | Accuracy on a grader-built intensity-jittered variant ≥ 0.80               |
+| 9   | Predictions on held-out mail span at least 5 distinct classes              |
 
-```
-latent_dim=4  AUC=0.9xx  separation=x.xx
-```
-
-## Grading (8 automated checks, all must pass → 25 marks)
-
-return type is a dict · required keys present · model is an `nn.Module` ·
-`latent_dim < input_dim` (genuine bottleneck) · `scores` shape matches `y_test` ·
-AUC >= 0.90 · separation ratio >= 1.5x · model re-run on fresh data still ranks
-anomalies above healthy (the scores are not faked).
+Marks = 25 × (non-gate checks passed / 7). If a gate fails, the task scores 0.
 
 ## Rules
 
-- **No GPU.** CPU only; the reference trains in well under 15 seconds.
-- Raw **PyTorch is allowed** — this is the deep-learning module and Exercise 1 builds
-  AEs directly in `torch.nn`.
-- **Polars** for any tabular work; **no pandas**.
-- Fix all seeds (`torch.manual_seed`) so your run is reproducible.
-- Do **not** read `y_test` during training — it is a held-out evaluation label only.
-- No hardcoded API keys or model names.
+- Raw PyTorch (`torch.nn`); CPU only; no pretrained weights or downloads.
+- Fix every seed you use. The grader replays runs with `--seed`.
+- Train time inside `solve()` must stay under ~3 minutes on a laptop CPU.
+- **Never train on held-out labels you construct yourself** — the grader's
+  split is not yours, and self-reported metrics are ignored.
+- Self-check: run `starter.py` end-to-end and read your own validation
+  accuracy before submitting.

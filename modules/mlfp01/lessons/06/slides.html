@@ -268,15 +268,16 @@ fig = viz.histogram(
 )
   </code></pre>
   <p style="font-size: 0.85em;">
-    HDB prices are right-skewed: most in 350k–600k, long tail into
-    million-dollar territory. Mean &gt; median as a result.
+    In the course data, 80% of sales fall between about 540k and 1.22M SGD
+    (median 849k). The tail is extreme: 144 records at 9M SGD pull the mean
+    up to 882k &mdash; and they squash the histogram until you filter them.
   </p>
 </section>
 
 <section>
   <h2>Scatter — relationship between two numbers</h2>
   <pre><code class="language-python" data-trim>
-# SAMPLE before plotting — 500k points is a grey blob
+# SAMPLE before plotting — 50,000 points is a grey blob
 hdb_sample = hdb.sample(n=5_000, seed=42)
 
 fig = viz.scatter(
@@ -287,8 +288,9 @@ fig = viz.scatter(
 )
   </code></pre>
   <p style="font-size: 0.85em;">
-    Clear positive slope, wide vertical spread — area explains maybe
-    40–50% of price variance. The rest is town, floor, lease, amenities.
+    Positive slope, wide vertical spread: r = 0.47, so area alone explains
+    about 22% of price variance ($r^2$). Drop the 10 SGD and 9M SGD records and
+    r jumps to about 0.91 &mdash; bad rows hide real relationships.
   </p>
 </section>
 
@@ -300,7 +302,7 @@ district_prices = (
     .agg(pl.col("resale_price").median().alias("median_price"))
     .sort("median_price", descending=True)
 )
-# feature_importance = horizontal bar
+# metric_comparison draws grouped bars (made for model scores)
 fig = viz.metric_comparison({
     town: {"Median Price (S$)": price}
     for town, price in zip(
@@ -308,22 +310,31 @@ fig = viz.metric_comparison({
         district_prices["median_price"].to_list(),
     )
 })
+# its default axis titles are "Model"/"Score" — set the real ones
+fig.update_layout(xaxis_title="Town", yaxis_title="Median resale price (S$)")
   </code></pre>
-  <p style="font-size: 0.85em;">Horizontal bars — long town names readable, lengths on a common axis.</p>
+  <p style="font-size: 0.85em;">Bars sorted by value, lengths on a common axis. For 27 long town names a horizontal bar (<code>px.bar(..., orientation="h")</code>) reads better still.</p>
 </section>
 
 <section>
   <h2>Line — change over time</h2>
   <pre><code class="language-python" data-trim>
+hdb = hdb.with_columns(
+    pl.col("month").str.to_date("%Y-%m").alias("transaction_date"),
+    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+)
 monthly = (
     hdb.group_by("transaction_date")
     .agg(pl.col("price_per_sqm").median().alias("median_psm"))
     .sort("transaction_date")
 )
 
-fig = viz.training_history({
-    "median_price_sqm": monthly["median_psm"].to_list()
-})
+fig = viz.training_history(
+    {"median_price_sqm": monthly["median_psm"].to_list()},
+    x_label="Month", y_label="Median price per sqm (S$)",
+)
+# training_history plots against 1..N — put the real dates on the x-axis
+fig.update_traces(x=monthly["transaction_date"].to_list())
   </code></pre>
   <p style="font-size: 0.85em;">Line = continuity Gestalt. The eye reads a line as a trend automatically.</p>
 </section>
@@ -331,17 +342,20 @@ fig = viz.training_history({
 <section>
   <h2>Heatmap — correlations at a glance</h2>
   <pre><code class="language-python" data-trim>
+import plotly.express as px
+
 numeric = hdb.select("resale_price", "floor_area_sqm", "price_per_sqm")
-corr = numeric.corr()
-fig = viz.confusion_matrix(
-    matrix=corr.to_numpy(),
-    labels=numeric.columns,
-    title="HDB Feature Correlations",
+corr = numeric.corr()   # Polars correlation matrix
+fig = px.imshow(
+    corr.to_numpy(), x=corr.columns, y=corr.columns,
+    text_auto=".2f", color_continuous_scale="RdBu_r",
+    zmin=-1, zmax=1, title="HDB Feature Correlations",
 )
   </code></pre>
   <p style="font-size: 0.85em;">
-    Colour encodes magnitude; diverging palette around zero. Use for many
-    pairwise comparisons in a single small panel.
+    Colour encodes magnitude; diverging palette pinned at zero (red =
+    positive, blue = negative). <code>ModelVisualizer.confusion_matrix</code>
+    is <em>not</em> a heatmap tool &mdash; it takes true and predicted labels.
   </p>
 </section>
 
@@ -354,18 +368,17 @@ composition = (
     hdb.group_by("town", "flat_type")
     .agg(pl.len().alias("count"))
 )
-# Plotly Express requires pandas DataFrames — this is the one
-# place where .to_pandas() is the correct bridge from Polars.
+# Plotly Express takes the Polars DataFrame directly
 fig = px.bar(
-    composition.to_pandas(),
+    composition,
     x="town", y="count", color="flat_type",
     title="Flat Type Composition by Town",
 )
   </code></pre>
-  <div style="background: #FFFBEB; padding: 10px 16px; border-left: 4px solid #F59E0B; border-radius: 4px; font-size: 0.85em;">
-    <strong>Why .to_pandas() here?</strong> Plotly Express needs pandas for its
-    <code>color=</code> grouping. All other code stays in Polars — this is the
-    narrow bridge at the visualisation boundary.
+  <div style="background: #F0FDF4; padding: 10px 16px; border-left: 4px solid #22C55E; border-radius: 4px; font-size: 0.85em;">
+    <strong>No pandas needed.</strong> Plotly reads Polars frames natively,
+    <code>color=</code> grouping included. For a 100% stacked bar (survey / Likert
+    data), plot each town's share: <code>pl.col("count") / pl.col("count").sum().over("town")</code>.
   </div>
 </section>
 
@@ -381,7 +394,7 @@ fig = px.bar(
     <strong>❌ Truncated y-axis on bars.</strong> Starts at 400, not 0 → misleading.
   </div>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
-    <strong>❌ Scatter with 500k points.</strong> Grey blob. Sample or hexbin.
+    <strong>❌ Scatter with 50,000 points.</strong> Grey blob. Sample or hexbin.
   </div>
 </section>
 
@@ -391,7 +404,7 @@ fig = px.bar(
     ❌ <strong>Topic:</strong> "HDB Resale Prices by District"
   </div>
   <div style="background: #F0FDF4; padding: 16px 20px; border-left: 4px solid #22C55E; border-radius: 4px;">
-    ✅ <strong>Takeaway:</strong> "Central districts command a 60% premium over peripheral towns"
+    ✅ <strong>Takeaway:</strong> "Toa Payoh's median resale price is 19% above Boon Lay's"
   </div>
   <p style="font-size: 0.9em; margin-top: 1em;">
     Your chart title is the first (often only) thing the reader reads.
@@ -405,7 +418,7 @@ fig = px.bar(
     <li>✓ Pick a chart type from the question (histogram, line, bar, scatter, heatmap, stacked)</li>
     <li>✓ Apply Gestalt principles (proximity, similarity, enclosure, continuity)</li>
     <li>✓ Use the Cleveland–McGill ranking to pick accurate perceptual tasks</li>
-    <li>✓ Build six chart types with <code>ModelVisualizer</code></li>
+    <li>✓ Build six chart types with <code>ModelVisualizer</code> and Plotly Express</li>
     <li>✓ Save interactive Plotly figures as HTML</li>
     <li>✓ Avoid 3D, misleading truncation, pie charts with many slices</li>
   </ul>

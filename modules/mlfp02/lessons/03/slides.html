@@ -87,6 +87,11 @@
   <h2>Percentile CI (the simple version)</h2>
   \[ \text{CI}_{95\%} = \left[\hat\theta^*_{(0.025)},\; \hat\theta^*_{(0.975)}\right] \]
   <pre><code class="language-python" data-trim>
+import numpy as np
+from shared import MLFPDataLoader
+
+data = (MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+        .sample(n=200, seed=42)["resale_price"].to_numpy())
 rng = np.random.default_rng(42)
 B = 5000
 reps = np.empty(B)
@@ -140,6 +145,7 @@ print(res.confidence_interval)
     </svg>
   </figure>
   \[ p \;=\; P\!\left(T \ge T_{\text{obs}} \;\middle|\; H_0\right) \]
+  <p style="font-size: 0.8em; color: #64748B;">One-tailed, as drawn. Two-tailed: $P(|T| \ge |T_{\text{obs}}| \mid H_0)$ &mdash; data <em>at least as extreme</em> in either direction.</p>
 </section>
 
 <section>
@@ -249,8 +255,9 @@ print(res.confidence_interval)
   <p>Find the largest $k$ where $p_{(k)} \le \frac{k}{m}\alpha$. Reject all with rank $\le k$.</p>
   <p>Controls <strong>false discovery rate</strong> — expected proportion of false positives <em>among the rejects</em>.</p>
   <pre><code class="language-python" data-trim>
-from statsmodels.stats.multitest import multipletests
-bh_ok, bh_p, _, _ = multipletests(pvals, alpha=0.05, method="fdr_bh")
+from scipy.stats import false_discovery_control
+bh_p = false_discovery_control(pvals, method="bh")  # BH-adjusted
+bh_ok = bh_p <= 0.05
   </code></pre>
 </section>
 
@@ -271,20 +278,23 @@ null = np.empty(B)
 for b in range(B):
     rng.shuffle(pool)
     null[b] = pool[n_c:].mean() - pool[:n_c].mean()
-p = np.mean(np.abs(null) >= abs(obs))
+# +1 counts the observed split itself: p is never exactly 0
+p = (np.sum(np.abs(null) >= abs(obs)) + 1) / (B + 1)
   </code></pre>
 </section>
 
 <section>
   <h2>Worked: three-metric A/B test</h2>
   <pre><code class="language-python" data-trim>
+# p-values from your conversion, AOV and revenue-per-visitor tests
 pvals = np.array([p_conv, p_aov, p_rpv])
-bonf_ok, bonf_p, _, _ = multipletests(pvals, 0.05, "bonferroni")
-bh_ok,   bh_p,   _, _ = multipletests(pvals, 0.05, "fdr_bh")
+m = len(pvals)
+bonf_p = np.minimum(pvals * m, 1.0)          # Bonferroni-adjusted
+bh_p = false_discovery_control(pvals, method="bh")
 
 print("Raw p:     ", pvals)
-print("Bonferroni:", bonf_ok, bonf_p)
-print("BH-FDR:    ", bh_ok,   bh_p)
+print("Bonferroni:", bonf_p <= 0.05, bonf_p)
+print("BH-FDR:    ", bh_p <= 0.05, bh_p)
   </code></pre>
   <p style="font-size: 0.85em;">
     BH-FDR typically rejects more than Bonferroni — more power at the cost

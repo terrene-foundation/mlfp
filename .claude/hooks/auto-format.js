@@ -3,17 +3,25 @@
  * Hook: auto-format
  * Event: PostToolUse
  * Matcher: Edit|Write
- * Purpose: Auto-format Python, JavaScript, TypeScript files
+ * Purpose: Auto-format Python, JavaScript, TypeScript files.
+ *
+ * Advisory posture (owner directive 2026-10-07): never blocks. When a
+ * formatter actually rewrote the file, the agent is told via
+ * additionalContext — silent on-disk mutation after a Write looks like
+ * a revert to the agent and has caused double-write confusion.
  *
  * Exit Codes:
- *   0 = success (continue)
- *   2 = blocking error (stop tool execution)
- *   other = non-blocking error (warn and continue)
+ *   0 = always (outcome reported as additionalContext)
  */
 
 const fs = require("fs");
+const crypto = require("crypto");
 const { execFileSync } = require("child_process");
 const path = require("path");
+
+function sha256(filePath) {
+  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
 
 // Timeout fallback — prevents hanging the Claude Code session
 const TIMEOUT_MS = 10000;
@@ -36,6 +44,13 @@ process.stdin.on("end", () => {
           hookEventName: "PostToolUse",
           formatted: result.formatted,
           formatter: result.formatter,
+          ...(result.changed && {
+            additionalContext:
+              `auto-format rewrote ${path.basename(data.tool_input?.file_path || "file")} ` +
+              `(${result.formatter}) on disk after your write. The on-disk bytes differ ` +
+              `from what you wrote — re-read the file before making byte-sensitive edits. ` +
+              `This is formatting only; your content was not reverted.`,
+          }),
         },
       }),
     );
@@ -67,14 +82,15 @@ function autoFormat(data) {
   try {
     // Python files: black or ruff
     if (ext === ".py") {
+      const before = sha256(filePath);
       try {
         execFileSync("black", [filePath], { stdio: "pipe" });
-        return { formatted: true, formatter: "black" };
+        return { formatted: true, formatter: "black", changed: sha256(filePath) !== before };
       } catch {
         // Try ruff if black not available
         try {
           execFileSync("ruff", ["format", filePath], { stdio: "pipe" });
-          return { formatted: true, formatter: "ruff" };
+          return { formatted: true, formatter: "ruff", changed: sha256(filePath) !== before };
         } catch {
           return { formatted: false, formatter: "none (black/ruff not found)" };
         }
@@ -83,11 +99,12 @@ function autoFormat(data) {
 
     // JavaScript/TypeScript files: prettier
     if ([".js", ".jsx", ".ts", ".tsx", ".json"].includes(ext)) {
+      const before = sha256(filePath);
       try {
         execFileSync("npx", ["prettier", "--write", filePath], {
           stdio: "pipe",
         });
-        return { formatted: true, formatter: "prettier" };
+        return { formatted: true, formatter: "prettier", changed: sha256(filePath) !== before };
       } catch {
         return { formatted: false, formatter: "none (prettier not found)" };
       }
@@ -95,11 +112,12 @@ function autoFormat(data) {
 
     // YAML/Markdown: prettier
     if ([".yaml", ".yml", ".md"].includes(ext)) {
+      const before = sha256(filePath);
       try {
         execFileSync("npx", ["prettier", "--write", filePath], {
           stdio: "pipe",
         });
-        return { formatted: true, formatter: "prettier" };
+        return { formatted: true, formatter: "prettier", changed: sha256(filePath) !== before };
       } catch {
         return { formatted: false, formatter: "none" };
       }

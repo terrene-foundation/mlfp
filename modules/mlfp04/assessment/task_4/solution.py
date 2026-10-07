@@ -1,88 +1,80 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP04 — Assessment Task 4: Neural Network Foundations (Reference)
+MLFP04 — Assessment Task 4: Topics from News Text (Reference)
 
-Reference implementation. Withheld from students. Verified to pass grader.py.
-Framework-first: the network is trained through the kailash-ml SklearnTrainable
-adapter (a multi-layer perceptron), NOT a raw torch training loop.
+Instructor-only reference. Withheld from students.
+
+Decisions: strip the wire-service artefacts (HTML entities, "(Reuters)
+Reuters -" bylines) and boilerplate words before vectorising; sublinear
+TF-IDF with document-frequency limits; NMF through DimReductionEngine; the
+engine returns document weights only, so topic-word weights are recovered by
+non-negative regression of the TF-IDF matrix on those weights.
 """
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import polars as pl
-from sklearn.neural_network import MLPClassifier
+from scipy.optimize import nnls
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 
-from kailash_ml import SklearnTrainable
+from kailash_ml.engines.dim_reduction import DimReductionEngine
+from shared import MLFPDataLoader
 
-SEED = 20260404
-N = 800
-SPLIT = 600  # first 600 rows train, last 200 test
-FEATURES = ["x1", "x2"]
-TARGET = "label"
-
-
-def make_circles() -> pl.DataFrame:
-    """Two concentric rings — class 0 inside, class 1 outside.
-
-    The classes share a centre (the origin), so NO straight line separates
-    them: a linear model is stuck near chance. Only a model with a hidden
-    layer (a non-linear decision boundary) can solve it.
-    """
-    rng = np.random.default_rng(SEED)
-    m = N // 2
-
-    def ring(radius: float, noise: float) -> np.ndarray:
-        theta = rng.uniform(0, 2 * np.pi, m)
-        r = radius + rng.normal(0, noise, m)
-        return np.c_[r * np.cos(theta), r * np.sin(theta)]
-
-    X = np.vstack([ring(1.0, 0.18), ring(3.0, 0.30)])
-    y = np.r_[np.zeros(m, dtype=int), np.ones(m, dtype=int)]
-    perm = rng.permutation(N)
-    X, y = X[perm], y[perm]
-    return pl.DataFrame({"x1": X[:, 0], "x2": X[:, 1], "label": y})
+BOILERPLATE = {
+    "said", "says", "reuters", "ap", "afp", "new", "york", "year", "years", "today",
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "week", "quot", "lt", "gt", "href", "http", "www", "com", "font", "39", "36",
+}
+STOP = sorted(ENGLISH_STOP_WORDS | BOILERPLATE)
 
 
-def _predict_labels(trainable: SklearnTrainable, frame: pl.DataFrame) -> np.ndarray:
-    preds = trainable.predict(frame.select(FEATURES))
-    return preds.to_polars()[preds.column].to_numpy().ravel().astype(int)
+def load_news(n: int = 1200, seed: int = 0) -> list[str]:
+    raw = MLFPDataLoader().load("mlfp05", "ag_news.parquet")
+    return raw.sample(n, seed=seed)["text"].to_list()
 
 
-def solve() -> dict:
-    """Train an MLP through kailash-ml and beat the linear ceiling on circles."""
-    df = make_circles()
-    train_df = df.head(SPLIT)
-    test_df = df.tail(N - SPLIT)
+def clean(text: str) -> str:
+    text = text.replace("\\", " ")
+    text = re.sub(r"&lt;.*?&gt;", " ", text)
+    text = re.sub(r"&?#?[a-z0-9]{1,6};", " ", text)
+    text = re.sub(r"\([^()]{1,40}\)\s+[^-]{1,40}?\s+-{1,2}\s", " ", text, count=1)
+    return re.sub(r"\s+", " ", text).strip()
 
-    # Multi-layer perceptron driven through the kailash-ml Trainable adapter.
-    mlp = SklearnTrainable(
-        estimator=MLPClassifier(
-            hidden_layer_sizes=(32, 16),
-            activation="relu",
-            max_iter=2000,
-            random_state=SEED,
-        ),
-        target=TARGET,
-        metric="accuracy",
-    )
-    mlp.fit(train_df)
 
-    train_pred = _predict_labels(mlp, train_df)
-    test_pred = _predict_labels(mlp, test_df)
-
-    y_train = train_df[TARGET].to_numpy()
-    y_test = test_df[TARGET].to_numpy()
-
-    return {
-        "test_predictions": [int(v) for v in test_pred],
-        "test_accuracy": float((test_pred == y_test).mean()),
-        "train_accuracy": float((train_pred == y_train).mean()),
-    }
+def discover_topics(docs: list[str], n_topics: int) -> dict:
+    vec = TfidfVectorizer(stop_words=STOP, min_df=3, max_df=0.4, sublinear_tf=True,
+                          token_pattern=r"(?u)\b[a-z][a-z]+\b", lowercase=True)
+    M = vec.fit_transform([clean(d) for d in docs]).toarray()
+    vocab = np.array(vec.get_feature_names_out())
+    frame = pl.from_numpy(M, schema=[f"t{i}" for i in range(M.shape[1])])
+    engine = DimReductionEngine()
+    # NMF is high-variance on small corpora: a single nndsvd seed can split a
+    # section or leave one topic nearly empty. Fit several seeded runs and keep
+    # the one whose reconstruction of the aggregated tfidf profile is most
+    # faithful, so the chosen factorisation is best-of-n, not the luck of one seed.
+    profile = M.sum(axis=0) / M.sum()
+    best = None
+    for seed in range(24):
+        res = engine.reduce(frame, algorithm="nmf", n_components=n_topics, seed=seed,
+                            init="nndsvd", max_iter=3000)
+        W = np.asarray(res.transformed, dtype=float)
+        H = np.array([nnls(W, M[:, j])[0] for j in range(M.shape[1])]).T  # (k, vocab)
+        recon = W @ H / max((W @ H).sum(), 1e-12)
+        fidelity = 1.0 - float(np.linalg.norm(recon - profile) / (np.linalg.norm(profile) + 1e-12))
+        # also reward confident document assignment (borderline docs blur coherence)
+        conf = float(np.mean(W.max(axis=1) / (W.sum(axis=1) + 1e-12)))
+        score = fidelity + 0.5 * conf
+        if best is None or score > best[0]:
+            best = (score, W, H)
+    _, W, H = best
+    top_words = [vocab[np.argsort(-H[k])[:10]].tolist() for k in range(n_topics)]
+    return {"doc_topics": [int(v) for v in W.argmax(axis=1)], "top_words": top_words}
 
 
 if __name__ == "__main__":
-    out = solve()
-    print(f"train_accuracy : {out['train_accuracy']:.4f}")
-    print(f"test_accuracy  : {out['test_accuracy']:.4f}")
-    print(f"n test preds   : {len(out['test_predictions'])}")
+    out = discover_topics(load_news(), 4)
+    for k, words in enumerate(out["top_words"]):
+        print(k, words)

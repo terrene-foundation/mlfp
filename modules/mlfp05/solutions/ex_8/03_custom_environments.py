@@ -58,9 +58,11 @@ from shared.mlfp05.ex_8 import (
     evaluate_policy,
     moving_average,
     register_rl_model,
+    rl_diagnostic_checkpoint,
     setup_engines,
 )
 from kailash_ml import ModelVisualizer
+from shared.mlfp05 import create_visualizer
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 1 — Theory: Why Custom Environments Matter
@@ -88,8 +90,9 @@ from kailash_ml import ModelVisualizer
 #   4. DYNAMICS: How does the world respond to actions?
 #      Must be realistic enough to transfer to the real system.
 #
-# Each environment below models a REAL business problem with realistic
-# dynamics calibrated to Singapore market conditions.
+# Each environment below models a real KIND of business problem. The
+# dynamics are illustrative: loosely shaped on Singapore settings, with
+# every number invented for teaching — not calibrated to any company.
 
 print("=" * 70)
 print("  TASK 1: Custom Environments — The Foundation of Applied RL")
@@ -107,12 +110,12 @@ print("  TASK 2: Build 5 Custom Environments")
 print("=" * 70)
 
 
-# ── Environment 1: Customer Churn Prevention (Singtel / StarHub) ─────
+# ── Environment 1: Customer Churn Prevention (a telco) ───────────────
 class ChurnPreventionEnv(gym.Env):
     """Prevent customer churn through targeted retention interventions.
 
     SCENARIO: You manage the retention team at a Singapore telecom
-    (think Singtel or StarHub). Each day you observe a customer's health
+    operator (hypothetical). Each day you observe a customer's health
     metrics and decide whether/how to intervene.
 
     State (4,): [satisfaction_score, usage_frequency, months_active, support_tickets]
@@ -165,7 +168,9 @@ class ChurnPreventionEnv(gym.Env):
             intervention_cost = 1.5
 
         # Natural drift: satisfaction decays, tickets accumulate
-        satisfaction = max(0.0, satisfaction - 0.02 + self.np_random.normal(0, 0.02))
+        satisfaction = float(
+            np.clip(satisfaction - 0.02 + self.np_random.normal(0, 0.02), 0.0, 1.0)
+        )
         usage = max(0.0, min(1.0, usage - 0.01 + self.np_random.normal(0, 0.02)))
         tickets = max(0.0, min(1.0, tickets + 0.02 + self.np_random.normal(0, 0.01)))
         tenure = min(1.0, tenure + 1.0 / self.max_steps)
@@ -262,13 +267,13 @@ class PortfolioRebalancingEnv(gym.Env):
         return self.state.copy(), reward, False, truncated, {}
 
 
-# ── Environment 3: Queue Management (Changi Airport) ─────────────────
+# ── Environment 3: Queue Management (an airport) ─────────────────────
 class QueueManagementEnv(gym.Env):
-    """Allocate staff to counters at Changi Airport to minimise wait times.
+    """Allocate staff to counters at an airport to minimise wait times.
 
-    SCENARIO: You manage immigration counter staffing at Changi Airport.
+    SCENARIO: You manage immigration counter staffing at a hub airport.
     Flights arrive in waves; you redistribute staff across three zones
-    (T1, T2, T3) every 30 minutes.
+    (halls A, B, C) every 30 minutes.
 
     State (6,): [queue_t1, queue_t2, queue_t3, staff_t1, staff_t2, staff_t3]
       Queues normalised by capacity; staff normalised by total headcount.
@@ -310,7 +315,7 @@ class QueueManagementEnv(gym.Env):
             staff[dst] += amount
             realloc_cost = 0.15  # disruption cost of moving staff
 
-        # Flight arrival waves (Changi pattern: peaks at 6am, 12pm, 6pm, 11pm)
+        # Flight arrival waves (illustrative: peaks around 6am, 8am, 12pm, 6pm, 8pm, 11pm)
         half_hour = self.step_count % 48
         hour = half_hour / 2.0
         wave_t1 = 0.15 * np.exp(-0.5 * ((hour - 6) / 2) ** 2) + 0.1 * np.exp(
@@ -348,11 +353,11 @@ class QueueManagementEnv(gym.Env):
         return self.state.copy(), reward, False, truncated, {}
 
 
-# ── Environment 4: Energy Trading (SP Group) ─────────────────────────
+# ── Environment 4: Energy Trading (an electricity retailer) ──────────
 class EnergyTradingEnv(gym.Env):
     """Buy and sell electricity on Singapore's spot market.
 
-    SCENARIO: You manage the trading desk at SP Group. Every hour you
+    SCENARIO: You run an electricity retailer's trading desk. Every hour you
     decide whether to buy, sell, or hold electricity based on price
     forecasts, current reserves, and demand patterns.
 
@@ -452,12 +457,12 @@ class EnergyTradingEnv(gym.Env):
         return self.state.copy(), reward, False, truncated, {}
 
 
-# ── Environment 5: Traffic Signal Optimisation (LTA) ─────────────────
+# ── Environment 5: Traffic Signal Optimisation (a road authority) ────
 class TrafficSignalEnv(gym.Env):
     """Optimise green light timing at a Singapore intersection.
 
-    SCENARIO: You manage a 4-way intersection for the Land Transport
-    Authority (LTA). Every cycle (90 seconds) you allocate green time
+    SCENARIO: You manage a 4-way intersection for a city road
+    authority. Every cycle (90 seconds) you allocate green time
     between the north-south and east-west directions.
 
     State (4,): [queue_ns, queue_ew, flow_ns, flow_ew]
@@ -617,7 +622,9 @@ async def _train_churn_dqn_async():
                 ep_actions.append(action)
                 next_state, reward, terminated, truncated, _ = churn_env.step(action)
                 done = terminated or truncated
-                churn_replay.push(state, action, reward, next_state, done)
+                # `terminated` (churn), not `done`: the end of the month is a
+                # time limit, so its target still bootstraps from Q(s').
+                churn_replay.push(state, action, reward, next_state, terminated)
                 state = next_state
                 total_reward += reward
 
@@ -671,6 +678,30 @@ assert len(churn_rewards_hist) == 150, "Churn DQN should train for 150 episodes"
 print("--- Checkpoint 2 passed --- DQN trained on ChurnPrevention\n")
 
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — RL instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# RLDiagnostics (what `km.diagnose("dqn", kind="rl")` returns) reads the
+# reward history we recorded; episode length = days the customer stayed.
+churn_rl_report = rl_diagnostic_checkpoint(
+    "DQN on ChurnPrevention",
+    "dqn",
+    churn_rewards_hist,
+    lengths=[len(ep_acts) for ep_acts in churn_actions_hist],
+    window=20,
+)
+# HOW TO READ IT (the numbers come from YOUR run; nothing is predicted):
+#   mean reward (last 20 episodes) — the honest summary of the policy;
+#     compare it with the do-nothing and always-discount baselines in
+#     Task 5.
+#   [CRIT] episode_reward_collapse — the check looks at the LAST episode
+#     only. In this environment a customer who churns ends the episode
+#     early with -5, so the check fires whenever the final simulated
+#     customer churned. That is the environment's randomness, not a
+#     learning collapse — a custom environment can make a generic
+#     detector misfire, which is why you read it next to the mean.
+
+
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Visualise: state trajectories, action distributions,
 #           learned policy vs baseline
@@ -680,7 +711,7 @@ print("=" * 70)
 print("  TASK 4: Visualise Custom Environment Behaviour")
 print("=" * 70)
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # ── Plot 1: ChurnPrevention training reward curve ────────────────────
 fig1 = viz.training_history(
@@ -854,11 +885,9 @@ def dqn_churn_policy(state):
         return int(churn_dqn(s).argmax().item())
 
 
-# Run 100 episodes for statistical significance
+# Every policy faces the same 100 simulated customers (seeds 2000-2099).
+# No significance test is run — compare means AND spreads in the box plot.
 n_eval = 100
-nothing_results = {"rewards": [], "churned": [], "costs": []}
-discount_results = {"rewards": [], "churned": [], "costs": []}
-dqn_results = {"rewards": [], "churned": [], "costs": []}
 
 
 def evaluate_churn_policy(env_cls, policy_fn, n_episodes):
@@ -917,9 +946,10 @@ for name, results in [
     )
 
 # Revenue impact calculation
-monthly_revenue_per_customer = 50.0  # SGD (typical telecom ARPU)
-intervention_cost_per_action = 5.0  # SGD average
+monthly_revenue_per_customer = 50.0  # SGD — illustrative monthly revenue per customer
+intervention_cost_per_action = 5.0  # SGD — illustrative cost per intervention
 
+net_values: dict[str, float] = {}
 for name, results in [
     ("Do Nothing", nothing_eval),
     ("Always Discount", discount_eval),
@@ -930,6 +960,7 @@ for name, results in [
     retained_revenue = retention_rate * monthly_revenue_per_customer
     total_cost = avg_interventions * intervention_cost_per_action
     net_value = retained_revenue - total_cost
+    net_values[name] = float(net_value)
     print(f"\n  {name}:")
     print(f"    Retention rate: {retention_rate*100:.1f}%")
     print(f"    Revenue retained: SGD {retained_revenue:.2f}/customer/month")
@@ -946,11 +977,16 @@ fig_eval = viz.box_plot(eval_df, "Monthly Reward", group_by="Policy")
 fig_eval.write_html(str(OUTPUT_DIR / "03_churn_business_impact.html"))
 print(f"\n  Saved: {OUTPUT_DIR / '03_churn_business_impact.html'}")
 
-# INTERPRETATION: The DQN learns to intervene SELECTIVELY — only when
-# churn risk is high, and with the most cost-effective action. "Always
-# Discount" has good retention but high cost. "Do Nothing" has low cost
-# but high churn. The DQN finds the sweet spot: high retention, moderate
-# cost, maximum net value per customer.
+# INTERPRETATION (computed from this run, not assumed): "Always Discount"
+# buys retention at a high intervention cost; "Do Nothing" costs nothing
+# but loses more customers. A good learned policy intervenes SELECTIVELY —
+# check the DQN's intervention count and churn rate above to see whether
+# it did. The verdict below uses the illustrative SGD figures.
+best_policy = max(net_values, key=net_values.get)
+print(
+    f"  Best net value on this simulator: {best_policy} "
+    f"(SGD {net_values[best_policy]:.2f}/customer/month)"
+)
 
 churn_env.close()
 
@@ -974,21 +1010,21 @@ print("=" * 70)
 print(
     """
   [x] Built 5 Gymnasium-compliant environments for real business problems:
-      1. ChurnPrevention (Singtel/StarHub) — customer retention interventions
+      1. ChurnPrevention (telco) — customer retention interventions
       2. PortfolioRebalancing (hedge fund) — risk-adjusted asset allocation
-      3. QueueManagement (Changi Airport) — staff allocation to counters
-      4. EnergyTrading (SP Group) — electricity spot market trading
-      5. TrafficSignal (LTA) — green light timing optimisation
+      3. QueueManagement (airport) — staff allocation to counters
+      4. EnergyTrading (electricity retailer) — spot market trading
+      5. TrafficSignal (road authority) — green light timing optimisation
   [x] Trained DQN on ChurnPrevention and registered in ModelRegistry
   [x] Visualised environment behaviour:
       - Training reward curves showing learning progress
-      - Action distribution evolution (random -> strategic)
+      - Action distribution evolution (random -> learned)
       - Single-episode trajectory with state + action timeline
   [x] Evaluated with business metrics:
       - Churn rate reduction vs baselines
       - Revenue retained per customer per month (SGD)
       - Net value: revenue minus intervention cost
-      - DQN learns SELECTIVE intervention (best net value)
+      - Found which policy gives the best net value on this simulator
 
   KEY INSIGHT:
   The ENVIRONMENT is the hardest part of applied RL. Get the state,
@@ -1001,62 +1037,3 @@ print(
   to use for which problem.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Same as PPO/DQN — environment-specific reward
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (Custom Gym Environment) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        agent,
-        rollout_loader,
-        _diag_loss,
-        title="Custom Gym Environment",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS in range, custom env reward well-scaled.
-# [?] Warning: reward magnitude 1e+3 (high) — normalise for stable TD learning.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [PRESCRIPTION] Custom environments often have poorly-scaled
-#     rewards. If rewards are in the thousands, value estimates
-#     explode and gradients blow up.
-#     >> Prescription: normalise rewards to roughly [-1, 1] range
-#        OR use reward clipping (env wrappers) OR adjust
-#        discount factor gamma.
-#
-#  [STETHOSCOPE] Healthy gradient flow proves the environment is
-#     learnable — the agent IS getting signal. Reward scaling is
-#     an optimisation hygiene issue, not a design issue.
-

@@ -3,13 +3,13 @@
 """
 Shared infrastructure for MLFP04 Exercise 4 — Anomaly Detection and Ensembles.
 
-Contains: data loading (e-commerce customers + rare-return anomaly label),
-feature engineering, score normalisation helpers, metric reporting,
-visualisation shortcuts.
+Contains: data loading (Singapore credit applications + an injected-anomaly
+benchmark with an independent label), feature standardisation, score
+normalisation helpers, metric reporting, visualisation shortcuts.
 
 Technique-specific code (Z-score thresholding, Isolation Forest fit, LOF
-neighbour count, EnsembleEngine blend weights) does NOT belong here — it
-lives in the per-technique files in `modules/mlfp04/solutions/ex_4/`.
+neighbour count, blend weights, EnsembleEngine calls) does NOT belong here —
+it lives in the per-technique files in `modules/mlfp04/solutions/ex_4/`.
 """
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ from kailash_ml import ExperimentTracker
 from kailash_ml.interop import to_sklearn_input
 
 from shared.data_loader import MLFPDataLoader
+from shared.kailash_helpers import create_visualizer
 from shared.kailash_helpers import setup_environment
 
 # ════════════════════════════════════════════════════════════════════════
@@ -42,58 +43,138 @@ np.random.seed(42)
 OUTPUT_DIR = Path("outputs") / "ex4_anomaly"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-ANOMALY_QUANTILE = 0.99
-FEATURE_BLOCKLIST = {
-    "is_fraud",
-    "customer_id",
-    "ltv_tier",
-    "product_categories",
-    "review_text",
-    "region",
-    "device_type",
-    "payment_method",
-    "loyalty_member",
-    "churned",
-}
-
-
 # ════════════════════════════════════════════════════════════════════════
-# DATA LOADING — E-commerce customer data with rare-return anomaly label
+# DATA — Credit applications with an injected-anomaly benchmark
 # ════════════════════════════════════════════════════════════════════════
-# The dataset ships with the mlfp03 module. We reuse it here because the
-# anomaly story lives in the top 1% of return rates — a natural rare-event
-# signal for unsupervised anomaly detection methods to find.
+# Why not just threshold a column and call it "fraud"? Because then the
+# label is a function of an input feature and every AUC simply measures
+# how much a detector looks at that one column (circular evaluation).
+#
+# Instead we follow the standard benchmark recipe for unsupervised anomaly
+# detection (e.g. ADBench, Han et al., NeurIPS 2022): take REAL records as
+# the normal population and inject anomalies of known TYPES, so the label
+# comes from the injection process, never from a feature threshold:
+#
+#   global      — a real application with ONE field pushed 5-8 standard
+#                 deviations beyond the mean (fat-finger entry, inflated
+#                 declared balance). Extreme on a single feature.
+#   dependency  — every field copied from a DIFFERENT real application
+#                 (a "synthetic identity" stitched from real fragments).
+#                 Each value is individually plausible; the COMBINATION is
+#                 not (e.g. employment_years vs months_employed disagree).
+#   clustered   — a tight group of near-identical applications (a
+#                 coordinated application ring), shifted +3 std on three
+#                 fields. Rare as a group, but dense locally.
+#
+# The normal rows are 20,000 real records from the course's Singapore
+# credit-scoring dataset (mlfp02/sg_credit_scoring.parquet). Its real
+# `default` outcome is kept (not as a feature) for a reality check:
+# "statistically unusual" and "will default" are different questions.
+
+N_NORMAL = 20_000
+N_GLOBAL = 80
+N_DEPENDENCY = 80
+N_CLUSTERED = 40
+ANOMALY_TYPES = ("global", "dependency", "clustered")
+LABEL_COL = "is_anomaly"
+
+# Numeric application fields with no nulls. Excluded on purpose:
+#   income_sgd / loan_to_value — 30% / 65% missing
+#   cpf_monthly_contribution   — near-constant (one value for most rows)
+#   coe_vehicle_owner          — binary flag dominates Euclidean distance
+#   future_default_indicator   — leaks the outcome
+#   default                    — the outcome itself (reality check only)
+FEATURE_COLS = [
+    "age",
+    "employment_years",
+    "months_employed",
+    "credit_utilization",
+    "avg_balance_utilization",
+    "num_credit_lines",
+    "credit_age_years",
+    "num_hard_inquiries",
+    "payment_history_score",
+    "num_late_payments",
+    "revolving_balance",
+    "installment_balance",
+    "loan_amount_sgd",
+    "monthly_installment",
+    "num_dependents",
+    "debt_to_income",
+    "savings_balance",
+    "checking_balance",
+    "previous_defaults",
+    "property_value_sgd",
+]
 
 
-def load_anomaly_frame(quantile: float = ANOMALY_QUANTILE) -> pl.DataFrame:
-    """Load e-commerce customers and attach a 1% rare-return anomaly label.
+def load_anomaly_frame(seed: int = 42) -> pl.DataFrame:
+    """Return real credit applications plus injected, typed anomalies.
 
-    Returns a polars DataFrame with an additional `is_fraud` column
-    (1 where num_returns is in the top (1-quantile) percentile, else 0).
+    Columns: FEATURE_COLS, `is_anomaly` (0/1), `anomaly_type`
+    ("normal" / "global" / "dependency" / "clustered") and `default`
+    (the real outcome for normal rows; null for injected rows). Rows are
+    shuffled so injected anomalies are spread across the frame.
     """
     loader = MLFPDataLoader()
-    raw = loader.load("mlfp03", "ecommerce_customers.parquet")
-    threshold = raw["num_returns"].quantile(quantile)
-    return raw.with_columns(
-        (pl.col("num_returns") >= threshold).cast(pl.Int64).alias("is_fraud")
+    raw = loader.load("mlfp02", "sg_credit_scoring.parquet")
+    base = raw.sample(N_NORMAL, seed=seed).select(FEATURE_COLS + ["default"])
+    B = base.select(FEATURE_COLS).to_numpy().astype(np.float64)
+    mu, sd = B.mean(axis=0), B.std(axis=0)
+    rng = np.random.default_rng(seed)
+    n_feat = len(FEATURE_COLS)
+
+    # global: one field pushed far into the upper tail
+    G = B[rng.choice(len(B), N_GLOBAL, replace=False)].copy()
+    for r in range(N_GLOBAL):
+        j = int(rng.integers(n_feat))
+        G[r, j] = mu[j] + rng.uniform(5.0, 8.0) * sd[j]
+
+    # dependency: each field drawn from a different real application
+    D = np.column_stack(
+        [B[rng.integers(len(B), size=N_DEPENDENCY), j] for j in range(n_feat)]
     )
+
+    # clustered: tight group around a shifted real application
+    centre = B[int(rng.integers(len(B)))].copy()
+    shifted = rng.choice(n_feat, 3, replace=False)
+    centre[shifted] += 3.0 * sd[shifted]
+    C = centre + rng.normal(0.0, 0.05, (N_CLUSTERED, n_feat)) * sd
+
+    injected = np.vstack([G, D, C])
+    types = ["global"] * N_GLOBAL + ["dependency"] * N_DEPENDENCY + [
+        "clustered"
+    ] * N_CLUSTERED
+
+    normal_part = base.with_columns(
+        pl.lit(0, dtype=pl.Int64).alias(LABEL_COL),
+        pl.lit("normal").alias("anomaly_type"),
+    )
+    injected_part = pl.from_numpy(injected, schema=FEATURE_COLS).with_columns(
+        pl.lit(None, dtype=pl.Int64).alias("default"),
+        pl.lit(1, dtype=pl.Int64).alias(LABEL_COL),
+        pl.Series("anomaly_type", types),
+    )
+    frame = pl.concat(
+        [normal_part.with_columns(pl.col(FEATURE_COLS).cast(pl.Float64)), injected_part],
+        how="vertical",
+    )
+    return frame.sample(fraction=1.0, shuffle=True, seed=seed)
 
 
 def build_features(frame: pl.DataFrame) -> tuple[np.ndarray, np.ndarray, list[str]]:
-    """Drop nulls, pick numeric features, standardise and return (X, y, cols).
+    """Standardise FEATURE_COLS and return (X, y, feature_cols).
 
-    Returns standardised X (float64), y (int), and the feature column names.
-    The returned X is suitable for sklearn-style anomaly detectors.
+    Returns standardised X (float64) and the 0/1 `is_anomaly` label. The
+    label is used ONLY for evaluation — every detector fits on X alone.
     """
-    feature_cols = [c for c in frame.columns if c not in FEATURE_BLOCKLIST]
     X, y, _col_info = to_sklearn_input(
-        frame.drop_nulls(),
-        feature_columns=feature_cols,
-        target_column="is_fraud",
+        frame,
+        feature_columns=FEATURE_COLS,
+        target_column=LABEL_COL,
     )
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X).astype(np.float64)
-    return X_scaled, y.astype(int), feature_cols
+    X_scaled = StandardScaler().fit_transform(X).astype(np.float64)
+    return X_scaled, np.asarray(y).astype(int), list(FEATURE_COLS)
 
 
 def load_dataset() -> tuple[np.ndarray, np.ndarray, list[str], pl.DataFrame]:
@@ -101,6 +182,43 @@ def load_dataset() -> tuple[np.ndarray, np.ndarray, list[str], pl.DataFrame]:
     frame = load_anomaly_frame()
     X, y, cols = build_features(frame)
     return X, y, cols, frame
+
+
+def auc_by_type(frame: pl.DataFrame, scores: np.ndarray) -> dict[str, float]:
+    """AUC-ROC of `scores` for each anomaly type vs the normal rows.
+
+    Answers "WHICH kind of anomaly does this detector find?" — 1.0 means
+    every anomaly of that type outranks every normal row; 0.5 is chance;
+    below 0.5 means the detector ranks that type as MORE normal than the
+    real applications.
+    """
+    types = frame["anomaly_type"].to_numpy()
+    scores = np.asarray(scores, dtype=np.float64)
+    out: dict[str, float] = {}
+    for t in ANOMALY_TYPES:
+        mask = (types == t) | (types == "normal")
+        out[t] = float(roc_auc_score((types[mask] == t).astype(int), scores[mask]))
+    return out
+
+
+def print_auc_by_type(
+    name: str, frame: pl.DataFrame, scores: np.ndarray
+) -> dict[str, float]:
+    """Compute per-type AUC, print it on one line, and return the dict."""
+    by_type = auc_by_type(frame, scores)
+    parts = "  ".join(f"{t}={v:.3f}" for t, v in by_type.items())
+    print(f"  {name:<24} per-type AUC: {parts}")
+    return by_type
+
+
+def default_reality_check(frame: pl.DataFrame, scores: np.ndarray) -> float:
+    """AUC of an anomaly score against the REAL `default` outcome.
+
+    Computed on the real (non-injected) applications only.
+    """
+    mask = (frame["anomaly_type"] == "normal").to_numpy()
+    defaults = frame["default"].to_numpy()[mask].astype(int)
+    return float(roc_auc_score(defaults, np.asarray(scores)[mask]))
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -166,6 +284,21 @@ def precision_at_recall(
     return float(ps[idx]), float(ts[idx])
 
 
+def split_review_holdout(
+    n_rows: int, review_fraction: float = 0.3, seed: int = 42
+) -> tuple[np.ndarray, np.ndarray]:
+    """Split row indices into a labelled 'review sample' and a holdout.
+
+    Anything tuned with labels (blend weights, a supervised second stage)
+    is fitted on the review sample and evaluated on the holdout, so the
+    reported numbers are not scored on the rows that tuned them.
+    """
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(n_rows)
+    cut = int(n_rows * review_fraction)
+    return np.sort(order[:cut]), np.sort(order[cut:])
+
+
 # ════════════════════════════════════════════════════════════════════════
 # VISUALISATION
 # ════════════════════════════════════════════════════════════════════════
@@ -177,7 +310,7 @@ def write_comparison_chart(
     """Render a kailash-ml ModelVisualizer metric_comparison chart to HTML."""
     from kailash_ml import ModelVisualizer
 
-    viz = ModelVisualizer()
+    viz = create_visualizer()
     fig = viz.metric_comparison(comparison)
     fig.update_layout(title="Anomaly Detection Method Comparison")
     path = OUTPUT_DIR / filename
@@ -191,7 +324,7 @@ def write_roc_chart(
     """Render a ROC curve for a single detector."""
     from kailash_ml import ModelVisualizer
 
-    viz = ModelVisualizer()
+    viz = create_visualizer()
     fig = viz.roc_curve(y_true, scores)
     fig.update_layout(title=f"ROC — {name}")
     path = OUTPUT_DIR / filename
@@ -203,7 +336,7 @@ def write_monitoring_chart(anomaly_rates: list[float], filename: str) -> Path:
     """Render an anomaly-rate-over-time chart for production monitoring."""
     from kailash_ml import ModelVisualizer
 
-    viz = ModelVisualizer()
+    viz = create_visualizer()
     fig = viz.training_history(
         {"Anomaly Rate %": [r * 100 for r in anomaly_rates]},
         x_label="Time Window",
@@ -212,41 +345,6 @@ def write_monitoring_chart(anomaly_rates: list[float], filename: str) -> Path:
     path = OUTPUT_DIR / filename
     fig.write_html(str(path))
     return path
-
-
-# ════════════════════════════════════════════════════════════════════════
-# ENSEMBLE ADAPTER
-# ════════════════════════════════════════════════════════════════════════
-# kailash-ml EnsembleEngine.blend() expects estimator-shaped objects with
-# predict_proba. Each detector in this exercise has already produced a
-# score vector, so we wrap those vectors in a minimal estimator.
-
-
-class AnomalyScoreEstimator:
-    """Minimal sklearn-shaped wrapper exposing precomputed scores.
-
-    EnsembleEngine.blend() calls predict_proba(X) on every estimator and
-    averages the resulting class-1 probabilities. This adapter normalises
-    the underlying scores to [0, 1] and returns them as P(anomaly).
-    """
-
-    def __init__(self, scores: np.ndarray):
-        self._scores = np.asarray(scores, dtype=np.float64)
-        self._norm = normalise_scores(self._scores)
-        self.classes_ = np.array([0, 1])
-
-    def fit(self, X: Any, y: Any = None) -> "AnomalyScoreEstimator":
-        return self
-
-    def predict_proba(self, X: Any) -> np.ndarray:
-        n = len(X) if hasattr(X, "__len__") else self._norm.shape[0]
-        norm = self._norm[:n]
-        return np.column_stack([1.0 - norm, norm])
-
-    def predict(self, X: Any) -> np.ndarray:
-        n = len(X) if hasattr(X, "__len__") else self._scores.shape[0]
-        threshold = float(np.median(self._scores))
-        return (self._scores[:n] > threshold).astype(int)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -274,7 +372,7 @@ def _finite(x: float) -> float:
 
 
 async def _setup_engines_async() -> tuple[ExperimentTracker, str]:
-    """Open the anomaly-detection ExperimentTracker (kailash-ml 1.5.1)."""
+    """Open the anomaly-detection ExperimentTracker."""
     tracker = await ExperimentTracker.create(store_url=ANOMALY_DB)
     return tracker, ANOMALY_EXPERIMENT_NAME
 

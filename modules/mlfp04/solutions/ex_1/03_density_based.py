@@ -21,7 +21,7 @@
 #   2. Build — k-distance plot and DBSCAN sweep across epsilon
 #   3. Train — HDBSCAN with eom vs leaf cluster selection
 #   4. Visualise — k-distance elbow plot
-#   5. Apply — Singapore Grab ride-hail hotspot discovery, $ impact
+#   5. Apply — Singapore ride-hail hotspot discovery, $ impact
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -42,6 +42,7 @@ from shared.mlfp04.ex_1 import (
     out_path,
     standardise,
 )
+from shared.mlfp04 import create_visualizer
 
 load_dotenv()
 
@@ -177,7 +178,7 @@ sil_eom = (
     else float("nan")
 )
 
-print(f"  HDBSCAN cluster-selection comparison:")
+print("  HDBSCAN cluster-selection comparison:")
 print(
     f"    EOM (Excess of Mass) : {n_eom} clusters  noise={noise_eom:.1%}  sil={sil_eom:.4f}"
 )
@@ -197,7 +198,7 @@ print("\n  [ok] Checkpoint 2 passed — HDBSCAN auto-discovers clusters\n")
 # TASK 4 — VISUALISE: the k-distance elbow that drove epsilon selection
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig = viz.training_history(
     {"k-distance (sorted)": k_dist.tolist()},
     x_label="Point index (sorted)",
@@ -218,14 +219,15 @@ print("\n  [ok] Checkpoint 3 passed — k-distance visualisation rendered\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Grab Singapore Ride-Hail Hotspot Discovery
+# TASK 5 — APPLY: Singapore Ride-Hail Hotspot Discovery
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Grab Singapore dispatches 400,000+ rides/day. The ops team
+# SCENARIO: A Singapore ride-hailing operator dispatches (assume) several
+# hundred thousand rides a day. The ops team
 # needs to position driver incentives near "hotspots" — dense pickup
 # clusters that form and dissolve throughout the day (CBD 8am, Marina
 # Bay Sands 11pm, Changi T1 arrivals hall 06:00). K-means would FORCE a
 # partition of every pickup in the city, including sparse residential
-# areas. Hierarchical would collapse under 400K points.
+# areas. Hierarchical would collapse under hundreds of thousands of points.
 #
 # Why HDBSCAN is the right tool here:
 #   - Hotspots have arbitrary SHAPES (Orchard Rd is a long thin strip)
@@ -237,18 +239,18 @@ print("\n  [ok] Checkpoint 3 passed — k-distance visualisation rendered\n")
 #   - min_cluster_size maps directly to a business rule: "ignore any
 #     hotspot with fewer than N trips/hour"
 #
-# BUSINESS IMPACT: Grab SEA's 2024 annual report discloses ~US$2.4B in
-# mobility gross transaction value for Singapore. Driver-incentive
+# BUSINESS IMPACT (illustrative assumptions, not reported figures): assume
+# ~US$2.4B in annual mobility gross transaction value. Driver-incentive
 # mis-targeting (paying surge for areas where demand already exists or
 # missing genuine under-served areas) burns an estimated 3-5% of the
-# incentive budget. Incentives are ~8% of mobility GTV (~US$192M/year).
+# incentive budget. Assume incentives are ~8% of GTV (~US$192M/year).
 # HDBSCAN-based hotspot discovery conservatively recovers ~20% of waste:
 #     US$192M × 0.04 average waste × 0.20 recovery = US$1.54M / year
 # (roughly S$2.05M/year) — and more importantly, driver satisfaction
 # improves because surge lands where actual demand is, not where a
 # K-means centroid happened to fall.
 
-print("  APPLY — Grab SG Hotspot Discovery")
+print("  APPLY — Singapore Ride-Hail Hotspot Discovery")
 print("  ─────────────────────────────────────────────────────────────────")
 for cid in sorted(set(int(c) for c in hdb_eom_labels.tolist() if c >= 0)):
     n = int((hdb_eom_labels == cid).sum())
@@ -257,7 +259,7 @@ print(
     f"    Noise (truly sparse): {int((hdb_eom_labels == -1).sum()):,} customers "
     f"({float((hdb_eom_labels == -1).mean()):6.1%})"
 )
-print("    Estimated annual incentive waste recovery: S$2.05M")
+print("    Illustrative annual incentive waste recovery: S$2.05M")
 
 
 # ── Checkpoint 4 ──────────────────────────────────────────────────────────
@@ -271,9 +273,16 @@ print("\n  [ok] Checkpoint 4 passed — hotspot partition valid\n")
 # TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
 # ════════════════════════════════════════════════════════════════════════
 
-dbscan_best_eps, dbscan_best_stats = max(
-    dbscan_results.items(), key=lambda x: x[1]["sil"]
-)
+# NaN silhouettes (fewer than 2 clusters) must be filtered BEFORE max():
+# every comparison with NaN is False, so a NaN first entry would "win".
+finite_dbscan = {e: r for e, r in dbscan_results.items() if np.isfinite(r["sil"])}
+if finite_dbscan:
+    dbscan_best_eps, dbscan_best_stats = max(
+        finite_dbscan.items(), key=lambda x: x[1]["sil"]
+    )
+else:
+    print("  No DBSCAN setting produced >= 2 clusters; logging the suggested eps.")
+    dbscan_best_eps, dbscan_best_stats = eps_suggested, dbscan_results[eps_suggested]
 track_run(
     tracker,
     exp_name,
@@ -303,12 +312,12 @@ print(
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='dbscan')
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1's ClusteringEngine wraps DBSCAN. The engine handles the
+# kailash-ml's ClusteringEngine wraps DBSCAN. The engine handles the
 # polars→numpy conversion, fits, computes silhouette over the non-noise
 # subset, and returns ClusterResult with labels + metrics — the same flow
 # this lesson hand-rolled across 60 lines of sklearn glue.
 #
-# HDBSCAN remains an exception: 1.5.1 does not have an HDBSCAN adapter
+# HDBSCAN remains an exception: the engine has no HDBSCAN adapter
 # yet. For HDBSCAN, the destination is the ExperimentTracker leaderboard —
 # every persistence-vs-eom-vs-leaf comparison this lesson logged is now in
 # m4_clustering_zoo.db, queryable side-by-side with kmeans (lesson 01) and
@@ -329,7 +338,7 @@ print(
     f"silhouette={(fit_result.silhouette_score or 0.0):.4f}"
 )
 print(
-    "  ClusteringEngine 1.5.1: kmeans/dbscan/spectral/gmm. HDBSCAN — use the"
+    "  ClusteringEngine: kmeans/dbscan/spectral/gmm. HDBSCAN — use the"
     " hdbscan library + tracker until the engine adapter lands.\n"
 )
 
@@ -349,8 +358,8 @@ print(
       extracting the most persistent clusters
   [x] eom (Excess of Mass) vs leaf cluster selection: eom is default;
       leaf is for finest granularity
-  [x] Mapped the method onto Grab SG hotspot discovery — S$2.05M/year
-      recovered driver-incentive budget
+  [x] Mapped the method onto ride-hail hotspot discovery — an illustrative
+      S$2.05M/year recovered driver-incentive budget
 
   KEY INSIGHT: If your data has VARIABLE density (CBD vs suburbs) or
   arbitrary cluster SHAPES (strips, rings, moons), force-fitting K-means

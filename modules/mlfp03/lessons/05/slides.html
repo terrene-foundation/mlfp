@@ -29,7 +29,7 @@
 <section>
   <p class="lesson-meta">Module 3 · Lesson 3.5</p>
   <h1>Evaluation, Imbalance, and Calibration</h1>
-  <p style="font-size: 0.7em; color: #64748B;">Confusion matrix · ROC vs PR · SMOTE · Focal loss · Platt scaling · Brier</p>
+  <p style="font-size: 0.7em; color: #64748B;">Confusion matrix · ROC vs PR · SMOTE · Focal loss · Calibration · Brier · Stacking</p>
   <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
     <strong style="color: #0D9488;">⏱ 75 min</strong> · Prereq: 3.4 · Outcome: turn raw classifier into calibrated decision system
   </div>
@@ -138,7 +138,7 @@
   <div style="padding: 14px; background: #F8FAFC; border-radius: 8px; margin-top: 1em;">
     \[ F_1 = 2\cdot\frac{\text{Prec}\cdot\text{Rec}}{\text{Prec}+\text{Rec}} \]
   </div>
-  <p style="font-size: 0.85em;">On 12% credit data, predicting "no default" for everyone scores 88% accuracy. F1 = 0. <strong>Accuracy lies.</strong></p>
+  <p style="font-size: 0.85em;">On the credit data (12.9% default), predicting "no default" for everyone scores 87% accuracy. F1 = 0. <strong>Accuracy lies.</strong></p>
 </section>
 
 <section>
@@ -151,14 +151,14 @@
         <line x1="60" y1="50" x2="60" y2="240" stroke="#334155"/>
         <line x1="60" y1="240" x2="300" y2="50" stroke="#94A3B8" stroke-dasharray="3 3"/>
         <path d="M 60 240 Q 80 80, 200 60 T 300 50" fill="rgba(13,148,136,0.2)" stroke="#0D9488" stroke-width="2.5"/>
-        <text x="200" y="160" fill="#0F766E" font-weight="600">AUC=0.87 (looks great)</text>
+        <text x="200" y="160" fill="#0F766E" font-weight="600">ROC-AUC = 0.78</text>
         <text x="540" y="25" text-anchor="middle" font-weight="700">PR</text>
         <line x1="420" y1="240" x2="660" y2="240" stroke="#334155"/>
         <line x1="420" y1="50" x2="420" y2="240" stroke="#334155"/>
         <line x1="420" y1="220" x2="660" y2="220" stroke="#94A3B8" stroke-dasharray="3 3"/>
         <text x="655" y="216" text-anchor="end" font-size="10" fill="#64748B">base rate</text>
         <path d="M 420 70 Q 520 90, 580 140 T 660 220" fill="rgba(13,148,136,0.2)" stroke="#0D9488" stroke-width="2.5"/>
-        <text x="480" y="120" fill="#0F766E" font-weight="600">AP=0.48 (honest)</text>
+        <text x="480" y="120" fill="#0F766E" font-weight="600">AP = 0.38 vs base rate 0.13</text>
       </g>
     </svg>
   </figure>
@@ -207,8 +207,8 @@
   <div style="padding: 14px; background: #F8FAFC; border-radius: 8px;">
     \[ t^* = \frac{c_{FP}}{c_{FP} + c_{FN}} \]
   </div>
-  <p style="font-size: 0.88em;">100:1 credit costs: $t^* = 100/10100 \approx 0.0099$.</p>
-  <p style="font-size: 0.88em; color: #B91C1C;"><strong>Not 0.5!</strong> Any doubt about a loan is enough to flag when missing a default is 100× more expensive.</p>
+  <p style="font-size: 0.88em;">Exercise 5 costs (illustrative): missed default $c_{FN}$ = S\$10,000, false decline $c_{FP}$ = S\$1,500 → $t^* = 1500/11500 \approx 0.130$.</p>
+  <p style="font-size: 0.88em; color: #B91C1C;"><strong>Not 0.5!</strong> But $t^*$ is valid only for <em>calibrated</em> probabilities from an <em>unweighted</em> loss — class weights already move the boundary, so never apply both.</p>
 </section>
 
 <section>
@@ -223,7 +223,7 @@
         <line x1="80" y1="260" x2="620" y2="50" stroke="#10B981" stroke-dasharray="3 3"/>
         <text x="590" y="80" fill="#047857" font-size="10">perfect</text>
         <path d="M 80 260 Q 200 250, 280 220 Q 340 180, 400 150 Q 460 120, 520 100 Q 580 70, 620 50" fill="none" stroke="#DC2626" stroke-width="2.5"/>
-        <text x="430" y="200" fill="#B91C1C" font-weight="600">raw GBM: over-confident</text>
+        <text x="430" y="200" fill="#B91C1C" font-weight="600">raw weighted model: p too high</text>
         <path d="M 80 260 Q 180 235, 280 190 Q 380 140, 480 90 Q 560 60, 620 50" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-dasharray="5 3"/>
         <text x="200" y="170" fill="#1D4ED8" font-weight="600">after calibration</text>
       </g>
@@ -238,11 +238,14 @@
     <li><strong>Isotonic regression:</strong> non-decreasing piecewise-constant function. Flexible but needs more data.</li>
   </ul>
   <pre><code class="language-python" data-trim>
-from sklearn.calibration import CalibratedClassifierCV
+from kailash_ml import TrainingPipeline
 
-cal = CalibratedClassifierCV(base_model, method="isotonic", cv=5)
-cal.fit(X_tr, y_tr)
+tp = TrainingPipeline(feature_store=None, registry=None)
+# model is already fitted; X_cal / y_cal = held-out 20% of TRAIN
+platt = await tp.calibrate(model, X_cal, y_cal, method="sigmoid")
+iso = await tp.calibrate(model, X_cal, y_cal, method="isotonic")
   </code></pre>
+  <p style="font-size: 0.7em; color: #64748B;">Calibrate on rows the model never trained on. Curve below the diagonal = predicted p too high; above = too low.</p>
 </section>
 
 <section>
@@ -251,7 +254,8 @@ cal.fit(X_tr, y_tr)
     \[ \text{BS} = \frac{1}{N}\sum_i (p_i - y_i)^2 \]
   </div>
   <ul style="font-size: 0.88em;">
-    <li>Lower is better</li>
+    <li>Lower is better; 0 = perfect <em>prediction</em>, not just perfect calibration</li>
+    <li>Mixes calibration and discrimination: a calibrated base-rate forecast ($p = 0.13$) still scores $0.13 \times 0.87 \approx 0.11$ — use the reliability diagram / ECE for calibration itself</li>
     <li>Proper scoring rule: minimised by reporting the true probability</li>
     <li>Cheating (push everything to 0/1) scores <em>worse</em> than honest uncertainty</li>
     <li>Report before and after calibration to show improvement</li>
@@ -261,22 +265,53 @@ cal.fit(X_tr, y_tr)
 <section>
   <h2>Full pipeline — credit scoring</h2>
   <pre><code class="language-python" data-trim>
-# 1. Baseline
-base = lgb.LGBMClassifier(n_estimators=400).fit(X_tr, y_tr)
+# 1. Hold back 20% of TRAIN for calibration
+X_fit, X_cal, y_fit, y_cal = train_test_split(
+    X_tr, y_tr, test_size=0.2, stratify=y_tr, random_state=42)
 
-# 2. Cost-sensitive
-weighted = lgb.LGBMClassifier(n_estimators=400,
-    class_weight={0: 1, 1: 100}).fit(X_tr, y_tr)
+# 2. Cost-sensitive booster: weights shift its raw scores
+booster = lgb.LGBMClassifier(n_estimators=300,
+    scale_pos_weight=(1 - pos_rate) / pos_rate).fit(X_fit, y_fit)
 
-# 3. Threshold from cost matrix
-t_opt = 100 / (100 + 10_000)  # 0.0099
-pred = (weighted.predict_proba(X_te)[:, 1] >= t_opt).astype(int)
+# 3. Calibrate on the held-out rows: undoes the weight's shift
+tp = TrainingPipeline(feature_store=None, registry=None)
+cal = asyncio.run(tp.calibrate(booster, pl.DataFrame(X_cal),
+    pl.Series("default", y_cal), method="isotonic"))
 
-# 4. Post-hoc calibration
-cal = CalibratedClassifierCV(weighted, method="isotonic", cv=3).fit(X_tr, y_tr)
+# 4. THEN the Bayes threshold, on calibrated probabilities
+t_star = 1_500 / (1_500 + 10_000)  # 0.130
 p_cal = cal.predict_proba(X_te)[:, 1]
+pred = (p_cal >= t_star).astype(int)
 print("Brier:", brier_score_loss(y_te, p_cal))
   </code></pre>
+</section>
+
+<section>
+  <h2>Stacking and blending</h2>
+  <ul style="font-size: 0.8em;">
+    <li><strong>Blending:</strong> average the base models' probabilities (soft vote), optionally weighted</li>
+    <li><strong>Stacking:</strong> a meta-model (e.g. logistic regression) learns how to combine the base models from their <em>out-of-fold</em> predictions — never in-sample ones, or it learns to trust the most overfit model</li>
+  </ul>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import EnsembleEngine
+
+base = [lgbm, logreg, forest]  # fitted on the training rows
+engine = EnsembleEngine()
+stacked = engine.stack(base, train_df, target="default",
+    meta_model_class="sklearn.linear_model.LogisticRegression",
+    fold=5)
+blended = engine.blend(base, train_df, target="default",
+    method="soft")
+print(stacked.metrics["auc"], blended.metrics["auc"])
+  </code></pre>
+  <p style="font-size: 0.7em; color: #64748B;">Both refit on an internal split of <code>train_df</code> and score its own 20% holdout. Gains come from <em>diverse</em> base models; three copies of one booster add little.</p>
+  <aside class="notes">
+    Stacking and blending are the last way to squeeze accuracy from models you already have.
+    Blending is a weighted average of probabilities. Stacking trains a meta-learner on out-of-fold
+    predictions, which is why EnsembleEngine.stack takes a fold count. Pass only training rows:
+    the engine carves its own 20% holdout for its metrics. The test set is still used once, at the end.
+    Module 4 returns to EnsembleEngine for anomaly-score blending.
+  </aside>
 </section>
 
 <section>
@@ -299,7 +334,8 @@ print("Brier:", brier_score_loss(y_te, p_cal))
     <li>✓ Pick ROC vs PR appropriately (PR for imbalanced)</li>
     <li>✓ Apply SMOTE, cost-sensitive learning, focal loss</li>
     <li>✓ Derive the cost-optimal decision threshold from a business cost matrix</li>
-    <li>✓ Calibrate with Platt scaling or isotonic regression and measure with Brier</li>
+    <li>✓ Calibrate on held-out rows (Platt or isotonic) and measure with Brier</li>
+    <li>✓ Combine models by blending or stacking with <code>EnsembleEngine</code></li>
   </ul>
   <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
     <strong>Next:</strong> Lesson 3.6 — <em>should</em> this model be deployed? SHAP, LIME, fairness, impossibility theorem.

@@ -10,6 +10,7 @@
 #   - Implement the E-step (posterior responsibilities) with log-sum-exp
 #   - Implement the M-step (weighted MLE for pi, mu, Sigma)
 #   - Verify that log-likelihood is non-decreasing across EM iterations
+#   - Check your EM against sklearn's GaussianMixture on the same data
 #   - Plot the convergence curve as visual proof the algorithm works
 #
 # PREREQUISITES:
@@ -21,22 +22,27 @@
 # TASKS:
 #   1. Theory — EM as ELBO maximisation (why it's guaranteed to improve)
 #   2. Build — E-step, M-step, log-likelihood, full EM loop
-#   3. Train — fit a 3-component GMM on synthetic 2D data
+#   3. Train — fit a 3-component GMM on synthetic 2D data and compare it
+#      with sklearn's GaussianMixture
 #   4. Visualise — convergence curve + recovered vs true parameters
-#   5. Apply — PropertyGuru lead-scoring (Singapore) with soft assignments
+#   5. Apply — Singapore property-marketplace lead scoring with soft
+#      assignments
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
+from scipy.optimize import linear_sum_assignment
 from scipy.stats import multivariate_normal
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import adjusted_rand_score
+from sklearn.mixture import GaussianMixture
 
 from kailash_ml import ModelVisualizer
 
 # Cross-exercise import: tracker helpers live in ex_1.shared so every M4
 # unsupervised technique logs to the same `m4_clustering_zoo` experiment.
 from shared.mlfp04.ex_1 import setup_engines, teardown_engines, track_run
+from shared.mlfp04 import create_visualizer
 from shared.mlfp04.ex_2 import (
     N_SYNTH,
     TRUE_COVS,
@@ -66,6 +72,13 @@ tracker, exp_name = setup_engines()
 #
 # KEY GUARANTEE: each E+M pair cannot decrease log P(X|theta). We will
 # verify this numerically in Task 4.
+#
+# For GMMs the updates are:
+#   E: r_{ik} = pi_k N(x_i|mu_k,Sigma_k) / Sum_j pi_j N(x_i|mu_j,Sigma_j)
+#   M: N_k = Sum_i r_{ik}
+#      pi_k = N_k / N
+#      mu_k = (Sum_i r_{ik} x_i) / N_k
+#      Sigma_k = (Sum_i r_{ik} (x_i-mu_k)(x_i-mu_k)') / N_k  (+ ridge)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -84,9 +97,11 @@ def e_step(
     n_components = len(weights)
     log_probs = np.zeros((n_samples, n_components))
 
-    # TODO: for each component k, fill log_probs[:, k] with
-    #       log(weights[k]) + multivariate_normal(means[k], covs[k]).logpdf(X)
-    # Hint: wrap in try/except and set row to -np.inf on singular covariance.
+    # TODO: for each component k, fill log_probs[:, k] with the log of
+    # pi_k * N(x | mu_k, Sigma_k).
+    # Hint: scipy.stats.multivariate_normal(mean=..., cov=..., allow_singular=True)
+    # has a .logpdf(X) method; add 1e-300 inside np.log(weights[k] ...) for safety.
+    # No try/except: the M-step ridge keeps covariances valid, so a failure is a bug.
     for k in range(n_components):
         ____
 
@@ -107,17 +122,19 @@ def m_step(
     n_samples, n_features = X.shape
     n_components = R.shape[1]
 
-    # TODO: N_k = R.sum(axis=0) + 1e-300
+    # TODO: implement the M-step updates from the THEORY block:
+    # N_k (column sums of R, plus 1e-300), pi_k, and mu_k.
+    # Hint: mu for all k at once is a single matrix product R.T @ X, divided
+    # row-wise by N_k
     N_k = ____
-    # TODO: weights = N_k / n_samples
     weights = ____
-    # TODO: means = (R.T @ X) / N_k[:, np.newaxis]
     means = ____
 
     covs = np.zeros((n_components, n_features, n_features))
     for k in range(n_components):
         diff = X - means[k]
-        # TODO: covs[k] = (R[:, k:k+1] * diff).T @ diff / N_k[k] + reg_covar * I
+        # TODO: responsibility-weighted outer products of diff, divided by
+        # N_k[k], plus the ridge reg_covar * np.eye(n_features)
         covs[k] = ____
 
     return means, covs, weights
@@ -133,11 +150,8 @@ def compute_log_likelihood(
     n_samples = X.shape[0]
     log_l = np.full(n_samples, -np.inf)
     for k in range(len(weights)):
-        try:
-            dist = multivariate_normal(mean=means[k], cov=covs[k], allow_singular=True)
-            log_l = np.logaddexp(log_l, np.log(weights[k] + 1e-300) + dist.logpdf(X))
-        except Exception:
-            pass
+        dist = multivariate_normal(mean=means[k], cov=covs[k], allow_singular=True)
+        log_l = np.logaddexp(log_l, np.log(weights[k] + 1e-300) + dist.logpdf(X))
     return float(log_l.sum())
 
 
@@ -254,6 +268,46 @@ for i in range(1, len(lls)):
 assert len(set(em["labels"])) >= 2, "EM should use at least 2 components"
 print("[ok] Checkpoint 3 passed — EM converged with non-decreasing log-likelihood")
 
+# Compare with the library. sklearn's GaussianMixture runs the same EM
+# (k-means initialisation instead of random points, same ridge reg_covar).
+# Component ORDER is arbitrary, so match components by nearest means
+# (Hungarian assignment) before comparing weights and means.
+# TODO: fit a GaussianMixture with n_components=3, covariance_type="full",
+# reg_covar=1e-6, tol=1e-6, max_iter=500, random_state=42 on X_synth.
+sk_gmm = ____
+# TODO: total log-likelihood — GaussianMixture.score() returns the
+# per-sample MEAN, so scale it by N_SYNTH.
+sk_ll = ____
+mean_dist = np.linalg.norm(
+    em["means"][:, None, :] - sk_gmm.means_[None, :, :], axis=-1
+)
+# TODO: match your components to sklearn's by minimising total mean distance.
+# Hint: scipy.optimize.linear_sum_assignment returns (row_idx, col_idx)
+row, col = ____
+max_mean_gap = float(mean_dist[row, col].max())
+max_weight_gap = float(np.abs(em["weights"][row] - sk_gmm.weights_[col]).max())
+ll_gap_per_sample = abs(em["final_ll"] - sk_ll) / N_SYNTH
+ari_vs_sklearn = adjusted_rand_score(em["labels"], sk_gmm.predict(X_synth))
+
+print("\nFrom-scratch EM vs sklearn GaussianMixture (same data, K=3):")
+print(f"  log-likelihood: yours={em['final_ll']:.2f}  sklearn={sk_ll:.2f}")
+print(f"  |Δ log-lik| per sample : {ll_gap_per_sample:.6f}")
+print(f"  max |Δ weight|         : {max_weight_gap:.4f}")
+print(f"  max distance of means  : {max_mean_gap:.4f}")
+print(f"  ARI between labelings  : {ari_vs_sklearn:.4f}")
+if ll_gap_per_sample < 1e-3:
+    print("  Same optimum — your EM and the library agree.")
+else:
+    print(
+        "  Different optimum — EM only finds a LOCAL maximum, and the two\n"
+        "  implementations started from different initial means."
+    )
+
+# ── Checkpoint 4 ────────────────────────────────────────────────────────
+assert ll_gap_per_sample < 0.05, "your EM should reach a log-likelihood close to sklearn's"
+assert max_weight_gap < 0.05, "matched mixture weights should agree with sklearn's"
+print("[ok] Checkpoint 4 passed — from-scratch EM agrees with sklearn's GMM")
+
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — VISUALISE: convergence curve
@@ -261,7 +315,7 @@ print("[ok] Checkpoint 3 passed — EM converged with non-decreasing log-likelih
 # The convergence plot is the VISUAL PROOF of the ELBO theorem: the
 # log-likelihood is a staircase that only goes up.
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 # TODO: call viz.training_history with {"Log-Likelihood": em["log_likelihoods"]}
 # and x_label="EM Iteration"
 fig = ____
@@ -271,10 +325,10 @@ print(f"\nSaved: {out_path('ex2_em_convergence.html')}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: PropertyGuru Lead Scoring (Singapore)
+# TASK 5 — APPLY: Singapore Property-Marketplace Lead Scoring
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: PropertyGuru runs Southeast Asia's largest property
-# marketplace. Inside sales gets ~8,000 new lead signals per week but
+# SCENARIO: A Singapore online property marketplace's inside-sales team
+# gets (assume) ~8,000 new lead signals per week but
 # can only call ~1,500. Every unqualified call is a call they could
 # have made to a genuine buyer.
 #
@@ -285,9 +339,10 @@ print(f"\nSaved: {out_path('ex2_em_convergence.html')}")
 #   platform score every lead on EVERY segment and sort by expected
 #   revenue = sum_k r_k * E[deal_value | segment_k].
 #
-# BUSINESS IMPACT (from Singapore marketplace A/B tests):
+# BUSINESS IMPACT (illustrative assumptions, not reported figures):
 #   - Weekly closed deals: ~55 @ avg S$9,200 agent fee = S$506K/week
-#   - Soft-GMM scoring lifts close rate by ~11% on ambiguous leads
+#   - Assume soft-GMM scoring lifts close rate by ~11% on ambiguous leads
+#     (an assumption to confirm with your own A/B test)
 #   - 11% * S$506K/week = S$55.7K/week = S$2.9M/year extra commission
 #     from the same headcount — no extra spend.
 
@@ -297,7 +352,7 @@ responsibilities = em["responsibilities"]
 ambiguous_mask = ____
 n_ambiguous = int(ambiguous_mask.sum())
 print("\n" + "=" * 70)
-print("  APPLY — PropertyGuru Lead Scoring")
+print("  APPLY — Property-Marketplace Lead Scoring")
 print("=" * 70)
 print(
     f"Of {N_SYNTH} synthetic leads, {n_ambiguous} "
@@ -316,7 +371,7 @@ print("Hard clustering would lose the between-segment signal on every one.")
 # TODO: call track_run with run_name "em_from_scratch". scalar_metrics
 # include final_log_likelihood (em["final_ll"]), n_iter (em["n_iter"]),
 # true_param_assignment_accuracy (accuracy_true), recovered_silhouette
-# (sil with NaN guard: float(sil) if sil == sil else 0.0), ambiguous_count,
+# (float(sil) — track_run skips it if undefined), ambiguous_count,
 # ambiguous_pct. series_metrics is {"log_likelihood_per_iter": em["log_likelihoods"]}.
 track_run(
     tracker,
@@ -334,6 +389,8 @@ track_run(
         "n_iter": float(em["n_iter"]),
         "true_param_assignment_accuracy": float(accuracy_true),
         "recovered_silhouette": ____,
+        "sklearn_ll_gap_per_sample": float(ll_gap_per_sample),
+        "sklearn_label_ari": float(ari_vs_sklearn),
         "ambiguous_count": float(n_ambiguous),
         "ambiguous_pct": float(n_ambiguous) / float(N_SYNTH),
     },
@@ -346,9 +403,9 @@ print(f"  [tracked] EM convergence + assignment metrics logged to {exp_name}\n")
 # DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='gmm')
 # ════════════════════════════════════════════════════════════════════════
 # You built EM from scratch — E-step responsibilities, M-step weighted MLE,
-# the log-likelihood staircase, the convergence proof. kailash-ml 1.5.1
-# ships the same EM in its ClusteringEngine: one sync call returns labels +
-# silhouette/CH/inertia.
+# the log-likelihood staircase, the convergence proof. kailash-ml's
+# ClusteringEngine wraps the same EM (sklearn's GaussianMixture, which you
+# just matched): one sync call returns labels + silhouette/CH/inertia.
 
 import polars as pl
 
@@ -383,10 +440,16 @@ print(
   [x] E-step: soft posterior responsibilities via log-sum-exp
   [x] M-step: weighted MLE for pi, mu, Sigma
   [x] Numerical proof that log-likelihood is monotone non-decreasing
-  [x] PropertyGuru lead scoring: soft assignments turn into revenue
+  [x] Matched your EM against sklearn's GaussianMixture (log-likelihood,
+      weights, means after label matching)
+  [x] Property-marketplace lead scoring: soft assignments turn into revenue
 
-  Next: 02_sklearn_gmm.py — use kailash-ml's sklearn bridge, verify
-  your from-scratch EM matches the library, and select K via BIC/AIC.
+  KEY INSIGHT: EM is a template, not a GMM-specific trick. Hidden
+  Markov Models, topic models (LDA), and missing-data imputation all
+  use the same E / M structure.
+
+  Next: 02_sklearn_gmm.py — now that you trust the library, use it on
+  real customers and select K via BIC/AIC.
 """
 )
 

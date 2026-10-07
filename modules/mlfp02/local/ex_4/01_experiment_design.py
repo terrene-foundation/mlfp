@@ -21,7 +21,7 @@
 #   2. Build — power analysis: required n for a target MDE
 #   3. Train — power curve: power vs sample size
 #   4. Visualise — interactive power curve with required-n marker
-#   5. Apply — Shopee Singapore checkout-flow A/B design
+#   5. Apply — e-commerce checkout-flow A/B design
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -61,8 +61,9 @@ from shared.mlfp02.ex_4 import (
 #   5. Any planned corrections for multiplicity
 #
 # SINGAPORE CONTEXT:
-#   PDPA (Personal Data Protection Act) requires purpose limitation —
-#   data collected for an experiment must be pre-declared.
+#   The PDPA requires notifying users of (and where needed getting consent
+#   for) the purposes their data is used for. A pre-registration does not
+#   satisfy that by itself, but it documents exactly which data is needed.
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 1 — LOAD experiment data & formulate hypothesis
@@ -237,12 +238,13 @@ print("\n>>> Checkpoint 3 passed — power curve visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Shopee Singapore Checkout Flow A/B
+# TASK 5 — APPLY: E-commerce Checkout Flow A/B (illustrative)
 # ════════════════════════════════════════════════════════════════════════
-# Shopee wants to test a simplified checkout flow.
+# A regional e-commerce marketplace (illustrative numbers) wants to test
+# a simplified checkout flow.
 # Current conversion rate: 8.2%.  Target MDE: +0.5 pp (absolute).
 
-print_banner("Applied — Shopee Singapore Checkout A/B")
+print_banner("Applied — E-commerce Checkout A/B")
 
 baseline_rate = 0.082
 target_mde_pp = 0.005  # 0.5 percentage point
@@ -252,21 +254,28 @@ target_mde_pp = 0.005  # 0.5 percentage point
 sigma_prop = ____
 
 # TODO: Compute the required n per group using required_n_per_group.
-n_shopee = ____
+n_checkout = ____
 
 print(f"Baseline conversion: {baseline_rate:.1%}")
 print(f"Target MDE: {target_mde_pp:.1%} (absolute)")
 print(f"sigma (Bernoulli): {sigma_prop:.4f}")
-print(f"Required: {n_shopee:,} per group, {2 * n_shopee:,} total")
-print(f"\nAt 50,000 daily users, this takes ~{2 * n_shopee / 50_000:.0f} days.")
+print(f"Required: {n_checkout:,} per group, {2 * n_checkout:,} total")
+daily_users = 50_000
+aov = 15.0  # SGD average order value (illustrative)
+test_days = math.ceil(2 * n_checkout / daily_users)
+annual_value = target_mde_pp * daily_users * 365 * aov
+# Worst case while testing: the treatment half is WORSE by the MDE
+test_risk = target_mde_pp * (daily_users / 2) * test_days * aov
+print(f"\nAt {daily_users:,} daily users, this takes ~{test_days} days.")
+print(f"Value of a real +0.5 pp lift: SGD {annual_value:,.0f}/yr")
+print(f"Worst-case cost of testing (treatment 0.5 pp worse): SGD {test_risk:,.0f}")
 print(
-    f"Business decision: if 0.5 pp lift = +${0.005 * 50_000 * 365 * 15:.0f}/yr revenue"
+    f"→ The test risks {test_risk / annual_value:.1%} of one year's upside — "
+    f"{'worth running' if test_risk < 0.1 * annual_value else 'weigh carefully'}."
 )
-print(f"at $15 AOV, the experiment cost ({2 * n_shopee / 50_000:.0f} days of risk)")
-print(f"is worth it.")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
-assert n_shopee > 0, "Shopee required n must be positive"
+assert n_checkout > 0, "Required n must be positive"
 print("\n>>> Checkpoint 4 passed — applied scenario completed\n")
 
 
@@ -282,7 +291,7 @@ print(
   - Power analysis formula: n = f(alpha, power, MDE, sigma)
   - Power curve: visualising detection probability vs sample size
   - Cohen's d: standardised effect size for comparing experiments
-  - Applied sizing: Shopee Singapore checkout conversion experiment
+  - Applied sizing: checkout conversion experiment, value vs testing risk
 
   NEXT: In Exercise 4.2 you'll learn SRM detection — the first sanity
   check every experiment must pass before interpreting results.

@@ -22,7 +22,7 @@
 #   2. Build — fit four distribution families, compute AIC/BIC
 #   3. Train — bootstrap for median, trimmed mean, IQR
 #   4. Visualise — bootstrap distributions and CI comparison
-#   5. Apply — OCBC portfolio risk: which tail model to use?
+#   5. Apply — bank portfolio risk: which tail model to use?
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -56,7 +56,8 @@ from shared.mlfp02.ex_2 import (
 # BIC = k*log(n) - 2 l(theta_hat)  (penalises more for large n)
 #
 # When AIC and BIC agree, the evidence is strong. When they disagree,
-# prefer BIC for prediction, AIC for explanation.
+# prefer AIC for prediction (asymptotically efficient), BIC for
+# identifying the true / most parsimonious model (consistent).
 #
 # BOOTSTRAP: resample with replacement, compute statistic, repeat.
 # Works for ANY statistic — no analytical formulas needed.
@@ -204,12 +205,12 @@ print("\n--- Checkpoint 3 passed --- bootstrap visualisations saved\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: OCBC Portfolio Risk — Which Tail Model?
+# TASK 5 — APPLY: Bank Portfolio Risk — Which Tail Model?
 # ════════════════════════════════════════════════════════════════════════
-# OCBC manages a fixed-income portfolio. VaR at 99% confidence
+# A Singapore bank (illustrative) manages a fixed-income portfolio. VaR at 99% confidence
 # determines the capital reserve. Wrong distribution = wrong capital.
 
-print(f"\n=== APPLY: OCBC Portfolio Risk — Distribution Choice ===")
+print(f"\n=== APPLY: Bank Portfolio Risk — Distribution Choice ===")
 
 mu_normal = normal_result["mu"]
 sigma_normal = normal_result["sigma"]
@@ -223,6 +224,7 @@ print(
     f"\n{'Confidence':>12} {'VaR (Normal)':>15} {'VaR (t-dist)':>15} {'Shortfall':>12}"
 )
 print("-" * 60)
+shortfalls = {}
 for alpha in [0.95, 0.99, 0.995]:
     # TODO: Compute VaR under Normal and t-distribution models.
     # VaR = negative of the (1-alpha) quantile.
@@ -231,6 +233,7 @@ for alpha in [0.95, 0.99, 0.995]:
     var_normal = ____
     var_t = ____
     shortfall = (var_t - var_normal) * portfolio_value / 100
+    shortfalls[alpha] = shortfall
     print(
         f"{alpha*100:>10.1f}%  {var_normal:>12.3f}%  {var_t:>12.3f}%  "
         f"SGD {shortfall:>7.0f}M"
@@ -243,12 +246,17 @@ else:
     print("For risk management (tail events matter), prefer the heavier-tailed model.")
 
 print(
-    "\nBottom line: choosing the wrong distribution model can leave"
-    "\nhundreds of millions in unprovisioned tail risk."
+    f"\nBottom line: at 99% VaR the Normal model holds SGD "
+    f"{shortfalls[0.99]:,.0f}M {'less' if shortfalls[0.99] > 0 else 'more'} "
+    f"capital than the t model on this (illustrative) SGD {portfolio_value:,}M book."
+)
+print(
+    "Note the 95% row: the heavy-tailed t can give a SMALLER VaR at moderate"
+    "\nconfidence — tails differ most where the reserve decision matters."
 )
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
-print("\n--- Checkpoint 4 passed --- OCBC portfolio risk application complete\n")
+print("\n--- Checkpoint 4 passed --- bank portfolio risk application complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════

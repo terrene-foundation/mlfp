@@ -13,7 +13,7 @@
 - Explain how neural network hidden layers are automated feature engineering with error feedback
 - Train a basic neural network with proper training practices
 
-**Kailash Engines**: AutoMLEngine, EnsembleEngine, ModelVisualizer, OnnxBridge
+**Kailash Engines**: ClusteringEngine, DimReductionEngine, AnomalyDetectionEngine, AutoMLEngine, EnsembleEngine, ModelVisualizer, OnnxBridge, SklearnTrainable (kailash-ml 2.2.2; the M4 assessment uses ClusteringEngine, DimReductionEngine, AnomalyDetectionEngine and SklearnTrainable)
 
 ---
 
@@ -73,7 +73,7 @@
   - 20-line implementation from scratch
 - **Gaussian Mixture Models**: EM applied to Gaussian components
 - EM as a general template: applicable to any latent variable model
-- **Mixture of Experts** (brief): modern application of mixture models (e.g., GPT-4 architecture). Gating network selects expert based on input. Connect to M6 LLMs.
+- **Mixture of Experts** (brief): modern application of mixture models (e.g., the open-weight Mixtral 8x7B: 8 experts, top-2 routing; closed models such as GPT-4 do not disclose their architecture). Gating network selects expert based on input. Connect to M6 LLMs.
 
 **Key Formulas**:
 - E-step: r_nk = (pi_k * N(x_n | mu_k, Sigma_k)) / Sum_j(pi_j * N(x_n | mu_j, Sigma_j))
@@ -110,7 +110,7 @@
   - PCA as feature extraction (not just visualisation)
 - **Kernel PCA**: nonlinear dimensionality reduction via kernel trick (RBF, polynomial)
 - **t-SNE** (from Deck 5A): stochastic neighbour embedding, perplexity parameter, good for visualisation but NOT for feature extraction (non-deterministic, no inverse transform)
-- **UMAP**: faster than t-SNE, preserves more global structure, deterministic. Can be used for feature extraction.
+- **UMAP**: faster than t-SNE, preserves more global structure (inter-cluster distances still not quantitatively meaningful), deterministic only with a fixed seed. Can be used for feature extraction (`.transform()` embeds new points).
 - **Manifold learning** (brief mention): Isomap (geodesic distances), LLE (Locally Linear Embedding), MDS (Multidimensional Scaling) — reference table for when to use each
 - **Intrinsic dimension**: how many components needed to approximate data (from Deck 5A)
 
@@ -143,8 +143,8 @@
 - **Statistical outlier detection** (from Deck 2A): Z-score method (3 sigma rule), IQR method (Q1 - 1.5*IQR, Q3 + 1.5*IQR), winsorisation
 - **Isolation Forest**: random trees isolate anomalies faster (shorter path length = more anomalous)
 - **LOF (Local Outlier Factor)**: density-based, compares local density to neighbours
-- **Score blending**: combine multiple anomaly detectors for robustness
-- **EnsembleEngine**: `blend()`, `stack()`, `bag()`, `boost()` — unified ensemble API
+- **Score blending**: combine multiple anomaly detectors for robustness (unsupervised: `AnomalyDetectionEngine.ensemble_detect(voting="score_average")`)
+- **EnsembleEngine**: `blend()`, `stack()`, `bag()`, `boost()` — unified ensemble API for SUPERVISED models (each takes fitted/base models, a polars frame and a target column); for anomaly detection it serves as a second stage once a labelled review sample exists
 - Anomaly detection as production monitoring (connects to M3.8 drift monitoring)
 
 **Key Formulas**:
@@ -263,7 +263,7 @@
 
 **Key Formulas**:
 - Matrix factorisation: minimise Sum_{(u,i) in observed} (r_ui - u_u^T * v_i)^2 + lambda * (||u_u||^2 + ||v_i||^2)
-- ALS update for U: U = (V^T * V + lambda * I)^{-1} * V^T * R^T
+- ALS update for user u (observed items Omega_u only): u_u = (V_{Omega_u}^T * V_{Omega_u} + lambda * I)^{-1} * V_{Omega_u}^T * r_{u,Omega_u}; symmetric update for each item
 
 **Learning Objectives**: Students can:
 - Build content-based and collaborative filtering recommenders
@@ -304,7 +304,7 @@
   - Iterate until convergence (demonstrate with error decreasing)
 - **Backpropagation**: chain rule through layers. Compute gradient of loss with respect to each weight.
 - **Hidden layers** (from Deck 5B slides 34-41):
-  - 2+ hidden layers can represent ANY non-linear function
+  - Universal approximation: ONE hidden layer with a non-polynomial activation and enough units can approximate any continuous function on a compact domain; depth buys parameter efficiency
   - "Automated feature engineering": hidden layers discover features automatically
   - **Representation learning**: DL learns deep representations of data relationships
   - **Embeddings**: hidden node values encode learned knowledge

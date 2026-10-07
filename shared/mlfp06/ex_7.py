@@ -4,11 +4,12 @@
 Shared infrastructure for MLFP06 Exercise 7 — AI Governance with PACT.
 
 Contains: adversarial-prompt loading, canonical Singapore FinTech org YAML,
-clearance hierarchy, teaching budget tracker, GovernanceEngine compile helper,
+pact's clearance ladder, teaching budget tracker, GovernanceEngine compile
+helper (which APPLIES the YAML clearances + envelopes to the engine),
 CompiledOrgAdapter (preserves the `.n_agents / .n_delegations / .n_departments`
-caller contract for technique files), and `make_fake_executor()` — a
-deterministic offline executor for `GovernedSupervisor.run(execute_node=...)`
-so the runtime-enforcement narrative runs end-to-end without an LLM key.
+caller contract for technique files), a clearance-chain checker, and
+`make_llm_executor()` — the `GovernedSupervisor.run(execute_node=...)`
+callback that makes a REAL call to the local Ollama model.
 
 Technique-specific code does NOT belong here — each technique file builds
 its own scenario on top.
@@ -18,7 +19,8 @@ Import from any cwd after `uv sync`:
     from shared.mlfp06.ex_7 import (
         CLEARANCE_LEVELS, ORG_YAML, load_adversarial_prompts,
         write_org_yaml, compile_governance, TeachingBudgetTracker,
-        CompiledOrgAdapter, default_model_name, make_fake_executor,
+        CompiledOrgAdapter, clearance_chain_violations, default_model_name,
+        make_llm_executor,
     )
 """
 from __future__ import annotations
@@ -36,23 +38,24 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 if TYPE_CHECKING:  # pragma: no cover — type-only imports
+    from kailash.trust.pact.yaml_loader import LoadedOrg
     from pact import CompiledOrg, GovernanceEngine
 
 # ════════════════════════════════════════════════════════════════════════
 # CONSTANTS
 # ════════════════════════════════════════════════════════════════════════
 
-# MLFP06 teaches a 4-level clearance hierarchy (public < internal <
-# confidential < restricted). Canonical pact is 5-level; see the sidebar
-# in ex_7/02_envelopes.py for the mapping to PUBLIC/RESTRICTED/
-# CONFIDENTIAL/SECRET/TOP_SECRET. The course's mental model keeps
-# "internal" and "restricted" as distinct teaching rungs; "internal"
-# is an historical alias of RESTRICTED at the string interface.
+# pact's clearance ladder, lowest to highest — exactly the order of
+# `pact.ConfidentialityLevel`:
+#   PUBLIC < RESTRICTED < CONFIDENTIAL < SECRET < TOP_SECRET
+# "restricted" is the SECOND-LOWEST rung (just above public), NOT the top.
+# kaizen_agents also accepts "internal" as an alias of RESTRICTED.
 CLEARANCE_LEVELS: dict[str, int] = {
     "public": 0,
-    "internal": 1,
+    "restricted": 1,
     "confidential": 2,
-    "restricted": 3,
+    "secret": 3,
+    "top_secret": 4,
 }
 
 
@@ -107,10 +110,14 @@ def load_adversarial_prompts(n: int = 50) -> pl.DataFrame:
 #
 # Every technique file uses the same organisation so students can track
 # how envelopes, budgets, and access decisions evolve as they add more
-# governance structure. The D/T/R grammar is:
-#   D (Delegator):   Human authority who authorises the task
-#   T (Task):        Bounded scope of work (team)
-#   R (Responsible): The agent that executes within the envelope
+# governance structure. The D/T/R grammar is pact's addressing grammar:
+#   D (Department): an organisational unit        e.g. D1 = ML Engineering
+#   T (Team):       a unit inside a department    e.g. D1-R1-T1 = Data Analysis
+#   R (Role):       a position (human or agent)   e.g. D1-R1-T1-R1 = data_analyst
+# Every D or T is immediately followed by its head R, so an address such
+# as D1-R1-T1-R1 reads "the role heading Team 1, under the role heading
+# Department 1". Delegation is a SEPARATE envelope concept: an envelope
+# is defined by one role (`defined_by`) for another (`target`).
 #
 # Modern pact's load_org_yaml expects a flat top-level schema:
 #   org_id, name
@@ -123,12 +130,12 @@ def load_adversarial_prompts(n: int = 50) -> pl.DataFrame:
 
 ORG_YAML: str = """
 # Singapore FinTech AI Organisation — PACT Governance Definition
-# D/T/R: every agent action traces to a human Delegator
+# D/T/R = Department / Team / Role; every agent role reports to a human head
 
 org_id: "sg_fintech_ai"
 name: "SG FinTech AI Division"
 
-# Three departments — each headed by a named human authority.
+# Three departments — each headed by a named human role.
 departments:
   - id: "ml_eng"
     name: "ML Engineering"
@@ -137,7 +144,7 @@ departments:
   - id: "customer_intel"
     name: "Customer Intelligence"
 
-# One team per delegated task (bounded scope of work).
+# One team per agent workstream.
 teams:
   - id: "data_team"
     name: "Data Analysis"
@@ -152,9 +159,9 @@ teams:
   - id: "customer_team"
     name: "Customer Interaction"
 
-# Department heads (3 Delegators) + agents (6 Responsibles).
+# Department heads (3 humans) + team heads (6 agents).
 roles:
-  # ── Delegators (humans) ──
+  # ── Department heads (humans) ──
   - id: "chief_ml_officer"
     name: "Chief ML Officer"
     heads: "ml_eng"
@@ -165,7 +172,7 @@ roles:
     name: "VP Customer"
     heads: "customer_intel"
 
-  # ── Responsibles (agents) ──
+  # ── Team heads (agents), each reporting to a department head ──
   - id: "data_analyst"
     name: "Data Analyst"
     reports_to: "chief_ml_officer"
@@ -191,12 +198,14 @@ roles:
     reports_to: "vp_customer"
     heads: "customer_team"
 
-# Clearance lattice — canonical pact levels (lowercase strings).
+# Clearances — pact levels, lowest to highest:
+#   public < restricted < confidential < secret < top_secret
+# Every agent's clearance is at or below the head it reports to.
 clearances:
   - role: "chief_ml_officer"
-    level: "restricted"
+    level: "secret"
   - role: "chief_risk_officer"
-    level: "restricted"
+    level: "secret"
   - role: "vp_customer"
     level: "confidential"
   - role: "data_analyst"
@@ -206,15 +215,16 @@ clearances:
   - role: "model_deployer"
     level: "confidential"
   - role: "risk_assessor"
-    level: "restricted"
+    level: "secret"
   - role: "bias_checker"
     level: "confidential"
   - role: "customer_agent"
     level: "public"
 
-# Envelopes = delegations. Each entry binds a task scope (target agent)
-# to the authorising human (defined_by) and the constraint set the
-# agent runs within.
+# Envelopes = delegations. Each entry is defined by one role
+# (`defined_by`, the human head) for another (`target`, the agent) and
+# carries the constraint set the agent runs within. compile_governance()
+# APPLIES these to the engine, so verify_action() enforces them.
 envelopes:
   - target: "data_analyst"
     defined_by: "chief_ml_officer"
@@ -296,15 +306,34 @@ def write_org_yaml(path: str | Path | None = None) -> str:
 class CompiledOrgAdapter:
     """Thin facade over `pact.CompiledOrg` preserving the course's counter API.
 
-    Agents in MLFP06 are the non-vacant ROLE nodes that report to a
-    department head — the 6 Responsibles in the SG FinTech org. The 3
-    department heads are Delegators, not agents. We count agents as
-    "non-vacant ROLE nodes that are not themselves a department head".
-    Delegations are envelopes; there is one envelope per delegation.
+    Agents in MLFP06 are the non-vacant ROLE nodes that head a TEAM — the
+    6 team-head roles in the SG FinTech org. The 3 department-head roles
+    are humans, not agents. Delegations are envelopes; there is one
+    envelope per delegation.
     """
 
     _compiled: "CompiledOrg"
     _n_envelopes: int
+    _loaded: "LoadedOrg | None" = None
+
+    @property
+    def clearances(self) -> dict[str, str]:
+        """role_id -> clearance string, read from the loaded YAML."""
+        if self._loaded is None:
+            return {}
+        return {c.role_id: c.level for c in self._loaded.clearances}
+
+    @property
+    def envelope_specs(self) -> list[Any]:
+        """The YAML envelope specs (one per delegation)."""
+        return [] if self._loaded is None else list(self._loaded.envelopes)
+
+    def address_of(self, role_id: str) -> str:
+        """Positional D/T/R address of a role id (e.g. 'D1-R1-T1-R1')."""
+        for addr, node in self._compiled.nodes.items():
+            if node.role_definition is not None and node.role_definition.role_id == role_id:
+                return addr
+        raise KeyError(f"role {role_id!r} is not in the compiled org")
 
     @property
     def n_departments(self) -> int:
@@ -326,13 +355,12 @@ class CompiledOrgAdapter:
 
     @property
     def n_agents(self) -> int:
-        """Count Responsible roles (team-anchored ROLE nodes, non-vacant).
+        """Count agent roles (team-head ROLE nodes, non-vacant).
 
-        A "Responsible" role is a ROLE node whose address sits under a
-        TEAM (has a `-T<n>-R<n>` suffix) — distinguishing it from the
-        department-head ROLE nodes that sit directly under a DEPARTMENT
-        address (e.g. "D1-R1"). We also exclude vacant placeholders so
-        the count reflects real agents.
+        An agent role is a ROLE node whose address sits under a TEAM (has
+        a `-T<n>-R<n>` suffix) — distinguishing it from the department-head
+        ROLE nodes that sit directly under a DEPARTMENT address (e.g.
+        "D1-R1"). Vacant placeholders are excluded.
         """
         from pact import NodeType
 
@@ -343,7 +371,7 @@ class CompiledOrgAdapter:
             if node.is_vacant:
                 continue
             # Department-head addresses are "D<n>-R<n>" — two segments.
-            # Agent (Responsible) addresses sit under a team and have
+            # Agent-role addresses sit under a team and have
             # the "-T<n>-R<n>" suffix, giving four or more segments.
             if "-T" in addr:
                 count += 1
@@ -351,7 +379,7 @@ class CompiledOrgAdapter:
 
     @property
     def n_delegations(self) -> int:
-        """One envelope == one D/T/R delegation contract."""
+        """One envelope == one delegation (defined_by -> target)."""
         return self._n_envelopes
 
     @property
@@ -366,34 +394,90 @@ class CompiledOrgAdapter:
 
 def compile_governance(
     yaml_path: str | None = None,
+    *,
+    apply_specs: bool = True,
 ) -> tuple["GovernanceEngine", CompiledOrgAdapter]:
     """Compile the canonical org YAML. Returns (engine, adapter).
 
-    Modern pact flow:
-        LoadedOrg      <- load_org_yaml(path)
-        GovernanceEngine(loaded.org_definition)
-        compiled = engine.get_org()
-        adapter  = CompiledOrgAdapter(compiled, n_envelopes=len(loaded.envelopes))
+    Flow:
+        loaded   <- load_org_yaml(path)
+        engine   <- GovernanceEngine(loaded.org_definition)
+        apply_governance_specs(engine, loaded)   # clearances + envelopes
+        adapter  <- CompiledOrgAdapter(engine.get_org(), ...)
 
-    Compilation validates (via `load_org_yaml` + engine construction):
-      - Every role references a known unit via `heads`
-      - `reports_to` chains resolve to declared roles
-      - Clearance levels are in the canonical lattice
-      - Envelopes reference real roles on both `target` and `defined_by`
-      - D/T/R grammar: every Department/Team is followed by exactly one Role
-    What compilation does NOT validate:
-      - Content safety of LLM outputs (needs adversarial testing)
-      - Runtime budget consumption (needs the runtime wrapper in ex_7/04)
+    ``GovernanceEngine(loaded.org_definition)`` on its own compiles ONLY
+    the structure (departments, teams, roles). The YAML ``clearances`` and
+    ``envelopes`` are separate specs; until they are applied the engine
+    has no envelopes and ``verify_action`` auto-approves every role.
+    ``apply_specs=True`` (the default) applies them so the YAML is
+    actually enforced. Pass ``apply_specs=False`` to see the bare
+    structural compile.
+
+    What loading + compiling checks (installed kailash-pact):
+      - every role references a known unit via ``heads``
+      - ``reports_to`` chains resolve to declared roles
+      - clearance strings are valid pact levels
+      - envelope ``target`` / ``defined_by`` resolve to real roles
+      - applied envelopes do not widen the defining role's own envelope
+    What it does NOT check:
+      - that a role's clearance is at or below its head's clearance
+        (use ``clearance_chain_violations()`` below)
+      - content safety of LLM outputs (needs adversarial testing)
+      - roles WITHOUT an envelope, or unknown addresses: the installed
+        default auto-approves them ("No envelope constraints -- action
+        permitted"). Deny paths only exist where an envelope is attached.
     """
+    from kailash.trust.pact.yaml_resolvers import apply_governance_specs
     from pact import GovernanceEngine, load_org_yaml
 
     if yaml_path is None:
         yaml_path = write_org_yaml()
     loaded = load_org_yaml(yaml_path)
     engine = GovernanceEngine(loaded.org_definition)
+    if apply_specs:
+        apply_governance_specs(engine, loaded)
     compiled = engine.get_org()
-    adapter = CompiledOrgAdapter(_compiled=compiled, _n_envelopes=len(loaded.envelopes))
+    adapter = CompiledOrgAdapter(
+        _compiled=compiled,
+        _n_envelopes=len(loaded.envelopes),
+        _loaded=loaded,
+    )
     return engine, adapter
+
+
+def clearance_chain_violations(yaml_path: str | None = None) -> pl.DataFrame:
+    """Return every role whose clearance is ABOVE the role it reports to.
+
+    pact does not reject such an org at load time, so this check is ours.
+    Uses pact's ladder (``CLEARANCE_LEVELS``). An empty DataFrame means
+    every reporting chain is monotonic (child <= parent).
+    """
+    from pact import load_org_yaml
+
+    loaded = load_org_yaml(yaml_path or write_org_yaml())
+    level_of = {c.role_id: c.level for c in loaded.clearances}
+    rows = []
+    for role in loaded.org_definition.roles:
+        parent = role.reports_to_role_id
+        if not parent or role.role_id not in level_of or parent not in level_of:
+            continue
+        child_level, parent_level = level_of[role.role_id], level_of[parent]
+        if CLEARANCE_LEVELS[child_level] > CLEARANCE_LEVELS[parent_level]:
+            rows.append(
+                {
+                    "role": role.role_id,
+                    "role_clearance": child_level,
+                    "reports_to": parent,
+                    "parent_clearance": parent_level,
+                }
+            )
+    schema = {
+        "role": pl.Utf8,
+        "role_clearance": pl.Utf8,
+        "reports_to": pl.Utf8,
+        "parent_clearance": pl.Utf8,
+    }
+    return pl.DataFrame(rows, schema=schema)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -457,61 +541,61 @@ class TeachingBudgetTracker:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# FAKE EXECUTOR — offline `GovernedSupervisor.run(execute_node=...)`
+# LLM EXECUTOR — real `GovernedSupervisor.run(execute_node=...)` callback
 # ════════════════════════════════════════════════════════════════════════
 #
-# `GovernedSupervisor.run(objective, execute_node=...)` decomposes an
-# objective into a plan and invokes `execute_node(spec, inputs)` for
-# each node in that plan. The executor is where the real LLM call
-# (or a stub) lives. Governance is enforced AROUND the callback —
-# budget checked before, spend recorded after, audit trail appended
-# automatically.
+# `GovernedSupervisor.run(objective, execute_node=...)` builds a plan and
+# invokes `execute_node(spec, inputs)` for each node. The executor is
+# where the LLM call lives. The supervisor tracks the cost the executor
+# reports against its financial envelope and appends audit records.
 #
-# `make_fake_executor()` returns a deterministic async callable that
-# satisfies the `ExecuteNodeFn` type (`(AgentSpec, dict[str, Any])
-# -> Awaitable[dict[str, Any]]`) so the runtime-enforcement narrative
-# in ex_7/04_runtime_audit.py runs end-to-end offline. The fake
-# short-circuits the LLM at the callback boundary but preserves the
-# governance wiring exactly.
+# The executor below makes a REAL call to the local Ollama model through
+# the course's `make_delegate()` factory. There is no offline stub: if
+# Ollama is not running the call raises, the supervisor records the node
+# as FAILED, and the technique file reports it. Run `ollama serve` first.
+#
+# Ollama is free, so there is no real dollar cost. To make the financial
+# dimension observable, the executor charges a NOTIONAL price per 1,000
+# tokens (`notional_usd_per_1k_tokens`). It is a teaching device, not a
+# bill — say so whenever you print it.
 
 
-def make_fake_executor(
+def make_llm_executor(
     *,
-    base_cost: float = 0.01,
-    prompt_tokens: int = 80,
-    completion_tokens: int = 40,
-    reply_prefix: str = "[offline-fake]",
+    notional_usd_per_1k_tokens: float = 0.0,
+    system_prompt: str | None = None,
 ) -> Callable[[Any, dict[str, Any]], Awaitable[dict[str, Any]]]:
-    """Build a deterministic async executor for GovernedSupervisor.run.
+    """Build an async executor that calls the local Ollama model.
 
-    The returned callable accepts `(spec, inputs)` where `spec` is a
-    `kaizen_agents.types.AgentSpec` and `inputs` is a plan-node input
-    dict. It returns a dict with the four keys the supervisor expects:
-
-        {
-            "result": str,           # the node's "output"
-            "cost": float,           # USD consumed by this node
-            "prompt_tokens": int,    # input token count
-            "completion_tokens": int,# output token count
-        }
-
-    All values are constant per call — the fake is intentionally
-    deterministic so tests are reproducible. Use this in offline mode
-    when no LLM key is available; swap for a real LLM-backed executor
-    in production.
+    The returned callable accepts ``(spec, inputs)`` and returns the four
+    keys GovernedSupervisor reads: ``result``, ``cost``, ``prompt_tokens``,
+    ``completion_tokens``. ``cost`` is ``total_tokens / 1000 *
+    notional_usd_per_1k_tokens`` (0.0 by default — Ollama is free).
     """
+    from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
 
-    async def _fake(spec: Any, inputs: dict[str, Any]) -> dict[str, Any]:
-        # Extract a human-readable label for the stubbed response so
-        # the audit trail is still meaningful when read later.
-        node_id = getattr(spec, "node_id", None) or "node"
-        objective = inputs.get("objective") or inputs.get("prompt") or str(inputs)
-        snippet = str(objective)[:60].replace("\n", " ")
+    async def _execute(spec: Any, inputs: dict[str, Any]) -> dict[str, Any]:
+        # The objective lives in the plan node's AgentSpec.description; inputs
+        # is empty for the root task (reading only inputs sent the model "{}").
+        objective = (
+            getattr(spec, "description", None)
+            or inputs.get("objective")
+            or inputs.get("prompt")
+        )
+        if not objective:
+            raise ValueError(
+                "executor received no objective (spec.description and inputs empty)"
+            )
+        delegate = make_delegate(system_prompt=system_prompt)
+        text, usage, _latency = await run_delegate_text(delegate, str(objective))
+        if not text.strip():
+            raise RuntimeError("LLM returned an empty response")
+        total = usage.get("total_tokens", 0)
         return {
-            "result": f"{reply_prefix} {node_id}: {snippet}",
-            "cost": float(base_cost),
-            "prompt_tokens": int(prompt_tokens),
-            "completion_tokens": int(completion_tokens),
+            "result": text,
+            "cost": total / 1000.0 * float(notional_usd_per_1k_tokens),
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
         }
 
-    return _fake
+    return _execute

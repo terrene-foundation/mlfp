@@ -148,77 +148,29 @@ ____
 # Domain acronyms (BTO, MOP, EIP, SPR) are out-of-distribution for
 # generic embeddings. BM25 matches them exactly.
 #
-# BUSINESS IMPACT: HDB handles ~1M customer interactions/year. BM25-based
-# lookup cuts officer time by 75s × 1M = 20,833 hours/year ≈ S$729K
-# saved annually.
+# BUSINESS IMPACT (illustrative planning figures): at ~1M customer
+# interactions/year, BM25-based lookup that cuts officer time by 75s per
+# lookup frees 20,833 hours/year ≈ S$729K at S$35/hr.
 
 
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
+print("\n" + "=" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("=" * 70)
 print(
     """
-  [x] Implemented BM25 from scratch
-  [x] Visualised the score distribution
+  [x] Implemented BM25 from scratch: tokenise, IDF, tf saturation, length norm
+  [x] Understood k1 (tf saturation) and b (length normalisation)
+  [x] Ran BM25 on real eval queries and inspected top-k
+  [x] Visualised the BM25 score distribution — a long sparse tail
+  [x] Mapped BM25 to a public-housing regulation lookup (exact acronym match)
+
+  KEY INSIGHT: Dense retrieval answers "what is this about?"; BM25
+  answers "does this contain these exact words?". Production systems
+  need both — and the next exercise shows how to fuse them.
 
   Next: 04_hybrid_rrf.py combines dense and sparse with RRF fusion...
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: Retrieval (recall@k, context utilisation, faithfulness).
-# Secondary: Output (judge on final answers). Classic RAG failures —
-# over-narrow chunks, stale index, judge flags fabrication.
-if False:  # scaffold — requires an evaluated RAG pipeline
-    obs = LLMObservatory(run_id="ex_4_rag_run")
-    # obs.retrieval.evaluate(
-    #     queries=eval_queries,
-    #     retrieved_contexts=per_query_chunks,
-    #     answers=generator_answers,
-    #     ground_truth_ids=per_query_relevant_ids,
-    #     k=5,
-    # )
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Retrieval  (WARNING): recall@5 = 0.62 — chunks too narrow
-#       Fix: increase chunk_size from 256 to 512 tokens, OR add
-#            HyDE query rewriting before dense retrieval.
-#   [✓] Output     (HEALTHY): faithfulness 0.87 (answers grounded in
-#       retrieved chunks even when recall is imperfect).
-#   [?] Attention / Agent / Alignment / Governance (n/a)
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [RETRIEVAL LENS] recall@5 = 0.62 is the SIGNATURE of over-narrow
-#     chunks — the index contains the right passage but the retriever
-#     returns a neighbour that misses the key entity. This is the
-#     failure the chunking exercise (ex_4.1) prepared you to diagnose.
-#     >> Prescription: (a) increase chunk_size, (b) add overlap, (c)
-#        switch to hybrid BM25+dense (ex_4.4), or (d) rerank (ex_4.5).
-#  [OUTPUT LENS] Faithfulness 0.87 on a recall of 0.62 means the
-#     generator is honest — when it doesn't have the right chunk it
-#     says so instead of fabricating. That's the GOOD failure mode.
-#     The bad failure mode would be high recall + low faithfulness
-#     (retrieval works but the LLM still hallucinates).
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

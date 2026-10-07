@@ -17,29 +17,33 @@
 #
 # TASKS:
 #   1. Theory — UMAP as a weighted k-NN graph layout
-#   2. Build — fit UMAP with 6 hyperparameter configurations
-#   3. Train — fit on subsample, .transform() full dataset (OOS)
-#   4. Visualise — silhouette across configurations + 2D scatter
-#   5. Apply — MAS (Monetary Authority of Singapore) AML anomaly ranking
+#   2. Build — fit UMAP with 4 hyperparameter configurations
+#   3. Train — fit on a subsample, .transform() held-out rows (OOS)
+#   4. Visualise — 2D scatter per configuration + quality comparison
+#   5. Apply — AML entity screening at a Singapore bank
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import time
 
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from sklearn.decomposition import PCA
 
 from kailash_ml import ModelVisualizer
 
 from shared.mlfp04.ex_3 import (
     OUTPUT_DIR,
-    evaluate_embedding_silhouette,
+    evaluate_embedding,
+    holdout_indices,
     load_customer_matrix,
     setup_engines,
     subsample_indices,
     teardown_engines,
     track_run,
 )
+from shared.mlfp04 import create_visualizer
 
 # ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
 tracker, exp_name = setup_engines()
@@ -66,7 +70,7 @@ except ImportError:  # pragma: no cover
 # Compared to t-SNE:
 #   + preserves BOTH local neighbours AND the global skeleton
 #   + supports .transform() for new points (trained embedder becomes
-#     a function from R^p to R^2)
+#     a function from R^p to R^2) — t-SNE cannot; PCA and Kernel PCA can
 #   + faster: ~O(n) amortised, scales to ~1M rows
 #   + embeds into arbitrary dimensions, not just 2D
 #
@@ -81,21 +85,21 @@ except ImportError:  # pragma: no cover
 # TASK 2 — BUILD: data + PCA pre-reduction
 # ════════════════════════════════════════════════════════════════════════
 
-X, feature_cols, _ = load_customer_matrix()
+X, feature_cols, df_customers = load_customer_matrix()
 n_samples, n_features = X.shape
 
 pca_pre = PCA(n_components=min(10, n_features), random_state=42)
 X_pca = pca_pre.fit_transform(X)
 
-# Fit subsample; transform a 10K out-of-sample slice to showcase OOS.
-# Transforming all 50K rows × 6 configs would push runtime past 9 minutes;
-# 10K still demonstrates the OOS workflow at a tractable cost.
+# Fit on a 3K subsample; transform a 10K slice of OTHER rows to showcase a
+# genuine out-of-sample transform. Transforming all ~47K remaining rows x 4
+# configs is slow on a laptop; 10K still demonstrates the OOS workflow.
 fit_idx = subsample_indices(n_samples, n_target=3000)
 TRANSFORM_TARGET = 10_000
-transform_idx = subsample_indices(n_samples, n_target=TRANSFORM_TARGET)
+transform_idx = holdout_indices(n_samples, exclude=fit_idx, n_target=TRANSFORM_TARGET)
 n_transform = len(transform_idx)
 X_pca_transform = X_pca[transform_idx]
-print(f"=== UMAP inputs ===")
+print("=== UMAP inputs ===")
 print(f"  fit on  : {len(fit_idx):,} rows")
 print(
     f"  transform: {n_transform:,} rows (out-of-sample, sub-sampled from {n_samples:,})"
@@ -115,9 +119,9 @@ umap_configs = [
 
 umap_results: dict[str, dict] = {}
 
-print(f"\n=== UMAP hyperparameter sweep ===")
-print(f"{'config':<28}{'silhouette':>14}{'time (s)':>12}")
-print("-" * 54)
+print("\n=== UMAP hyperparameter sweep ===")
+print(f"{'config':<28}{'trust':>10}{'silhouette':>12}{'time (s)':>10}")
+print("-" * 60)
 
 if UMAP_AVAILABLE:
     for cfg in umap_configs:
@@ -133,28 +137,36 @@ if UMAP_AVAILABLE:
         embedding_full = reducer.transform(X_pca_transform)  # out-of-sample
         elapsed = time.time() - t0
 
-        sil = evaluate_embedding_silhouette(embedding_full)
+        # Quality is judged on the HELD-OUT rows against their original features
+        quality = evaluate_embedding(X[transform_idx], embedding_full)
         umap_results[cfg["label"]] = {
             "embedding": embedding_full,
-            "silhouette": sil,
+            **quality,
             "time_s": elapsed,
         }
-        print(f"{cfg['label']:<28}{sil:>14.4f}{elapsed:>11.1f}")
+        print(
+            f"{cfg['label']:<28}{quality['trustworthiness']:>10.4f}"
+            f"{quality['silhouette']:>12.4f}{elapsed:>10.1f}"
+        )
 else:
     # PCA 2D fallback — keeps the exercise runnable in minimal envs.
     pca_2d = PCA(n_components=2, random_state=42)
     embedding_full = pca_2d.fit_transform(X_pca_transform)
-    sil = evaluate_embedding_silhouette(embedding_full)
+    quality = evaluate_embedding(X[transform_idx], embedding_full)
     umap_results["PCA-2D-fallback"] = {
         "embedding": embedding_full,
-        "silhouette": sil,
+        **quality,
         "time_s": 0.0,
     }
-    print(f"{'PCA-2D-fallback':<28}{sil:>14.4f}{0.0:>11.1f}")
+    print(
+        f"{'PCA-2D-fallback':<28}{quality['trustworthiness']:>10.4f}"
+        f"{quality['silhouette']:>12.4f}{0.0:>10.1f}"
+    )
 
 
 # ── Checkpoint 1 ────────────────────────────────────────────────────────
 assert len(umap_results) >= 1, "Must produce at least one UMAP result"
+assert len(set(fit_idx) & set(transform_idx)) == 0, "OOS rows must exclude fit rows"
 for label, res in umap_results.items():
     assert res["embedding"].shape == (n_transform, 2), (
         f"UMAP {label} must return ({n_transform}, 2) 2D embedding "
@@ -167,14 +179,53 @@ print(f"\n[ok] Checkpoint 1 — out-of-sample transform produced {n_transform}-r
 # TASK 4 — VISUALISE: silhouette across configurations
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 fig = viz.metric_comparison(
-    {label: {"Silhouette": r["silhouette"]} for label, r in umap_results.items()}
+    {
+        label: {
+            "Trustworthiness": r["trustworthiness"],
+            "kNN overlap": r["knn_overlap"],
+            "Silhouette": r["silhouette"],
+        }
+        for label, r in umap_results.items()
+    }
 )
-fig.update_layout(title="UMAP: silhouette across hyperparameter configurations")
+fig.update_layout(title="UMAP: structure preservation vs clusterability")
 umap_path = OUTPUT_DIR / "04_umap_sweep.html"
 fig.write_html(str(umap_path))
 print(f"\nSaved: {umap_path}")
+
+# The held-out embeddings themselves, one panel per configuration,
+# coloured by churn status (NOT a reducer input).
+churned_oos = df_customers["churned"].to_numpy()[transform_idx]
+labels_in_order = list(umap_results.keys())
+fig_scatter = make_subplots(
+    rows=1, cols=len(labels_in_order), subplot_titles=labels_in_order
+)
+for col, label in enumerate(labels_in_order, start=1):
+    emb = umap_results[label]["embedding"]
+    for flag, colour, name in [(0, "#636EFA", "retained"), (1, "#EF553B", "churned")]:
+        mask = churned_oos == flag
+        fig_scatter.add_trace(
+            go.Scatter(
+                x=emb[mask, 0],
+                y=emb[mask, 1],
+                mode="markers",
+                marker=dict(size=2, color=colour, opacity=0.5),
+                name=name,
+                showlegend=(col == 1),
+            ),
+            row=1,
+            col=col,
+        )
+fig_scatter.update_layout(
+    title="UMAP out-of-sample embeddings (colour = churned, not a model input)",
+    height=420,
+    width=320 * len(labels_in_order),
+)
+scatter_path = OUTPUT_DIR / "04_umap_embeddings.html"
+fig_scatter.write_html(str(scatter_path))
+print(f"Saved: {scatter_path}")
 
 print("\nUMAP hyperparameter guide:")
 print("  n_neighbors small -> fine local detail, fractured clusters")
@@ -185,51 +236,48 @@ print("\nOut-of-sample recipe: reducer.fit(train); reducer.transform(new_X)")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: MAS (Monetary Authority of Singapore) AML anomaly ranking
+# TASK 5 — APPLY: AML Entity Screening at a Singapore Bank
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Singapore banks submit suspicious transaction reports (STRs)
-# to the MAS COSMIC platform. An AML analytics team embeds every reporting
-# entity into a 2D UMAP space built from ~60 features (transaction
-# velocity, counterparty diversity, cross-border ratio, cash intensity,
-# sector code, anomaly z-scores, device-fingerprint counts). The space is
-# refreshed WEEKLY from a stable training slice, and the embedder is then
-# applied every NIGHT to the latest transaction rollup for incremental
-# screening.
+# SCENARIO (illustrative): a Singapore bank's AML analytics team embeds
+# every customer entity into a 2D UMAP space built from ~60 features
+# (transaction velocity, counterparty diversity, cross-border ratio, cash
+# intensity, sector code, device-fingerprint counts). Analysts use the
+# map to decide which alerts to escalate; in Singapore, suspicious
+# transaction reports are filed with the Suspicious Transaction Reporting
+# Office (STRO) of the Singapore Police Force. The space is refit WEEKLY
+# on a stable training slice and applied every NIGHT to new activity.
 #
-# WHY UMAP IS THE RIGHT TOOL:
-#   - Out-of-sample .transform() — this is the decisive property here.
-#     t-SNE would require a full refit every night, which both changes
-#     the axes (breaking the analyst's mental map) and blows the nightly
-#     SLA. UMAP fits once per week, then .transform() is ~O(log n) per
-#     new point.
-#   - Preserves both LOCAL (two entities that behave similarly end up
-#     near each other) and GLOBAL (the "high cash velocity" region
-#     stays in the same corner week after week) structure.
-#   - Scales to ~500K reporting entities without subsampling.
+# WHY UMAP IS A GOOD FIT:
+#   - Out-of-sample .transform() — new entities land on the existing map
+#     without a refit, so the axes stay stable between weekly refits.
+#     (PCA and Kernel PCA can transform new points too; t-SNE cannot.)
+#   - Preserves local neighbourhoods while keeping more of the global
+#     layout than t-SNE — check trustworthiness on held-out rows, as above.
+#   - Scales to hundreds of thousands of entities on commodity hardware.
 #
-# BUSINESS IMPACT: An MAS 2024 financial stability review noted that
-# pattern-based screening over entity embeddings raised the positive
-# predictive value of STR review from ~11% to ~23% — roughly halving
-# false positives. Each false positive costs ~S$1,200 in analyst time
-# at MAS + bank compliance. On ~18,000 STRs/yr that's ~S$21.6M/yr in
-# avoided triage cost. UMAP refit runs in under an hour on commodity
-# hardware; nightly transform is ~3 minutes per 20K new entities.
+# BUSINESS IMPACT (illustrative assumptions, not reported figures): if
+# alert triage costs ~S$1,200 of analyst time per false positive and the
+# map lets analysts close a fraction of false-positive alerts faster, the
+# saving is (alerts/year) x (false-positive share avoided) x S$1,200.
+# At 18,000 alerts a year, avoiding one in ten false positives is worth
+# ~S$2.2M a year. Validate the avoided share in a pilot before relying on it.
 #
-# WHY NOT t-SNE HERE: t-SNE forbids new points without a refit, which
-# would reshuffle the axes every night. The analyst's mental map ("fraud
-# rings live in the upper-left quadrant") would reset weekly, destroying
-# institutional knowledge. UMAP's frozen-embedder workflow preserves that
-# map for the life of the weekly fit.
+# WHY NOT t-SNE HERE: t-SNE cannot place new points without a refit, and a
+# refit reshuffles the axes. The analysts' mental map ("unusual entities
+# sit in the upper-left") would reset every night.
 
 if UMAP_AVAILABLE and umap_results:
-    best_label, best = max(umap_results.items(), key=lambda kv: kv[1]["silhouette"])
-    print(f"\n=== MAS-style AML projection (UMAP) ===")
-    print(f"  Best config     : {best_label}")
-    print(f"  Silhouette      : {best['silhouette']:.4f}")
+    best_label, best = max(
+        umap_results.items(), key=lambda kv: kv[1]["trustworthiness"]
+    )
+    print("\n=== AML entity-map projection (UMAP, held-out rows) ===")
+    print(f"  Best config (trust) : {best_label}")
+    print(f"  Trustworthiness     : {best['trustworthiness']:.4f}")
+    print(f"  Silhouette          : {best['silhouette']:.4f}")
     print(f"  Fit wall time   : {best['time_s']:.1f}s")
     print(f"  Output shape    : {best['embedding'].shape}")
 else:
-    print("\n[note] Install umap-learn to run the full MAS scenario.")
+    print("\n[note] Install umap-learn to run the full AML scenario.")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -240,7 +288,7 @@ else:
 
 config_labels = list(umap_results.keys())
 best_label_for_run = (
-    max(umap_results.items(), key=lambda kv: kv[1]["silhouette"])[0]
+    max(umap_results.items(), key=lambda kv: kv[1]["trustworthiness"])[0]
     if umap_results
     else "none"
 )
@@ -266,11 +314,20 @@ track_run(
         "best_config": best_label_for_run,
     },
     scalar_metrics={
+        "best_trustworthiness": (
+            _finite(umap_results[best_label_for_run]["trustworthiness"])
+            if umap_results
+            else 0.0
+        ),
         "best_silhouette": (
             _finite(umap_results[best_label_for_run]["silhouette"])
             if umap_results
             else 0.0
         ),
+    }
+    | {
+        f"cfg{i}_trustworthiness": _finite(umap_results[label]["trustworthiness"])
+        for i, label in enumerate(config_labels)
     }
     | {
         f"cfg{i}_silhouette": _finite(umap_results[label]["silhouette"])
@@ -281,6 +338,9 @@ track_run(
         for i, label in enumerate(config_labels)
     },
     series_metrics={
+        "sweep_trustworthiness": [
+            _finite(umap_results[label]["trustworthiness"]) for label in config_labels
+        ],
         "sweep_silhouette": [
             _finite(umap_results[label]["silhouette"]) for label in config_labels
         ],
@@ -295,7 +355,7 @@ print(f"  [tracked] UMAP sweep logged to {exp_name}\n")
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — DimReductionEngine.reduce(algorithm='umap')
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1's DimReductionEngine wraps UMAP under the same `reduce`
+# kailash-ml's DimReductionEngine wraps UMAP under the same `reduce`
 # surface that backed PCA in lesson 01 and t-SNE in lesson 03. The engine
 # handles polars→numpy and returns a DimReductionResult — embedding +
 # n_neighbors + min_dist surfaced on the metrics dict.
@@ -329,19 +389,22 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Fit UMAP on a training subsample and transformed the full dataset
+  [x] Fit UMAP on a training subsample and transformed held-out rows
       out-of-sample — the production workflow
-  [x] Swept n_neighbors and min_dist across 6 configurations
-  [x] Measured silhouette in UMAP space vs t-SNE and Kernel PCA
-  [x] Sized UMAP for a weekly MAS AML entity-embedding pipeline
+  [x] Swept n_neighbors and min_dist across 4 configurations
+  [x] Judged each configuration by trustworthiness on held-out rows and
+      plotted the embeddings themselves
+  [x] Framed UMAP for a weekly bank AML entity-embedding pipeline
+      (illustrative)
 
-  KEY INSIGHT: The out-of-sample transform is what makes UMAP a real
-  dimensionality reducer vs t-SNE's picture generator. If you need to
-  embed NEW data without refitting, UMAP is the only method in this
-  exercise that can do it without compromise.
+  KEY INSIGHT: The out-of-sample transform is what separates UMAP from
+  t-SNE's picture generator. PCA and Kernel PCA can also embed new
+  points; UMAP's draw is combining that with nonlinear neighbourhood
+  structure. Its inverse_transform is only approximate — for exact
+  reconstruction, PCA remains the tool.
 
   Next: 05_comparison.py pits all five techniques against each other on
-  the same silhouette ladder and estimates the intrinsic dimensionality
+  one neighbourhood-preservation ruler and estimates the intrinsic dimensionality
   of the customer feature space.
 """
 )

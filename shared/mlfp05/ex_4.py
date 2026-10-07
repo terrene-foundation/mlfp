@@ -49,6 +49,8 @@ DEVICE = get_device()
 # ════════════════════════════════════════════════════════════════════════
 CLASS_NAMES = ["World", "Sports", "Business", "Sci/Tech"]
 MAX_LEN = 40
+VAL_FRACTION = 0.05  # share of the AG News TRAIN split held out for model selection
+VAL_SPLIT_SEED = 42
 VOCAB_SIZE = 15000
 EPOCHS_SCRATCH = 8
 BERT_MODEL_NAME = "bert-base-uncased"
@@ -151,7 +153,13 @@ def prepare_dataloaders(
 ]:
     """Tokenise AG News and build DataLoaders for from-scratch models.
 
+    A fixed 5% of the TRAINING split is held out as the validation set:
+    train_model() picks its best epoch on it, so the test split is never
+    used for model selection and stays an unbiased final measurement
+    (see evaluate_accuracy).
+
     Returns: (train_loader, val_loader, train_t, train_y, test_t, test_y)
+    where train_t/train_y exclude the validation rows.
     """
     train_tokens = np.array(
         [text_to_indices(t, vocab, MAX_LEN) for t in train_df["text"].to_list()],
@@ -164,15 +172,20 @@ def prepare_dataloaders(
     )
     test_labels = np.array(test_df["label"].to_list(), dtype=np.int64)
 
-    train_t = torch.from_numpy(train_tokens).to(DEVICE)
-    train_y = torch.from_numpy(train_labels).to(DEVICE)
+    perm = np.random.default_rng(VAL_SPLIT_SEED).permutation(len(train_tokens))
+    n_val = int(round(VAL_FRACTION * len(train_tokens)))
+    val_idx, fit_idx = perm[:n_val], perm[n_val:]
+
+    train_t = torch.from_numpy(train_tokens[fit_idx]).to(DEVICE)
+    train_y = torch.from_numpy(train_labels[fit_idx]).to(DEVICE)
+    val_t = torch.from_numpy(train_tokens[val_idx]).to(DEVICE)
+    val_y = torch.from_numpy(train_labels[val_idx]).to(DEVICE)
     test_t = torch.from_numpy(test_tokens).to(DEVICE)
     test_y = torch.from_numpy(test_labels).to(DEVICE)
 
     train_loader = DataLoader(
-        TensorDataset(train_t, train_y), batch_size=batch_size, shuffle=True
-    )
-    val_loader = DataLoader(TensorDataset(test_t, test_y), batch_size=batch_size)
+        TensorDataset(train_t, train_y), batch_size=batch_size, shuffle=True, num_workers=0)
+    val_loader = DataLoader(TensorDataset(val_t, val_y), batch_size=batch_size, num_workers=0)
 
     return train_loader, val_loader, train_t, train_y, test_t, test_y
 
@@ -325,6 +338,20 @@ def train_model(
     )
 
 
+def evaluate_accuracy(
+    model: nn.Module, tokens: torch.Tensor, labels: torch.Tensor, batch_size: int = 512
+) -> float:
+    """Accuracy of `model` on (tokens, labels) — use it on the TEST split once,
+    after train_model() has restored the validation-selected checkpoint."""
+    model.eval()
+    correct = 0
+    with torch.no_grad():
+        for start in range(0, len(tokens), batch_size):
+            preds = model(tokens[start : start + batch_size]).argmax(dim=-1)
+            correct += int((preds == labels[start : start + batch_size]).sum().item())
+    return correct / len(tokens)
+
+
 # ════════════════════════════════════════════════════════════════════════
 # Visualisation Helpers
 # ════════════════════════════════════════════════════════════════════════
@@ -366,5 +393,17 @@ def create_attention_heatmap(
 
 
 def get_viz() -> ModelVisualizer:
-    """Return a ModelVisualizer instance."""
-    return ModelVisualizer()
+    """Return a ModelVisualizer instance.
+
+    ModelVisualizer carries a kailash-ml P2 experimental notice (a
+    UserWarning at construction); exercises run under
+    warnings-as-errors, so the notice is acknowledged narrowly at
+    this construction site.
+    """
+    import warnings as _warnings
+
+    from kailash_ml._decorators import ExperimentalWarning as _EW
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore", _EW)
+        return ModelVisualizer()

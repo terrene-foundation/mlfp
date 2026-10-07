@@ -88,11 +88,11 @@ conn, tracker, exp_name, registry, has_registry = init_engines()
 
 def build_transfer_resnet(n_classes: int = N_CLASSES) -> nn.Module:
     """Frozen ResNet-18 backbone + fresh classification head."""
-    try:
-        weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1
-        model = torchvision.models.resnet18(weights=weights)
-    except Exception:
-        model = torchvision.models.resnet18(weights=None)
+    # No fallback to random weights: if the ImageNet download fails this
+    # raises — a random frozen backbone would make the "transfer" curve
+    # meaningless.
+    weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1
+    model = torchvision.models.resnet18(weights=weights)
 
     for p in model.parameters():
         p.requires_grad = False
@@ -135,6 +135,7 @@ EFF_EPOCHS = 4  # Shorter training for sub-experiments
 
 transfer_results: dict[float, float] = {}
 scratch_results: dict[float, float] = {}
+transfer_models: dict[float, nn.Module] = {}  # kept for the diagnostic checkpoint
 
 rng = np.random.default_rng(42)
 
@@ -143,8 +144,8 @@ async def _run_efficiency_trial(
     frac: float,
     model_builder,
     model_name: str,
-) -> tuple[float, int]:
-    """Train one model on a fraction of data, return (accuracy, n_samples)."""
+) -> tuple[float, int, nn.Module]:
+    """Train one model on a fraction of data, return (accuracy, n_samples, model)."""
     n_samples = int(len(train_set) * frac)
     indices = rng.choice(len(train_set), size=n_samples, replace=False).tolist()
     subset = Subset(train_set, indices)
@@ -188,7 +189,7 @@ async def _run_efficiency_trial(
 
         await run.log_metric("val_acc", acc)
 
-    return acc, n_samples
+    return acc, n_samples, model
 
 
 print("\n" + "=" * 70)
@@ -197,13 +198,16 @@ print("=" * 70)
 
 for frac in DATA_FRACTIONS:
     # Transfer model
-    t_acc, n_samples = asyncio.run(
+    t_acc, n_samples, t_model = asyncio.run(
         _run_efficiency_trial(frac, build_transfer_resnet, "transfer")
     )
     transfer_results[frac] = t_acc
+    transfer_models[frac] = t_model
 
     # From-scratch model
-    s_acc, _ = asyncio.run(_run_efficiency_trial(frac, build_scratch_cnn, "scratch"))
+    s_acc, _, _ = asyncio.run(
+        _run_efficiency_trial(frac, build_scratch_cnn, "scratch")
+    )
     scratch_results[frac] = s_acc
 
     print(
@@ -222,11 +226,59 @@ assert len(scratch_results) == len(
 assert (
     transfer_results[0.10] > 0.15
 ), f"Transfer with 10% data should beat random (acc={transfer_results[0.10]:.3f})"
-# INTERPRETATION: Transfer learning shows diminishing returns as data
-# increases — the gap between 10% and 100% is smaller than the scratch
-# model's gap. Pre-trained features already capture general visual
-# patterns, so additional data helps but isn't as critical.
+# INTERPRETATION: Compare how much each model gains from 10% to 100% of
+# the data. If pre-trained features already capture general visual
+# patterns, the transfer model gains LESS from extra data than the
+# scratch model does — additional labels help, but are less critical.
+transfer_gain = transfer_results[1.0] - transfer_results[0.10]
+scratch_gain = scratch_results[1.0] - scratch_results[0.10]
+print(
+    f"  Gain from 10% -> 100% data: transfer {transfer_gain:+.4f}, "
+    f"scratch {scratch_gain:+.4f} "
+    f"({'transfer depends less on data volume' if transfer_gain < scratch_gain else 'transfer did NOT depend less on data volume in this run'})"
+)
 print("\n--- Checkpoint 1 passed --- efficiency experiment complete\n")
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# kailash-ml's run_diagnostic_checkpoint runs a few real forward/backward
+# passes (no optimiser step) with gradient, activation and dead-neuron
+# hooks attached, and replays the real per-epoch training losses. It
+# RETURNS the findings; print_prescription_pad prints them. The pass
+# puts the model in train mode, which updates BatchNorm running
+# statistics, so we diagnose a COPY and leave the trained model intact.
+import copy
+
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+
+from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05.ex_7 import classifier_diag_loss
+
+print("\n── Diagnostic Report (Transfer ResNet-18 trained on 10% of the data) ──")
+diag, findings = run_diagnostic_checkpoint(
+    copy.deepcopy(transfer_models[0.10]),
+    train_loader,
+    classifier_diag_loss,
+    title="Transfer ResNet-18 trained on 10% of the data",
+    n_batches=8,
+    train_losses=None,
+    show=False,
+)
+print_prescription_pad(findings, "Transfer ResNet-18 trained on 10% of the data")
+# HOW TO READ THE PRESCRIPTION PAD FOR THIS MODEL:
+#  This diagnoses the transfer model from the smallest-data trial (10%).
+#  No per-epoch losses were kept for the trials, so the loss-trend
+#  reading only sees the 8 diagnostic batches.
+#  Gradient flow — only the fc head is trainable; frozen layers carry no
+#     parameter gradients by design. "Exploding" on fc with so little
+#     data means the head is being pushed hard by few examples — lower the
+#     learning rate or add weight decay before collecting more labels.
+#  Dead neurons — silent pretrained ReLUs signal a domain gap between
+#     ImageNet and CIFAR-10, not a small-data problem; more labels will
+#     not fix it, unfreezing or adapters (Part 4) can.
+#  If any reading is UNKNOWN, the library could not compute it from this
+#  run; the message says why.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -310,8 +362,9 @@ print("--- Checkpoint 2 passed --- efficiency curves plotted\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Visualise: Accuracy gap and diminishing returns
 # ════════════════════════════════════════════════════════════════════════
-# The gap between transfer and scratch narrows as data increases.
-# This shows that transfer learning's biggest value is with LIMITED data.
+# If transfer learning's biggest value is with LIMITED data, the gap
+# between transfer and scratch should narrow as data increases. The bar
+# chart shows whether it did in your run.
 
 gaps = [t - s for t, s in zip(transfer_accs_by_frac, scratch_accs_by_frac)]
 
@@ -339,19 +392,21 @@ print(f"  Saved: {gap_path}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 6 — Apply: The VP of Engineering at Grab Asks "How Many Images?"
+# TASK 6 — Apply: The VP of Engineering Asks "How Many Images?"
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: You're the ML lead at Grab Singapore. The VP of Engineering
-# asks: "We want to build an image classifier for food delivery photos.
-# How many images do we need to label? What will it cost?"
+# SCENARIO (illustrative): You're the ML lead at a regional food-delivery
+# platform. The VP of Engineering asks: "We want to build an image
+# classifier for food delivery photos. How many images do we need to
+# label? What will it cost?" CIFAR-10 stands in for the photo pool and
+# the label price is an illustrative planning figure.
 #
 # You use this data efficiency experiment to answer concretely.
 
 print("\n" + "=" * 70)
-print("  APPLY: Grab Singapore — 'How many images do we need to label?'")
+print("  APPLY: Food-delivery platform — 'How many images do we need to label?'")
 print("=" * 70)
 
-COST_PER_LABEL = 0.80  # S$ per image label (food photo classification)
+COST_PER_LABEL = 0.80  # S$ per image label (illustrative)
 TOTAL_AVAILABLE = 50000  # Total unlabelled images available
 
 print(f"\n  === Cost-Accuracy Trade-off Analysis ===")
@@ -360,15 +415,14 @@ print(f"  Unlabelled pool: {TOTAL_AVAILABLE:,} food delivery photos")
 print()
 print(
     f"  {'Data %':>8} {'Images':>10} {'Transfer':>12} {'Scratch':>12} "
-    f"{'Label Cost':>12} {'Transfer Saves':>16}"
+    f"{'Label Cost':>12} {'Saves vs 100%':>16}"
 )
 print("  " + "-" * 75)
 
 for frac in fracs:
     n_images = int(TOTAL_AVAILABLE * frac)
     label_cost = n_images * COST_PER_LABEL
-    # How many images would scratch need to match transfer accuracy?
-    # Simple interpolation for illustration
+    saved = TOTAL_AVAILABLE * COST_PER_LABEL - label_cost
     t_acc = transfer_results[frac]
     s_acc = scratch_results[frac]
 
@@ -378,47 +432,38 @@ for frac in fracs:
         f"{t_acc:>12.1%} "
         f"{s_acc:>12.1%} "
         f"{'S$' + f'{label_cost:,.0f}':>12} "
-        f"{'S$' + f'{label_cost * (1 - frac):,.0f}' if frac < 1.0 else '—':>16}"
+        f"{'S$' + f'{saved:,.0f}' if frac < 1.0 else '—':>16}"
     )
 
-# Find the sweet spot: where transfer reaches 90% of its max accuracy
+# Find the sweet spot: the smallest fraction where transfer reaches 90% of
+# its full-data accuracy (100% always qualifies, so one is always found)
 max_transfer_acc = transfer_results[1.0]
 sweet_spot_threshold = 0.90 * max_transfer_acc
-sweet_spot_frac = None
-for frac in fracs:
-    if transfer_results[frac] >= sweet_spot_threshold:
-        sweet_spot_frac = frac
-        break
+sweet_spot_frac = next(f for f in fracs if transfer_results[f] >= sweet_spot_threshold)
 
-if sweet_spot_frac is not None:
-    sweet_n = int(TOTAL_AVAILABLE * sweet_spot_frac)
-    sweet_cost = sweet_n * COST_PER_LABEL
-    full_cost = TOTAL_AVAILABLE * COST_PER_LABEL
-    savings = full_cost - sweet_cost
-    print(f"\n  SWEET SPOT: {sweet_spot_frac * 100:.0f}% of data ({sweet_n:,} images)")
-    print(
-        f"  Reaches {transfer_results[sweet_spot_frac]:.1%} accuracy "
-        f"(90% of maximum {max_transfer_acc:.1%})"
-    )
-    print(f"  Label cost: S${sweet_cost:,.0f} vs S${full_cost:,.0f} for full dataset")
-    print(f"  SAVINGS: S${savings:,.0f}")
-else:
-    print(f"\n  All fractions tested achieve >=90% of maximum accuracy.")
+sweet_n = int(TOTAL_AVAILABLE * sweet_spot_frac)
+sweet_cost = sweet_n * COST_PER_LABEL
+full_cost = TOTAL_AVAILABLE * COST_PER_LABEL
+savings = full_cost - sweet_cost
+print(f"\n  SWEET SPOT: {sweet_spot_frac * 100:.0f}% of data ({sweet_n:,} images)")
+print(
+    f"  Reaches {transfer_results[sweet_spot_frac]:.1%} accuracy "
+    f"(>= 90% of the full-data {max_transfer_acc:.1%})"
+)
+print(f"  Label cost: S${sweet_cost:,.0f} vs S${full_cost:,.0f} for full dataset")
+print(f"  SAVINGS: S${savings:,.0f}")
 
 print()
 print(f"  RECOMMENDATION TO VP:")
-print(
-    f"  'Start with {int(TOTAL_AVAILABLE * 0.25):,} labelled images "
-    f"(S${int(TOTAL_AVAILABLE * 0.25 * COST_PER_LABEL):,})."
-)
+print(f"  'Start with {sweet_n:,} labelled images (S${sweet_cost:,.0f}).")
 print(f"   Use transfer learning with ResNet-18. If accuracy is insufficient,")
-print(f"   label more images in batches of 5,000 until you reach the target.")
-print(f"   Transfer learning means we never need to label all 50,000 images.'")
+print(f"   label more images in batches of 5,000 until you reach the target.'")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert sweet_spot_frac in fracs, "Sweet spot should be one of the tested fractions"
 assert (
-    sweet_spot_frac is not None or len(fracs) > 0
-), "Should identify a sweet spot or have results"
+    transfer_results[sweet_spot_frac] >= sweet_spot_threshold
+), "Sweet spot should reach 90% of full-data transfer accuracy"
 # INTERPRETATION: The data efficiency curve directly answers the VP's
 # question with concrete numbers: how many images to label, how much
 # it costs, and where the diminishing returns kick in. This is how ML
@@ -446,82 +491,22 @@ print(
   [x] Scratch with 10% data: {scratch_results[0.10]:.1%} accuracy
   [x] Plotted data efficiency curves (transfer vs scratch)
   [x] Identified the sweet spot: {sweet_spot_frac * 100:.0f}% of data for 90% of max accuracy
-  [x] Calculated labelling cost savings for Grab Singapore scenario
+  [x] Calculated labelling cost savings for a food-delivery platform scenario
 
   KEY INSIGHT: Transfer learning's biggest value is with LIMITED data.
-  The gap between transfer and scratch is largest at 10-25% data, then
-  narrows as data increases. This means:
+  The gap between transfer and scratch is typically largest at small
+  data fractions and narrows as data increases (check your gap chart).
+  This means:
     - With abundant data: transfer helps but isn't critical
     - With scarce data: transfer is transformative
 
   THE LABELLING BOTTLENECK EQUATION:
     Cost = (images needed) x (cost per label)
-    Transfer learning reduces the first term by 4-10x.
-    This is often the difference between a viable project and a shelved one.
+    Transfer learning shrinks the first term — your sweet-spot analysis
+    measured by how much. This is often the difference between a viable
+    project and a shelved one.
 
   NEXT: Part 4 introduces adapter modules — a parameter-efficient
   alternative to full fine-tuning that bridges to M6's LoRA technique.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Training at 10%, 25%, 50%, 100% of data
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (Data efficiency — how small can we go?) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        models_by_frac[1.0],
-        train_loader,
-        _diag_loss,
-        title="Data efficiency — how small can we go?",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [Cross-run comparison — all 4 data fractions]
-# 100% data: RMS healthy, 87% val accuracy
-#  50% data: RMS healthy, 84% val accuracy
-#  25% data: train-val gap widening (overfit)
-#  10% data: [CRITICAL] 52% val accuracy — too little data to generalise
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [STETHOSCOPE] The data-efficiency curve shows transfer
-#     learning's power: 50% of data still gives ~97% of full
-#     performance. Below 25%, diminishing returns kick in.
-#     >> Decision rule: if you have >1000 labelled examples,
-#        transfer learning + fine-tune works. If <500, try
-#        adapter modules (ex_7/04) or few-shot methods.
-#
-#  [SCALING LAWS] This is the practical flipside of slide 5M
-#     (scaling laws) — for downstream tasks with small data,
-#     pretrained features + small fine-tune data = best ROI.
-

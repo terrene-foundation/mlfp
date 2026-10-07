@@ -38,7 +38,7 @@
 <section>
   <h2>Why interpretability matters</h2>
   <ul style="font-size: 0.85em;">
-    <li><strong>Regulatory:</strong> Singapore's MAS requires explainability for credit decisions</li>
+    <li><strong>Regulatory:</strong> MAS's FEAT principles (non-binding) ask firms to make AI-driven decisions such as credit transparent and fair</li>
     <li><strong>Debugging:</strong> a model that uses postcode as a proxy for race needs to be caught</li>
     <li><strong>Trust:</strong> stakeholders will not act on a prediction they do not understand</li>
   </ul>
@@ -69,19 +69,19 @@
   <figure style="text-align: center;">
     <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
       <line x1="80" y1="30" x2="80" y2="220" stroke="#94A3B8" stroke-width="1"/>
-      <rect x="85" y="35" width="180" height="25" rx="4" fill="#94A3B8" opacity="0.3"/>
-      <text x="90" y="52" font-family="Inter" font-size="10" fill="#64748B">Base = 0.50</text>
-      <rect x="265" y="70" width="100" height="25" rx="4" fill="#22C55E" opacity="0.7"/>
-      <text x="315" y="87" text-anchor="middle" font-family="Inter" font-size="10" fill="#166534">+income (+0.15)</text>
-      <rect x="365" y="105" width="60" height="25" rx="4" fill="#22C55E" opacity="0.5"/>
-      <text x="395" y="122" text-anchor="middle" font-family="Inter" font-size="10" fill="#166534">+age (+0.08)</text>
-      <rect x="195" y="140" width="70" height="25" rx="4" fill="#F43F5E" opacity="0.7"/>
-      <text x="230" y="157" text-anchor="middle" font-family="Inter" font-size="10" fill="#9F1239">-debt (-0.12)</text>
-      <rect x="85" y="185" width="300" height="25" rx="4" fill="#0D9488" opacity="0.3"/>
-      <text x="90" y="202" font-family="Inter" font-size="10" fill="#0D9488">Prediction = 0.61</text>
+      <rect x="85" y="35" width="174" height="25" rx="4" fill="#94A3B8" opacity="0.3"/>
+      <text x="90" y="52" font-family="Inter" font-size="10" fill="#64748B">Base E[f(x)] = −1.90</text>
+      <rect x="259" y="70" width="174" height="25" rx="4" fill="#F43F5E" opacity="0.7"/>
+      <text x="346" y="87" text-anchor="middle" font-family="Inter" font-size="10" fill="#9F1239">debt_to_income +0.60</text>
+      <rect x="433" y="105" width="131" height="25" rx="4" fill="#F43F5E" opacity="0.5"/>
+      <text x="498" y="122" text-anchor="middle" font-family="Inter" font-size="10" fill="#9F1239">num_late_payments +0.45</text>
+      <rect x="462" y="140" width="102" height="25" rx="4" fill="#22C55E" opacity="0.7"/>
+      <text x="513" y="157" text-anchor="middle" font-family="Inter" font-size="10" fill="#166534">income_sgd −0.35</text>
+      <rect x="85" y="185" width="377" height="25" rx="4" fill="#0D9488" opacity="0.3"/>
+      <text x="90" y="202" font-family="Inter" font-size="10" fill="#0D9488">f(x) = −1.20 log-odds → p(default) ≈ 0.23</text>
     </svg>
   </figure>
-  <p style="text-align: center; font-size: 0.8em; color: #64748B;">Each bar shows one feature's contribution. Green pushes up; red pushes down.</p>
+  <p style="text-align: center; font-size: 0.8em; color: #64748B;">Illustrative applicant. For a boosted model, TreeExplainer works in log-odds: base + contributions = f(x) exactly; convert to a probability only at the end. Red raises default risk; green lowers it.</p>
 </section>
 
 <section>
@@ -90,13 +90,15 @@
 import shap
 
 explainer = shap.TreeExplainer(model)
-shap_values = explainer.shap_values(X_test)
+sv = explainer(X_test.to_numpy())  # Explanation, log-odds
+sv.feature_names = X_test.columns
+# (binary RandomForest returns both classes: sv = sv[:, :, 1])
 
 # Global importance
-shap.summary_plot(shap_values, X_test)
+shap.plots.beeswarm(sv)
 
 # Single prediction
-shap.plots.waterfall(shap_values[0])
+shap.plots.waterfall(sv[0])
   </code></pre>
 </section>
 
@@ -108,9 +110,10 @@ from lime.lime_tabular import LimeTabularExplainer
 explainer = LimeTabularExplainer(
     X_train.to_numpy(),
     feature_names=X_train.columns,
+    class_names=["repay", "default"],
 )
 exp = explainer.explain_instance(
-    X_test[0].to_numpy(),
+    X_test.to_numpy()[0],  # one row as a 1-D array
     model.predict_proba,
     num_features=5,
 )
@@ -133,14 +136,16 @@ exp = explainer.explain_instance(
 <section>
   <h2>Fairness: disparate impact</h2>
   <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
-    \[ \text{DI} = \frac{P(\hat{Y}=1 \mid G=\text{minority})}{P(\hat{Y}=1 \mid G=\text{majority})} \;\geq\; 0.8 \]
+    \[ \text{DI}_g = \frac{P(\text{approve} \mid G=g)}{\max_h P(\text{approve} \mid G=h)} \;\geq\; 0.8 \]
   </div>
   <pre><code class="language-python" data-trim>
-rate_min = pred[group == "minority"].mean()
-rate_maj = pred[group == "majority"].mean()
-di = rate_min / rate_maj
-print(f"DI: {di:.3f} — {'PASS' if di >= 0.8 else 'FAIL'}")
+approve = 1 - pred  # pred = 1 means "flag as default"
+rates = {g: approve[group == g].mean() for g in np.unique(group)}
+best = max(rates.values())
+for g, r in rates.items():
+    print(f"{g}: DI {r / best:.2f} {'PASS' if r / best >= 0.8 else 'FAIL'}")
   </code></pre>
+  <p style="font-size: 0.72em; color: #64748B;">Four-fifths screen (from US employment guidelines). Exercise 6.5: race 0.94 and gender 0.96 pass; the youngest age band scores 0.02 and fails — routed to a human / risk-committee decision, not auto-"fixed".</p>
 </section>
 
 <section>
@@ -165,12 +170,14 @@ for g in ["minority", "majority"]:
       <text x="360" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#F43F5E">Demographic Parity</text>
       <text x="110" y="210" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#F43F5E">Equalised Odds</text>
       <text x="610" y="210" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#F43F5E">Calibration</text>
-      <text x="360" y="125" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">Pick at most two</text>
-      <text x="360" y="145" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">(Chouldechova 2017, Kleinberg et al. 2016)</text>
+      <text x="360" y="118" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">Unequal base rates:</text>
+      <text x="360" y="136" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">any two already clash</text>
+      <text x="360" y="154" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">(except a perfect predictor)</text>
+      <text x="360" y="170" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">(Chouldechova 2017, Kleinberg et al. 2016)</text>
     </svg>
   </figure>
   <div style="background: #FFF1F2; padding: 12px 18px; border-left: 4px solid #F43F5E; border-radius: 4px; margin-top: 0.5em;">
-    Not a limitation of your model. A mathematical fact.
+    Not a limitation of your model — a mathematical fact. You must choose which criterion to prioritise, and say why.
   </div>
 </section>
 

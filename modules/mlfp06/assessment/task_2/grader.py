@@ -1,186 +1,220 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Automated grader for MLFP06 Assessment Task 2 — RAG Pipeline with Evaluation.
+"""Grader for MLFP06 Assessment Task 2 — Governed Agent Tools and Config.
 
-Usage:
-    python grader.py starter.py     # grade your attempt
-    python grader.py solution.py    # verify the reference passes
+    python grader.py starter.py          # grade a submission
+    python grader.py solution.py         # verify the reference passes
+    python grader.py solution.py --seed 123   # replay a grading run
 
-Retrieval is deterministic (embedding cosine over a fixed corpus): the grader
-re-derives the gold passage index for each query independently from the SQuAD
-parquet and grades recall@1 / recall@3. Generated answers are graded by
-GROUNDED FACT containment (does the answer contain a content token from the
-gold answer), never by exact text — LLM phrasing is not bit-stable, but at
-temperature 0 the grounded outcome is. Floors tolerate at most one drift.
+Ground truth the student cannot influence: the grader calls the registered
+executors itself with fresh seeded inputs and compares against references it
+computes; it reads the agent's envelope attributes directly; and it runs one
+governed objective with a grader-supplied executor, checking the audit chain
+grew and verifies. No LLM is contacted.
 """
 from __future__ import annotations
 
-import argparse
-import importlib.util
+import asyncio
 import json
-import re
 import sys
 from pathlib import Path
 
-import polars as pl
+import numpy as np
 
-from shared import MLFPDataLoader
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from grading_harness import Checks, finalize, load_student_module, main, quiet  # noqa: E402
 
-TOP_K = 3
-N_CORPUS = 30
-N_QUERIES = 6
-RECALL1_FLOOR = 5  # of 6
-GROUNDED_FLOOR = 5  # of 6
-
-_STOP = {
-    "the",
-    "a",
-    "an",
-    "of",
-    "to",
-    "in",
-    "on",
-    "and",
-    "or",
-    "for",
-    "is",
-    "are",
-    "was",
-    "were",
-    "by",
-    "at",
-    "as",
-    "with",
-    "that",
-    "this",
-    "near",
-    "present",
-    "day",
-}
+WEIGHT = 20
+GATES = ("returns_registry",)
+TOOL_NAMES = ["compute_statistics", "normalise_text", "convert_currency"]
 
 
-def _norm(s) -> str:
-    return re.sub(r"[^a-z0-9 ]", " ", str(s).lower())
-
-
-def _content_tokens(s) -> list[str]:
-    return [t for t in _norm(s).split() if t not in _STOP and len(t) >= 3]
-
-
-def _reference() -> tuple[list[str], list[str], list[int], list[str]]:
-    """Independently re-derive (corpus, questions, gold_idx, gold_answer)."""
-    df = MLFPDataLoader().load("mlfp06", "squad/squad_v2_300.parquet")
-    answerable = df.filter(
-        (pl.col("answer").is_not_null()) & (pl.col("answer").str.len_chars() > 0)
-    )
-    seen: dict[str, int] = {}
-    corpus: list[str] = []
-    questions: list[str] = []
-    gold_idx: list[int] = []
-    gold_answer: list[str] = []
-    for row in answerable.iter_rows(named=True):
-        ctx = row["text"]
-        if ctx not in seen:
-            seen[ctx] = len(corpus)
-            corpus.append(ctx)
-        if len(questions) < N_QUERIES and row["question"]:
-            if 1 <= len(_content_tokens(row["answer"])) <= 3:
-                questions.append(row["question"])
-                gold_idx.append(seen[ctx])
-                gold_answer.append(row["answer"])
-        if len(corpus) >= N_CORPUS and len(questions) >= N_QUERIES:
-            break
-    return corpus, questions, gold_idx, gold_answer
-
-
-def load_student_module(path: Path):
-    spec = importlib.util.spec_from_file_location("student_task2", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
+def _exec(registry, name: str, args: dict):
+    """Call a registered executor; returns (ok, parsed_json_or_error)."""
     try:
-        student = load_student_module(student_path)
+        raw = asyncio.run(registry.execute(name, args))
     except Exception as e:
-        score["error"] = f"Failed to import: {type(e).__name__}: {e}"
-        return score
-    if not hasattr(student, "solve"):
-        score["error"] = "Module does not define a solve() function"
-        return score
+        return False, f"raised {type(e).__name__}: {e}"
     try:
-        r = student.solve()
+        return True, json.loads(raw)
+    except Exception:
+        return False, f"executor did not return a JSON string: {raw!r}"
+
+
+def grade(student_path: Path, seed: int) -> dict:
+    checks = Checks()
+    try:
+        st = load_student_module(student_path, "student_m6_task2")
     except Exception as e:
-        score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
-        return score
+        return finalize(checks, WEIGHT, seed, f"Failed to import: {type(e).__name__}: {e}", GATES)
+    if not callable(getattr(st, "build_tools", None)) or not callable(getattr(st, "build_agent", None)):
+        return finalize(checks, WEIGHT, seed, "Module must define build_tools() and build_agent()", GATES)
 
-    _corpus, _questions, gold_idx, gold_answer = _reference()
-    n = len(gold_idx)
+    rng = np.random.default_rng(seed)
 
-    c = score["checks"]
-    c["returns_dict"] = isinstance(r, dict)
-    if not c["returns_dict"]:
-        return _finalize(score)
+    try:
+        with quiet():
+            registry = st.build_tools()
+    except Exception as e:
+        return finalize(checks, WEIGHT, seed, f"build_tools() raised {type(e).__name__}: {e}", GATES)
 
-    retrieved = r.get("retrieved")
-    answers = r.get("answers")
-
-    c["retrieved_shape"] = (
-        isinstance(retrieved, list)
-        and len(retrieved) == n
-        and all(isinstance(x, list) for x in retrieved)
+    names = list(getattr(registry, "tool_names", []) or [])
+    checks.add(
+        "returns_registry",
+        hasattr(registry, "execute") and hasattr(registry, "tool_names"),
+        f"build_tools() returned {type(registry).__name__}; expected a Kaizen ToolRegistry",
     )
-    c["answers_shape"] = (
-        isinstance(answers, list)
-        and len(answers) == n
-        and all(isinstance(x, str) and x.strip() for x in answers)
-    )
-    if not (c["retrieved_shape"] and c["answers_shape"]):
-        return _finalize(score)
+    if not checks.results["returns_registry"]:
+        return finalize(checks, WEIGHT, seed, None, GATES)
 
-    # top-k size + valid indices.
-    c["topk_size_correct"] = all(len(x) >= TOP_K for x in retrieved)
-    c["indices_in_range"] = all(
-        all(isinstance(i, int) and 0 <= i < N_CORPUS for i in x) for x in retrieved
+    checks.add(
+        "tool_names_exact",
+        sorted(names) == sorted(TOOL_NAMES),
+        f"registered {sorted(names)}; expected {sorted(TOOL_NAMES)}",
     )
 
-    # Retrieval quality (deterministic).
-    rec1 = sum(1 for x, g in zip(retrieved, gold_idx) if x and x[0] == g)
-    rec3 = sum(1 for x, g in zip(retrieved, gold_idx) if g in x[:TOP_K])
-    c["recall_at_1"] = rec1 >= RECALL1_FLOOR
-    c["recall_at_3"] = rec3 == n  # gold must be retrieved in top-3 for every query
+    def statistics():
+        bad = []
+        for _ in range(3):
+            nums = [round(float(v), 3) for v in rng.uniform(-50, 50, size=int(rng.integers(4, 9)))]
+            ok, got = _exec(registry, "compute_statistics", {"numbers": nums})
+            want = {
+                "count": len(nums),
+                "mean": round(sum(nums) / len(nums), 4),
+                "min": min(nums),
+                "max": max(nums),
+            }
+            if not ok:
+                bad.append(f"executor {got}")
+                continue
+            for k, v in want.items():
+                g = got.get(k)
+                if k == "count":
+                    match = g == v
+                else:
+                    try:
+                        match = abs(float(g) - v) <= 1e-3 + 1e-3 * abs(v)
+                    except (TypeError, ValueError):
+                        match = False
+                if not match:
+                    bad.append(f"{nums}: {k} got {g} want {v}")
+        return {"statistics_correct": (not bad, "; ".join(bad))}
 
-    # Grounded answers (fact containment, not exact text).
-    grounded = 0
-    for ans, gold in zip(answers, gold_answer):
-        gtok = _content_tokens(gold)
-        na = _norm(ans)
-        if gtok and any(t in na for t in gtok):
-            grounded += 1
-    c["answers_grounded"] = grounded >= GROUNDED_FLOOR
+    checks.guarded(["statistics_correct"], statistics)
 
-    # Answers are not just echoes of the corpus dump — sanity on brevity.
-    c["answers_nontrivial"] = all(1 <= len(a.split()) <= 60 for a in answers)
+    def normalise():
+        bad = []
+        words = ["Report", "URGENT", "claim", "Ticket", "Zone", "delta"]
+        texts = []
+        for _ in range(3):
+            n = int(rng.integers(3, 6))
+            ws = [str(w) for w in rng.choice(words, size=n)]
+            sep = str(rng.choice(["  ", " \t ", "   ", " \n "]))
+            texts.append("  " + sep.join(ws) + "   ")
+        for text in texts:
+            ok, got = _exec(registry, "normalise_text", {"text": text})
+            want = " ".join(text.split()).lower()
+            if not ok:
+                bad.append(f"executor {got}")
+            elif got.get("normalised") != want:
+                bad.append(f"{text!r}: got {got.get('normalised')!r} want {want!r}")
+        return {"normalise_correct": (not bad, "; ".join(bad))}
 
-    return _finalize(score)
+    checks.guarded(["normalise_correct"], normalise)
 
+    def currency():
+        bad = []
+        for _ in range(3):
+            amount = round(float(rng.uniform(1, 10_000)), 2)
+            rate = round(float(rng.uniform(0.5, 1.8)), 4)
+            ok, got = _exec(registry, "convert_currency", {"amount": amount, "rate": rate})
+            want = round(amount * rate, 2)
+            if not ok:
+                bad.append(f"executor {got}")
+                continue
+            try:
+                match = abs(float(got.get("converted")) - want) <= 0.011
+            except (TypeError, ValueError):
+                match = False
+            if not match:
+                bad.append(f"({amount}, {rate}): got {got.get('converted')} want {want}")
+        return {"currency_correct": (not bad, "; ".join(bad))}
 
-def _finalize(score: dict) -> dict:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
-    return score
+    checks.guarded(["currency_correct"], currency)
+
+    def schemas():
+        try:
+            cards = registry.get_openai_tools()
+        except Exception as e:
+            return {"schemas_declared": (False, f"get_openai_tools() raised {type(e).__name__}: {e}")}
+        want_args = {
+            "compute_statistics": {"numbers"},
+            "normalise_text": {"text"},
+            "convert_currency": {"amount", "rate"},
+        }
+        bad = []
+        by_name = {}
+        for card in cards:
+            fn = card.get("function", {}) if isinstance(card, dict) else {}
+            by_name[fn.get("name")] = fn.get("parameters", {})
+        for name, args in want_args.items():
+            props = set((by_name.get(name) or {}).get("properties", {}).keys())
+            if props != args:
+                bad.append(f"{name}: properties {sorted(props)}; expected {sorted(args)}")
+        return {"schemas_declared": (not bad, "; ".join(bad))}
+
+    checks.guarded(["schemas_declared"], schemas)
+
+    def agent():
+        with quiet():
+            agent = st.build_agent(registry)
+        env = getattr(agent, "envelope", None)
+        out: dict[str, tuple[bool, str]] = {}
+        from pact import ConfidentialityLevel
+
+        clearance = getattr(env, "confidentiality_clearance", None)
+        out["agent_clearance_internal_alias"] = (
+            clearance == ConfidentialityLevel.RESTRICTED,
+            f"data_clearance='internal' should land on RESTRICTED; envelope has {clearance}",
+        )
+        fin = getattr(env, "financial", None)
+        budget = getattr(fin, "max_spend_usd", None)
+        out["agent_budget"] = (
+            budget is not None and abs(float(budget) - 0.25) < 1e-9,
+            f"envelope.financial.max_spend_usd is {budget}; expected 0.25 (set at construction, as budget_usd)",
+        )
+        op = getattr(env, "operational", None)
+        tools = sorted(getattr(op, "allowed_actions", []) or [])
+        out["agent_tools"] = (
+            tools == sorted(TOOL_NAMES),
+            f"envelope.operational.allowed_actions is {tools}; expected {sorted(TOOL_NAMES)}",
+        )
+
+        async def grader_executor(_spec, _inputs):
+            return {"result": {"answer": "grader-ok"}, "cost": 0.0}
+
+        before = len(agent.audit.to_list())
+        try:
+            with quiet():
+                result = asyncio.run(agent.run("triage this ticket", execute_node=grader_executor))
+            success = bool(getattr(result, "success", False))
+        except Exception as e:
+            success = False
+            result = f"raised {type(e).__name__}: {e}"
+        after = agent.audit.to_list()
+        out["audit_trail"] = (
+            success and len(after) > before and bool(agent.audit.verify_chain()),
+            f"run success={success}, audit {before} -> {len(after)}, chain ok={agent.audit.verify_chain()} ({result if not success else 'ok'})",
+        )
+        return out
+
+    checks.guarded(
+        ["agent_clearance_internal_alias", "agent_budget", "agent_tools", "audit_trail"],
+        agent,
+    )
+    return finalize(checks, WEIGHT, seed, None, GATES)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("student", type=Path)
-    args = parser.parse_args()
-    result = grade(args.student)
-    print(json.dumps(result, indent=2))
-    sys.exit(0 if result["passed"] else 1)
+    main(grade)

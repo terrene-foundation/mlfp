@@ -42,7 +42,7 @@
   <text x="459" y="135" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#6D28D9">Align (fine-tune)</text>
 
   <!-- Labels -->
-  <text x="205" y="155" text-anchor="middle" font-family="Inter" font-size="7" fill="#64748B">13 engines, polars</text>
+  <text x="205" y="155" text-anchor="middle" font-family="Inter" font-size="7" fill="#64748B">ML engines, polars</text>
   <text x="332" y="155" text-anchor="middle" font-family="Inter" font-size="7" fill="#64748B">ReAct, Supervisor</text>
   <text x="459" y="155" text-anchor="middle" font-family="Inter" font-size="7" fill="#64748B">LoRA, DPO, GRPO</text>
 
@@ -86,42 +86,74 @@
   <text x="130" y="304" font-family="Inter" font-size="8" fill="#64748B">One codebase: train -> persist -> wrap in agent -> govern -> deploy -> monitor -> retrain</text>
 </svg></figure></section>
 
-<section><h2>Nexus: three channels, one codebase</h2><pre><code class="language-python" data-trim>from nexus import Nexus
+<section><h2>Nexus: three channels, one codebase</h2><pre><code class="language-python" data-trim>import os, secrets
+from kailash.trust.auth.jwt import JWTConfig
+from kailash.trust.rate_limit.config import RateLimitConfig
+from nexus import Nexus, NexusAuthPlugin
+from starlette.requests import Request
 
-app = Nexus("ml-platform")
-app.add_auth(provider="jwt", roles=["admin", "analyst", "viewer"])
-app.add_middleware("rate_limit", requests_per_minute=60)
-app.register_service("predict", predict_service)
-app.serve(port=8000)  # API + CLI + MCP simultaneously</code></pre></section>
+jwt_config = JWTConfig(algorithm="HS256",       # secret from env, never in source
+    secret=os.environ.get("MLFP_JWT_SECRET") or secrets.token_urlsafe(48))
 
-<section><h2>RBAC authentication</h2><table style="font-size:.7em"><thead><tr><th>Role</th><th>Can do</th></tr></thead><tbody><tr><td>admin</td><td>Deploy, configure, full access</td></tr><tr><td>analyst</td><td>Query, explore, limited training</td></tr><tr><td>viewer</td><td>Read-only predictions</td></tr></tbody></table><p style="font-size:.85em">Unauthenticated requests → 401. Unauthorised role → 403. Always.</p></section>
+app = Nexus(api_port=8000, cors_origins=["https://intranet.example.sg"],
+            rate_limit=None, enable_durability=False)
+app.add_plugin(NexusAuthPlugin(                  # plugin: JWT + rate limit
+    jwt=jwt_config,
+    rate_limit=RateLimitConfig(requests_per_minute=10, burst_size=5)))
 
-<section><h2>DriftMonitor integration</h2><pre><code class="language-python" data-trim>from kailash_ml import DriftMonitor
+async def serve_qa(question: str, request: Request) -> dict:
+    roles = request.state.user.roles             # from the VERIFIED token
+    return await handle_qa(question, role=roles[0],
+                           agents_by_role=agents_by_role, engine=engine)
 
-monitor = DriftMonitor(
-    reference_data=training_df,
-    features=feature_columns,
-    alert_threshold=0.05
-)
+app.handler_extract("capstone_serve_qa", serve_qa)  # API + CLI + MCP</code></pre><p style="font-size:.72em">Exercise 8.3. Middleware runs outermost first: rate limit (429) → JWT (401) → handler → PACT governance. CORS answers only the allowed origin. <code>app.start()</code> serves all three channels; the exercise drives the API in-process.</p></section>
 
-# In production: check each batch
-drift_report = monitor.check(new_batch)
-if drift_report.has_drift:
-    alert_team(drift_report.details)</code></pre></section>
+<section><h2>Role-based access: the token picks the tier</h2><table style="font-size:.68em"><thead><tr><th>JWT role claim</th><th>Governed tier</th><th>Budget</th><th>Clearance</th><th>Tools</th></tr></thead><tbody><tr><td>qa</td><td>Retail-facing QA</td><td>$1</td><td>public</td><td>generate_answer, search_context</td></tr><tr><td>admin</td><td>Model operations</td><td>$10</td><td>confidential</td><td>+ update_model, view_metrics, monitor_drift</td></tr><tr><td>audit</td><td>Compliance audit</td><td>$50</td><td>secret</td><td>+ access_audit_log, generate_report</td></tr></tbody></table><ul style="font-size:.78em"><li>Missing, forged or expired token → <strong>401</strong> at the JWT layer. Too many requests → <strong>429</strong>.</li><li>Valid token, role with no tier (e.g. <code>guest</code>) → PACT refuses inside the handler: <code>{"blocked": true}</code>.</li><li>The role comes from the signed token — a <code>"role": "audit"</code> field in the request body changes nothing.</li></ul></section>
 
-<section><h2>End-to-end verification</h2><pre><code class="language-python" data-trim>
-# API channel
-resp = requests.post(url, headers=auth, json=query)
-assert resp.status_code == 200
+<section><h2>DriftMonitor integration</h2><pre><code class="language-python" data-trim>from kailash.db.connection import ConnectionManager
+from kailash_ml import DriftMonitor
 
-# Auth: unauthenticated → rejected
-bad = requests.post(url, json=query)
-assert bad.status_code == 401
+conn = ConnectionManager("sqlite:///data/mlfp06/ex8_drift.db")
+await conn.initialize()
+monitor = DriftMonitor(conn, tenant_id="mlfp_demo", psi_threshold=0.2)
 
-# Governance: restricted resource → denied
-restricted = requests.post(url + "/admin",
-    headers=analyst_auth, json=query)
-assert restricted.status_code == 403</code></pre></section>
+# Reference = validated traffic; one numeric feature per question
+await monitor.set_reference_data("capstone_qa_model", reference_df,
+                                 ["question_length"])
+
+# In production: check each window of new traffic
+report = await monitor.check_drift("capstone_qa_model", window_df)
+if report.overall_drift_detected:
+    print("ALERT", report.overall_severity, report.feature_results[0].psi)
+await conn.close()</code></pre><p style="font-size:.72em">Exercise 8.4 measures PSI on real traffic: SQuAD questions vs a window that mixes in MMLU exam questions. PSI &lt; 0.1 safe · 0.1–0.2 investigate · &gt; 0.2 alert.</p></section>
+
+<section><h2>End-to-end verification</h2><pre><code class="language-python" data-trim>import httpx
+
+ENDPOINT = "/workflows/capstone_serve_qa/execute"
+transport = httpx.ASGITransport(app=app.fastapi_app)   # real HTTP, no port
+async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    body = {"inputs": {"question": "What is ML?"}}
+    ok = await c.post(ENDPOINT, json=body,
+                      headers={"Authorization": f"Bearer {qa_token}"})
+    assert ok.status_code == 200
+    assert ok.json()["outputs"]["handler"]["role"] == "qa"
+
+    # Auth: no token / forged token → rejected at the edge
+    assert (await c.post(ENDPOINT, json=body)).status_code == 401
+
+    # Governance: valid token, role without a tier → refused by PACT
+    guest = await c.post(ENDPOINT, json=body,
+                         headers={"Authorization": f"Bearer {guest_token}"})
+    assert guest.json()["outputs"]["handler"]["blocked"] is True</code></pre></section>
+
+<section><h2>Debugging and testing agents</h2><pre><code class="language-python" data-trim>from shared.mlfp06.diagnostics import LLMObservatory
+
+obs = LLMObservatory(run_id="capstone_debug")
+trace = await obs.agent.capture_run(agent, "Which film came out first?",
+                                    run_id="debug_1")
+print(obs.agent.tool_usage("debug_1"))    # one row per tool call, in order
+print(obs.agent.detect_loops("debug_1"))  # the same call repeated = stuck agent
+obs.agent.plot_trace("debug_1")           # step-by-step reasoning timeline</code></pre><ul style="font-size:.74em"><li><strong>Test structure, not wording:</strong> the right tool was called, typed fields are present, governance verdicts match — LLM text varies run to run.</li><li><strong>Serving at scale (awareness):</strong> KV-cache reuse, flash attention and continuous-batching servers such as vLLM cut latency per token.</li><li><strong>Multimodal (awareness):</strong> vision-language models (e.g. the open LLaVA family) take images and text through the same agent patterns.</li></ul><aside class="notes">Spec 6.8: debugging reasoning chains, testing agents, inference optimisation and multimodal awareness. capture_run records every tool call the Delegate makes; Exercise 5.1 uses the same lens.</aside></section>
 
 <section><h2>The complete Kailash stack in production</h2>
 <figure style="text-align:center"><svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
@@ -236,7 +268,7 @@ assert restricted.status_code == 403</code></pre></section>
 
 <section><h2>The six-module journey</h2><table style="font-size:.6em"><thead><tr><th>Module</th><th>You learned</th></tr></thead><tbody><tr><td>M1</td><td>Python, Polars, data pipelines, visualisation</td></tr><tr><td>M2</td><td>Statistics, regression, hypothesis testing, Bayesian thinking</td></tr><tr><td>M3</td><td>Supervised ML, ensembles, production pipeline, drift monitoring</td></tr><tr><td>M4</td><td>Unsupervised ML, NLP, recommenders, THE PIVOT, DL foundations</td></tr><tr><td>M5</td><td>Every DL architecture: AE, CNN, RNN, Transformer, GAN, GNN, RL</td></tr><tr><td>M6</td><td>LLMs, fine-tuning, RAG, agents, governance, production deployment</td></tr></tbody></table></section>
 
-<section><h2>What you can now do</h2><ul style="font-size:.85em"><li>✓ Deploy a complete AI system with Nexus (API + CLI + MCP).</li><li>✓ Implement authentication and authorisation.</li><li>✓ Integrate all Kailash packages into a production pipeline.</li><li>✓ Monitor deployed models for drift.</li><li>✓ Test end-to-end: auth, governance, predictions, channels.</li></ul></section>
+<section><h2>What you can now do</h2><ul style="font-size:.85em"><li>✓ Deploy a complete AI system with Nexus (API + CLI + MCP).</li><li>✓ Implement authentication and authorisation.</li><li>✓ Integrate all Kailash packages into a production pipeline.</li><li>✓ Monitor deployed models for drift.</li><li>✓ Debug agent reasoning from captured traces.</li><li>✓ Test end-to-end: auth, governance, predictions, channels.</li></ul></section>
 
 <section><h2>Congratulations</h2><p style="font-size:.9em">From <code>print("Hello")</code> in Lesson 1.1 to a governed, multi-channel production AI platform in Lesson 6.8.</p><p style="font-size:.9em">Six modules. 48 lessons. Zero to production.</p><div class="callout-slide foundations" style="font-size:1em"><strong>You are now an ML practitioner.</strong> The Kailash platform is your toolkit. Singapore is your testing ground. Go build something that matters.</div></section>
 

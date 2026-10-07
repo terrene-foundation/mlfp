@@ -37,14 +37,14 @@
   <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
     <strong style="color: #0D9488;">⏱ 50 minutes</strong> &nbsp; · &nbsp;
     <strong>Prereq:</strong> Lesson 1.1 &nbsp; · &nbsp;
-    <strong>Dataset:</strong> HDB resale (500k rows)
+    <strong>Dataset:</strong> HDB resale (~50k rows)
   </div>
   <div class="slide-footer">MLFP — Module 1</div>
 </section>
 
 <!-- Slide 2: The narrowing pipeline -->
 <section>
-  <h2>From 500,000 rows to the question</h2>
+  <h2>From 50,000 rows to the question</h2>
   <figure style="text-align: center;">
     <svg viewBox="0 0 780 240" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -54,13 +54,13 @@
       </defs>
       <rect x="20" y="50" width="180" height="150" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
       <text x="110" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="15" fill="#1E293B">Raw</text>
-      <text x="110" y="110" text-anchor="middle" font-family="Inter" font-size="13" fill="#64748B">500,000 rows</text>
-      <text x="110" y="130" text-anchor="middle" font-family="Inter" font-size="13" fill="#64748B">14 columns</text>
+      <text x="110" y="110" text-anchor="middle" font-family="Inter" font-size="13" fill="#64748B">50,150 rows</text>
+      <text x="110" y="130" text-anchor="middle" font-family="Inter" font-size="13" fill="#64748B">11 columns</text>
       <line x1="205" y1="125" x2="275" y2="125" stroke="#0D9488" stroke-width="3" marker-end="url(#arr2)"/>
       <text x="240" y="115" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">filter</text>
       <rect x="280" y="70" width="180" height="110" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
       <text x="370" y="100" text-anchor="middle" font-family="Inter" font-weight="600" font-size="15" fill="#0D9488">Filtered</text>
-      <text x="370" y="125" text-anchor="middle" font-family="Inter" font-size="13" fill="#1E293B">~300 rows</text>
+      <text x="370" y="125" text-anchor="middle" font-family="Inter" font-size="13" fill="#1E293B">668 rows</text>
       <text x="370" y="145" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#64748B">BISHAN + 4 ROOM</text>
       <line x1="465" y1="125" x2="535" y2="125" stroke="#0D9488" stroke-width="3" marker-end="url(#arr2)"/>
       <text x="500" y="115" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">select + derive</text>
@@ -219,7 +219,7 @@ hdb = loader.load("mlfp01", "hdb_resale.parquet")
 
 # All Ang Mo Kio transactions
 amk = hdb.filter(pl.col("town") == "ANG MO KIO")
-print(f"AMK transactions: {amk.height:,}")
+print(f"AMK transactions: {amk.height:,}")   # 2,486
   </code></pre>
   <p>Read it aloud: <em>filter hdb to rows where the town column equals "ANG MO KIO".</em></p>
 </section>
@@ -257,7 +257,7 @@ central = hdb.filter(
 central_towns = ["BISHAN", "TOA PAYOH", "QUEENSTOWN", "BUKIT MERAH"]
 central = hdb.filter(pl.col("town").is_in(central_towns))
 
-print(f"Central towns: {central.height:,}")
+print(f"Central towns: {central.height:,}")   # 6,495
   </code></pre>
   <p>Rule of thumb: three or more OR values → reach for <code>is_in</code>.</p>
 </section>
@@ -273,6 +273,9 @@ hdb = hdb.with_columns(
     # year as integer
     pl.col("month").str.slice(0, 4).cast(pl.Int32)
         .alias("year"),
+    # "2016-03" text -> a real Date (first of the month)
+    pl.col("month").str.to_date("%Y-%m")
+        .alias("transaction_date"),
 )
 
 print(hdb.select("month", "year", "price_per_sqm").head(3))
@@ -312,19 +315,19 @@ hdb = hdb.with_columns(
         </marker>
       </defs>
       <rect x="250" y="10" width="260" height="36" rx="6" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
-      <text x="380" y="33" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#1E293B">hdb  (500,000 rows)</text>
+      <text x="380" y="33" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#1E293B">hdb  (50,150 rows)</text>
       <line x1="380" y1="46" x2="380" y2="68" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr4)"/>
       <text x="530" y="62" font-family="JetBrains Mono" font-size="12" fill="#0D9488">.filter(year ≥ 2020)</text>
       <rect x="250" y="72" width="260" height="36" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-      <text x="380" y="95" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#0F766E">180,000 rows</text>
+      <text x="380" y="95" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#0F766E">24,904 rows</text>
       <line x1="380" y1="108" x2="380" y2="130" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr4)"/>
       <text x="530" y="124" font-family="JetBrains Mono" font-size="12" fill="#0D9488">.filter(premium/luxury)</text>
       <rect x="250" y="134" width="260" height="36" rx="6" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
-      <text x="380" y="157" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#0F766E">32,000 rows</text>
+      <text x="380" y="157" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#0F766E">23,254 rows</text>
       <line x1="380" y1="170" x2="380" y2="192" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr4)"/>
       <text x="530" y="186" font-family="JetBrains Mono" font-size="12" fill="#0D9488">.select(...)</text>
       <rect x="250" y="196" width="260" height="36" rx="6" fill="#99F6E4" stroke="#0D9488" stroke-width="2"/>
-      <text x="380" y="219" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#0F766E">32k × 4 cols</text>
+      <text x="380" y="219" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#0F766E">23,254 × 5 cols</text>
       <line x1="380" y1="232" x2="380" y2="254" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr4)"/>
       <text x="530" y="248" font-family="JetBrains Mono" font-size="12" fill="#0D9488">.sort("price", desc)</text>
       <rect x="250" y="258" width="260" height="36" rx="6" fill="#14B8A6" stroke="#0D9488" stroke-width="2"/>
@@ -370,7 +373,7 @@ recent_premium = (
       <tr><td>F</td><td>F</td><td>F</td><td>F</td></tr>
     </tbody>
   </table>
-  <p style="font-size: 0.85em;">Polars evaluates these truth tables across hundreds of thousands of rows at once.</p>
+  <p style="font-size: 0.85em;">Polars evaluates these truth tables across all 50,000 rows at once &mdash; and the same code scales to millions.</p>
 </section>
 
 <!-- Slide 13: De Morgan -->

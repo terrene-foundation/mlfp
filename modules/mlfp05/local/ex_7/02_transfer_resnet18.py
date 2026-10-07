@@ -112,15 +112,24 @@ def build_transfer_resnet(
     freeze_backbone: bool = True,
 ) -> nn.Module:
     """Build a ResNet-18 with frozen backbone and fresh classifier head."""
-    # TODO: Load pre-trained ResNet-18 and adapt it for CIFAR-10
-    # Steps:
-    #   1. Load weights: torchvision.models.ResNet18_Weights.IMAGENET1K_V1
-    #   2. Create model: torchvision.models.resnet18(weights=weights)
-    #   3. Freeze backbone — for param in model.parameters(): param.requires_grad = False
-    #   4. Replace model.fc: get in_features = model.fc.in_features,
-    #      then model.fc = nn.Linear(in_features, n_classes)
-    # Hint: Wrap in try/except for offline fallback (weights=None)
-    pass  # Replace with your implementation
+    # No fallback to random weights: if the ImageNet download fails this
+    # raises, because a random frozen backbone would make every "transfer"
+    # result in this exercise meaningless.
+    # TODO: Load the ImageNet-1K ResNet-18 weights and build the model
+    # Hint: torchvision.models exposes a ResNet18_Weights enum and a
+    #   resnet18(weights=...) constructor
+    weights = ____
+    model = ____
+    print(f"  Loaded pre-trained ResNet-18 (weights={weights})")
+
+    if freeze_backbone:
+        for p in model.parameters():
+            ____  # TODO: stop gradients flowing into this parameter
+
+    # TODO: Replace the 1000-class ImageNet head with a fresh n_classes head
+    in_features = model.fc.in_features
+    model.fc = ____
+    return model
 
 
 transfer_model = build_transfer_resnet()
@@ -146,10 +155,10 @@ print("--- Checkpoint 1 passed --- transfer model built\n")
 
 def build_scratch_cnn(n_classes: int = N_CLASSES) -> nn.Module:
     """Baseline: same architecture as Part 1."""
-    # TODO: Build the same 3-conv-layer CNN from Part 1
-    # Hint: nn.Sequential with Conv2d->BN->ReLU->Pool blocks, then
-    #       AdaptiveAvgPool2d(1)->Flatten->Dropout(0.3)->Linear(128, n_classes)
-    pass  # Replace with your implementation
+    # TODO: Return the same small CNN you built in Part 1
+    #   (three conv-BN-ReLU blocks, 32 -> 64 -> 128 channels, global
+    #   average pooling, dropout 0.3, linear classifier)
+    return ____
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -202,21 +211,80 @@ print(f"  Scratch  best val_acc: {best_scratch:.3f}")
 print(f"  Advantage: {best_transfer - best_scratch:+.3f}")
 print("\n--- Checkpoint 2 passed --- both models trained and compared\n")
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# kailash-ml's run_diagnostic_checkpoint runs a few real forward/backward
+# passes (no optimiser step) with gradient, activation and dead-neuron
+# hooks attached, and replays the real per-epoch training losses. It
+# RETURNS the findings; print_prescription_pad prints them. The pass
+# puts the model in train mode, which updates BatchNorm running
+# statistics, so we diagnose a COPY and leave the trained model intact.
+import copy
+
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+
+from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05.ex_7 import classifier_diag_loss
+
+print("\n── Diagnostic Report (Transfer ResNet-18 (ImageNet pretrained, frozen backbone)) ──")
+diag, findings = run_diagnostic_checkpoint(
+    copy.deepcopy(transfer_model),
+    train_loader,
+    classifier_diag_loss,
+    title="Transfer ResNet-18 (ImageNet pretrained, frozen backbone)",
+    n_batches=8,
+    train_losses=transfer_losses,
+    show=False,
+)
+print_prescription_pad(findings, "Transfer ResNet-18 (ImageNet pretrained, frozen backbone)")
+# HOW TO READ THE PRESCRIPTION PAD FOR THIS MODEL:
+#  Gradient flow — only the new fc head is trainable; the frozen backbone
+#     has no parameter gradients by design, so judge this reading by the
+#     fc layer. "Exploding" on fc means the head's updates are large
+#     relative to its weights (lower the learning rate); "vanishing" means
+#     the head has stopped learning.
+#  Dead neurons — the ReLUs belong to the frozen ImageNet backbone. A high
+#     dead fraction means many pretrained features are silent on CIFAR-10;
+#     that is a domain-gap signal (unfreeze the last stage, or use the
+#     adapters of Part 4), not a training bug.
+#  Loss trend — read from the real per-epoch losses of the head.
+#  If any reading is UNKNOWN, the library could not compute it from this
+#  run; the message says why.
+
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Register models in ModelRegistry
 # ════════════════════════════════════════════════════════════════════════
 
 if has_registry:
-    # TODO: Register both models in the ModelRegistry and promote the better one
-    # Steps:
-    #   1. register_model(registry, "cifar10_resnet18_transfer", transfer_model, ...)
-    #   2. register_model(registry, "cifar10_cnn_scratch", scratch_model, ...)
-    #   3. Promote the model with higher accuracy to "production" stage
-    # Hint: Use register_model() from helpers
-    # Hint: For promotion, use registry.promote_model(name=..., version=...,
-    #       target_stage="production", reason=...)
-    pass  # TODO: Register and promote models
+    # TODO: Register both models with the shared register_model helper
+    #   ("cifar10_resnet18_transfer" and "cifar10_cnn_scratch"), passing
+    #   each model's best val accuracy and final training loss
+    transfer_ver = ____
+    scratch_ver = ____
+
+    # Promote the better model
+    async def _promote():
+        if max(transfer_accs) >= max(scratch_accs):
+            # TODO: Promote the transfer model's registered version to the
+            #   "production" stage, with a reason quoting both accuracies
+            # Hint: registry.promote_model is a coroutine (await it)
+            ____
+            print("  Promoted: cifar10_resnet18_transfer -> production")
+        else:
+            await registry.promote_model(
+                name="cifar10_cnn_scratch",
+                version=scratch_ver.version,
+                target_stage="production",
+                reason=(
+                    f"Scratch model outperforms transfer: "
+                    f"val_acc={max(scratch_accs):.4f} vs {max(transfer_accs):.4f}"
+                ),
+            )
+            print("  Promoted: cifar10_cnn_scratch -> production")
+
+    asyncio.run(_promote())
 else:
     print("  Note: ModelRegistry not available. Skipping registration.")
 
@@ -242,46 +310,168 @@ print("\n--- Checkpoint 3 passed --- models registered\n")
 
 print("-- Layer activation comparison --")
 
-# TODO: Compare layer activations between pretrained and random ResNet
-# Steps:
-#   1. Build a random ResNet: torchvision.models.resnet18(weights=None)
-#   2. Get a sample image from val_loader
-#   3. Hook into conv1 of both models using register_forward_hook
-#   4. Run forward pass on both models
-#   5. Visualise first 8 activation maps from each in a Plotly figure
-# Hint: def hook_fn(m, inp, out): acts_list.append(out.detach().cpu())
-# Hint: handle = model.conv1.register_forward_hook(hook_fn)
-# Hint: Remember to call handle.remove() after the forward pass
-
+# Build a randomly-initialised ResNet for comparison
 random_resnet = torchvision.models.resnet18(weights=None)
 random_resnet.eval()
 random_resnet.to(device)
 
+# Get a sample image
 sample_batch_x, sample_batch_y = next(iter(val_loader))
 sample_img = sample_batch_x[0:1].to(device)
 
-# TODO: Set up hooks, run forward passes, collect activations
-# TODO: Create fig_acts with Heatmap traces for pretrained vs random
-# TODO: Save to OUTPUT_DIR / "02_activation_comparison.html"
-pass  # Replace with your activation comparison code
+# Hook into conv1 to capture first-layer activations
+pretrained_acts = []
+random_acts = []
+
+
+def hook_pretrained(m, inp, out):
+    pretrained_acts.append(out.detach().cpu())
+
+
+def hook_random(m, inp, out):
+    random_acts.append(out.detach().cpu())
+
+
+# TODO: Attach the two hooks to each model's first conv layer, run the
+#   sample image through both models (no gradients, eval mode), then
+#   remove the hooks
+# Hint: nn.Module.register_forward_hook returns a handle with .remove()
+____
+
+pretrained_act = pretrained_acts[0][0]  # (64, H, W)
+random_act = random_acts[0][0]
+
+# Visualise first 8 activation maps from each
+n_show = 8
+fig_acts = go.Figure()
+
+for i in range(n_show):
+    # Pretrained activations
+    act_pre = pretrained_act[i].numpy()
+    fig_acts.add_trace(
+        go.Heatmap(
+            z=np.flipud(act_pre),
+            colorscale="Viridis",
+            showscale=False,
+            name=f"Pretrained filter {i}",
+            visible=(i == 0),
+        )
+    )
+
+for i in range(n_show):
+    # Random activations
+    act_rand = random_act[i].numpy()
+    fig_acts.add_trace(
+        go.Heatmap(
+            z=np.flipud(act_rand),
+            colorscale="Viridis",
+            showscale=False,
+            name=f"Random filter {i}",
+            visible=False,
+        )
+    )
+
+# Dropdown to switch between pretrained and random
+fig_acts.update_layout(
+    title="Layer 1 Activations: Pre-trained (structured) vs Random (noise)",
+    template="plotly_white",
+    updatemenus=[
+        {
+            "buttons": [
+                {
+                    "label": f"Pretrained #{i}",
+                    "method": "update",
+                    "args": [{"visible": [j == i for j in range(2 * n_show)]}],
+                }
+                for i in range(n_show)
+            ]
+            + [
+                {
+                    "label": f"Random #{i}",
+                    "method": "update",
+                    "args": [{"visible": [j == n_show + i for j in range(2 * n_show)]}],
+                }
+                for i in range(n_show)
+            ],
+            "direction": "down",
+            "showactive": True,
+        }
+    ],
+)
+acts_path = OUTPUT_DIR / "02_activation_comparison.html"
+fig_acts.write_html(str(acts_path))
+print(f"  Saved: {acts_path}")
 
 # -- Grad-CAM visualisation --
 print("-- Computing Grad-CAM heatmaps --")
 
-# TODO: Compute Grad-CAM for the transfer model
-# Steps:
-#   1. Enable gradients on sample image: sample_img_grad = sample_img.clone().requires_grad_(True)
-#   2. Hook into transfer_model.layer4 (forward + backward hooks)
-#   3. Forward pass -> get predicted class
-#   4. Backward pass for predicted class: logits[0, pred_class].backward()
-#   5. Compute Grad-CAM: weights = grads.mean(dim=[2,3], keepdim=True)
-#      cam = (weights * acts).sum(dim=1, keepdim=True)
-#      cam = F.relu(cam)  # Only positive contributions
-#   6. Normalise to [0,1] and visualise with go.Heatmap
-# Hint: fwd_handle = model.layer4.register_forward_hook(fwd_hook)
-# Hint: bwd_handle = model.layer4.register_full_backward_hook(bwd_hook)
-# Hint: Don't forget to remove hooks after use
-pass  # Replace with your Grad-CAM implementation
+transfer_model.eval()
+sample_img_grad = sample_img.clone().requires_grad_(True)
+
+# Forward pass through the model
+gradcam_activations = []
+gradcam_gradients = []
+
+
+def fwd_hook(m, inp, out):
+    gradcam_activations.append(out)
+
+
+def bwd_hook(m, inp, out):
+    gradcam_gradients.append(out[0])
+
+
+fwd_handle = transfer_model.layer4.register_forward_hook(fwd_hook)
+bwd_handle = transfer_model.layer4.register_full_backward_hook(bwd_hook)
+
+logits = transfer_model(sample_img_grad)
+pred_class = logits.argmax(dim=-1).item()
+
+# Backward pass for the predicted class
+transfer_model.zero_grad()
+logits[0, pred_class].backward()
+
+fwd_handle.remove()
+bwd_handle.remove()
+
+# Compute Grad-CAM: weighted combination of activation maps
+grads = gradcam_gradients[0]  # (1, C, H, W)
+acts = gradcam_activations[0]  # (1, C, H, W)
+# TODO: Grad-CAM
+#   1. Channel weights = gradients averaged over the spatial dims
+#   2. CAM = weighted sum of the activation maps over channels
+#   3. Keep only positive evidence (ReLU)
+#   4. Take the single (H, W) map as a numpy array, min-max normalised
+weights = ____
+cam = ____
+cam = ____
+cam = ____
+
+# Normalise to [0, 1]
+cam = ____
+
+fig_gradcam = go.Figure()
+fig_gradcam.add_trace(
+    go.Heatmap(
+        z=np.flipud(cam),
+        colorscale="Jet",
+        showscale=True,
+        colorbar=dict(title="Attention"),
+    )
+)
+fig_gradcam.update_layout(
+    title=(
+        f"Grad-CAM: Where the model looks for class "
+        f"'{CLASS_NAMES[pred_class]}' (true: '{CLASS_NAMES[sample_batch_y[0]]}')"
+    ),
+    template="plotly_white",
+    width=500,
+    height=500,
+)
+gradcam_path = OUTPUT_DIR / "02_gradcam.html"
+fig_gradcam.write_html(str(gradcam_path))
+print(f"  Saved: {gradcam_path}")
+print(f"  Predicted: {CLASS_NAMES[pred_class]}, True: {CLASS_NAMES[sample_batch_y[0]]}")
 
 # -- t-SNE comparison --
 print("\n-- t-SNE: Transfer vs Scratch feature spaces --")
@@ -319,6 +509,7 @@ save_training_plots(
 )
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert cam.shape[0] > 0, "Grad-CAM should produce a spatial heatmap"
 assert transfer_feats.shape[0] > 0, "Should have extracted transfer features"
 # INTERPRETATION: The Grad-CAM heatmap shows the model focuses on the
 # object in the image, not the background. Pre-trained features give
@@ -330,11 +521,13 @@ print("\n--- Checkpoint 4 passed --- visualisations complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 7 — Apply: Medical Image Classification at National Skin Centre
+# TASK 7 — Apply: Medical Image Classification at a Dermatology Clinic
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: The National Skin Centre (NSC) Singapore wants to build an
-# AI system to classify skin conditions from dermatology images. They
-# have only 2,000 labelled dermatology images across 10 condition types.
+# SCENARIO (illustrative): A public dermatology clinic in Singapore wants
+# to build an AI system to classify skin conditions from dermatology
+# images. It has only 2,000 labelled images across 10 condition types.
+# We have no dermatology data here, so 2,000 CIFAR-10 images stand in
+# for that small labelled set.
 #
 # Training a CNN from scratch on 2,000 images would give poor results.
 # Transfer learning from ImageNet provides a strong foundation: the
@@ -343,56 +536,74 @@ print("\n--- Checkpoint 4 passed --- visualisations complete\n")
 # photos.
 
 print("\n" + "=" * 70)
-print("  APPLY: Medical Image Classification — National Skin Centre SG")
+print("  APPLY: Medical Image Classification — Dermatology Clinic (illustrative)")
 print("=" * 70)
 
-# TODO: Simulate the medical scenario with only 2,000 labelled images
-# Steps:
-#   1. Create a random subset of 2,000 indices from train_set
-#   2. Build a DataLoader for the medical subset
-#   3. Train a transfer model (build_transfer_resnet()) on 2K images
-#   4. Train a scratch model (build_scratch_cnn()) on 2K images
-#   5. Compare accuracy and calculate cost savings
-# Hint: rng = np.random.default_rng(42)
-# Hint: n_medical = 2000
-# Hint: Same pattern as the startup scenario in Part 1
-
+# Simulate the medical scenario: only 2,000 labelled images
 from torch.utils.data import Subset, DataLoader as DL
 
 rng = np.random.default_rng(42)
 n_medical = 2000
-# TODO: Create indices, subset, loader
-# TODO: Train medical_transfer model
-# TODO: Train medical_scratch model
-# TODO: Store results in best_medical_transfer and best_medical_scratch
-best_medical_transfer = 0.0  # TODO: Replace after training
-best_medical_scratch = 0.0  # TODO: Replace after training
+# TODO: Sample n_medical distinct training indices, wrap them in a
+#   Subset and a shuffled loader (same pattern as Part 1's startup)
+indices = ____
+medical_subset = ____
+medical_loader = ____
 
-print(f"\n  === National Skin Centre Scenario (2,000 images) ===")
+# Transfer model on 2K images
+medical_transfer = build_transfer_resnet()
+# TODO: Train with train_model (run name "medical_transfer_2k", lr=1e-3)
+medical_t_losses, medical_t_accs, _ = ____
+
+# From-scratch model on 2K images
+medical_scratch = build_scratch_cnn()
+# TODO: Train with train_model (run name "medical_scratch_2k", lr=1e-3)
+medical_s_losses, medical_s_accs, _ = ____
+
+best_medical_transfer = ____  # TODO: best val accuracy of each run
+best_medical_scratch = ____
+
+print(f"\n  === Dermatology Clinic Scenario (2,000 images) ===")
 print(f"  {'Method':<25} {'Val Accuracy':>15} {'Trainable Params':>18}")
 print("  " + "-" * 60)
 print(
-    f"  {'Transfer (ResNet-18)':<25} " f"{best_medical_transfer:>15.1%} " f"{'~5K':>18}"
+    f"  {'Transfer (ResNet-18)':<25} "
+    f"{best_medical_transfer:>15.1%} "
+    f"{count_params(medical_transfer, trainable_only=True):>18,}"
 )
-print(f"  {'From scratch':<25} " f"{best_medical_scratch:>15.1%} " f"{'~200K':>18}")
+print(
+    f"  {'From scratch':<25} "
+    f"{best_medical_scratch:>15.1%} "
+    f"{count_params(medical_scratch, trainable_only=True):>18,}"
+)
 print(f"  {'Advantage':<25} {best_medical_transfer - best_medical_scratch:>+15.1%}")
 print()
-print(f"  COST-BENEFIT ANALYSIS:")
-print(f"  Labelling cost per image (dermatologist review): ~S$5.00")
-print(f"  Current labelled images: 2,000")
-print(f"  To match transfer accuracy from scratch: ~20,000+ images needed")
-print(f"  Labelling cost saved: ~18,000 images x S$5.00 = S$90,000")
-print(f"  Transfer learning: FREE (pre-trained weights are open-source)")
+LABEL_COST = 5.00  # S$ per image for dermatologist review — illustrative
+medical_advantage = best_medical_transfer - best_medical_scratch
+print(f"  COST-BENEFIT ANALYSIS (illustrative label cost):")
+print(f"  Labelling cost per image (dermatologist review): ~S${LABEL_COST:.2f}")
+print(f"  Current labelled images: {n_medical:,} (S${n_medical * LABEL_COST:,.0f})")
+print(
+    f"  Every extra 1,000 labels the scratch model would need to close the "
+    f"{medical_advantage:+.1%} gap costs S${1000 * LABEL_COST:,.0f}"
+)
+print(f"  (Part 3 measures how scratch accuracy grows with more labels.)")
+print(f"  Transfer learning: the pre-trained weights are free and open")
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
 assert (
     best_medical_transfer > 0.15
 ), f"Transfer with 2K data should beat random (acc={best_medical_transfer:.3f})"
-# INTERPRETATION: With only 2,000 images, transfer learning dramatically
-# outperforms training from scratch. In a medical context, this means
-# fewer misdiagnosed patients and S$90,000+ saved in labelling costs.
-# The pre-trained ResNet already knows edges, textures, and shapes —
-# it only needs to learn which combinations indicate each skin condition.
+# INTERPRETATION: With only 2,000 images, the transfer model starts from
+# features that already encode edges, textures, and shapes — it only
+# needs to learn which combinations indicate each class. Read the
+# printed advantage: a large positive gap means fewer misclassified
+# patients for the same labelling budget; a small or negative gap
+# would mean the ImageNet features transfer poorly to this domain.
+print(
+    f"  Transfer advantage at 2,000 images: {medical_advantage:+.1%} "
+    f"({'transfer wins' if medical_advantage > 0 else 'transfer did NOT win in this run'})"
+)
 print("\n--- Checkpoint 5 passed --- medical scenario complete\n")
 
 
@@ -429,71 +640,3 @@ print(
   question: "How much do we need to spend on labelling?"
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Fine-tune last layer + optionally unfreeze
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (Transfer ResNet18 (ImageNet pretrained)) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        model,
-        train_loader,
-        _diag_loss,
-        title="Transfer ResNet18 (ImageNet pretrained)",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS 8.4e-04 to 3.2e-02 across frozen+unfrozen layers.
-#     Frozen layers properly report 0 (no gradient by design).
-# [✓] Dead neurons  (HEALTHY): 14% inactive — ImageNet-pretrained
-#     weights + ReLU is the happy path.
-# [✓] Loss trend    (HEALTHY): rapid convergence to 87% val accuracy in 5 epochs.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST] The HEALTHY RMS at every layer is the point of
-#     transfer learning. ImageNet features are "warm-started" — no
-#     vanishing gradients, no dead neurons, fast convergence.
-#     Compare to ex_7/01 (43% dead conv1 from scratch).
-#
-#  [X-RAY — GRAD-CAM] Run diag.grad_cam(input, target_class,
-#     layer_name='layer4') to see what the model attends to.
-#     Before fine-tuning: attends to generic edges (ImageNet).
-#     After fine-tuning: attends to Fashion-MNIST-specific features.
-#     Slide 5G-ii Zech-2018-watermark example — ALWAYS check
-#     attribution before deploying.
-#
-#  [STETHOSCOPE] 87% in 5 epochs vs 60% from scratch in 10 epochs
-#     = 10x faster convergence, 30% better final accuracy.
-#     Transfer learning is cheat code for small datasets.
-
-

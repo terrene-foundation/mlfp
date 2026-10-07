@@ -16,7 +16,7 @@
 # ESTIMATED TIME: ~40 min
 #
 # TASKS:
-#   1. Load A/B test data + SRM sanity check
+#   1. Load A/B test data + SRM check against the designed allocation
 #   2. Bootstrap resampling from scratch — 10K resamples
 #   3. Three CI methods: percentile, normal, BCa
 #   4. Power analysis — minimum detectable effect
@@ -46,12 +46,18 @@ from shared.mlfp02.ex_3 import (
     N_BOOTSTRAP,
     RANDOM_SEED,
     OUTPUT_DIR,
+    DESIGNED_ALLOCATION,
+    TREATMENT_ARM,
+    designed_control_share,
     load_experiment,
+    load_experiment_all,
     split_groups,
     conversion_arrays,
     srm_check,
+    srm_check_multi,
     print_header,
 )
+from shared.mlfp02 import create_visualizer
 
 print_header("MLFP02 Exercise 3.1: Bootstrap CIs & Power Analysis")
 
@@ -59,31 +65,69 @@ print_header("MLFP02 Exercise 3.1: Bootstrap CIs & Power Analysis")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 1 — Load data + SRM sanity check
 # ════════════════════════════════════════════════════════════════════════
-# Before ANY analysis, verify the experiment split is balanced.
-# SRM (Sample Ratio Mismatch) detects randomisation bugs, bot traffic,
-# or pipeline issues. If SRM fires, do NOT trust downstream results.
+# Before ANY analysis, verify that users landed in each arm in the
+# proportions the experiment was DESIGNED for. SRM (Sample Ratio Mismatch)
+# detects randomisation bugs, bot traffic, or pipeline issues. This
+# experiment's design is UNEQUAL (40/35/15/10 across four arms), so the
+# test must use the designed shares — testing against 50/50 would flag
+# "SRM" in every unequal design and teach you to ignore the alarm.
 
-df = load_experiment()
+df_all = load_experiment_all()
+arm_counts = dict(df_all.group_by("experiment_group").len().iter_rows())
+# TODO: Test ALL arms against the designed allocation.
+# Hint: srm_check_multi(arm_counts, DESIGNED_ALLOCATION) returns chi2,
+#       p_value, srm (bool) and a per_arm table.
+srm_all = ____
+
+print(f"\nAll-arm SRM check vs design: chi2={srm_all['chi2']:.1f}, p={srm_all['p_value']:.2e}")
+print(f"  {'Arm':<12} {'Observed':>9} {'Designed':>9} {'Std resid':>10}")
+for arm, r in srm_all["per_arm"].items():
+    print(
+        f"  {arm:<12} {r['observed_share']:>9.1%} {r['designed_share']:>9.1%} "
+        f"{r['std_residual']:>+10.1f}"
+    )
+worst_arm = max(
+    srm_all["per_arm"], key=lambda a: abs(srm_all["per_arm"][a]["std_residual"])
+)
+print(f"  Most mis-allocated arm: {worst_arm}")
+# INTERPRETATION: The all-arm test fires, and the per-arm residuals show
+# WHY: one arm received far more traffic than designed (the others look
+# slightly low only because shares must sum to 100%). Whatever happened to
+# that arm's assignment, its users are not a clean random sample, so its
+# results are excluded. SRM detection is only useful if you act on it.
+
+# Analyse ONE treatment arm against control — pooling different
+# treatments would estimate a meaningless mixture of effects.
+df = load_experiment(TREATMENT_ARM)
 control, treatment = split_groups(df)
 n_control = control.height
 n_treatment = treatment.height
 n_total = df.height
 
-print(f"\nData loaded: {n_total:,} users")
+print(f"\nAnalysed pair: control vs {TREATMENT_ARM} — {n_total:,} users")
 print(f"  Control:   {n_control:,}")
 print(f"  Treatment: {n_treatment:,}")
 
-# TODO: Call srm_check(n_control, n_treatment) to verify the sample split.
-# Hint: srm_check returns a dict with 'chi2', 'p_value', and 'verdict'.
+# TODO: SRM check on the analysed pair against its DESIGNED control share.
+# Hint: srm_check(n_control, n_treatment, designed_control_share(TREATMENT_ARM))
 srm = ____
-
-print(f"\nSRM check: chi2={srm['chi2']:.4f}, p={srm['p_value']:.6f}")
+print(
+    f"Pair SRM check (designed control share "
+    f"{designed_control_share(TREATMENT_ARM):.3f}): "
+    f"chi2={srm['chi2']:.4f}, p={srm['p_value']:.4f}"
+)
 print(f"  Verdict: {srm['verdict']}")
+if srm["srm"]:
+    raise RuntimeError(
+        "SRM on the analysed pair — stop here: downstream results would be "
+        "untrustworthy. Investigate the assignment pipeline first."
+    )
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert srm["p_value"] >= 0, "SRM p-value must be non-negative"
+assert srm_all["srm"], "The all-arm test should flag the mis-allocated arm"
+assert not srm["srm"], "The analysed pair must pass its SRM check"
 assert n_control + n_treatment == n_total, "Groups must sum to total"
-print("\n>>> Checkpoint 1 passed -- SRM check completed\n")
+print("\n>>> Checkpoint 1 passed -- SRM checked against the design\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -217,9 +261,9 @@ print(f"z_{{alpha/2}} = {z_alpha_half:.3f}, z_beta = {z_beta:.3f}")
 print(f"Minimum Detectable Effect (MDE): {mde:.6f} ({mde:.4%} absolute)")
 print(f"Relative MDE: {mde / p_control:.2%} of baseline")
 
-# INTERPRETATION: An MDE of {mde:.4%} absolute means we can reliably
-# detect a treatment that changes conversion by at least that many
-# percentage points. Smaller effects may exist but are invisible to
+# INTERPRETATION: The printed MDE means this experiment can reliably
+# (80% power) detect a treatment that changes conversion by at least that
+# many percentage points. Smaller effects may exist but are invisible to
 # this experiment at 80% power. To detect smaller effects: get more data.
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
@@ -279,7 +323,7 @@ print("\n>>> Checkpoint 4 passed -- power curves computed\n")
 
 from kailash_ml import ModelVisualizer
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 
 # Plot 1: Bootstrap distribution of conversion rate difference
 fig1 = viz.histogram(
@@ -311,30 +355,40 @@ print(f"Saved: {out_2}")
 # ════════════════════════════════════════════════════════════════════════
 # APPLY — Singapore e-commerce experiment planning
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore e-commerce platform (Shopee-scale, ~500K daily
-# users) wants to test a new recommendation algorithm. The product team
-# asks: "How long do we need to run the experiment?"
-#
-# With the current baseline conversion of ~10% and an MDE of ~2pp,
-# the experiment needs ~{n_total:,} users per group. At 500K daily
-# users split 50/50, that's {n_total // 250_000} days minimum.
+# SCENARIO: A regional e-commerce marketplace (illustrative, ~500K daily
+# users) is planning its NEXT recommendation test and asks: "How many
+# users, and how many days?" Answer it by solving the power formula for
+# n at the lift the business cares about. (The MDE above already
+# describes the CURRENT experiment's n — it is not a planning target.)
 #
 # BUSINESS IMPACT: Without power analysis, teams either:
 #   - Stop experiments too early (underpowered) -> miss real effects
 #   - Run experiments too long (overpowered) -> waste traffic + delay launches
-# A proper MDE calculation saves weeks of experimentation time and
-# prevents false negatives worth S$100K+ in unrealised revenue.
 
-print(f"\n--- Business Application: Experiment Planning ---")
+print(f"\n--- Business Application: Planning the Next Experiment ---")
 daily_users = 500_000
-days_needed = max(1, (n_total * 2) // daily_users)
-print(f"At {daily_users:,} daily users (50/50 split):")
-print(f"  MDE = {mde:.4%} -> need ~{n_total * 2:,} users -> ~{days_needed} days")
-small_effect_n = int(
-    ((z_alpha_half + z_beta) / (mde / 2)) ** 2 * p_control * (1 - p_control) * 2
+print(
+    f"Current experiment: {n_total:,} users -> MDE = {mde:.3%} absolute on a "
+    f"{p_control:.1%} baseline"
 )
-days_small = max(1, small_effect_n // daily_users)
-print(f"  Half the MDE -> need ~{small_effect_n:,} users -> ~{days_small} days")
+plan_rows = []
+for target_lift in [0.01, 0.005, 0.0025]:
+    # TODO: Required n per group for this target lift (two-proportion test)
+    # Hint: (z_alpha_half + z_beta)**2 * 2 * p(1-p) / target_lift**2, rounded UP
+    n_per_group = ____
+    days = int(np.ceil(2 * n_per_group / daily_users))
+    plan_rows.append((target_lift, n_per_group, days))
+    print(
+        f"  Detect a {target_lift:.2%} lift -> {n_per_group:,} per group "
+        f"({2 * n_per_group:,} total) -> {days} day(s) of traffic"
+    )
+print("Halving the target lift roughly quadruples the sample (n ∝ 1/lift²).")
+print("Even when one day of traffic suffices, run whole weeks so weekday and")
+print("weekend behaviour are both represented.")
+
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert plan_rows[1][1] > 3.5 * plan_rows[0][1], "Halving the lift should ~4x n"
+print("\n>>> Checkpoint 5 passed -- experiment plan computed\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -345,10 +399,12 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] SRM: chi-squared test detects broken randomisation before trusting results
+  [x] SRM: chi-squared test against the DESIGNED allocation; act on it
+      (exclude the mis-allocated arm, stop if the analysed pair fails)
   [x] Bootstrap: resample with replacement, compute any statistic's CI
   [x] Three CI methods: percentile (simple), normal (symmetric), BCa (gold standard)
   [x] MDE: smallest detectable effect at given n, alpha, and power
+  [x] Planning: solve the power formula for n at a target lift
   [x] Power curves: visualise trade-off between n, effect size, and power
 
   NEXT: In 02_hypothesis_testing.py you'll use these power calculations

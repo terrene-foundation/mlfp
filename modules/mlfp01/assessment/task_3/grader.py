@@ -1,79 +1,127 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Automated grader for MLFP01 Assessment Task 3 — Window Functions & Trends.
+"""Automated grader for MLFP01 Assessment Task 3 — Town Price Trends.
 
 Usage:
     python grader.py starter.py
     python grader.py solution.py
 
-Re-derives the per-town/per-year trend table independently and compares.
-All checks must pass.
+The grader computes the expected table with plain-Python calendar
+arithmetic (date lookups, not row offsets), matches rows by (town, month),
+and also runs the submission on an unseen variant with extra missing months
+and new recording errors, so row-offset windows and hard-coded error values
+fail.
 """
 from __future__ import annotations
 
 import argparse
 import importlib.util
 import json
+import statistics
 import sys
+from datetime import date
 from pathlib import Path
 
 import polars as pl
 
 from shared import MLFPDataLoader
 
-EXPECTED_COLUMNS = [
-    "town",
-    "sale_year",
+WEIGHT = 15
+GATES = ("required_columns", "town_month_rows")
+CHECKS = [
+    *GATES,
     "n_sales",
     "median_price",
     "yoy_pct",
-    "rolling_3yr_avg",
-    "price_rank_in_year",
+    "rolling_3m_avg",
+    "price_rank_in_month",
+    "unseen_variant",
 ]
+VALUE_COLS = ["n_sales", "median_price", "yoy_pct", "rolling_3m_avg", "price_rank_in_month"]
+REQUIRED = ["town", "month", *VALUE_COLS]
 
 
-def _reference() -> pl.DataFrame:
-    df = (
-        MLFPDataLoader()
-        .load("mlfp01", "hdb_resale.parquet")
-        .with_columns(pl.col("month").str.slice(0, 4).cast(pl.Int64).alias("sale_year"))
-    )
-    agg = (
-        df.group_by(["town", "sale_year"])
-        .agg(
-            [
-                pl.col("resale_price").median().alias("median_price"),
-                pl.len().alias("n_sales"),
-            ]
+# ── Ground truth ─────────────────────────────────────────────────────────
+def _shift(d: date, months: int) -> date:
+    k = d.year * 12 + d.month - 1 + months
+    return date(k // 12, k % 12 + 1, 1)
+
+
+def _expected(hdb: pl.DataFrame) -> pl.DataFrame:
+    prices: dict[tuple[str, date], list[int]] = {}
+    for town, month, price in hdb.select("town", "month", "resale_price").iter_rows():
+        # Genuine HDB resale prices in this data lie between ~S$215k and S$1.8M;
+        # the recording errors are orders of magnitude outside that.
+        if 100_000 <= price <= 2_000_000:
+            key = (town, date(int(month[:4]), int(month[5:7]), 1))
+            prices.setdefault(key, []).append(price)
+    med = {k: float(statistics.median(v)) for k, v in prices.items()}
+    by_month: dict[date, list[float]] = {}
+    for (_, m), v in med.items():
+        by_month.setdefault(m, []).append(v)
+
+    rows = []
+    for (town, m), v in med.items():
+        prev = med.get((town, _shift(m, -12)))
+        window = [med[(town, _shift(m, -k))] for k in range(3) if (town, _shift(m, -k)) in med]
+        rows.append(
+            {
+                "town": town,
+                "month": m,
+                "n_sales": len(prices[(town, m)]),
+                "median_price": v,
+                "yoy_pct": None if prev is None else 100.0 * (v - prev) / prev,
+                "rolling_3m_avg": sum(window) / len(window),
+                "price_rank_in_month": 1 + sum(1 for x in by_month[m] if x > v),
+            }
         )
-        .sort(["town", "sale_year"])
+    return pl.DataFrame(rows, infer_schema_length=None)
+
+
+def _variant(hdb: pl.DataFrame) -> pl.DataFrame:
+    gaps = [("BISHAN", "2019-03"), ("BISHAN", "2019-04"), ("ANG MO KIO", "2022-01"),
+            ("PUNGGOL", "2016-07"), ("YISHUN", "2023-12")]  # fmt: skip
+    keep = pl.lit(True)
+    for town, month in gaps:
+        keep = keep & ~((pl.col("town") == town) & (pl.col("month") == month))
+    v = hdb.filter(keep)
+    errors = v.head(6).with_columns(
+        pl.Series("resale_price", [5, 1, 12_500_000, 99, 25_000_000, 3]),
+        pl.Series("town", ["TAMPINES", "BEDOK", "TAMPINES", "CLEMENTI", "BEDOK", "YISHUN"]),
+        pl.Series("month", ["2018-06", "2020-02", "2018-06", "2021-11", "2015-01", "2024-12"]),
     )
+    return pl.concat([v, errors]).reverse()
+
+
+# ── Comparison ───────────────────────────────────────────────────────────
+def _usable(out) -> bool:
     return (
-        agg.with_columns(
-            [
-                (
-                    100.0
-                    * (
-                        pl.col("median_price")
-                        - pl.col("median_price").shift(1).over("town")
-                    )
-                    / pl.col("median_price").shift(1).over("town")
-                ).alias("yoy_pct"),
-                pl.col("median_price")
-                .rolling_mean(window_size=3, min_samples=1)
-                .over("town")
-                .alias("rolling_3yr_avg"),
-                pl.col("median_price")
-                .rank(method="min", descending=True)
-                .over("sale_year")
-                .cast(pl.Int64)
-                .alias("price_rank_in_year"),
-            ]
-        )
-        .select(EXPECTED_COLUMNS)
-        .sort(["town", "sale_year"])
+        isinstance(out, pl.DataFrame)
+        and all(c in out.columns for c in REQUIRED)
+        and out.schema["month"] == pl.Date
     )
+
+
+def _rows_match(out: pl.DataFrame, exp: pl.DataFrame) -> bool:
+    keys = out.select("town", "month")
+    return keys.height == keys.unique().height and keys.height == exp.height and (
+        keys.join(exp.select("town", "month"), on=["town", "month"], how="anti").height == 0
+    )
+
+
+def _col_ok(out: pl.DataFrame, exp: pl.DataFrame, col: str) -> bool:
+    try:
+        s = out.select("town", "month", pl.col(col).alias("_s"))
+        j = exp.select("town", "month", col).join(s, on=["town", "month"], how="left")
+        a, b = j[col], j["_s"]
+        if (a.is_null() != b.is_null()).any():
+            return False
+        diff = (a.cast(pl.Float64) - b.cast(pl.Float64)).abs().fill_null(0.0)
+        scale = a.cast(pl.Float64).abs().fill_null(1.0).clip(lower_bound=1.0)
+        return bool((diff <= 1e-6 * scale).all())
+    except Exception:
+        return False
 
 
 def load_student_module(path: Path):
@@ -85,74 +133,54 @@ def load_student_module(path: Path):
     return mod
 
 
-def _close(a: pl.Series, b: pl.Series, tol: float = 1e-4) -> bool:
-    try:
-        # Compare non-null positions; null masks must also match.
-        if a.null_count() != b.null_count():
-            return False
-        af = a.fill_null(0.0).cast(pl.Float64)
-        bf = b.fill_null(0.0).cast(pl.Float64)
-        return bool((af - bf).abs().max() < tol)
-    except Exception:
-        return False
-
-
 def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
-    try:
-        student = load_student_module(student_path)
-    except Exception as e:
-        score["error"] = f"Failed to import: {type(e).__name__}: {e}"
-        return score
-    if not hasattr(student, "solve"):
-        score["error"] = "Module does not define a solve() function"
-        return score
-    try:
-        r = student.solve()
-    except Exception as e:
-        score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
-        return score
-
+    score: dict = {"passed": False, "checks": {c: False for c in CHECKS}}
     c = score["checks"]
-    c["returns_dataframe"] = isinstance(r, pl.DataFrame)
-    if not c["returns_dataframe"]:
+    try:
+        fn = load_student_module(student_path).town_trends
+    except Exception as e:
+        score["error"] = f"Cannot load town_trends(): {type(e).__name__}: {e}"
         return _finalize(score)
 
-    ref = _reference()
-    c["columns_exact"] = r.columns == EXPECTED_COLUMNS
-    c["row_count_correct"] = r.height == ref.height
-    if not (c["columns_exact"] and c["row_count_correct"]):
+    hdb = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+    try:
+        out = fn(hdb.clone())
+    except Exception as e:
+        score["error"] = f"town_trends() raised {type(e).__name__}: {e}"
+        return _finalize(score)
+    c["required_columns"] = _usable(out)
+    if not c["required_columns"]:
+        score["error"] = "Output is not a DataFrame with every required column (month as Date)"
         return _finalize(score)
 
-    # Align both on (town, sale_year) so row order can't mask value errors.
-    r2 = r.sort(["town", "sale_year"])
-    c["keys_match"] = r2.select(["town", "sale_year"]).equals(
-        ref.select(["town", "sale_year"])
-    )
-    if not c["keys_match"]:
-        return _finalize(score)
+    exp = _expected(hdb)
+    c["town_month_rows"] = _rows_match(out, exp)
+    for col in VALUE_COLS:
+        c[col] = _col_ok(out, exp, col)
 
-    c["median_price_correct"] = _close(
-        r2["median_price"], ref["median_price"], tol=1e-3
-    )
-    c["n_sales_correct"] = _close(r2["n_sales"], ref["n_sales"])
-    c["yoy_pct_correct"] = _close(r2["yoy_pct"], ref["yoy_pct"], tol=1e-4)
-    c["yoy_first_year_null"] = r2["yoy_pct"].null_count() == 27
-    c["rolling_3yr_correct"] = _close(
-        r2["rolling_3yr_avg"], ref["rolling_3yr_avg"], tol=1e-3
-    )
-    c["rank_correct"] = _close(r2["price_rank_in_year"], ref["price_rank_in_year"])
-    c["rank_range_valid"] = (
-        r2["price_rank_in_year"].min() == 1 and r2["price_rank_in_year"].max() == 27
-    )
-
+    try:
+        v = _variant(hdb)
+        v_out = fn(v.clone())
+        v_exp = _expected(v)
+        c["unseen_variant"] = (
+            _usable(v_out)
+            and _rows_match(v_out, v_exp)
+            and all(_col_ok(v_out, v_exp, col) for col in VALUE_COLS)
+        )
+    except Exception as e:
+        score["error"] = f"Unseen variant failed: {type(e).__name__}: {e}"
+    score["expected_rows"] = exp.height
     return _finalize(score)
 
 
 def _finalize(score: dict) -> dict:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
+    checks = score["checks"]
+    score["total"] = sum(1 for v in checks.values() if v)
+    score["max"] = len(CHECKS)
+    earned = sum(1 for k, v in checks.items() if v and k not in GATES)
+    gates_ok = all(checks[g] for g in GATES)
+    score["marks"] = round(WEIGHT * earned / (len(CHECKS) - len(GATES)), 1) if gates_ok else 0.0
+    score["passed"] = score["total"] == score["max"]
     return score
 
 

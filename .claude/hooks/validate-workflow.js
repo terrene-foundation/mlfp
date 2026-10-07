@@ -6,15 +6,13 @@
  * Purpose: Enforce Kailash Rust SDK patterns, detect hardcoded models/keys in
  *          code files (Rust, TypeScript, JavaScript).
  *
- *   - Rust files:   BLOCK (exit 2) when a hardcoded model has no matching key
- *   - JS/TS files:  WARN only (exit 0)
- *
- * Rust-first -- validates cargo/Rust patterns for the Kailash crate workspace.
+ * Advisory posture (owner directive 2026-10-07): this hook NEVER blocks.
+ * Findings are delivered via hookSpecificOutput.additionalContext so the
+ * main agent reads and resolves them in-session instead of the session
+ * halting for a human.
  *
  * Exit Codes:
- *   0 = success / warn-only
- *   2 = blocking error (Rust model without key)
- *   other = non-blocking error
+ *   0 = always (findings reported as additionalContext)
  */
 
 const fs = require("fs");
@@ -41,14 +39,24 @@ process.stdin.on("end", () => {
     const result = validateFile(data);
     console.log(
       JSON.stringify({
-        continue: result.continue,
+        continue: true,
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
           validation: result.messages,
+          ...(result.blocked && {
+            additionalContext:
+              "ADVISORY from validate-workflow (non-blocking per owner directive): " +
+              result.messages
+                .filter(
+                  (m) => m.startsWith("BLOCKED") || m.startsWith("CRITICAL"),
+                )
+                .join(" | ") +
+              " — MAIN AGENT: resolve these findings now (fix the code), do not defer.",
+          }),
         },
       }),
     );
-    process.exit(result.exitCode);
+    process.exit(0);
   } catch (error) {
     console.error(`[HOOK ERROR] ${error.message}`);
     console.log(JSON.stringify({ continue: true }));
@@ -151,10 +159,15 @@ function validateFile(data) {
     logFileObservations(content, filePath, cwd, messages);
   } catch {}
 
+  // Advisory posture: findings are never session-blocking. The blocked flag
+  // only promotes the messages into additionalContext (delivered to the main
+  // agent); the process always exits 0 so work continues and the agent
+  // resolves the finding in-session.
   return {
-    continue: !shouldBlock,
-    exitCode: shouldBlock ? 2 : 0,
+    continue: true,
+    exitCode: 0,
     messages,
+    blocked: shouldBlock,
   };
 }
 

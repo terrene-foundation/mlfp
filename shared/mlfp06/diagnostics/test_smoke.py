@@ -101,7 +101,7 @@ def test_observatory_with_mocks() -> None:
 def test_report_returns_dict() -> None:
     """report() must return a dict with exactly the six lens keys."""
     obs = LLMObservatory()
-    result = obs.report()
+    result = obs.report(format="dict")
     assert isinstance(result, dict), f"expected dict, got {type(result)}"
     assert (
         set(result.keys()) == LENS_NAMES
@@ -122,7 +122,7 @@ def test_dashboard_returns_figure() -> None:
 def test_each_lens_report_has_severity() -> None:
     """Every lens report dict must have a canonical severity field."""
     obs = LLMObservatory()
-    r = obs.report()
+    r = obs.report(format="dict")
     for lens_name, lens_report in r.items():
         assert isinstance(
             lens_report, dict
@@ -168,7 +168,7 @@ def test_governance_loud_when_no_engine() -> None:
 def test_governance_report_with_no_engine() -> None:
     """Governance report MUST degrade gracefully (text) when no engine is set."""
     obs = LLMObservatory()
-    r = obs.report()
+    r = obs.report(format="dict")
     gov = r["governance"]
     assert gov["severity"] == "UNKNOWN"
     assert "no engine" in gov["summary"].lower()

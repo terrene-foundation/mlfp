@@ -17,9 +17,9 @@
 # ESTIMATED TIME: ~45 min
 #
 # TASKS:
-#   1. Simulate Singapore HDB cooling-measure data
+#   1. Simulate HDB transactions around a hypothetical cooling measure
 #   2. Compute the DiD estimate and standard error
-#   3. Test the parallel trends assumption (bootstrap)
+#   3. Test the parallel trends assumption (pre-period interaction test)
 #   4. Visualise DiD with counterfactual
 #   5. Apply to Singapore property policy evaluation
 #   6. Synthesise all causal inference methods
@@ -37,15 +37,16 @@ import asyncio
 
 import numpy as np
 import plotly.graph_objects as go
-from kailash.db import ConnectionManager
+import polars as pl
 from kailash_ml import ExperimentTracker
 
 from shared.mlfp02.ex_7 import (
     OUTPUT_DIR,
+    did_cells,
     diff_in_diff,
     parallel_trends_test,
     print_banner,
-    simulate_hdb_cooling_measures,
+    simulate_hdb_cooling_panel,
 )
 
 
@@ -53,8 +54,9 @@ from shared.mlfp02.ex_7 import (
 # THEORY — When Randomisation Is Impossible
 # ════════════════════════════════════════════════════════════════════════
 # You cannot randomise government policy. You cannot randomly assign
-# stamp duty to some districts and not others. Yet policymakers still
-# need to know: "Did the cooling measure actually reduce HDB prices?"
+# stamp duty to some districts and not others (well, you could, but
+# no government would agree). Yet policymakers still need to know:
+# "Did the cooling measure actually reduce HDB prices?"
 #
 # Difference-in-Differences (DiD) answers this by comparing:
 #   - How the TREATED group changed (Central HDB prices: pre vs post)
@@ -72,9 +74,15 @@ from shared.mlfp02.ex_7 import (
 # were already faster BEFORE the drink, you cannot attribute the
 # difference to the drink — that violates parallel trends.
 #
-# WHY THIS MATTERS: Singapore's property cooling measures (Additional
-# Buyer's Stamp Duty, loan-to-value limits) are evaluated using DiD
-# by MAS and URA to determine whether to tighten, relax, or maintain.
+# The parallel-trends test below uses ONLY pre-policy data from the same
+# transactions: if the treated group's prices were already rising faster
+# (or slower) before the policy, the group x time interaction picks it up.
+#
+# WHY THIS MATTERS: Property cooling measures such as the Additional
+# Buyer's Stamp Duty (ABSD) cannot be randomised, so anyone assessing
+# whether they worked needs a quasi-experimental design like DiD.
+# NOTE: the scenario in this exercise is a hypothetical measure on
+# simulated data, not an evaluation of any real policy.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -83,19 +91,24 @@ from shared.mlfp02.ex_7 import (
 
 print_banner("MLFP02 Exercise 7.4: Difference-in-Differences")
 
-# TODO: Simulate the HDB cooling-measure dataset using the shared helper.
-# Hint: simulate_hdb_cooling_measures(n_per_cell=500, seed=99) returns a
-#   dict with keys: pre_central, post_central, pre_noncentral, post_noncentral.
+# 6 quarters before and 6 after a HYPOTHETICAL measure that applies only
+# to Central-region flats. The simulation's true policy effect is -$20,000.
+# TODO: Simulate the panel and split it into the four DiD cells.
+# Hint: simulate_hdb_cooling_panel(n_per_period=200, n_pre=6, n_post=6,
+#   policy_effect=-20_000, seed=99); then did_cells(panel)
+panel = ____
 cells = ____
 
-print(f"\n  Scenario: Stamp duty increase in Central Singapore")
-print(f"  Treatment: Central HDB transactions (hit by policy)")
-print(f"  Control:   Non-Central HDB transactions (exempt)")
-print(f"  Samples per cell: 500")
+print(f"\n  Scenario (simulated): hypothetical measure on Central-region flats")
+print(f"  Treatment: Central transactions (subject to the measure)")
+print(f"  Control:   Non-Central transactions (not subject to it)")
+print(f"  Panel: {panel.height:,} transactions over {panel['period'].n_unique()} quarters")
+print(panel.group_by(["central", "post"]).len().sort(["central", "post"]))
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert all(len(v) == 500 for v in cells.values()), "All cells must have 500 samples"
-print("\n>>> Checkpoint 1 passed -- HDB data simulated\n")
+assert set(panel.columns) == {"period", "central", "post", "price"}, "Unexpected panel columns"
+assert all(len(v) == 1200 for v in cells.values()), "Each DiD cell should hold 6 x 200 rows"
+print("\n>>> Checkpoint 1 passed -- HDB panel simulated\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -103,10 +116,16 @@ print("\n>>> Checkpoint 1 passed -- HDB data simulated\n")
 # ════════════════════════════════════════════════════════════════════════
 # ATT = (Y_treat_post - Y_treat_pre) - (Y_ctrl_post - Y_ctrl_pre)
 
-# TODO: Compute the DiD estimate using the shared helper.
-# Hint: diff_in_diff(cells) returns a dict with did_estimate, se,
-#   ci_lo, ci_hi, p_value, and the four cell means.
-did = ____
+# TODO: Compute the four cell means (keys: pre_central, post_central,
+# pre_noncentral, post_noncentral), then the difference of differences.
+y_treat_pre = ____
+y_treat_post = ____
+y_ctrl_pre = ____
+y_ctrl_post = ____
+did_estimate = ____  # Hint: (treated change) - (control change)
+
+# The reference helper adds the standard error, CI and p-value
+did = diff_in_diff(cells)
 
 print(f"\n=== Difference-in-Differences ===")
 print(f"\n{'Group':<15} {'Pre-policy':>14} {'Post-policy':>14} {'Delta':>14}")
@@ -119,13 +138,21 @@ print(
     f"{'Non-Central':<15} ${did['y_ctrl_pre']:>12,.0f} ${did['y_ctrl_post']:>12,.0f} "
     f"${did['y_ctrl_post'] - did['y_ctrl_pre']:>+12,.0f}"
 )
-print(f"\nDiD estimate (policy effect): ${did['did_estimate']:,.0f}")
+print(f"\nYour DiD estimate:             ${did_estimate:,.0f}")
+print(f"DiD estimate (policy effect): ${did['did_estimate']:,.0f}  (true simulated effect: -$20,000)")
 print(f"SE: ${did['se']:,.0f}")
 print(f"95% CI: [${did['ci_lo']:,.0f}, ${did['ci_hi']:,.0f}]")
 print(f"p-value: {did['p_value']:.4f}")
+# INTERPRETATION: DiD removes time-invariant confounders by differencing
+# pre and post periods. The assumption is that without the policy,
+# Central and Non-Central would have followed parallel trends. The
+# sign of the DiD estimate says whether Central prices ended up below
+# (negative) or above (positive) where the control group's trend says
+# they would have been. Check whether the CI covers the true -$20,000.
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert did["se"] > 0, "DiD SE must be positive"
+assert abs(did_estimate - did["did_estimate"]) < 1e-6, "Your DiD should match the reference helper"
 print("\n>>> Checkpoint 2 passed -- DiD analysis completed\n")
 
 
@@ -133,27 +160,53 @@ print("\n>>> Checkpoint 2 passed -- DiD analysis completed\n")
 # TASK 3 — Parallel Trends Test
 # ════════════════════════════════════════════════════════════════════════
 # DiD validity requires parallel trends in the pre-period.
-# Test: are the pre-period trends in treatment and control similar?
+# Test on the PRE-period rows of the same panel:
+#   price = b0 + b1*period + b2*central + b3*(central x period)
+# b3 = difference in pre-period slopes; H0: b3 = 0.
 
 print(f"\n=== Parallel Trends Test ===")
 
-# TODO: Run the parallel trends test using the shared helper.
-# Hint: parallel_trends_test(seed=99) returns a dict with
-#   slope_central, slope_noncentral, slope_diff, bootstrap_p, passes.
+# TODO: Run the pre-period interaction test on the same panel.
+# Hint: parallel_trends_test(panel) returns slope_diff, slope_diff_se,
+#   t_stat, p_value, passes.
 pt = ____
 
-print(f"Pre-period trends:")
-print(f"  Central slope:     ${pt['slope_central']:,.0f}/period")
-print(f"  Non-Central slope: ${pt['slope_noncentral']:,.0f}/period")
-print(f"  Slope difference:  ${pt['slope_diff']:,.0f}/period")
-print(f"  Bootstrap p-value: {pt['bootstrap_p']:.4f}")
-if pt["passes"]:
-    print(f"  Parallel trends assumption HOLDS (cannot reject equal slopes)")
-else:
-    print(f"  Parallel trends assumption VIOLATED -- DiD may be biased")
+
+def report_trends(label: str, result: dict) -> None:
+    print(f"{label}:")
+    print(f"  Central slope:     ${result['slope_central']:,.0f}/quarter")
+    print(f"  Non-Central slope: ${result['slope_noncentral']:,.0f}/quarter")
+    print(
+        f"  Slope difference:  ${result['slope_diff']:,.0f}/quarter "
+        f"(SE ${result['slope_diff_se']:,.0f}), t = {result['t_stat']:.2f}, "
+        f"p = {result['p_value']:.4f}"
+    )
+    if result["passes"]:
+        print("  Cannot reject parallel pre-trends — DiD assumption is plausible")
+    else:
+        print("  Pre-trends DIFFER — DiD would be biased; do not report it as causal")
+
+
+report_trends("Pre-period trends (this panel)", pt)
+
+# Does the test have teeth? Simulate a market where Central prices were
+# already rising $6,000/quarter faster BEFORE the measure.
+panel_violated = simulate_hdb_cooling_panel(
+    n_per_period=200, n_pre=6, n_post=6, central_extra_growth=6_000,
+    policy_effect=-20_000, seed=99,
+)
+# TODO: Run the same test on the violated panel.
+pt_violated = ____
+did_violated = diff_in_diff(did_cells(panel_violated))
+report_trends("\nPre-period trends (violated scenario)", pt_violated)
+print(
+    f"  DiD on the violated panel: ${did_violated['did_estimate']:,.0f} "
+    f"vs the true -$20,000 — the pre-existing trend contaminates the estimate"
+)
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
-assert isinstance(pt["passes"], (bool, np.bool_)), "Parallel trends must return bool"
+assert isinstance(pt["passes"], bool), "Parallel trends must return bool"
+assert not pt_violated["passes"], "The test must reject clearly non-parallel pre-trends"
 print("\n>>> Checkpoint 3 passed -- parallel trends test completed\n")
 
 
@@ -161,11 +214,6 @@ print("\n>>> Checkpoint 3 passed -- parallel trends test completed\n")
 # TASK 4 — Visualise: DiD with Counterfactual
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: Create a plotly figure with three lines:
-#   1. Central (treated): pre -> post (solid red)
-#   2. Non-Central (control): pre -> post (solid blue)
-#   3. Counterfactual (what Central would have been): dashed red
-# Hint: counterfactual = y_treat_pre + (y_ctrl_post - y_ctrl_pre)
 fig = go.Figure()
 fig.add_trace(
     go.Scatter(
@@ -185,7 +233,9 @@ fig.add_trace(
         mode="lines+markers",
     )
 )
-counterfactual = did["y_treat_pre"] + (did["y_ctrl_post"] - did["y_ctrl_pre"])
+# Counterfactual: what Central would have been without the policy
+# TODO: Central's pre-period level plus the CONTROL group's change.
+counterfactual = ____
 fig.add_trace(
     go.Scatter(
         x=["Pre", "Post"],
@@ -195,6 +245,7 @@ fig.add_trace(
         mode="lines+markers",
     )
 )
+# Annotate the DiD
 fig.add_annotation(
     x="Post",
     y=(did["y_treat_post"] + counterfactual) / 2,
@@ -210,30 +261,32 @@ out_path = OUTPUT_DIR / "did_visualization.html"
 fig.write_html(str(out_path))
 print(f"\nSaved: {out_path}")
 
-# Parallel trends visualisation
+# Quarterly means, pre and post, for both panels
 fig2 = go.Figure()
-time_pts = list(range(len(pt["pre_central"])))
-fig2.add_trace(
-    go.Scatter(
-        x=time_pts,
-        y=pt["pre_central"],
-        name="Central (pre-period)",
-        line={"color": "red"},
-        mode="lines+markers",
+for label, pan, dash in (("", panel, "solid"), (" — violated", panel_violated, "dot")):
+    q = (
+        pan.group_by(["period", "central"])
+        .agg(pl.col("price").mean())
+        .sort(["central", "period"])
     )
-)
-fig2.add_trace(
-    go.Scatter(
-        x=time_pts,
-        y=pt["pre_noncentral"],
-        name="Non-Central (pre-period)",
-        line={"color": "blue"},
-        mode="lines+markers",
-    )
-)
+    for central, colour, name in ((1, "red", "Central"), (0, "blue", "Non-Central")):
+        g = q.filter(pl.col("central") == central)
+        fig2.add_trace(
+            go.Scatter(
+                x=g["period"].to_list(),
+                y=g["price"].to_list(),
+                name=f"{name}{label}",
+                line={"color": colour, "dash": dash},
+                mode="lines+markers",
+            )
+        )
+fig2.add_vline(x=5.5, line_dash="dash", annotation_text="Measure starts")
 fig2.update_layout(
-    title=f"Parallel Trends Test (bootstrap p={pt['bootstrap_p']:.3f})",
-    xaxis_title="Pre-Period",
+    title=(
+        f"Parallel Trends: p={pt['p_value']:.3f} (this panel), "
+        f"p={pt_violated['p_value']:.2g} (violated)"
+    ),
+    xaxis_title="Quarter",
     yaxis_title="Mean HDB Price (S$)",
 )
 out_path2 = OUTPUT_DIR / "parallel_trends.html"
@@ -242,34 +295,43 @@ print(f"Saved: {out_path2}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — MAS/URA Policy Evaluation: Additional Buyer's Stamp Duty
+# APPLY — Evaluating a Property Cooling Measure (hypothetical)
 # ════════════════════════════════════════════════════════════════════════
-# Scenario: Singapore's Additional Buyer's Stamp Duty (ABSD) was
-# introduced in December 2011 and has been revised multiple times.
-# MAS and URA evaluate its impact using DiD:
+# Scenario: a policy analyst must report whether the hypothetical
+# Central-region measure lowered prices. Real measures such as ABSD
+# (introduced in December 2011 and revised several times since) raise
+# the same question, and DiD is one standard way to answer it — but
+# only after the pre-trend check passes.
 #
-#   Treatment: property types affected by ABSD (e.g., private condos)
-#   Control: property types exempt (e.g., HDB resale for first-time buyers)
-#
-# The DiD estimate tells policymakers whether the ABSD actually
-# cooled prices or if prices were already declining.
+# The analyst's report: per-flat effect with its CI, the share of the
+# pre-policy price, and the effect summed over an ASSUMED number of
+# Central transactions per year (illustrative, not an official figure).
 
-print(f"\n--- Singapore Application: Property Cooling Measure Evaluation ---")
-market_size = 1_200_000_000_000  # S$1.2T
-price_effect_pct = abs(did["did_estimate"]) / did["y_treat_pre"]
-market_impact = market_size * price_effect_pct
-print(f"Singapore residential property market: S${market_size / 1e12:.1f}T")
-print(f"Estimated price effect: {price_effect_pct:.1%}")
-print(f"Market impact: S${market_impact / 1e9:.1f}B")
+print(f"\n--- Singapore Application: Cooling-Measure Evaluation (simulated) ---")
+central_txns_per_year = 5_000  # illustrative
+price_effect_pct = did["did_estimate"] / did["y_treat_pre"]
 print(
-    f"Policy conclusion: "
-    f"{'ABSD effective' if did['p_value'] < 0.05 else 'ABSD effect not significant'}"
+    f"Effect per Central flat: ${did['did_estimate']:,.0f} "
+    f"(95% CI ${did['ci_lo']:,.0f} to ${did['ci_hi']:,.0f})"
 )
+print(f"As a share of the pre-policy Central mean: {price_effect_pct:+.1%}")
+print(
+    f"Summed over {central_txns_per_year:,} assumed transactions/year: "
+    f"S${did['did_estimate'] * central_txns_per_year / 1e6:,.1f}M"
+)
+if not pt["passes"]:
+    conclusion = "not reportable — pre-trends differ"
+elif did["p_value"] < 0.05:
+    conclusion = "measure lowered Central prices relative to the control trend"
+else:
+    conclusion = "no detectable effect at the 5% level"
+print(f"Policy conclusion: {conclusion}")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Causal Inference Decision Framework
 # ════════════════════════════════════════════════════════════════════════
+# Synthesise all four methods into a decision tree.
 
 print(f"\n{'='*70}")
 print(f"CAUSAL INFERENCE DECISION FRAMEWORK")
@@ -305,18 +367,16 @@ When to use each method:
 async def log_did_results():
     db = "sqlite:///mlfp02_experiments.db"
     tracker = await ExperimentTracker.create(store_url=db)
-    conn = ConnectionManager(db)
-    await conn.initialize()
 
     exp_id = "mlfp02_ex7_diff_in_diff"
 
     async with tracker.track(experiment=exp_id, run_name="did_hdb_cooling") as run:
         await run.log_params(
             {
-                "did_treatment": "Central Singapore HDB",
-                "did_control": "Non-Central Singapore HDB",
-                "n_per_cell": "500",
-                "parallel_trends_method": "bootstrap",
+                "did_treatment": "Central HDB (simulated)",
+                "did_control": "Non-Central HDB (simulated)",
+                "n_per_cell": str(len(cells["pre_central"])),
+                "parallel_trends_method": "pre-period group x time interaction",
             }
         )
         await run.log_metrics(
@@ -324,18 +384,15 @@ async def log_did_results():
                 "did_estimate": float(did["did_estimate"]),
                 "did_se": float(did["se"]),
                 "did_p_value": float(did["p_value"]),
-                "parallel_trends_p": float(pt["bootstrap_p"]),
+                "parallel_trends_p": float(pt["p_value"]),
                 "parallel_trends_passes": float(pt["passes"]),
             }
         )
     print(f"\nLogged DiD experiment run")
-    await conn.close()
+    await tracker.close()
 
 
-try:
-    asyncio.run(log_did_results())
-except Exception as e:
-    print(f"  [Skipped: ExperimentTracker logging ({type(e).__name__}: {e})]")
+asyncio.run(log_did_results())
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
 print("\n>>> Checkpoint 4 passed -- visualisation and logging complete\n")
@@ -350,9 +407,10 @@ print("=" * 70)
 print(
     """
   - DiD: ATT = (treat_post - treat_pre) - (ctrl_post - ctrl_pre)
-  - Parallel trends: bootstrap test for the key DiD assumption
+  - Parallel trends: pre-period group x time interaction test, and
+    proof that it rejects when trends really differ
   - Counterfactual reasoning: what WOULD have happened without treatment
-  - Singapore policy evaluation: ABSD impact on HDB prices
+  - Reporting a (hypothetical) cooling-measure evaluation responsibly
   - Decision framework: CUPED vs Bayesian vs Sequential vs DiD
 
   COMPLETE: You now have four causal inference tools:

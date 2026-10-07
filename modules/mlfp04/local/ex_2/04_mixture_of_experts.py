@@ -9,10 +9,10 @@
 #   - Read GMM soft assignments as intent vectors, not class labels
 #   - Measure assignment confidence with max-probability and entropy
 #   - Identify boundary customers that hard clustering would bury
-#   - Explain Mixture of Experts as input-dependent gating g_k(x)
+#   - Explain Mixture of Experts as input-dependent gating (g_k(x))
 #   - Connect classical MoE to Sparse MoE in modern LLMs (Mixtral)
 #
-# PREREQUISITES: 03_covariance_types.py
+# PREREQUISITES: 03_covariance_types.py (BIC-optimal K on customer data)
 #
 # ESTIMATED TIME: ~35 min
 #
@@ -21,7 +21,7 @@
 #   2. Build — soft_vs_hard analysis + simple MoE gate demo
 #   3. Train — fit the BIC-optimal GMM and extract soft responsibilities
 #   4. Visualise — confidence histogram + segment profile
-#   5. Apply — Carousell personalised listing ranking (Singapore)
+#   5. Apply — Singapore C2C marketplace personalised listing ranking
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -35,6 +35,7 @@ from kailash_ml import ModelVisualizer
 # Cross-exercise import: tracker helpers live in ex_1.shared so every M4
 # unsupervised technique logs to the same `m4_clustering_zoo` experiment.
 from shared.mlfp04.ex_1 import setup_engines, teardown_engines, track_run
+from shared.mlfp04 import create_visualizer
 from shared.mlfp04.ex_2 import (
     load_customers_scaled,
     out_path,
@@ -54,8 +55,10 @@ tracker, exp_name = setup_engines()
 # g_k(x) is a softmax over gating logits:
 #     g_k(x) = exp(w_k^T x) / Sum_j exp(w_j^T x)
 #
-# Mixtral 8x7B uses this idea at LLM scale: 8 experts, top-2 routing
-# per token => ~14B active params, not 56B. Same gating equation.
+# Mixtral 8x7B uses this idea at LLM scale: 8 feed-forward experts per
+# layer, top-2 routing per token by a single linear router. Attention is
+# shared, so ~46.7B total params (not 56B) and ~12.9B active per token.
+# Same gating equation.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -116,7 +119,7 @@ soft_probs = ____
 hard_labels = best_gmm.predict(X_scaled)
 
 profile = soft_vs_hard(soft_probs)
-print(f"\nConfidence bands (fraction of customers in each):")
+print("\nConfidence bands (fraction of customers in each):")
 print(f"  confident  (>0.95):     {profile['confident']:.1%}")
 print(f"  moderate   (0.70-0.95): {profile['moderate']:.1%}")
 print(f"  ambiguous  (0.50-0.70): {profile['ambiguous']:.1%}")
@@ -146,7 +149,7 @@ print(
 # TASK 4 — VISUALISE: confidence bands + segment profile
 # ════════════════════════════════════════════════════════════════════════
 
-viz = ModelVisualizer()
+viz = create_visualizer()
 confidence_chart = {
     "Confidence bands": {
         "confident": profile["confident"],
@@ -184,7 +187,7 @@ print("\n[ok] Checkpoint 2 passed — per-segment profile produced")
 
 # MoE gate demo
 moe_demo = simple_moe_gate(X_scaled[:, :2])
-print(f"\nMoE gating demo on first 2 features:")
+print("\nMoE gating demo on first 2 features:")
 print(f"  Expert 0 active (gate > 0.5): {(moe_demo[:, 0] > 0.5).mean():.1%}")
 print(f"  Expert 1 active (gate > 0.5): {(moe_demo[:, 1] > 0.5).mean():.1%}")
 
@@ -195,9 +198,9 @@ print("[ok] Checkpoint 3 passed — MoE gate produces a valid softmax distributi
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Carousell Personalised Listing Ranking (Singapore)
+# TASK 5 — APPLY: C2C Marketplace Personalised Listing Ranking (Singapore)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Carousell is SEA's largest C2C marketplace with ~35M users.
+# SCENARIO: A Singapore-based C2C marketplace has (assume) ~35M users.
 # The feed ranker has ~80ms to order ~10M live listings per session.
 # A Saturday shopper might be 60% bargain hunter, 30% home-decor browser,
 # 10% gift shopper in the same session. Hard segment models pick one
@@ -207,16 +210,16 @@ print("[ok] Checkpoint 3 passed — MoE gate produces a valid softmax distributi
 #   expected_click = sum_k r_k * CTR_k(listing)
 # Same idea as Sparse MoE in LLMs: top-K gated experts per query.
 #
-# BUSINESS IMPACT (from Carousell public disclosures):
+# BUSINESS IMPACT (illustrative assumptions, not reported figures):
 #   - Feed impressions/day: ~900M at baseline CTR ~6.2%
-#   - Soft intent-vector ranking lifts CTR ~8% vs hard-segment ranking
+#   - Assume soft intent-vector ranking lifts CTR ~8% vs hard segments
 #   - 8% * 900M impressions/day = ~4.5M extra clicks/day
 #   - At ~S$0.018 monetisation/click => ~S$81K/day = S$29.6M/year
 #   - Zero marginal infra cost: GMM is fitted nightly and responsibilities
 #     are materialised into the existing feature store.
 
 print("\n" + "=" * 70)
-print("  APPLY — Carousell personalised listing ranking")
+print("  APPLY — C2C marketplace personalised listing ranking")
 print("=" * 70)
 print(
     f"Out of {X_scaled.shape[0]} customers, {n_boundary} "
@@ -224,8 +227,8 @@ print(
     "keeps ALL of them in the long-tail of every applicable segment ranker."
 )
 print(
-    "At Carousell's scale, blending intents with soft responsibilities "
-    "recovers ~S$29.6M/year in feed monetisation — from the same GMM "
+    "At the assumed scale, blending intents with soft responsibilities "
+    "is worth an illustrative ~S$29.6M/year in feed monetisation — from the same GMM "
     "you just fitted, read a different way."
 )
 
@@ -234,7 +237,7 @@ print(
 # TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
 # ════════════════════════════════════════════════════════════════════════
 # This is the FINAL lesson in the M4 ex_2 GMM block. After it lands the
-# m4_clustering_zoo experiment will hold eight runs across four families.
+# m4_clustering_zoo experiment will hold nine runs across five families.
 
 # TODO: call track_run with run_name "gmm_soft_assignment_moe". scalar
 # metrics include the four confidence-band percentages from `profile`,
@@ -272,9 +275,9 @@ print(f"  [tracked] soft-assignment + MoE gate metrics logged to {exp_name}\n")
 # DESTINATION-FIRST CLOSE — engine fit + close the m4_clustering_zoo loop
 # ════════════════════════════════════════════════════════════════════════
 # After this lesson, the m4_clustering_zoo experiment in
-# mlfp04_ex1_clustering.db holds eight runs across four families:
+# mlfp04_ex1_clustering.db holds nine runs across five families:
 #   kmeans_pp / hierarchical_<linkage> / dbscan_hdbscan / spectral_rbf
-#   em_from_scratch / sklearn_gmm_bic_aic / gmm_cov_<best> / gmm_soft_moe
+#   evaluation_profiling / em_from_scratch / sklearn_gmm_bic_aic / gmm_cov_<best> / gmm_soft_moe
 #
 # The leaderboard is the unifying surface across all clustering runs on
 # the same Singapore e-commerce dataset. ClusteringEngine.fit returns
@@ -296,7 +299,7 @@ print(
 )
 print(
     "  Open mlfp04_ex1_clustering.db for the full m4_clustering_zoo"
-    " leaderboard — eight runs across four clustering families on the"
+    " leaderboard — nine runs across five clustering families on the"
     " same dataset, ready for cross-method comparison.\n"
 )
 
@@ -312,10 +315,17 @@ print(
   [x] Soft GMM responsibilities carry uncertainty hard labels destroy
   [x] Max-probability and entropy diagnose boundary customers
   [x] MoE = GMM with input-dependent gating g_k(x)
-  [x] Sparse MoE in Mixtral/GPT-4 is the same idea at LLM scale
-  [x] Carousell scenario: soft intent vectors = S$29.6M/year in feed rev
+  [x] Sparse MoE in LLMs such as Mixtral is the same idea at LLM scale
+  [x] C2C marketplace scenario: soft intent vectors are worth an
+      illustrative S$29.6M/year in feed revenue without extra serving
+      cost
 
-  Exercise 2 complete. Next: Exercise 3 — PCA on the same customer data.
+  KEY INSIGHT: the GMM you just fitted is already a personalisation
+  engine. You don't need a new model — you need a new way to READ the
+  responsibility matrix. Hard argmax throws away all of the uncertainty.
+
+  Exercise 2 complete. Next: Exercise 3 introduces PCA and
+  dimensionality reduction on the same customer data.
 """
 )
 

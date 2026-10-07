@@ -51,6 +51,7 @@ from shared.mlfp05.ex_4 import (
     scaled_dot_product_attention,
     setup_engines,
     text_to_indices,
+    evaluate_accuracy,
     train_model,
 )
 
@@ -140,10 +141,10 @@ class EducationalMultiHead(nn.Module):
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         b, seq, d = x.shape
         # TODO: Compute QKV, split heads, apply attention, concatenate, project
-        # Hint: qkv = self.qkv(x).reshape(b, seq, 3, self.n_heads, self.d_k)
-        # Hint: q, k, v = qkv.unbind(dim=2)
-        # Hint: Reshape to (b*n_heads, seq, d_k), call scaled_dot_product_attention
-        # Hint: Reshape back, project with self.proj
+        # Hint: (b, seq, 3*d_model) -> q, k, v of (b, seq, n_heads, d_k)
+        #   -> fold heads into batch (b*n_heads, seq, d_k) -> attention
+        #   -> unfold to (b, seq, d_model) -> self.proj. Return (output,
+        #   weights reshaped to (b, n_heads, seq, seq)).
         ...  # YOUR CODE HERE
 
 
@@ -159,8 +160,8 @@ class PositionalEncoding(nn.Module):
         div = torch.exp(
             torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
         )
-        # TODO: pe[:, 0::2] = torch.sin(position * div)
-        # TODO: pe[:, 1::2] = torch.cos(position * div)
+        # TODO: sin(position * div) into the even feature columns,
+        #   cos(position * div) into the odd ones.
         ...  # YOUR CODE HERE
         self.register_buffer("pe", pe.unsqueeze(0))
 
@@ -194,16 +195,16 @@ class TransformerClassifier(nn.Module):
 # --- LSTM ---
 print("\n== Training LSTM baseline ==")
 # TODO: Create and train LSTM model
-# Hint: lstm_model = LSTMClassifier(vocab_size=len(vocab), embed_dim=128, hidden_dim=128, n_layers=2, n_classes=4)
-# Hint: lstm_losses, lstm_accs = train_model(lstm_model, "lstm_baseline", train_loader, val_loader, tracker, exp_name, epochs=EPOCHS_SCRATCH)
+# Hint: same configuration and train_model call as 03_lstm_baseline.py
+#   (embed/hidden 128, 2 layers, 4 classes, run name "lstm_baseline").
 lstm_model = ...  # YOUR CODE HERE
 lstm_losses, lstm_accs = ...  # YOUR CODE HERE
 
 # --- Transformer ---
 print("\n== Training Transformer ==")
 # TODO: Create and train Transformer model
-# Hint: transformer_model = TransformerClassifier(vocab_size=len(vocab), d_model=128, n_heads=4, n_layers=3, n_classes=4)
-# Hint: transformer_losses, transformer_accs = train_model(transformer_model, "transformer", train_loader, val_loader, tracker, exp_name, epochs=EPOCHS_SCRATCH)
+# Hint: same configuration and train_model call as 02_transformer_encoder.py
+#   (d_model 128, 4 heads, 3 layers, 4 classes, run name "transformer").
 transformer_model = ...  # YOUR CODE HERE
 transformer_losses, transformer_accs = ...  # YOUR CODE HERE
 
@@ -217,9 +218,8 @@ bert_model = BertForSequenceClassification.from_pretrained(
 ).to(DEVICE)
 
 # TODO: Freeze lower 8 of 12 layers
-# Hint: for name, param in bert_model.named_parameters():
-#           if "bert.encoder.layer" in name and int(name.split(".")[3]) < 8: param.requires_grad = False
-#           elif "bert.embeddings" in name: param.requires_grad = False
+# Hint: as in 04_bert_finetuning.py — read the layer index out of each
+#   "bert.encoder.layer.<k>..." parameter name; freeze k < 8 and the embeddings.
 for name, param in bert_model.named_parameters():
     ...  # YOUR CODE HERE
 
@@ -251,29 +251,26 @@ bert_train_loader = DataLoader(
         bert_train_ids.to(DEVICE), bert_train_mask.to(DEVICE), bert_train_y.to(DEVICE)
     ),
     batch_size=BERT_BATCH_SIZE,
-    shuffle=True,
-)
-bert_val_loader = DataLoader(
+    shuffle=True, num_workers=0)
+bert_test_loader = DataLoader(
     TensorDataset(
         bert_test_ids.to(DEVICE), bert_test_mask.to(DEVICE), bert_test_y.to(DEVICE)
     ),
-    batch_size=BERT_BATCH_SIZE,
-)
+    batch_size=BERT_BATCH_SIZE, num_workers=0)
 
 
-async def train_bert_async(model, train_loader, val_loader, epochs=3, lr=2e-5):
+async def train_bert_async(model, train_loader, test_loader, epochs=3, lr=2e-5):
     # TODO: Implement BERT training loop with ExperimentTracker
-    # Hint: optimizer = AdamW, scheduler = LinearLR
-    # Hint: async with tracker.track(...) as run: log params, train loop, log metrics
-    optimizer = ...  # YOUR CODE HERE — AdamW with trainable params only
+    # Hint: AdamW over trainable parameters only (lr, weight decay 0.01);
+    #   the LinearLR scheduler and tracker run below are provided.
+    optimizer = ...  # YOUR CODE HERE
     scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer,
         start_factor=1.0,
         end_factor=0.1,
         total_iters=epochs,
     )
-    train_losses, val_accs = [], []
-    best_acc = 0.0
+    train_losses, test_accs = [], []
 
     async with tracker.track(experiment=exp_name, run_name="bert_finetune") as run:
         await run.log_params(
@@ -292,9 +289,8 @@ async def train_bert_async(model, train_loader, val_loader, epochs=3, lr=2e-5):
             batch_losses = []
             for batch_idx, (ids, mask, labels) in enumerate(train_loader):
                 # TODO: Forward + backward + step
-                # Hint: optimizer.zero_grad()
-                # Hint: outputs = model(input_ids=ids, attention_mask=mask, labels=labels)
-                # Hint: outputs.loss.backward(); clip_grad_norm_; optimizer.step()
+                # Hint: labels in -> outputs.loss out; clip grad norm to 1.0;
+                #   record each batch loss in batch_losses.
                 ...  # YOUR CODE HERE
                 if (batch_idx + 1) % 500 == 0:
                     print(
@@ -307,38 +303,94 @@ async def train_bert_async(model, train_loader, val_loader, epochs=3, lr=2e-5):
             model.eval()
             with torch.no_grad():
                 correct = total_count = 0
-                for ids, mask, labels in val_loader:
+                for ids, mask, labels in test_loader:
                     # TODO: Get predictions and accumulate accuracy
-                    # Hint: preds = model(input_ids=ids, attention_mask=mask).logits.argmax(dim=-1)
+                    #   (argmax of .logits; update correct and total_count).
                     ...  # YOUR CODE HERE
                 acc = correct / total_count
-                val_accs.append(acc)
+                test_accs.append(acc)
 
             await run.log_metrics(
-                {"train_loss": epoch_loss, "val_accuracy": acc}, step=epoch + 1
+                {"train_loss": epoch_loss, "test_accuracy": acc}, step=epoch + 1
             )
-            if acc > best_acc:
-                best_acc = acc
             print(
-                f"  [BERT] epoch {epoch+1}/{epochs}  loss={epoch_loss:.4f}  val_acc={acc:.3f}"
+                f"  [BERT] epoch {epoch+1}/{epochs}  loss={epoch_loss:.4f}  test_acc={acc:.3f}"
             )
 
         await run.log_metrics(
-            {"best_val_accuracy": best_acc, "final_train_loss": train_losses[-1]}
+            {"final_test_accuracy": test_accs[-1], "final_train_loss": train_losses[-1]}
         )
-    return train_losses, val_accs
+    return train_losses, test_accs
 
 
 bert_losses, bert_accs = asyncio.run(
-    train_bert_async(bert_model, bert_train_loader, bert_val_loader, epochs=3)
+    train_bert_async(bert_model, bert_train_loader, bert_test_loader, epochs=3)
 )
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — comparative Prescription Pad for all 3
+# ══════════════════════════════════════════════════════════════════
+# Same instruments, three architectures, same data. Probes come from the
+# training loaders (the probe runs in train mode).
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _ce_loss(m, batch):
+    """Cross-entropy on one (token_ids, labels) batch."""
+    xb, yb = batch
+    return F.cross_entropy(m(xb), yb)
+
+
+def _bert_loss(m, ids, mask, labels):
+    return m(input_ids=ids, attention_mask=mask, labels=labels).loss
+
+
+def _bert_adapter(batch):
+    # BERT batches are (ids, mask, labels), passed to the loss as three args
+    return batch[0], batch[1], batch[2]
+
+
+for _title, _model, _loader, _loss, _hist, _adapter, _n in [
+    ("LSTM", lstm_model, train_loader, _ce_loss, lstm_losses, None, 8),
+    ("Transformer", transformer_model, train_loader, _ce_loss, transformer_losses, None, 8),
+    ("BERT fine-tune", bert_model, bert_train_loader, _bert_loss, bert_losses, _bert_adapter, 4),
+]:
+    print(f"\n── Diagnostic Report ({_title}) ──")
+    _diag, _findings = run_diagnostic_checkpoint(
+        _model,
+        _loader,
+        _loss,
+        title=f"{_title} (3-way comparison)",
+        n_batches=_n,
+        train_losses=_hist,
+        batch_adapter=_adapter,
+        show=False,
+    )
+    print_prescription_pad(_findings, f"{_title} (3-way comparison)")
+
+# ══════ READING THE THREE PADS (key: see ex_1/01_standard_ae.py) ══════
+# Line the three pads up. They read optimisation health per layer and
+# the training-loss trend; the accuracy, size and speed table below is
+# what ranks the models. BERT's frozen layers 0-7 receive no gradient
+# by design. Readings you can tie to the architecture (the LSTM's
+# recurrent weights vs the Transformer's residual stack) are worth
+# writing down; differences you cannot explain are worth re-running.
+# ══════════════════════════════════════════════════════════════════
+
+# From-scratch models: the validation-selected checkpoint, measured once
+# on the test split. BERT: its per-epoch test numbers were only monitored
+# (no selection), so report the final epoch.
+lstm_test_acc = evaluate_accuracy(lstm_model, test_t, test_y)
+transformer_test_acc = evaluate_accuracy(transformer_model, test_t, test_y)
+bert_test_acc = bert_accs[-1]
+
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert max(lstm_accs) > 0.60, f"LSTM should exceed 60%, got {max(lstm_accs):.3f}"
+assert lstm_test_acc > 0.60, f"LSTM should exceed 60%, got {lstm_test_acc:.3f}"
 assert (
-    max(transformer_accs) > 0.60
-), f"Transformer should exceed 60%, got {max(transformer_accs):.3f}"
-assert max(bert_accs) > 0.85, f"BERT should exceed 85%, got {max(bert_accs):.3f}"
+    transformer_test_acc > 0.60
+), f"Transformer should exceed 60%, got {transformer_test_acc:.3f}"
+assert bert_test_acc > 0.85, f"BERT should exceed 85%, got {bert_test_acc:.3f}"
 print("\n--- Checkpoint 1 passed --- all three models trained\n")
 
 
@@ -346,7 +398,9 @@ print("\n--- Checkpoint 1 passed --- all three models trained\n")
 # TASK 2 — Visualise: Side-by-side comparison table + training curves
 # ════════════════════════════════════════════════════════════════════════
 # TODO: Build results dictionary and print comparison table
-# Hint: results = { "LSTM": {"best_acc": max(lstm_accs), "final_loss": lstm_losses[-1], "params": sum(p.numel() for p in lstm_model.parameters())}, ... }
+# Hint: keys "LSTM", "Transformer", "BERT (fine-tuned)"; each value holds
+#   "test_acc" (the *_test_acc above), "final_loss" (last training loss) and
+#   "params" (total parameter count; BERT's is total_params).
 results = ...  # YOUR CODE HERE
 
 print("\n== 3-Way Model Comparison on AG News ==")
@@ -354,16 +408,15 @@ print(f"{'Model':<20} {'Best Acc':>10} {'Final Loss':>12} {'Params':>12}")
 print("-" * 56)
 for name, r in results.items():
     print(
-        f"{name:<20} {r['best_acc']:>10.3f} {r['final_loss']:>12.4f} {r['params']:>12,}"
+        f"{name:<20} {r['test_acc']:>10.3f} {r['final_loss']:>12.4f} {r['params']:>12,}"
     )
 
 # TODO: Create training curves comparison chart
-# Hint: viz = get_viz()
-# Hint: fig_curves = viz.training_history(metrics={...all 6 series...}, x_label="Epoch", y_label="Value")
-# Hint: fig_curves.write_html("ex_4_5_training_curves.html")
+# Hint: viz.training_history with all 6 series (loss and val accuracy for
+#   each model) against "Epoch"; save as HTML to ex_4_5_training_curves.html.
 viz = get_viz()
 fig_curves = ...  # YOUR CODE HERE
-...  # YOUR CODE HERE — write_html
+...  # YOUR CODE HERE
 print("\nTraining curves saved to ex_4_5_training_curves.html")
 
 # TODO: Sample predictions from all three models
@@ -382,14 +435,14 @@ bert_model.eval()
 with torch.no_grad():
     transformer_preds = (
         ...
-    )  # YOUR CODE HERE — transformer_model(sample_idx).argmax(dim=-1).cpu().tolist()
+    )  # YOUR CODE HERE — predicted class ids as a Python list
     lstm_preds = (
         ...
-    )  # YOUR CODE HERE — lstm_model(sample_idx).argmax(dim=-1).cpu().tolist()
+    )  # YOUR CODE HERE
     bert_sample_ids, bert_sample_mask = tokenise_for_bert(sample_texts)
     bert_preds = (
         ...
-    )  # YOUR CODE HERE — bert_model(...).logits.argmax(dim=-1).cpu().tolist()
+    )  # YOUR CODE HERE — BERT takes the bert_sample_* tensors (on DEVICE)
 
 print(f"\n== Sample Predictions (all 3 models) ==")
 print(f"{'Headline':<50} {'True':<10} {'LSTM':<10} {'Trans':<10} {'BERT':<10}")
@@ -402,7 +455,7 @@ for i, text in enumerate(sample_texts):
     print(f"{text[:48]:<50} {t:<10} {l:<10} {tr:<10} {b:<10}")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
-best_model_name = max(results, key=lambda k: results[k]["best_acc"])
+best_model_name = max(results, key=lambda k: results[k]["test_acc"])
 assert best_model_name == "BERT (fine-tuned)", (
     f"Expected BERT to be the best model, but {best_model_name} won. "
     "Pre-trained models should dominate on standard NLP benchmarks."
@@ -430,23 +483,21 @@ async def register_all_models():
 
     model_versions = {}
     models_to_register = [
-        ("m5_bert_agnews", bert_model.state_dict(), max(bert_accs), "bert_finetune"),
+        ("m5_bert_agnews", bert_model.state_dict(), bert_test_acc, "bert_finetune"),
         (
             "m5_transformer_agnews",
             transformer_model.state_dict(),
-            max(transformer_accs),
+            transformer_test_acc,
             "transformer",
         ),
-        ("m5_lstm_agnews", lstm_model.state_dict(), max(lstm_accs), "lstm_baseline"),
+        ("m5_lstm_agnews", lstm_model.state_dict(), lstm_test_acc, "lstm_baseline"),
     ]
 
     # TODO: Register each model in the registry
-    # Hint: for name, state_dict, best_acc, model_type in models_to_register:
-    #   model_bytes = pickle.dumps(state_dict)
-    #   version = await registry.register_model(name=name, artifact=model_bytes,
-    #       metrics=[MetricSpec(name="best_val_accuracy", value=best_acc), ...])
-    #   model_versions[model_type] = version
-    for name, state_dict, best_acc, model_type in models_to_register:
+    # Hint: the artifact is the pickled state_dict (bytes); register_model is
+    #   async and takes a list of MetricSpec (at least test_accuracy). Store
+    #   each returned version in model_versions under its model_type.
+    for name, state_dict, test_acc, model_type in models_to_register:
         ...  # YOUR CODE HERE
 
     return model_versions
@@ -470,37 +521,53 @@ print("\n--- Checkpoint 3 passed --- models registered in ModelRegistry\n")
 onnx_path = Path("ex_4_bert_agnews.onnx")
 bert_model.eval()
 
-# TODO: Export BERT to ONNX
-# Step 1: Try bridge.export(model=bert_model, framework="pytorch", output_path=onnx_path, n_features=BERT_MAX_LEN)
-# Step 2: If that fails, use torch.onnx.export with dummy inputs
-# Hint: dummy_ids = torch.ones(1, BERT_MAX_LEN, dtype=torch.long, device=DEVICE)
-# Hint: dummy_mask = torch.ones(1, BERT_MAX_LEN, dtype=torch.long, device=DEVICE)
-# Hint: torch.onnx.export(bert_cpu, (dummy_ids.cpu(), dummy_mask.cpu()), onnx_path,
-#           input_names=["input_ids", "attention_mask"], output_names=["logits"],
-#           dynamic_axes={"input_ids": {0: "batch", 1: "seq"}, ...}, opset_version=17, dynamo=False)
-exported = False
-try:
-    result = bridge.export(
-        model=bert_model,
-        framework="pytorch",
-        output_path=onnx_path,
-        n_features=BERT_MAX_LEN,
-    )
-    success = getattr(result, "success", bool(result))
-    exported = bool(success) and onnx_path.exists()
-except Exception:
-    pass
 
-if not exported:
-    print("  Using torch.onnx.export for BERT model...")
-    ...  # YOUR CODE HERE — torch.onnx.export with dummy inputs
+class BertLogits(nn.Module):
+    """Single-input view of the classifier for export: token ids in, logits
+    out. The attention mask is rebuilt from the ids ([PAD] has id 0)."""
 
-if onnx_path.exists():
-    print(f"  ONNX export: {onnx_path} ({onnx_path.stat().st_size // 1024:,} KB)")
-else:
-    print("  ONNX export: skipped (export not available in this environment)")
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        mask = (input_ids != 0).long()
+        return self.model(input_ids=input_ids, attention_mask=mask).logits
+
+
+# Export on the CPU, then move BERT back. The sample is a batch of TWO
+# headlines, not one: the exporter traces with torch.export, which treats
+# size-1 dimensions as constants and can freeze the batch size at 1.
+bert_model.cpu()
+export_model = BertLogits(bert_model).eval()
+# TODO: Export export_model with OnnxBridge ("torch" framework) to
+#   onnx_path, tracing with the first two test headlines' token ids.
+export_result = ____
+
+# Check the graph on real headlines. OnnxBridge.validate feeds float32
+# arrays, so it cannot drive an int64 token-id graph — compare directly.
+import onnxruntime as ort
+
+session = ort.InferenceSession(str(onnx_path))
+check_ids = bert_test_ids[:16]
+# TODO: logits for check_ids from the ONNX session (its input name is
+#   session.get_inputs()[0].name; feed a numpy array) and from export_model.
+onnx_logits = ____
+with torch.no_grad():
+    torch_logits = ____
+bert_model.to(DEVICE)
+max_diff = float(np.abs(onnx_logits - torch_logits).max())
+agreement = float((onnx_logits.argmax(axis=1) == torch_logits.argmax(axis=1)).mean())
+print(
+    f"  OnnxBridge.export: success={export_result.success} -> {onnx_path} "
+    f"({onnx_path.stat().st_size // 1024:,} KB)"
+)
+print(f"  ONNX vs PyTorch on 16 test headlines: max |logit diff| = {max_diff:.2e}, "
+      f"class agreement = {agreement:.0%}")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert export_result.success, f"OnnxBridge export failed: {export_result.error_message}"
+assert agreement == 1.0 and max_diff < 1e-3, "ONNX graph drifted from PyTorch"
 # INTERPRETATION: The ModelRegistry gives you a versioned record of every
 # model experiment. The ONNX export makes the model portable -- it can run
 # on a server without PyTorch installed, in a mobile app, or in a browser
@@ -515,16 +582,32 @@ print("\n--- Checkpoint 4 passed --- ONNX export complete\n")
 # The attention heatmap is the Transformer's "explanation" -- it shows
 # which words the model attends to when classifying a headline.
 transformer_model.eval()
-mha_viz = EducationalMultiHead(d_model=128, n_heads=4).to(DEVICE)
 
-# TODO: Generate attention heatmap from trained transformer embeddings
-# Hint: with torch.no_grad():
-#   embed = transformer_model.embed(sample_idx[:1])
-#   embed = transformer_model.posenc(embed)
-#   _, attn_weights = mha_viz(embed)
-#   attn_np = attn_weights[0, 0].cpu().numpy()
+
+def encoder_attention(model: nn.Module, tokens: torch.Tensor) -> torch.Tensor:
+    """Per-head attention weights of the TRAINED first encoder layer.
+
+    nn.TransformerEncoderLayer (post-norm, the default) feeds its input
+    straight into self_attn, so we rebuild that input (embedding +
+    positional encoding) and ask the layer's own attention module for its
+    weights. Returns (batch, n_heads, seq, seq); padded keys get weight 0.
+    """
+    model.eval()
+    pad_mask = tokens == 0
+    x = model.posenc(model.embed(tokens))
+    first_layer = model.encoder.layers[0]
+    # TODO: same call as in 02_transformer_encoder.py — the trained layer's
+    #   self_attn on x, padded keys masked, per-head weights returned.
+    _, weights = ____
+    return weights
+
+
+# Head 0 of the TRAINED first encoder layer (a fresh attention module
+# would only show random projections).
+# TODO: attention weights for sample_idx[:1], then head 0 as a numpy array
 with torch.no_grad():
-    ...  # YOUR CODE HERE
+    attn_weights = ____
+    attn_np = ____
 
 words = sample_texts[0].lower().split()[:MAX_LEN]
 word_labels = words + ["<pad>"] * (MAX_LEN - len(words))
@@ -544,389 +627,28 @@ assert Path("ex_4_5_attention_heatmap.html").exists(), "Heatmap should be saved"
 print("\n--- Checkpoint 5 passed --- visualisations complete\n")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# REFLECTION
-# ══════════════════════════════════════════════════════════════════════
-print("\n" + "=" * 70)
-print("  WHAT YOU'VE MASTERED — Complete Exercise 4")
-print("=" * 70)
-print(
-    f"""
-  [x] Derived scaled dot-product attention with torch.einsum
-  [x] Explained the 1/sqrt(d_k) factor (prevents softmax saturation)
-  [x] Wrote a hand-rolled multi-head attention wrapping the scratch kernel
-  [x] Built a TransformerClassifier with nn.TransformerEncoder
-  [x] Built an LSTM baseline for fair comparison
-  [x] Trained all 3 models on FULL AG News (120K headlines)
-  [x] Fine-tuned BERT ({BERT_MODEL_NAME}) -- best acc: {max(bert_accs):.1%}
-  [x] Visualised attention heatmaps (what the model "looks at")
-  [x] Tracked every run with ExperimentTracker (params, per-epoch metrics)
-  [x] Registered models in ModelRegistry with versioned metrics
-  [x] Exported the fine-tuned model to ONNX for portable deployment
-
-  KEY INSIGHT — The Attention Hierarchy:
-    LSTM best acc:        {max(lstm_accs):.1%}  (sequential, no pre-training)
-    Transformer best acc: {max(transformer_accs):.1%}  (parallel attention, no pre-training)
-    BERT best acc:        {max(bert_accs):.1%}  (parallel attention + pre-training)
-
-  Pre-training is the single biggest lever in NLP. The Transformer
-  architecture enables it, but the pre-trained weights are what make
-  BERT dominate. This is why modern NLP is "pre-train then fine-tune."
-
-  Next: In Exercise 5, you'll build generative models (DCGAN + WGAN-GP)
-  that CREATE new data instead of classifying existing data.
-"""
-)
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — comparative Prescription Pad for all 3
-# ══════════════════════════════════════════════════════════════════
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-from kailash_ml import diagnose
-
-print("\n── Diagnostic Report (LSTM) ──")
-report = diagnose(lstm_model, kind="dl", data=val_loader, show=False)
-
-print("\n── Diagnostic Report (Transformer) ──")
-report = diagnose(
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — one-call diagnostics
+# ════════════════════════════════════════════════════════════════════════
+# This lesson built attention from scratch, a Transformer encoder, an
+# LSTM baseline and a fine-tuned BERT. kailash-ml's
+# run_diagnostic_checkpoint is the one call behind each pad: it hooks
+# every layer, runs a few probe batches (no weight updates), replays the
+# loss history and returns findings plus a DLDiagnostics session whose
+# plot_training_dashboard() draws the loss, gradient and activation
+# panels. (km.diagnose(model, kind="dl") on its own only builds an
+# un-instrumented session, so it has nothing to report.) It does not
+# replace the accuracy, latency and deployment comparisons above.
+diag, findings = run_diagnostic_checkpoint(
     transformer_model,
-    kind="dl",
-    data=val_loader,
+    train_loader,
+    _ce_loss,
+    title="Transformer (close)",
+    train_losses=transformer_losses,
     show=False,
 )
-
-
-def _bert_loss(m, ids, mask, labels):
-    return m(input_ids=ids, attention_mask=mask, labels=labels).loss
-
-
-def _bert_adapter(batch):
-    return batch[0], batch[1], batch[2]
-
-
-print("\n── Diagnostic Report (BERT fine-tune) ──")
-bert_diag, bert_findings = run_diagnostic_checkpoint(
-    bert_model,
-    bert_val_loader,
-    _bert_loss,
-    title="BERT fine-tune (3-way comparison)",
-    n_batches=4,
-    train_losses=bert_losses,
-    val_losses=[1.0 - a for a in bert_accs],
-    batch_adapter=_bert_adapter,
-    show=False,
-)
-
-# ══════ EXPECTED OUTPUT (reference pattern — 3-way on AG News) ══════
-# All three reports follow their individual-file patterns (02, 03, 04).
-# Side-by-side takeaway:
-#   LSTM        : gradient-flow WARNING (recurrent weights 1:50 of head)
-#   Transformer : all HEALTHY, uniform gradients across encoder layers
-#   BERT        : all HEALTHY, frozen layers 0-7 show ZERO RMS (by design)
-#
-# STUDENT INTERPRETATION GUIDE — the comparative narrative:
-#
-#  [BLOOD TEST] compare gradient-flow readings across the three
-#     reports. The LSTM shows concentrated gradients at the head;
-#     the Transformer shows uniform gradients across `encoder.layers`;
-#     BERT shows zeros in frozen layers and healthy signal above layer
-#     8. This ONE instrument tells the whole story of slide 5.4:
-#     attention + residuals + pretraining stack three architectural
-#     wins on top of each other.
-#     >> Prescription Pad reading: the accuracy gap (LSTM -> Transformer
-#        -> BERT) is NOT just hyperparameter tuning — it's visible in
-#        the gradient-flow report before you ever look at val acc.
-#
-#  [STETHOSCOPE] loss curve shapes differ:
-#     - LSTM: slow convergence, plateau by epoch 5 (sequential ceiling)
-#     - Transformer: steady decline, could benefit from more epochs
-#     - BERT: sharp drop in 2 epochs, then gentle tail (pretraining
-#       head-start is doing the work)
-#     The Stethoscope surfaces the "how fast can this architecture
-#     learn" question that slide 5.4 frames as "inductive bias from
-#     pretraining amortises compute".
-#
-#  [FIVE-INSTRUMENT TAKEAWAY] This comparison is the most valuable
-#  diagnostic exercise in ex_4. You see the SAME instruments producing
-#  three distinct signatures on the SAME dataset. Students who memorise
-#  these three signatures can diagnose any NLP architecture in the
-#  future. Prescription Pad's value is as a classifier OF classifiers.
-#
-#  CONNECT TO SLIDE 5.4: The slide's "pretrain-then-finetune is the
-#  dominant paradigm" claim is proven by the ZERO RMS on BERT's
-#  frozen layers + the 4-point accuracy win at 3 epochs. That's the
-#  empirical form of the argument.
-# ══════════════════════════════════════════════════════════════════
-
-# ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert max(lstm_accs) > 0.60, f"LSTM should exceed 60%, got {max(lstm_accs):.3f}"
-assert (
-    max(transformer_accs) > 0.60
-), f"Transformer should exceed 60%, got {max(transformer_accs):.3f}"
-assert max(bert_accs) > 0.85, f"BERT should exceed 85%, got {max(bert_accs):.3f}"
-print("\n--- Checkpoint 1 passed --- all three models trained\n")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Visualise: Side-by-side comparison table + training curves
-# ════════════════════════════════════════════════════════════════════════
-results = {
-    "LSTM": {
-        "best_acc": max(lstm_accs),
-        "final_loss": lstm_losses[-1],
-        "params": sum(p.numel() for p in lstm_model.parameters()),
-    },
-    "Transformer": {
-        "best_acc": max(transformer_accs),
-        "final_loss": transformer_losses[-1],
-        "params": sum(p.numel() for p in transformer_model.parameters()),
-    },
-    "BERT (fine-tuned)": {
-        "best_acc": max(bert_accs),
-        "final_loss": bert_losses[-1],
-        "params": total_params,
-    },
-}
-
-print("\n== 3-Way Model Comparison on AG News ==")
-print(f"{'Model':<20} {'Best Acc':>10} {'Final Loss':>12} {'Params':>12}")
-print("-" * 56)
-for name, r in results.items():
-    print(
-        f"{name:<20} {r['best_acc']:>10.3f} {r['final_loss']:>12.4f} {r['params']:>12,}"
-    )
-
-# Training curves comparison: all 3 models on one chart
-viz = get_viz()
-fig_curves = viz.training_history(
-    metrics={
-        "LSTM loss": lstm_losses,
-        "Transformer loss": transformer_losses,
-        "BERT loss": bert_losses,
-        "LSTM val_acc": lstm_accs,
-        "Transformer val_acc": transformer_accs,
-        "BERT val_acc": bert_accs,
-    },
-    x_label="Epoch",
-    y_label="Value",
-)
-fig_curves.write_html("ex_4_5_training_curves.html")
-print("\nTraining curves saved to ex_4_5_training_curves.html")
-
-# Sample predictions from all three models
-sample_texts = test_df["text"].to_list()[:5]
-sample_true = test_df["label"].to_list()[:5]
-sample_idx = torch.tensor(
-    [text_to_indices(t, vocab, MAX_LEN) for t in sample_texts],
-    dtype=torch.long,
-    device=DEVICE,
-)
-
-transformer_model.eval()
-lstm_model.eval()
-bert_model.eval()
-with torch.no_grad():
-    transformer_preds = transformer_model(sample_idx).argmax(dim=-1).cpu().tolist()
-    lstm_preds = lstm_model(sample_idx).argmax(dim=-1).cpu().tolist()
-    bert_sample_ids, bert_sample_mask = tokenise_for_bert(sample_texts)
-    bert_preds = (
-        bert_model(
-            input_ids=bert_sample_ids.to(DEVICE),
-            attention_mask=bert_sample_mask.to(DEVICE),
-        )
-        .logits.argmax(dim=-1)
-        .cpu()
-        .tolist()
-    )
-
-print(f"\n== Sample Predictions (all 3 models) ==")
-print(f"{'Headline':<50} {'True':<10} {'LSTM':<10} {'Trans':<10} {'BERT':<10}")
-print("-" * 90)
-for i, text in enumerate(sample_texts):
-    t = CLASS_NAMES[sample_true[i]]
-    l = CLASS_NAMES[lstm_preds[i]]
-    tr = CLASS_NAMES[transformer_preds[i]]
-    b = CLASS_NAMES[bert_preds[i]]
-    print(f"{text[:48]:<50} {t:<10} {l:<10} {tr:<10} {b:<10}")
-
-# ── Checkpoint 2 ─────────────────────────────────────────────────────
-best_model_name = max(results, key=lambda k: results[k]["best_acc"])
-assert best_model_name == "BERT (fine-tuned)", (
-    f"Expected BERT to be the best model, but {best_model_name} won. "
-    "Pre-trained models should dominate on standard NLP benchmarks."
-)
-assert Path("ex_4_5_training_curves.html").exists(), "Training curves should be saved"
-# INTERPRETATION: The 3-way comparison reveals a clear hierarchy:
-#   BERT >> Transformer > LSTM
-# BERT dominates because it starts with pre-trained language knowledge.
-# The Transformer edges out the LSTM because attention captures long-range
-# dependencies without the information bottleneck of a fixed-size hidden
-# state. The LSTM still does respectably -- it is a strong baseline.
-print("\n--- Checkpoint 2 passed --- 3-way comparison complete\n")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 3 — Register all models in ModelRegistry
-# ════════════════════════════════════════════════════════════════════════
-async def register_all_models():
-    """Register all three models in the ModelRegistry with metrics."""
-    if not has_registry:
-        print("  ModelRegistry not available -- skipping registration")
-        return {}
-
-    from kailash_ml.types import MetricSpec
-
-    model_versions = {}
-    models_to_register = [
-        ("m5_bert_agnews", bert_model.state_dict(), max(bert_accs), "bert_finetune"),
-        (
-            "m5_transformer_agnews",
-            transformer_model.state_dict(),
-            max(transformer_accs),
-            "transformer",
-        ),
-        ("m5_lstm_agnews", lstm_model.state_dict(), max(lstm_accs), "lstm_baseline"),
-    ]
-
-    for name, state_dict, best_acc, model_type in models_to_register:
-        model_bytes = pickle.dumps(state_dict)
-        version = await registry.register_model(
-            name=name,
-            artifact=model_bytes,
-            metrics=[
-                MetricSpec(name="best_val_accuracy", value=best_acc),
-                MetricSpec(name="dataset", value=0.0),
-                MetricSpec(name="model_type", value=0.0),
-            ],
-        )
-        model_versions[model_type] = version
-        print(f"  Registered {name}: version={version.version}, acc={best_acc:.3f}")
-
-    return model_versions
-
-
-model_versions = asyncio.run(register_all_models())
-
-# ── Checkpoint 3 ─────────────────────────────────────────────────────
-if has_registry:
-    assert len(model_versions) == 3, "Should register all 3 models"
-print("\n--- Checkpoint 3 passed --- models registered in ModelRegistry\n")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 4 — Export best model (BERT) to ONNX via OnnxBridge
-# ════════════════════════════════════════════════════════════════════════
-# In production, the ModelRegistry stores the winning model. OnnxBridge
-# exports it to ONNX format for portable deployment (any language, any
-# runtime, no PyTorch dependency). This is how production ML pipelines
-# separate training (Python) from serving (any language).
-onnx_path = Path("ex_4_bert_agnews.onnx")
-bert_model.eval()
-
-exported = False
-try:
-    result = bridge.export(
-        model=bert_model,
-        framework="pytorch",
-        output_path=onnx_path,
-        n_features=BERT_MAX_LEN,
-    )
-    success = getattr(result, "success", bool(result))
-    exported = bool(success) and onnx_path.exists()
-except Exception:
-    pass
-
-if not exported:
-    # Torch ONNX export for BERT: provide dummy input_ids + attention_mask
-    print("  Using torch.onnx.export for BERT model...")
-    dummy_ids = torch.ones(1, BERT_MAX_LEN, dtype=torch.long, device=DEVICE)
-    dummy_mask = torch.ones(1, BERT_MAX_LEN, dtype=torch.long, device=DEVICE)
-    bert_cpu = bert_model.cpu()
-    torch.onnx.export(
-        bert_cpu,
-        (dummy_ids.cpu(), dummy_mask.cpu()),
-        onnx_path,
-        input_names=["input_ids", "attention_mask"],
-        output_names=["logits"],
-        dynamic_axes={
-            "input_ids": {0: "batch", 1: "seq"},
-            "attention_mask": {0: "batch", 1: "seq"},
-            "logits": {0: "batch"},
-        },
-        opset_version=17,
-        dynamo=False,
-    )
-    bert_model.to(DEVICE)
-
-if onnx_path.exists():
-    print(f"  ONNX export: {onnx_path} ({onnx_path.stat().st_size // 1024:,} KB)")
-else:
-    print("  ONNX export: skipped (export not available in this environment)")
-
-# ── Checkpoint 4 ─────────────────────────────────────────────────────
-# INTERPRETATION: The ModelRegistry gives you a versioned record of every
-# model experiment. The ONNX export makes the model portable -- it can run
-# on a server without PyTorch installed, in a mobile app, or in a browser
-# via ONNX.js. This is how production ML pipelines separate training
-# (Python) from serving (any language).
-print("\n--- Checkpoint 4 passed --- ONNX export complete\n")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Visualise: Attention heatmap from trained Transformer
-# ════════════════════════════════════════════════════════════════════════
-# The attention heatmap is the Transformer's "explanation" -- it shows
-# which words the model attends to when classifying a headline.
-transformer_model.eval()
-mha_viz = EducationalMultiHead(d_model=128, n_heads=4).to(DEVICE)
-
-with torch.no_grad():
-    embed = transformer_model.embed(sample_idx[:1])
-    embed = transformer_model.posenc(embed)
-    _, attn_weights = mha_viz(embed)
-    attn_np = attn_weights[0, 0].cpu().numpy()
-
-words = sample_texts[0].lower().split()[:MAX_LEN]
-word_labels = words + ["<pad>"] * (MAX_LEN - len(words))
-
-fig_attn = create_attention_heatmap(
-    attn_np,
-    word_labels,
-    title=f"Transformer Attention on: '{sample_texts[0][:50]}...'",
-    max_tokens=15,
-)
-fig_attn.write_html("ex_4_5_attention_heatmap.html")
-print("Attention heatmap saved to ex_4_5_attention_heatmap.html")
-
-# ── Checkpoint 5 ─────────────────────────────────────────────────────
-assert attn_np.shape[0] == MAX_LEN, "Attention heatmap should cover full sequence"
-assert Path("ex_4_5_attention_heatmap.html").exists(), "Heatmap should be saved"
-print("\n--- Checkpoint 5 passed --- visualisations complete\n")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# DESTINATION-FIRST CLOSE — km.diagnose
-# ════════════════════════════════════════════════════════════════════════
-# This lesson walked the journey of attention-based language models —
-# from-scratch self-attention, transformer encoder, LSTM baseline, and
-# BERT fine-tuning. The kailash-ml SDK ships a single-call diagnostic
-# primitive that closes the production loop: km.diagnose inspects a
-# trained model and emits an auto-dashboard (loss curves, gradient flow,
-# dead neurons, activation stats, weight distributions). One cell.
-# Every diagnostic students would otherwise hand-roll, ready to surface
-# in a Plotly dashboard.
-
-from kailash_ml import diagnose
-
-# We diagnose the from-scratch transformer (val_loader yields token-id
-# tensors compatible with its forward signature). `kind='auto'` dispatches
-# by model type — DLDiagnostics for torch.nn.Module.
-report = diagnose(transformer_model, kind="auto", data=val_loader, show=False)
-report.plot_training_dashboard()
-print()
-print("km.diagnose: 1 line of code -> the same observability the lesson")
-print("body hand-rolled in 200+ lines. This is what 'destination-first'")
-print("means — when the journey is internalised, the SDK is one call.")
+print_prescription_pad(findings, "Transformer (close)")
+dashboard = diag.plot_training_dashboard()  # Plotly figure: dashboard.show()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -943,16 +665,16 @@ print(
   [x] Built a TransformerClassifier with nn.TransformerEncoder
   [x] Built an LSTM baseline for fair comparison
   [x] Trained all 3 models on FULL AG News (120K headlines)
-  [x] Fine-tuned BERT ({BERT_MODEL_NAME}) -- best acc: {max(bert_accs):.1%}
+  [x] Fine-tuned BERT ({BERT_MODEL_NAME}) -- test acc: {bert_test_acc:.1%}
   [x] Visualised attention heatmaps (what the model "looks at")
   [x] Tracked every run with ExperimentTracker (params, per-epoch metrics)
   [x] Registered models in ModelRegistry with versioned metrics
   [x] Exported the fine-tuned model to ONNX for portable deployment
 
   KEY INSIGHT — The Attention Hierarchy:
-    LSTM best acc:        {max(lstm_accs):.1%}  (sequential, no pre-training)
-    Transformer best acc: {max(transformer_accs):.1%}  (parallel attention, no pre-training)
-    BERT best acc:        {max(bert_accs):.1%}  (parallel attention + pre-training)
+    LSTM test acc:        {lstm_test_acc:.1%}  (sequential, no pre-training)
+    Transformer test acc: {transformer_test_acc:.1%}  (parallel attention, no pre-training)
+    BERT test acc:        {bert_test_acc:.1%}  (parallel attention + pre-training)
 
   Pre-training is the single biggest lever in NLP. The Transformer
   architecture enables it, but the pre-trained weights are what make
@@ -962,4 +684,3 @@ print(
   that CREATE new data instead of classifying existing data.
 """
 )
-

@@ -1,0 +1,58 @@
+# Session Notes — 2026-10-07 (Audit landing)
+
+## What happened today
+
+The M1–M6 audit remediation **landed** as single integration PR
+**terrene-foundation/mlfp#22** (owner decision over refreshing the 7-PR stack;
+#13–#21 closed with references). 720 commits, 1,313 files vs main.
+
+## Arc
+
+1. **Lane take-over (lane-specgaps went idle)** — built the remaining M3 spec-gap
+   techniques directly: ex_5/07 regression metrics, ex_5/08 EnsembleEngine
+   stack/blend (with the engine's contribution-contamination gotcha taught),
+   ex_1/06 temporal features (HDB panel, shift-before-roll), ex_1/07
+   forward/backward SFS (on credit — ICU frame is flat per P1), ex_1/08
+   correlation filter + FeatureEngineer, ex_4/05 AdaBoost from scratch,
+   ex_4/06 CatBoost native categoricals, ex_6/06 KernelSHAP + the ModelExplainer
+   additivity investigation. Merged dbc8e685.
+2. **lane-m5-specgaps (agent)** — 9 M5 pairs (5.2 Mixup ablation, 5.3 indicators
+   + char-LSTM, 5.5 DCGAN, 5.6 GIN/MUTAG, 5.8 PPO/A2C/DDPG/SAC pure-torch).
+   Merged 1179e00c.
+3. **lane-assessments (agent)** — all 8 M5+M6 tasks rebuilt (grader-held ground
+   truth, fresh secret seeds, adversarial stubs verified FAIL). Merged 3dcaa2c4.
+4. **Hooks posture (owner directive)** — PostToolUse validators now advisory via
+   additionalContext instead of session-halting (d8b3f006); auto-format reports
+   its rewrites with hashing (976c0550); destructive-command denies kept.
+5. **Strict-gate hardening** — the warnings-as-errors gate (`-W
+   error::UserWarning`) became the course standard; every failure it surfaced
+   was fixed at the root: course-wide create_visualizer() factory (68+44+14
+   files across M1/M2/M4/M5 — including two zero-padded import-path bugs my own
+   sweep emitted, caught by the M4/M1/M2 suites), canonical SDK-nag filters in
+   kailash_helpers (Lightning, dynamo, umap), seeded RL exercises (PPO was a
+   coin flip unseeded; seeded + LR 1e-3 + 240 iters now clears by +229),
+   num_workers=0 in all 59 M5 DataLoaders, ex_0/00 spawn-inheritance exemption.
+6. **Verification grid** — M1 8/8, M2 41/41, M3 49/49, M4 38/38, M5 52/52,
+   M6 13/13 non-LLM. Fleet (trestle, thread-capped) for everything; local MPS
+   only for the three-architecture transformer files that exceed 45 min on
+   fleet CPU (steward informed; future such runs via `trestle run --os darwin`).
+7. **Upstream findings recorded** (decisions.md): P1 ICU vitals not
+   admission-aligned; P6 ×4 (ModelExplainer unit mismatch, use_device not
+   threaded, spawn/-W inheritance, LocalRuntime arity); P7 template re-point
+   (loom retired kailash-coc-claude-*; hold until "TEMPLATE DONE: py").
+
+## Numbers worth keeping
+
+- ex_5/08: stack −0.0007 AUC vs best base (cosmetic-gain lesson, kept honest)
+- ex_6/06: KernelSHAP additivity gap 1.39e-16 (probability space);
+  ModelExplainer 0.9983 (log-odds) vs 0.6174 (probability) — the unit mismatch
+- ex_4/06: native categoricals +0.0053 AUC-PR over ordinal
+- ex_1/06: temporal features R² 0.681 → 0.701 (time-ordered split)
+
+## Left for the owner
+
+Merge PR #22 (no CI configured on this repo). Owner decisions P1–P7 in
+decisions.md. M6 full verification needs an Ollama host. Remote branches
+fix/audit-m0{1..6}, fix/audit-tooling-base, fix/m5-quiz-and-deck-diagnostics,
+fix/deck-code-fit-font deletable post-merge. Temp runner
+scripts/.audit_run_solutions.py deleted (verification complete).

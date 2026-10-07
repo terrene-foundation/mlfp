@@ -2,37 +2,47 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP06 — Exercise 8.1: Load Fine-Tuned Model from AdapterRegistry
+# MLFP06 — Exercise 8.1: Load a Fine-Tuned Adapter via AdapterRegistry
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
 #   - Use kailash-align's AdapterRegistry as the source of truth for
-#     model provenance and version control
-#   - Load a LoRA adapter through AlignmentPipeline (SFT + DPO merge)
-#   - Fall back safely when a specific adapter is unavailable
-#   - Visualise the adapter catalogue as a registry table
+#     model provenance (base model, method, LoRA config, version)
+#   - Register the adapters Ex 2.6 (SFT) and Ex 3.3 (DPO) trained, and
+#     select one by a named preference — never by a hardcoded path
+#   - Load the selected adapter for inference (AdapterMerger + the HF
+#     generation backend) and score it on a few MMLU questions
+#   - Visualise real adapter sizes against the base model
 #   - Apply adapter loading to a Singapore HR compliance scenario
 #
-# PREREQUISITES: MLFP06 Ex 2 (SFT LoRA), Ex 3 (DPO alignment)
+# PREREQUISITES: MLFP06 Ex 2.6 (SFT adapter), Ex 3.3 (DPO adapter) — this
+#   file loads what those runs saved; it stops with instructions if none
 # ESTIMATED TIME: ~25 min
 #
 # TASKS:
-#   1. Load MMLU evaluation data for downstream monitoring
-#   2. Query AdapterRegistry and pick the best available adapter
-#   3. Instantiate AlignmentPipeline in inference mode
-#   4. Visualise the adapter catalogue
+#   1. Load MMLU evaluation data
+#   2. Register the trained adapters and pick the best available one
+#   3. Merge the adapter into its base model and generate answers
+#   4. Visualise the adapter catalogue and parameter counts
 #   5. Apply to a Singapore HR compliance QA scenario
 #
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import polars as pl
+import re
 
-from kailash_align import AdapterRegistry, AlignmentConfig, AlignmentPipeline
+import matplotlib.pyplot as plt
+import polars as pl
+from kailash_align import AdapterMerger, AdapterRegistry, AdapterSignature
+from kailash_align.exceptions import AdapterNotFoundError
+from kailash_align.vllm_backend import HFGenerationBackend
 
 from shared.mlfp06.ex_8 import (
+    ADAPTER_SEARCH_ROOTS,
     OUTPUT_DIR,
+    count_safetensors_params,
+    discover_trained_adapters,
     load_mmlu_eval,
     run_async,
 )
@@ -41,20 +51,27 @@ from shared.mlfp06.ex_8 import (
 # THEORY — Why an AdapterRegistry?
 # ════════════════════════════════════════════════════════════════════════
 # A production LLM platform trains many adapters: SFT for domain tone,
-# DPO for preference alignment, SLERP merges for combining both. The
-# AdapterRegistry is the Git for model weights — it stores what each
-# adapter was trained on, which base model it attaches to, who owns
-# it, and how recently it was evaluated. Hardcoding a filesystem path
-# silently ships the wrong weights tomorrow; the registry turns model
-# loading into a named lookup against an audited catalogue.
+# DPO for preference alignment, merges that combine both. The
+# AdapterRegistry is version control for those weights — it records
+# which base model each adapter attaches to, how it was trained (LoRA
+# rank, alpha, target modules), its metrics, and its version.
+#
+# Hardcoding a path like "./models/imdb_sft_v1" looks fine today and
+# silently ships the wrong weights tomorrow. The registry turns model
+# loading into a named lookup against a catalogue.
+#
+# One honest caveat: `AdapterRegistry()` built without a backing model
+# registry lives in memory, so a new process starts empty. The adapters
+# Ex 2.6 / 3.3 trained are still on disk (AlignmentPipeline saves them to
+# <experiment_dir>/<adapter_name>/<method>/adapter/), so this file finds
+# them there and registers them before looking anything up.
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 1 — Load MMLU evaluation data
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: Call load_mmlu_eval with n_rows=100
-eval_data = ____
+eval_data = load_mmlu_eval(n_rows=100)
 
 print(f"\nEvaluation data (MMLU): {eval_data.shape}")
 print(f"Subjects: {eval_data['subject'].n_unique()}")
@@ -62,100 +79,205 @@ print(f"Subjects: {eval_data['subject'].n_unique()}")
 # ── Checkpoint 1 ─────────────────────────────────────────────────────────
 assert eval_data.height > 0, "Task 1: MMLU should load at least 1 row"
 assert "instruction" in eval_data.columns, "Task 1: expected 'instruction' column"
-print("\u2713 Checkpoint 1 passed — evaluation data loaded\n")
+print("✓ Checkpoint 1 passed — evaluation data loaded\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Query AdapterRegistry and pick the best adapter
+# TASK 2 — Register the trained adapters, pick the best available one
 # ════════════════════════════════════════════════════════════════════════
 
+# TODO: Find the adapters Ex 2.6 / 3.3 saved on disk (shared helper).
+on_disk = ____
+if not on_disk:
+    raise FileNotFoundError(
+        "No trained adapters found under "
+        f"{[str(r) for r in ADAPTER_SEARCH_ROOTS]}. Run "
+        "modules/mlfp06/solutions/ex_2/06_sft_alignment_pipeline.py and "
+        "ex_3/03_dpo_training.py first (from the repo root)."
+    )
 
-async def pick_best_adapter() -> tuple[AdapterRegistry, dict]:
-    """Return the registry and the best available adapter metadata."""
-    # TODO: instantiate AdapterRegistry()
-    registry = ____
+# Preferred order: the DPO-aligned adapter, then the SFT adapter.
+PREFERENCE = ("ultrafeedback_dpo_v1", "imdb_sentiment_sft_v1")
 
-    # TODO: call registry.list_adapters() (async)
-    adapters = ____
-    print(f"Available adapters: {len(adapters)}")
 
-    best_adapter: dict = {}
-    for candidate in (
-        "sg_domain_slerp_merge_v1",
-        "ultrafeedback_dpo_v1",
-        "imdb_sentiment_sft_v1",
-    ):
+async def register_and_pick() -> tuple[AdapterRegistry, object]:
+    """Register every on-disk adapter, then select by named preference."""
+    registry = AdapterRegistry()
+    for found in on_disk:
+        # TODO: Register this adapter: name, adapter_path, an AdapterSignature
+        #       (base_model_id, rank, alpha, target_modules, training_method)
+        #       and tags=[method].
+        # Hint: await registry.register_adapter(...)
+        ____
+
+    # TODO: List every registered AdapterVersion.
+    versions = ____
+    print(f"Registered adapters: {len(versions)}")
+    for av in versions:
+        print(
+            f"  {av.adapter_name:28s} v{av.version}  base={av.base_model_id}  "
+            f"stage={av.stage}"
+        )
+
+    for name in PREFERENCE + tuple(av.adapter_name for av in versions):
         try:
-            # TODO: call registry.get_adapter(candidate) (async)
-            found = ____
-            if found:
-                best_adapter = found
-                break
-        except Exception:
-            continue
-    return registry, best_adapter
+            # TODO: Look the adapter up by name; return (registry, version).
+            ____
+        except AdapterNotFoundError:
+            print(f"  (no adapter named {name!r} — trying the next preference)")
+    raise AdapterNotFoundError("registry is empty after registration")
 
 
-registry, best_adapter = run_async(pick_best_adapter())
+registry, best = run_async(register_and_pick())
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
-assert registry is not None, "Task 2: registry should be accessible"
-print(f"\u2713 Checkpoint 2 passed — adapter: {best_adapter.get('name', 'none')}\n")
+assert best.adapter_name, "Task 2: an adapter must be selected"
+assert best.base_model_id, "Task 2: the adapter must name its base model"
+print(
+    f"✓ Checkpoint 2 passed — selected {best.adapter_name} v{best.version} "
+    f"(base {best.base_model_id})\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — Build the AlignmentPipeline for inference
+# TASK 3 — Load the adapter for inference and generate answers
 # ════════════════════════════════════════════════════════════════════════
+# AdapterMerger loads the base model, applies the LoRA adapter and
+# merges the weights (merge_and_unload), then records merge_status and
+# merged_model_path back in the registry. HFGenerationBackend then
+# generates from the merged model on CPU/MPS/CUDA. (For an Ollama
+# deployment, AlignmentServing.deploy_ollama goes one step further and
+# exports a GGUF; that needs llama.cpp tooling and is not run here.)
 
-# TODO: Build an AlignmentPipeline with an AlignmentConfig whose
-#       method="inference" and adapter_path=best_adapter.get("adapter_path", "")
-inference_pipeline = ____
+# TODO: Merge the selected adapter into its base model (AdapterMerger bound
+#       to the registry), then build an HFGenerationBackend on the merged path.
+merged_path = ____
+backend = ____
+
+N_EVAL = 5
+sample = eval_data.head(N_EVAL)
+prompts = [
+    f"{q}\n\nAnswer with a single letter (A, B, C or D).\nAnswer:"
+    for q in sample["instruction"].to_list()
+]
+# TODO: Generate up to 4 new tokens per prompt, greedily (temperature=0.0).
+completions = ____
+predicted = []
+for c in completions:
+    m = re.search(r"\b([ABCD])\b", c[0])
+    predicted.append(m.group(1) if m else "?")
+mmlu_acc = sum(p == g for p, g in zip(predicted, sample["response"].to_list())) / N_EVAL
+backend.shutdown()
+
+print(f"Merged model: {merged_path}")
+for subj, p, g in zip(sample["subject"].to_list(), predicted, sample["response"].to_list()):
+    print(f"  {subj:<32s} predicted={p}  gold={g}")
+print(f"MMLU accuracy on {N_EVAL} questions: {mmlu_acc:.0%} (chance = 25%)")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert inference_pipeline is not None, "Task 3: pipeline should be created"
-print("\u2713 Checkpoint 3 passed — AlignmentPipeline ready\n")
+assert len(completions) == N_EVAL, "Task 3: one completion per prompt"
+assert merged_path.exists(), "Task 3: the merged model should be on disk"
+print("✓ Checkpoint 3 passed — adapter loaded and generating\n")
+# INTERPRETATION: 5 questions is a smoke test, not a benchmark — one
+# right or wrong answer moves accuracy by 20 points. The point is that
+# the weights you serve are the registered ones, provably.
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Visualise the adapter catalogue
 # ════════════════════════════════════════════════════════════════════════
 
-
-async def snapshot_catalogue() -> pl.DataFrame:
-    # TODO: list adapters, return as polars DataFrame with
-    #       columns: name, method, base_model
-    ____
-
-
-catalogue = run_async(snapshot_catalogue())
+catalogue = pl.DataFrame(
+    {
+        "adapter_name": [f["adapter_name"] for f in on_disk],
+        "method": [f["method"] for f in on_disk],
+        "base_model_id": [f["base_model_id"] for f in on_disk],
+        "lora_rank": [f["rank"] for f in on_disk],
+        "target_modules": [",".join(f["target_modules"]) for f in on_disk],
+        "trainable_params": [f["trainable_params"] for f in on_disk],
+    }
+)
 catalogue.write_parquet(OUTPUT_DIR / "adapter_catalogue.parquet")
 print("Adapter catalogue:")
 print(catalogue)
+
+# INTERPRETATION: The catalogue is the single pane of glass operations
+# teams use for rollback. If a new adapter ships broken, they pick the
+# previous row and redeploy by name.
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Adapter parameter count vs the base model
+# ════════════════════════════════════════════════════════════════════════
+# Both numbers are counted from the safetensors files on disk: the
+# adapter's own weights, and the merged model (= base model size).
+
+# TODO: Count the merged model's parameters from its safetensors files.
+base_params = ____
+names = catalogue["adapter_name"].to_list()
+param_counts = catalogue["trainable_params"].to_list()
+
+fig, ax = plt.subplots(figsize=(9, 4))
+bars = ax.bar(names, param_counts, color=["#3498db", "#2ecc71", "#e67e22"][: len(names)])
+ax.axhline(
+    base_params,
+    color="#e74c3c",
+    linestyle="--",
+    linewidth=2,
+    label=f"Base model ({best.base_model_id}): {base_params / 1e6:,.0f}M params",
+)
+ax.set_ylabel("Parameters")
+ax.set_title("Adapter Parameters vs Base Model (counted from disk)", fontweight="bold")
+ax.set_yscale("log")
+for bar, count in zip(bars, param_counts):
+    ax.text(
+        bar.get_x() + bar.get_width() / 2,
+        max(count, 1) * 1.5,
+        f"{count / 1e6:.2f}M\n({count / base_params:.2%})",
+        ha="center",
+        fontsize=9,
+    )
+ax.legend(fontsize=9)
+ax.grid(axis="y", alpha=0.3, which="both")
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex8_adapter_params.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Apply: Singapore HR Compliance QA
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: A Singapore SME (200 employees) runs an internal HR policy
-# assistant fine-tuned on MOM guidelines. The base model is general; the
-# SFT adapter teaches Singapore employment law (CPF, Work Pass, notice);
-# DPO alignment filters out legally risky phrasing.
+# assistant tuned on Ministry of Manpower guidance (CPF, Work Pass
+# categories, retrenchment notice). DPO alignment then discourages
+# speculative or legally risky phrasing.
 #
-# BUSINESS IMPACT: Legal review externally is ~S$400/query. A governed
-# adapter serving 200 queries/month at S$0.08/query = S$16 vs S$80,000
-# — a ~5,000x reduction, with full provenance from the registry.
+# BUSINESS IMPACT (illustrative figures): if external legal review of an
+# HR question costs ~S$400, 200 questions a month cost S$80,000. A
+# governed adapter answering first-line questions at a few cents each,
+# with lawyers reviewing only escalations, cuts most of that — and the
+# registry lets the HR team show which adapter version answered which
+# question.
 
+ILLUSTRATIVE_REVIEW_COST_SGD = 400
+ILLUSTRATIVE_QUERIES_PER_MONTH = 200
 print("\n" + "=" * 70)
 print("  APPLY — Singapore HR Policy Assistant")
 print("=" * 70)
 print(
     f"""
-  Active adapter: {best_adapter.get('name', 'none')}
-  Method:         {best_adapter.get('method', '-')}
+  Base model:     {best.base_model_id}
+  Active adapter: {best.adapter_name} v{best.version}
+  LoRA config:    r={best.lora_config.get('r')}, alpha={best.lora_config.get('alpha')}, targets={best.lora_config.get('target_modules')}
+  Smoke-test MMLU accuracy: {mmlu_acc:.0%} on {N_EVAL} questions
 
-  Legal-review baseline:  S$80,000/month
-  Governed-adapter cost:  S$16/month
-  Saving:                 ~5,000x reduction
+  Illustrative legal-review baseline: S${ILLUSTRATIVE_REVIEW_COST_SGD * ILLUSTRATIVE_QUERIES_PER_MONTH:,}/month
+  ({ILLUSTRATIVE_QUERIES_PER_MONTH} questions at S${ILLUSTRATIVE_REVIEW_COST_SGD} each)
+
+  Audit trail: log adapter name + version with every answer, so an
+  inspection can reconstruct which model answered any policy question.
 """
 )
 
@@ -163,77 +285,21 @@ print(
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
-print("═" * 70)
+print("=" * 70)
 print("  WHAT YOU'VE MASTERED")
-print("═" * 70)
+print("=" * 70)
 print(
     """
-  [x] Queried AdapterRegistry as the catalogue of trained adapters
-  [x] Chose the best available adapter with graceful fallback
-  [x] Built an AlignmentPipeline for inference
-  [x] Snapshotted the registry for rollback visibility
-  [x] Applied adapter loading to a Singapore HR scenario
+  [x] Registered trained adapters in AdapterRegistry with their signatures
+  [x] Selected an adapter by named preference, not by a hardcoded path
+  [x] Merged the adapter into its base model and generated real answers
+  [x] Counted adapter vs base parameters from the files on disk
+  [x] Applied adapter provenance to a Singapore HR compliance scenario
 
-  Next: 02_governance_pipeline.py wraps this adapter in PACT controls.
+  KEY INSIGHT: A model you cannot name, version and trace to its
+  training run is a model you cannot roll back or defend in an audit.
+
+  Next: 02_governance_pipeline.py wraps the served model in PACT
+  governance tiers.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — six lenses before completion
-# ══════════════════════════════════════════════════════════════════
-# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
-# Six lenses:
-#   1. Output        — is the generation coherent, factual, on-task?
-#   2. Attention     — what does the model attend to internally?
-#   3. Retrieval     — did we fetch the right context?  [RAG only]
-#   4. Agent Trace   — what did the agent actually do?  [Agent only]
-#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
-#   6. Governance    — is it within policy?            [PACT only]
-from shared.mlfp06.diagnostics import LLMObservatory
-
-# Primary lens: ALL SIX — the capstone wires Align + Kaizen + PACT +
-# Nexus + RAG + Agents end-to-end, so every lens should be lit.
-if False:  # scaffold — requires the full capstone stack
-    obs = LLMObservatory(run_id="ex_8_capstone_run")
-    # obs.output.evaluate(prompts=[...], responses=[...])
-    # obs.retrieval.evaluate(queries=[...], retrieved_contexts=[...], answers=[...])
-    # for run_id, trace in supervisor.all_traces.items():
-    #     obs.agent.register_trace(trace)
-    # obs.alignment.log_training_step(...)
-    # obs.governance.verify_chain(audit_df)
-    print("\n── LLM Observatory Report ──")
-    findings = obs.report()
-    # obs.plot_dashboard().show()  # all six panels at once
-
-# ══════ EXPECTED OUTPUT (synthesised reference) ══════
-# ════════════════════════════════════════════════════════════════
-#   LLM Observatory — composite Prescription Pad (CAPSTONE)
-# ════════════════════════════════════════════════════════════════
-#   [✓] Output     (HEALTHY): faithfulness 0.88, judge coherence 0.91
-#   [✓] Retrieval  (HEALTHY): recall@5 = 0.79, context util 0.72
-#   [✓] Agent      (HEALTHY): 14 TAOD steps, no stuck loops, cost $0.04
-#   [✓] Alignment  (HEALTHY): KL 0.6 nats, win-rate 0.61 vs base
-#   [!] Governance (WARNING): 1 of 8 drills escalated; budget at 71%
-#       Fix: raise escalation threshold or narrow data_access envelope.
-#   [?] Attention  (UNKNOWN): API-only judge/prod model — enable the
-#       open-weight evaluator to light up this panel.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [CAPSTONE COMPOSITE] The capstone is the first exercise where you
-#     see the full six-lens dashboard. Five lenses GREEN + one YELLOW
-#     is a realistic "ship it with a watch-item" disposition. The
-#     governance WARNING is the escalation on 1/8 drills — investigate
-#     which drill escalated before production rollout; that's exactly
-#     the kind of pre-deploy check the dashboard is designed for.
-#  [CROSS-LENS READING] Notice how each lens is answering a different
-#     question: Output says "is the answer good?"; Retrieval says "did
-#     we give it the right context?"; Agent says "did it use the right
-#     steps?"; Alignment says "is the fine-tune pulling its weight?";
-#     Governance says "did we stay inside the envelope?". A single
-#     aggregate "quality score" would hide all of this.
-# ════════════════════════════════════════════════════════════════════
-
-
-# ════════════════════════════════════════════════════════════════════════

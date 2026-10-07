@@ -34,7 +34,7 @@
   <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
     <strong style="color: #0D9488;">⏱ 60 minutes</strong> ·
     <strong>Prereq:</strong> M5 (transformers) ·
-    <strong>Outcome:</strong> typed LLM extraction with a cost budget
+    <strong>Outcome:</strong> typed LLM extraction, with token and cost accounting
   </div>
   <div class="slide-footer">MLFP — ML Foundations for Professionals</div>
 </section>
@@ -48,7 +48,7 @@
     <li><strong>Every lesson in M6 starts with a call to one.</strong> Prompting (today), fine-tuning (6.2), alignment (6.3), RAG (6.4), agents (6.5–6.6), governance (6.7), full deploy (6.8).</li>
   </ul>
   <div style="background: #F0FDF4; padding: 14px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1em;">
-    <strong>🟢 Foundations:</strong> before we fine-tune anything, we must make the <em>default</em> model earn its keep. Prompting alone is ~80% of production LLM work.
+    <strong>🟢 Foundations:</strong> before we fine-tune anything, we must make the <em>default</em> model earn its keep. Most production LLM work starts — and often ends — with prompting.
   </div>
 </section>
 
@@ -190,20 +190,20 @@
     <svg viewBox="0 0 720 180" xmlns="http://www.w3.org/2000/svg">
       <rect x="20" y="50" width="260" height="60" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
       <text x="150" y="74" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">Raw text</text>
-      <text x="150" y="95" text-anchor="middle" font-family="JetBrains Mono" font-size="13">"Singapore is tropical."</text>
+      <text x="150" y="95" text-anchor="middle" font-family="JetBrains Mono" font-size="13">"Jurong is tropical."</text>
       <line x1="280" y1="80" x2="340" y2="80" stroke="#0D9488" stroke-width="3"/>
       <polygon points="340,80 334,76 334,84" fill="#0D9488"/>
 
       <rect x="350" y="30" width="350" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
       <text x="525" y="48" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#92400E">5 tokens</text>
-      <text x="525" y="68" text-anchor="middle" font-family="JetBrains Mono" font-size="12">["Sing","apore"," is"," tropical","."]</text>
+      <text x="525" y="68" text-anchor="middle" font-family="JetBrains Mono" font-size="12">["Jur","ong"," is"," tropical","."]</text>
 
       <rect x="350" y="90" width="350" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
       <text x="525" y="108" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#1E40AF">Token IDs</text>
-      <text x="525" y="128" text-anchor="middle" font-family="JetBrains Mono" font-size="12">[39147, 7209, 374, 35148, 13]</text>
+      <text x="525" y="128" text-anchor="middle" font-family="JetBrains Mono" font-size="12">[94277, 647, 374, 35148, 13]</text>
     </svg>
   </figure>
-  <p style="font-size: 0.85em; color: #64748B;">Rule of thumb: 1 token ≈ 0.75 English words ≈ 4 characters. Context window = 128k tokens on modern frontier models.</p>
+  <p style="font-size: 0.85em; color: #64748B;">Shown: the <code>cl100k_base</code> BPE tokenizer — a rare name splits into sub-words, a common one ("Singapore") is a single token. Rule of thumb: 1 token ≈ 0.75 English words ≈ 4 characters. Context windows of 128k tokens are now common.</p>
 </section>
 
 <!-- Slide 6 -->
@@ -222,29 +222,32 @@
 
 <!-- Slide 7 -->
 <section>
-  <h2>Four baseline prompting strategies</h2>
-  <table style="font-size: 0.72em;">
+  <h2>Five baseline prompting strategies</h2>
+  <table style="font-size: 0.68em;">
     <thead><tr><th>Strategy</th><th>Add to prompt</th><th>Cost</th><th>Shines on</th></tr></thead>
     <tbody>
       <tr><td><strong>Zero-shot</strong></td><td>Task description only</td><td>$</td><td>Simple classification, extraction</td></tr>
       <tr><td><strong>Few-shot</strong></td><td>$k = 3$–$8$ labelled examples</td><td>$$</td><td>Format consistency, rare labels</td></tr>
-      <tr><td><strong>Chain-of-thought</strong></td><td>"Let's think step by step"</td><td>$$$</td><td>Arithmetic, multi-step logic</td></tr>
+      <tr><td><strong>Chain-of-thought</strong></td><td>Worked reasoning steps in the prompt</td><td>$$$</td><td>Arithmetic, multi-step logic</td></tr>
+      <tr><td><strong>Zero-shot CoT</strong></td><td>Just append "Let's think step by step"</td><td>$$$</td><td>Reasoning without hand-written steps</td></tr>
       <tr><td><strong>Self-consistency</strong></td><td>Sample $N$ CoT, majority vote</td><td>$N \times$$$</td><td>Hard problems where $N$ samples agree</td></tr>
     </tbody>
   </table>
+  <p style="font-size: 0.75em; color: #64748B;">Exercise 1 runs all five (files 01–05) on the same 20 SST-2 movie-review snippets, then adds typed output (06).</p>
 </section>
 
 <!-- Slide 8 -->
 <section>
   <h2>Zero-shot</h2>
   <pre><code class="language-python" data-trim>
-prompt = f"""Classify this Singapore company report into one category.
-Categories: Financial, Technology, Healthcare, Real Estate, Manufacturing.
+prompt = f"""Classify the sentiment of the following movie review snippet
+into exactly one category.
 
-Report excerpt:
-{text[:800]}
+Categories: positive, negative
 
-Respond with ONLY the category name."""
+Review: "{text[:800]}"
+
+Respond with ONLY the category name, nothing else."""
   </code></pre>
   <ul>
     <li>Cheapest, fastest.</li>
@@ -257,31 +260,36 @@ Respond with ONLY the category name."""
 <section>
   <h2>Few-shot (in-context learning)</h2>
   <pre><code class="language-python" data-trim>
-FEW_SHOT = [
-    ("Revenue increased 15% driven by loan growth...", "Financial"),
-    ("Cloud-native SaaS platform for enterprises...", "Technology"),
-    ("Clinical trials for oncology drug...",         "Healthcare"),
-    ("Integrated township in Jurong...",             "Real Estate"),
-    ("Factory automation at Tuas fab...",            "Manufacturing"),
+FEW_SHOT_EXAMPLES = [
+    {"text": "an absolute masterpiece of storytelling and visual style.",
+     "category": "positive"},
+    {"text": "a tedious and predictable mess from start to finish.",
+     "category": "negative"},
+    {"text": "delightfully clever, with performances that elevate every scene.",
+     "category": "positive"},
+    {"text": "fails to land a single emotional beat in over two hours.",
+     "category": "negative"},
 ]
   </code></pre>
-  <p style="font-size: 0.85em;">Diverse, clean, short. $k = 3$–$8$. Diminishing returns past 10 examples.</p>
+  <p style="font-size: 0.85em;">Diverse, clean, short, balanced across labels. $k = 3$–$8$; returns diminish as $k$ grows.</p>
 </section>
 
 <!-- Slide 10 -->
 <section>
   <h2>Chain-of-thought — "think step by step"</h2>
   <pre><code class="language-text" data-trim>
-Classify this report. Think step by step:
-1. Identify key terms and topics
-2. Match those terms to the most relevant category
-3. State your final classification on the last line
+Classify the sentiment of this movie review as positive or negative.
+Think step by step:
+1. Identify the key opinion words and their valence
+2. Assess whether the overall tone is favourable or unfavourable
+3. Consider any sarcasm or irony
+4. State your final classification as exactly "positive" or "negative"
 
-Report: "Revenue up 15% on loan growth..."
+Review: "a tedious and predictable mess from start to finish."
 
-→ 1. Key terms: revenue, margin, loans
-→ 2. These are banking concepts
-→ 3. Category: Financial
+→ 1. Opinion words: tedious, predictable, mess (all unfavourable)
+→ 2. Overall tone: unfavourable  → 3. No irony
+→ 4. negative
   </code></pre>
   <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px;">
     <strong>🔵 Why it works:</strong> reasoning tokens become context for the answer. The model gets scratchpad space before committing.
@@ -295,26 +303,26 @@ Report: "Revenue up 15% on loan growth..."
     <svg viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg">
       <rect x="20" y="60" width="160" height="100" rx="8" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="2"/>
       <text x="100" y="95" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#6D28D9">One CoT prompt</text>
-      <text x="100" y="115" text-anchor="middle" font-family="Inter" font-size="11" fill="#5B21B6">T = 0.7</text>
-      <text x="100" y="135" text-anchor="middle" font-family="Inter" font-size="11" fill="#5B21B6">N samples</text>
+      <text x="100" y="115" text-anchor="middle" font-family="Inter" font-size="11" fill="#5B21B6">T &gt; 0 (0.4 in Ex 1.5)</text>
+      <text x="100" y="135" text-anchor="middle" font-family="Inter" font-size="11" fill="#5B21B6">N = 3 samples</text>
 
       <line x1="180" y1="110" x2="260" y2="60" stroke="#8B5CF6" stroke-width="2"/>
       <line x1="180" y1="110" x2="260" y2="110" stroke="#8B5CF6" stroke-width="2"/>
       <line x1="180" y1="110" x2="260" y2="160" stroke="#8B5CF6" stroke-width="2"/>
 
       <rect x="260" y="40" width="220" height="30" rx="4" fill="white" stroke="#8B5CF6"/>
-      <text x="370" y="60" text-anchor="middle" font-family="Inter" font-size="11">Chain 1 → Financial</text>
+      <text x="370" y="60" text-anchor="middle" font-family="Inter" font-size="11">Chain 1 → negative</text>
       <rect x="260" y="90" width="220" height="30" rx="4" fill="white" stroke="#8B5CF6"/>
-      <text x="370" y="110" text-anchor="middle" font-family="Inter" font-size="11">Chain 2 → Financial</text>
+      <text x="370" y="110" text-anchor="middle" font-family="Inter" font-size="11">Chain 2 → negative</text>
       <rect x="260" y="140" width="220" height="30" rx="4" fill="white" stroke="#8B5CF6"/>
-      <text x="370" y="160" text-anchor="middle" font-family="Inter" font-size="11">Chain 3 → Technology</text>
+      <text x="370" y="160" text-anchor="middle" font-family="Inter" font-size="11">Chain 3 → positive</text>
 
       <line x1="480" y1="110" x2="540" y2="110" stroke="#8B5CF6" stroke-width="3" marker-end="url(#arr)"/>
       <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8B5CF6"/></marker></defs>
 
       <rect x="550" y="75" width="160" height="70" rx="8" fill="#8B5CF6"/>
       <text x="630" y="110" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="white">Majority</text>
-      <text x="630" y="128" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="white">Financial</text>
+      <text x="630" y="128" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="white">negative</text>
     </svg>
   </figure>
 </section>
@@ -323,22 +331,23 @@ Report: "Revenue up 15% on loan growth..."
 <section>
   <h2>Kaizen <code>Delegate</code> — the LLM primitive</h2>
   <pre><code class="language-python" data-trim>
-from kaizen_agents import Delegate
+from shared.mlfp06._ollama_bootstrap import make_delegate
 
-delegate = Delegate(
-    model="gpt-4o-mini",
-    max_llm_cost_usd=0.50,  # ← hard cap
-)
+# Model comes from OLLAMA_CHAT_MODEL (default llama3.2:3b)
+delegate = make_delegate(temperature=0.0)
 
-response = ""
+response, usage = "", {}
 async for event in delegate.run(prompt):
-    if hasattr(event, "text"):
-        response += event.text
+    kind = getattr(event, "event_type", None)
+    if kind == "text_delta":
+        response += event.text        # streamed chunk
+    elif kind == "turn_complete":
+        usage = event.usage or {}     # prompt/completion tokens
   </code></pre>
   <ul style="font-size: 0.85em;">
-    <li>One interface across OpenAI / Anthropic / Ollama / local.</li>
-    <li>Streaming — abort early if the response is going bad.</li>
-    <li><strong>Budget is not optional.</strong> A bug in a loop is the most common LLM bill disaster.</li>
+    <li>One streaming interface for hosted and local models — this course runs every call on local Ollama.</li>
+    <li>Streaming — abort early if the response is going bad. <code>run_delegate_text()</code> wraps this loop.</li>
+    <li><strong>Count tokens on every call.</strong> Local Ollama is free, so a dollar cap cannot trip (<code>make_delegate</code> sets <code>budget_usd=None</code>). On a priced provider, <code>Delegate(budget_usd=…)</code> is the hard cap.</li>
   </ul>
 </section>
 
@@ -348,39 +357,47 @@ async for event in delegate.run(prompt):
   <pre><code class="language-python" data-trim>
 from kaizen import Signature, InputField, OutputField
 
-class ReportExtraction(Signature):
-    report_text: str = InputField(description="Report excerpt")
+class ReviewExtraction(Signature):
+    """Extract structured information from a movie review snippet."""
 
-    category: str = OutputField(
-        description="Financial | Technology | Healthcare | Real Estate | Manufacturing"
-    )
-    key_entities: list[str] = OutputField(description="Named entities")
-    sentiment: str = OutputField(description="positive | negative | neutral")
-    confidence: float = OutputField(description="Confidence in [0, 1]")
+    review_text: str = InputField(description="Movie review snippet to analyse")
+
+    sentiment: str = OutputField(description="Exactly one of: positive, negative")
+    confidence: float = OutputField(description="Classification confidence 0.0 to 1.0")
+    key_phrases: list[str] = OutputField(description="Up to 5 phrases that signal sentiment")
+    targets: list[str] = OutputField(description="Aspects evaluated (acting, plot, ...)")
+    tone: str = OutputField(description="enthusiastic, measured, disappointed, ...")
   </code></pre>
-  <p style="font-size: 0.85em;">The agent writes the prompt, calls the model, parses to this schema, retries on mismatch. You get a typed object — not a string.</p>
+  <p style="font-size: 0.85em;">The agent renders this schema into the prompt, calls the model and unpacks the JSON reply into these fields. You get a dict keyed by field name — not a string to parse.</p>
 </section>
 
 <!-- Slide 14 -->
 <section>
   <h2>Using the signature</h2>
   <pre><code class="language-python" data-trim>
-from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
+from kaizen.core.base_agent import BaseAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
 
-agent = SimpleQAAgent(
-    signature=ReportExtraction,
-    model="gpt-4o-mini",
-    max_llm_cost_usd=1.0,
+agent = BaseAgent(
+    config={
+        "llm_provider": "ollama",
+        "model": DEFAULT_CHAT_MODEL,        # from OLLAMA_CHAT_MODEL
+        "base_url": OLLAMA_BASE_URL,
+        "use_async_llm": True,              # required for run_async
+        "response_format": {"type": "json_object"},
+        "structured_output_mode": "explicit",
+    },
+    signature=ReviewExtraction(),
 )
 
-result = await agent.run(report_text=doc)
+result = await agent.run_async(review_text=text[:800])
 
-if result.confidence < 0.6:
-    escalate_to_human(result)         # ← float, not "high"
-
-for entity in result.key_entities:    # ← list[str], not a CSV string
-    index_entity(entity)
+if float(result["confidence"]) < 0.6:       # ← a number, not "high"
+    print("low confidence:", result)
+for phrase in result["key_phrases"]:        # ← list[str], not a CSV string
+    print(phrase)
   </code></pre>
+  <p style="font-size: 0.75em;">Exercise 1.6 raises if any field is missing — no silent placeholder values.</p>
 </section>
 
 <!-- Slide 15 -->
@@ -390,14 +407,14 @@ for entity in result.key_entities:    # ← list[str], not a CSV string
     \[ \text{cost} = N_\text{in}\cdot r_\text{in} + N_\text{out}\cdot r_\text{out} \]
   </div>
   <table style="font-size: 0.75em;">
-    <thead><tr><th>Model (Apr 2026 ballpark)</th><th>Input / 1M</th><th>Output / 1M</th></tr></thead>
+    <thead><tr><th>Tier (illustrative prices, USD)</th><th>Input / 1M</th><th>Output / 1M</th></tr></thead>
     <tbody>
-      <tr><td>gpt-4o-mini</td><td>$0.15</td><td>$0.60</td></tr>
-      <tr><td>gpt-4o</td><td>$2.50</td><td>$10.00</td></tr>
-      <tr><td>claude-3.5-sonnet</td><td>$3.00</td><td>$15.00</td></tr>
+      <tr><td>Local model on Ollama (this course)</td><td>$0</td><td>$0</td></tr>
+      <tr><td>Hosted small model</td><td>~$0.15</td><td>~$0.60</td></tr>
+      <tr><td>Hosted frontier model</td><td>~$3</td><td>~$15</td></tr>
     </tbody>
   </table>
-  <p style="font-size: 0.8em;">Output tokens cost 4× input. CoT is expensive <em>because</em> it is all output.</p>
+  <p style="font-size: 0.8em;">Hosted providers typically charge 4–5× more per output token than per input token. CoT is expensive <em>because</em> it is mostly output. Exercise 1 measures tokens per technique and converts them at one illustrative blended rate ($0.50 / 1M) — check your provider's price list before sizing a real deployment.</p>
 </section>
 
 <!-- Slide 16 -->
@@ -416,18 +433,19 @@ for entity in result.key_entities:    # ← list[str], not a CSV string
 
 <!-- Slide 17 -->
 <section>
-  <h2>Worked example — 10 Singapore reports</h2>
+  <h2>Worked example — 10 SST-2 reviews, three prompts</h2>
   <pre><code class="language-python" data-trim>
-loader = MLFPDataLoader()
-reports = loader.load("mlfp06", "sg_company_reports.parquet")
-sample = reports.head(10)
+from shared.mlfp06.ex_1 import get_eval_docs
+
+docs = get_eval_docs().head(10)   # SST-2: text, label (positive|negative)
 
 results = []
-for row in sample.iter_rows(named=True):
-    z = await zero_shot_classify(row["text"])
-    f = await few_shot_classify(row["text"])
-    _, c = await cot_classify(row["text"])
-    results.append({"doc": row["text"][:40], "zero": z, "few": f, "cot": c})
+for row in docs.iter_rows(named=True):
+    z, _, _ = await zero_shot_classify(row["text"])    # (label, tokens, secs)
+    f, _, _ = await few_shot_classify(row["text"])
+    c, _, _, _ = await cot_classify(row["text"])       # (label, reasoning, ...)
+    results.append({"doc": row["text"][:40], "gold": row["label"],
+                    "zero": z, "few": f, "cot": c})
 
 comparison = pl.DataFrame(results)
 print(comparison)
@@ -445,7 +463,7 @@ print(comparison)
     <strong>2. Batching 20 answers into one prompt.</strong> Error rate compounds. Use <code>asyncio.gather</code>.
   </div>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
-    <strong>3. No cost budget.</strong> A buggy loop can cost $1,000 overnight.
+    <strong>3. No spend control on a priced provider.</strong> A buggy loop re-calling a hosted model can run up a large bill overnight — cap turns and set a budget.
   </div>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
     <strong>4. "T=0 is deterministic".</strong> <em>Nearly</em>, not fully — log every call for audit.
@@ -458,9 +476,9 @@ print(comparison)
   <ul style="font-size: 0.88em;">
     <li>✓ Explain next-token prediction as the one training objective</li>
     <li>✓ Count tokens and reason about context window + cost</li>
-    <li>✓ Write zero-shot, few-shot, CoT, and self-consistency prompts</li>
-    <li>✓ Use <code>Delegate</code> with a streaming loop and a cost budget</li>
-    <li>✓ Use <code>Signature</code> + <code>SimpleQAAgent</code> for typed output</li>
+    <li>✓ Write zero-shot, few-shot, CoT, zero-shot CoT and self-consistency prompts</li>
+    <li>✓ Use <code>make_delegate()</code> with a streaming loop and token accounting</li>
+    <li>✓ Use <code>Signature</code> + <code>BaseAgent</code> for typed output</li>
     <li>✓ Pick a temperature that matches the task</li>
   </ul>
   <div style="background: #F0FDFA; padding: 16px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1.5em;">

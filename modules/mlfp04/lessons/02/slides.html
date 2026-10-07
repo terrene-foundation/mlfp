@@ -228,42 +228,48 @@
 </section>
 
 <section>
-  <h2>Twenty lines of EM (1/2)</h2>
+  <h2>Twenty lines of EM (1/2): the two steps</h2>
   <pre><code class="language-python" data-trim>
-def em_gmm(X, K, max_iter=100, tol=1e-4):
+import numpy as np
+from scipy.stats import multivariate_normal as mvn
+
+def e_step(X, pi, mu, Sigma):
+    K = len(pi)
+    weighted = np.stack(
+        [pi[k] * mvn.pdf(X, mu[k], Sigma[k]) for k in range(K)], axis=1
+    )
+    total = weighted.sum(axis=1, keepdims=True)
+    return weighted / total, np.log(total).sum()  # responsibilities, log-lik
+
+def m_step(X, r, reg=1e-6):
     N, D = X.shape
-    rng = np.random.default_rng(42)
-    mu = X[rng.choice(N, size=K, replace=False)]
-    Sigma = np.array([np.eye(D) for _ in range(K)])
-    pi = np.full(K, 1.0 / K)
-    log_lik = -np.inf
-    for _ in range(max_iter):
-        # E-step
-        weighted = np.stack(
-            [pi[k] * mvn.pdf(X, mu[k], Sigma[k]) for k in range(K)],
-            axis=1,
-        )
-        total = weighted.sum(1, keepdims=True) + 1e-12
-        r = weighted / total
+    Nk = r.sum(axis=0)
+    pi = Nk / N
+    mu = (r.T @ X) / Nk[:, None]
+    Sigma = np.stack([
+        (r[:, k:k+1] * (X - mu[k])).T @ (X - mu[k]) / Nk[k] + reg * np.eye(D)
+        for k in range(len(Nk))
+    ])  # reg keeps every covariance invertible
+    return pi, mu, Sigma
   </code></pre>
 </section>
 
 <section>
-  <h2>Twenty lines of EM (2/2)</h2>
+  <h2>Twenty lines of EM (2/2): the loop</h2>
   <pre><code class="language-python" data-trim>
-        # M-step
-        Nk = r.sum(0)
-        pi = Nk / N
-        mu = (r.T @ X) / Nk[:, None]
-        for k in range(K):
-            diff = X - mu[k]
-            Sigma[k] = (r[:, k:k+1] * diff).T @ diff / Nk[k]
-
-        new_ll = np.log(total + 1e-12).sum()
-        if abs(new_ll - log_lik) &lt; tol:
+def em_gmm(X, K, max_iter=200, tol=1e-6, seed=42):
+    rng = np.random.default_rng(seed)
+    mu = X[rng.choice(len(X), size=K, replace=False)]
+    Sigma = np.stack([np.eye(X.shape[1])] * K)
+    pi = np.full(K, 1.0 / K)
+    log_lik = -np.inf
+    for _ in range(max_iter):
+        r, new_ll = e_step(X, pi, mu, Sigma)
+        pi, mu, Sigma = m_step(X, r)
+        if abs(new_ll - log_lik) &lt; tol:   # stop when ΔlogL is tiny
             break
         log_lik = new_ll
-    return pi, mu, Sigma, r, log_lik
+    return pi, mu, Sigma, r, new_ll
   </code></pre>
 </section>
 
@@ -276,6 +282,12 @@ def em_gmm(X, K, max_iter=100, tol=1e-4):
     <li>$N$ = sample size.</li>
     <li>Lower is better. Try $K = 2..10$.</li>
   </ul>
+  <pre><code class="language-python" data-trim>
+from kailash_ml.engines.clustering import ClusteringEngine
+res = ClusteringEngine().fit(X_df, algorithm="gmm", n_clusters=4,
+                             covariance_type="full")
+print(res.metrics["bic"], res.metrics["aic"])   # GMM fits also report BIC / AIC
+  </code></pre>
 </section>
 
 <section>
@@ -289,14 +301,17 @@ def em_gmm(X, K, max_iter=100, tol=1e-4):
       <tr><td><code>full</code></td><td>D(D+1)/2</td><td>Low-dim, different orientations</td></tr>
     </tbody>
   </table>
+  <div class="callout-slide theory">
+    <strong>🔵 Theory:</strong> the types nest — spherical ⊂ diag ⊂ full, and tied ⊂ full. At the same $K$ a more flexible type can never fit worse, so compare them with BIC, not raw likelihood.
+  </div>
 </section>
 
 <section>
-  <h2>Mixture of Experts — where GMM meets GPT-4</h2>
+  <h2>Mixture of Experts — where GMM meets modern LLMs</h2>
   <ul>
     <li>Replace fixed $\pi_k$ with a <strong>gating network</strong> $g_k(\mathbf{x})$.</li>
     <li>Each "expert" is a sub-network; the gate routes inputs.</li>
-    <li>GPT-4, Mixtral, DeepSeek — all use MoE layers for scale.</li>
+    <li>Openly documented MoE LLMs: Mixtral 8x7B (8 experts per layer, top-2 routed, ~47B total / ~13B active parameters) and DeepSeek-V3. GPT-4 is <em>reported</em> to use MoE; its architecture is unpublished.</li>
   </ul>
   <div class="callout-slide advanced">
     <strong>🟣 Advanced:</strong> Classical GMM is MoE with constant gates. We revisit this in M6 when we route between Kaizen agents.
@@ -306,6 +321,9 @@ def em_gmm(X, K, max_iter=100, tol=1e-4):
 <section>
   <h2>Worked example: 3 Gaussians in 2D</h2>
   <pre><code class="language-python" data-trim>
+from sklearn.mixture import GaussianMixture
+
+rng = np.random.default_rng(0)
 means = np.array([[0, 0], [5, 5], [-3, 4]])
 X = np.vstack([rng.multivariate_normal(m, np.eye(2), 200) for m in means])
 
@@ -316,7 +334,7 @@ print(f"LL: {ll:.2f}, π: {pi.round(3)}")
 gm = GaussianMixture(n_components=3, random_state=0).fit(X)
 print(f"sklearn LL: {gm.score(X) * len(X):.2f}")
   </code></pre>
-  <p style="font-size: 0.85em; color: #64748B;">Both implementations should agree to 3 decimal places.</p>
+  <p style="font-size: 0.85em; color: #64748B;">Both print LL ≈ −2324.39 here. Expect close, not bit-identical, agreement in general: sklearn initialises with K-means, adds <code>reg_covar=1e-6</code> and stops at <code>tol=1e-3</code>.</p>
 </section>
 
 <section>
@@ -342,9 +360,9 @@ print(f"{len(uncertain)} customers need manual review")
 <section>
   <h2>Cross-references</h2>
   <ul>
-    <li><strong>4.1:</strong> K-means = GMM with $\Sigma = \sigma^2 I$ + hard argmax.</li>
+    <li><strong>4.1:</strong> K-means = GMM with shared $\Sigma = \sigma^2 I$, equal $\pi_k$, in the limit $\sigma^2 \to 0$ (hard argmax).</li>
     <li><strong>M2 Bayes:</strong> E-step is Bayes' rule applied to cluster assignment.</li>
-    <li><strong>4.7 PIVOT:</strong> Matrix factorisation ALS is coordinate ascent — structurally the same as EM.</li>
+    <li><strong>4.7 PIVOT:</strong> Matrix factorisation ALS also alternates (fix one block, solve the other) — the same alternating structure, but <em>not</em> EM: there is no latent distribution.</li>
     <li><strong>M6 LLMs:</strong> Mixture of Experts generalises GMM to input-dependent gates.</li>
   </ul>
 </section>

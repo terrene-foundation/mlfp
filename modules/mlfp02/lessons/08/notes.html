@@ -35,108 +35,273 @@
   Capstone — Statistical Analysis Project
 </h1>
 
-<p class="lead">Total time: ~60 minutes &nbsp;·&nbsp; 16 slides &nbsp;·&nbsp; ~3.5 min per slide average</p>
+<p class="lead">
+  Total time: ~60 minutes &nbsp;·&nbsp; 14 slides &nbsp;·&nbsp; ~4 min per slide average
+</p>
 
 <p>
-  This is the capstone. The new content (FeatureEngineer, FeatureStore) is
-  light — most of the lesson is applying skills from 2.1-2.7 to a real
-  project. Let learners choose their project option early (Slide 6) and
-  then walk the wine quality example as the guided demo. The exercise time
-  is the heart of the lesson — give at least 25 minutes for independent work.
+  The M2 capstone. Everything lands in one project: load, validate,
+  engineer features with the Kailash engines, store them point-in-time,
+  model with OLS, test hypotheses, and report. The guided walk is Option
+  A (HDB resale valuation) with the exact Exercise 8 numbers — 3,536
+  impossible rows removed, R² 0.828, +9,096 per square metre. Keep the
+  room on the numbers; they will reproduce them in Exercise 8.
 </p>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
   <h3>Capstone — Statistical Analysis Project</h3>
-  <p>"This is it — everything from Module 2 in one project. Choose a dataset, run the full pipeline, and present your findings."</p>
-  <div class="transition">→ "The pipeline."</div>
+  <p>
+    Open: "Seven lessons of statistics, one project. Today you'll see
+    the whole pipeline — load to report — run end to end, with two new
+    production tools: FeatureEngineer and FeatureStore." This is also
+    the template for their capstone submission, so set that expectation.
+  </p>
+  <div class="transition">→ "First, the map."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 2</span><span>~2 min</span><span>Pipeline</span></div>
-  <h3>The statistical analysis pipeline</h3>
-  <p>Walk the six stages. Point out which lesson each stage comes from.</p>
-  <div class="transition">→ "Two new engines."</div>
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Module map</span></div>
+  <h3>How Module 2 fits together</h3>
+  <p>
+    Walk the diagram by colour. Foundations (teal): 2.1 probability,
+    2.2 estimation. Inference (blue): 2.3 testing, 2.4 experiments.
+    Modelling (amber): 2.5 linear, 2.6 logistic. Causal (rose): 2.7
+    CUPED and DiD. Every arrow feeds the capstone box.
+  </p>
+  <p>
+    "Notice the dependency shape: you couldn't have done the capstone
+    on day one. Probability gave you the language, estimation gave you
+    intervals, testing gave you decisions, the models gave you
+    predictions, and causal inference gave you the warnings. Today all
+    five show up in one workflow."
+  </p>
+  <div class="transition">→ "New tool one: FeatureEngineer."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 3-5</span><span>~8 min</span><span>FeatureEngineer + FeatureStore</span></div>
-  <h3>FeatureEngineer and FeatureStore</h3>
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>FeatureEngineer</span></div>
+  <h3>FeatureEngineer</h3>
   <p>
-    <strong>Slide 3:</strong> Walk the FeatureEngineer code. "Domain knowledge
-    decides which features to create. The engine handles the implementation.
-    Temporal features for time-series, interactions for non-linear relationships."
+    Walk the code. Load HDB via the ex_8 helper, index the rows, cast
+    the date. Define a <code>FeatureSchema</code> naming the entity
+    column and three base fields. Then
+    <code>FeatureEngineer(max_features=10)</code>: <code>generate</code>
+    with temporal and interaction strategies adds month/day-of-week/hour
+    columns and the area × lease-date interaction;
+    <code>select</code> ranks the generated candidates against the
+    target and keeps the top 3.
   </p>
   <p>
-    <strong>Slide 4:</strong> Walk the FeatureStore code. Emphasise point-in-time
-    correctness. "When you ask for features as of January, you get January's
-    data — not March's. This prevents data leakage."
+    Read the teal box — this is the design philosophy of the whole
+    course: "Domain knowledge decides <em>which</em> features. The
+    engine handles <em>how</em>. And sanity-check the ranking: an
+    <code>_hour</code> column is constant for monthly dates, so a high
+    rank there would be a red flag, not a discovery."
+  </p>
+  <div class="transition">→ "New tool two: FeatureStore."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>FeatureStore</span></div>
+  <h3>FeatureStore: point-in-time correctness</h3>
+  <p>
+    Walk the code. The ex_8 helpers do the heavy lifting:
+    <code>compute_v1_features</code>, <code>validate_v1_features</code>,
+    and <code>build_schema_v1</code> — which builds the
+    <code>kailash_ml.features.FeatureSchema</code> the store accepts.
+    <code>create_feature_store</code> wraps a DataFlow instance;
+    <code>materialize_features</code> writes the versioned rows.
   </p>
   <p>
-    <strong>Slide 5:</strong> Walk the lifecycle diagram. "Create features,
-    store them, retrieve them at the right point in time, train. This is the
-    pattern every ML team uses."
+    Then the key call: <code>get_features(schema, timestamp=when)</code>
+    with 1 Jan 2023. "Rows stamped later never come back. The store
+    answers the question 'what did we know <em>as of</em> this date?' —
+    which is exactly the question training data must answer."
   </p>
-  <div class="audience-cue beginner">
-    <strong>For beginners:</strong> "Think of FeatureStore as a library
-    catalogue. You check out the book (features) that existed on the date
-    you need — not tomorrow's edition."
-  </div>
-  <div class="transition">→ "Choose your project."</div>
+  <p>
+    Read the blue box: "Point-in-time correctness prevents data leakage
+    in time-series problems."
+  </p>
+  <div class="transition">→ "Why that matters, in one picture."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>PIT picture</span></div>
+  <h3>Point-in-time correctness</h3>
+  <p>
+    Walk the timeline. The training date $T$ splits the world. Green
+    zone to the left: the feature lookback window — safe, only past
+    data. Blue zone just right of $T$: the label window, where the
+    outcome is observed. Red hatched zone beyond: the forbidden future.
+  </p>
+  <p>
+    Point at the two examples. Safe: <code>lag_1</code>,
+    <code>rolling_mean_6</code> — computed from the lookback window
+    only. Leakage: <code>next_month_price</code> — uses data after the
+    training date. "The store's <code>get_features</code> at timestamp
+    $T$ is the mechanical enforcement of this picture: only rows
+    stamped at or before $T$ come back."
+  </p>
+  <div class="transition">→ "Three project options — pick one."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Project options</span></div>
   <h3>Three project options</h3>
   <p>
-    Let learners choose. Option A (wine) is the most straightforward — good
-    for beginners. Option B (economic indicators) is the most technically
-    interesting — good for experts. Option C (experiment design) is the
-    most creative — good for learners who enjoyed 2.4 and 2.7.
+    Walk the table. Option A — HDB resale valuation: regression plus
+    point-in-time features, guided end-to-end in Exercise 8. Option B —
+    economic indicators: GDP growth, trade, unemployment, inflation;
+    time-series regression with temporal features. Option C — the
+    four-arm experiment: SRM against the designed split, CUPED, and a
+    ship/no-ship decision.
   </p>
-  <div class="transition">→ "The guided example uses wine quality."</div>
+  <p>
+    "All three follow the same pipeline: load → describe → engineer →
+    model → test → report. The rest of the deck walks Option A; your
+    project follows the same skeleton whichever you pick."
+  </p>
+  <div class="transition">→ "Step 1."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 7-12</span><span>~15 min</span><span>Guided example</span></div>
-  <h3>Wine quality pipeline (6 slides)</h3>
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Step 1 load</span></div>
+  <h3>Step 1: Load and profile</h3>
   <p>
-    Run the wine quality example live, step by step. For each slide:
+    Walk the code. Load, compute the v1 features, validate — and read
+    the printed numbers: the cleaned frame is (46,614, 16), and
+    <strong>3,536 impossible rows</strong> were removed. Then profile
+    with <code>run_profile</code> and count the alerts.
   </p>
-  <ul>
-    <li><strong>Slide 7 (Load):</strong> Show shape and alerts.</li>
-    <li><strong>Slide 8 (EDA):</strong> Compute correlations with quality. Identify top predictors: alcohol, volatile acidity, sulphates.</li>
-    <li><strong>Slide 9 (Engineer):</strong> Create the alcohol-acidity interaction. Store features.</li>
-    <li><strong>Slide 10 (Model):</strong> Fit regression. Report $R^2$.</li>
-    <li><strong>Slide 11 (Test):</strong> Show significant coefficients with effect sizes. Emphasise: "p-values without effect sizes are useless."</li>
-    <li><strong>Slide 12 (Report):</strong> Walk the report structure. A non-technical reader should understand every sentence.</li>
-  </ul>
-  <div class="audience-cue expert">
-    <strong>For experts:</strong> "After the guided example, try adding
-    polynomial terms, interaction selection via LASSO (preview of M3),
-    or a bootstrap confidence interval on the key coefficient."
-  </div>
-  <div class="transition">→ "Traps."</div>
+  <p>
+    Read the footer slowly: "Validation drops sentinel prices — the
+    10-dollar and 9-million-dollar sales from M1 — and impossible
+    leases <em>before any statistic is computed</em>. Cleaning after
+    modelling is not cleaning; it's cosmetics."
+  </p>
+  <div class="transition">→ "Step 2 — look at the data."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~2 min</span><span>Step 2 EDA</span></div>
+  <h3>Step 2: EDA</h3>
+  <p>
+    Walk the code: three candidate predictors correlated against price.
+    Floor area: r = 0.910 — overwhelming. Storey midpoint: 0.009 —
+    nothing. Remaining lease: −0.008 — nothing.
+  </p>
+  <p>
+    Read the footer: "Shortlist predictors with a domain rationale;
+    correlation is a first look, not the test. The hypothesis tests
+    come in Step 5, inside the model, where area is held fixed."
+  </p>
+  <div class="transition">→ "Step 3 — store the features."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~2 min</span><span>Step 3 store</span></div>
+  <h3>Step 3: Engineer + store features</h3>
+  <p>
+    Walk the code. Storey midpoint and remaining lease years were
+    already engineered in Step 1 — this step materialises the frame
+    into the store. Read the printout: row count and the first 16
+    characters of the lineage hash.
+  </p>
+  <p>
+    "The lineage hash is your reproducibility receipt: which code,
+    which data version, which schema. When someone asks 'where did
+    this training set come from?', the store answers."
+  </p>
+  <div class="transition">→ "Step 4 — the model."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Step 4 model</span></div>
+  <h3>Step 4: Model</h3>
+  <p>
+    Walk the code. <code>prepare_design_matrix</code> assembles
+    $[1, X]$ and drops nulls; <code>fit_ols</code> is the 2.5 normal
+    equations packaged for the project. Read the fit:
+    <strong>R² = 0.828, adjusted R² = 0.828, F ≈ 75,042</strong>.
+  </p>
+  <p>
+    "Three predictors, 83% of price variance explained. The adjusted
+    R² matches to three decimals because $n$ is huge and $k$ is tiny —
+    the complexity penalty barely bites. Compare with the 0.22 you'd
+    get on the unvalidated data: cleaning was worth 60 points of R²."
+  </p>
+  <div class="transition">→ "Step 5 — test the coefficients."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>Step 5 tests</span></div>
+  <h3>Step 5: Hypothesis tests</h3>
+  <p>
+    Walk the printed table. Floor area: β = +9,096 dollars per square
+    metre, t = 474.4, p &lt; 1e-300 — the overwhelming effect. Storey
+    midpoint: −24, p = 0.54 — nothing once area is held fixed.
+    Remaining lease: +7, p = 0.84 — nothing either.
+  </p>
+  <p>
+    Read the footer as the reporting template: "Each extra square
+    metre adds about SGD 9,100 to the price (95% CI SGD
+    9,060–9,130). Effect size, interval, then p-value — in that
+    order. And the ceteris paribus lesson from 2.5 is back: storey and
+    lease show no effect <em>once area is in the model</em> — their raw
+    correlations with price were already near zero."
+  </p>
+  <div class="transition">→ "Step 6 — the report."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Step 6 report</span></div>
+  <h3>Step 6: Report</h3>
+  <p>
+    Walk the five sections. Summary — two or three sentences, what did
+    you find. Key predictors — direction, magnitude, significance.
+    Model fit — R², adjusted R², F. Limitations — missing data,
+    selection bias, confounders; every honest report has this section.
+    Recommendation — what should the stakeholder actually do.
+  </p>
+  <p>
+    Read the green box: "A non-technical reader should understand every
+    sentence in the report. If you can't say it without jargon, you
+    don't understand it well enough yet."
+  </p>
+  <div class="transition">→ "Three ways capstones go wrong."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 13</span><span>~2 min</span><span>Mistakes</span></div>
-  <h3>Three mistakes</h3>
-  <p>Walk each briefly. Mistake 3 (p-values without effect sizes) is the most important for the report.</p>
-  <div class="transition">→ "Module 2 complete."</div>
+  <h3>Three mistakes to avoid</h3>
+  <p>
+    Walk the three red boxes — they map to the three tools of the day.
+    One: feature leakage from the future — the FeatureStore exists
+    precisely to prevent this. Two: features without domain rationale —
+    FeatureEngineer generates candidates; <em>you</em> decide which
+    make sense. Three: p-values without effect sizes — "+9,096 per
+    square metre" informs; "p &lt; 0.001" alone does not.
+  </p>
+  <div class="transition">→ "Close out the module."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Reflection</span></div>
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Module close</span></div>
   <h3>Module 2 complete</h3>
   <p>
-    Walk the lesson list. Bridge to Module 3: "You can now reason about
-    uncertainty, test hypotheses, and build regression models. Module 3
-    takes this foundation and adds the ML engineering layer: regularisation,
-    the complete model zoo, gradient boosting, SHAP, fairness, and
-    production deployment. Same pipeline; much more powerful models."
+    Walk the list slowly — this is a genuine milestone. Probability and
+    Bayesian thinking. Estimation. Bootstrap and testing. Experiments.
+    Linear regression. Logistic regression and ANOVA. Causal inference.
+    And today, the capstone.
   </p>
-  <div class="transition">→ End of Module 2. Celebrate — this was hard.</div>
+  <p>
+    Tease M3: "Module 3 is supervised machine learning — feature
+    selection, regularisation, the model zoo, gradient boosting, SHAP,
+    fairness, and production deployment. Everything you proved by hand
+    this module, you'll now do at industrial scale."
+  </p>
+  <div class="transition">→ End of Module 2. Well done — take a real break.</div>
 </div>
 
 <nav class="lesson-nav">
@@ -145,7 +310,7 @@
     2.7 Speaker Notes
   </a>
   <a href="../../index.html" class="next">
-    <span class="label">Next →</span>
+    <span class="label">Module →</span>
     Module 2 Index
   </a>
 </nav>

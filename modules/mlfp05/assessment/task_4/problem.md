@@ -1,93 +1,69 @@
-# MLFP05 — Task 4: Tiny Transformer for Text Classification (from scratch)
+# MLFP05 — Task 4: Ship the Postcode Reader as an ONNX Artefact
 
-**Weight**: 25 marks · **Difficulty**: Hard · **No GPU required** (trains on CPU in < 35s)
+**Weight**: 25 marks · **Data**: the 8×8 digits dataset bundled with
+scikit-learn · **Outcomes assessed**: training a deployable classifier and
+exporting it through the kailash-ml OnnxBridge (5.2, 5.7)
 
 ## Scenario
 
-A newsroom triage tool must route incoming headlines into four desks — **World,
-Sports, Business, Sci/Tech**. You will build a **tiny Transformer encoder from
-scratch** — token embeddings + a single **multi-head self-attention block** +
-mean-pooling + a linear classifier — exactly the architecture pattern from Exercise 4
-(self-attention from scratch → transformer encoder). Train it on a small bundled
-slice of AG News and clear an accuracy floor that a bag-of-words guess cannot.
+The mail-sorting machines do not run Python training frameworks — they run
+ONNX Runtime. Your job is end to end: **train** a small classifier on the
+flattened digits, **export** it to a portable `.onnx` artefact with the
+kailash-ml `OnnxBridge`, and hand back both the PyTorch model and the
+artefact.
 
-### CPU adaptation (read this)
+The grader acts as the machine fleet: it loads your `.onnx` with
+`onnxruntime` itself, feeds it **grader-held mail** (its own split of the
+digits, fresh secret seed), and checks the artefact's answers two ways —
+numerical parity with your PyTorch model, and accuracy against grader-held
+labels. No number your code reports about itself is read. An untrained model
+exports fine and fails the accuracy floor; an artefact that always answers
+"3" fails the variety check.
 
-Exercise 4 fine-tunes **BERT** (110M parameters, large download) and trains on the
-full 120K AG News corpus. **That is not CPU-friendly and downloading a pretrained
-backbone is forbidden here.** This task keeps the _same skill_ — implement scaled
-dot-product self-attention and use it to classify text — but with a **from-scratch
-tiny encoder** (a couple of attention blocks, small embedding) on the **bundled**
-5K-row AG News slice. No HuggingFace download, no pretrained weights: you build the
-attention mechanism yourself. The accuracy floor (0.72) is set so a genuine attention
-classifier clears it comfortably while a constant/majority guess (~0.27) cannot — the
-5K-row slice has a real accuracy ceiling (~0.80), so the floor leaves honest margin.
-
-## Dataset
-
-**`data/mlfp05/ag_news.parquet`** (5,000 rows) + **`ag_news_test.parquet`** (1,000
-rows) — committed to the repo (no download). Columns: `text` (headline+blurb),
-`label` (0=World, 1=Sports, 2=Business, 3=Sci/Tech). `make_dataset()` in the starter:
-
-- Builds a deterministic word-level vocabulary (lowercased, capped at 8,000 tokens)
-  from the **training** text only.
-- Encodes each row to a fixed-length (`MAX_LEN = 40`) padded index sequence.
-- Returns `X_train (5000,40) int64`, `y_train`, `X_test (1000,40) int64`, `y_test`,
-  and `vocab_size`. **Use `y_test` only for the final accuracy score.**
-
-## Contract
+## Interface
 
 ```python
-def solve() -> dict:
-    ...
-    return {
-        "model":      <trained torch.nn.Module>,        # your tiny transformer
-        "preds":      <np.ndarray (1000,) int>,         # argmax predictions on X_test
-        "y_test":     <np.ndarray (1000,) int>,         # labels, passed straight through
-        "uses_attention": <bool>,                        # True — model uses self-attention
-    }
+def solve() -> dict: ...
 ```
 
-Requirements baked into the grading:
+Returns a dict with at least:
 
-1. **It uses attention** — the model must contain a `nn.MultiheadAttention` **or** a
-   `nn.TransformerEncoderLayer`/`nn.TransformerEncoder` (the grader confirms by
-   introspection; `uses_attention` must be `True`). A plain MLP/embedding-average
-   without attention does not satisfy this.
-2. **`preds` come from your model** — the grader re-runs your returned `model` on the
-   re-derived `X_test` and checks the predictions match what you submitted.
-3. **Test accuracy** of `preds` vs `y_test` **>= 0.72**.
-4. **Beats the majority-class baseline** — accuracy must exceed the most-frequent-class
-   rate by a clear margin (the grader recomputes the majority rate, ~0.30).
+- `"model"`: the trained `torch.nn.Module` (eval-ready);
+- `"onnx_path"`: `pathlib.Path` to the exported `.onnx` artefact;
+- `"export_result"`: the object `OnnxBridge().export(...)` returned.
 
-## Performance target
+**Serving contract** (what the machines expect):
 
-- Test accuracy **>= 0.72** (a correct 2-block tiny transformer reaches ~0.79 here).
+- one input, float32, shape `(batch, 64)` — the 8×8 image flattened,
+  intensities scaled to `[0, 1]`;
+- one output, float32, shape `(batch, 10)` — class logits.
 
-## Visible sanity check
+`starter.py` provides `load_digits_flat()` (documented training split,
+flattened, scaled). Architecture and recipe are yours — a compact MLP is
+plenty for this data.
 
-`solution.py` prints, when run directly:
+## Acceptance criteria (what the grader measures)
 
-```
-transformer  test_acc=0.79  majority=0.27
-```
+| #   | Check                                                                                                       |
+| --- | ----------------------------------------------------------------------------------------------------------- |
+| 1   | Dict with a `torch.nn.Module` and a path is returned (gate)                                                 |
+| 2   | `export_result.success` is true **and** the `.onnx` file exists (gate)                                      |
+| 3   | `onnxruntime.InferenceSession` loads the artefact; input is float32 `(batch, 64)`                           |
+| 4   | Parity: max abs difference between torch and ONNX logits ≤ 1e-4 over five grader-built batches (sizes 1–64) |
+| 5   | Artefact accuracy on the grader's held-out split ≥ 0.88                                                     |
+| 6   | Artefact accuracy beats the grader's majority-class baseline                                                |
+| 7   | Artefact's predicted classes on held-out mail span at least 5 classes                                       |
+| 8   | The artefact is deterministic (same input twice → identical logits)                                         |
 
-## Grading (8 automated checks, all must pass → 25 marks)
-
-return type is a dict · required keys present · model is an `nn.Module` ·
-model uses self-attention (declared `uses_attention` matches introspection) ·
-`preds` shape matches `y_test` · test accuracy >= 0.72 · re-running the model
-reproduces the submitted `preds` (anti-faking) · accuracy beats the majority-class
-baseline by >= 0.15.
+Marks = 25 × (non-gate checks passed / 6). If a gate fails, the task scores 0.
 
 ## Rules
 
-- **No GPU.** CPU only; the reference trains in well under 35 seconds.
-- Raw **PyTorch is allowed** — this is the deep-learning module and Exercise 4 builds
-  attention/transformers directly in `torch.nn`.
-- **No pretrained backbones / downloads** (no BERT, no HuggingFace weights) — build
-  the encoder from scratch.
-- **Polars** for loading the parquet; **no pandas**.
-- Build the vocabulary from **training text only** — no leakage from the test split.
-- Fix all seeds (`torch.manual_seed`) for reproducibility.
-- Do **not** train on `y_test`. No hardcoded API keys or model names.
+- Export via `OnnxBridge().export(model, "torch", output_path=..., sample_input=...)`
+  — `framework` is the string `"torch"`, and `sample_input` is a tensor with
+  the serving shape `(1, 64)`. `export` returns a result object; it does not
+  raise on failure, so read `.success`.
+- Raw PyTorch for the model; CPU only; no pretrained weights or downloads.
+- Fix your seeds; `solve()` finishes in ~3 minutes on a laptop CPU.
+- Self-check: run `starter.py`; it loads your artefact with onnxruntime and
+  prints parity and accuracy on your own validation slice.

@@ -18,6 +18,7 @@
   </style>
 </head>
 <body>
+
 <nav class="top-nav">
   <span class="brand">MLFP — Module 3 — Speaker Notes</span>
   <span>
@@ -34,82 +35,260 @@
   Interpretability and Fairness
 </h1>
 
-<p class="lead">Total time: ~55 minutes &nbsp;·&nbsp; 13 slides &nbsp;·&nbsp; ~4 min per slide average</p>
+<p class="lead">
+  Total time: ~55 minutes &nbsp;·&nbsp; 12 slides &nbsp;·&nbsp; ~4.5 min per slide average
+</p>
 
 <p>
-  This lesson shifts from "is the model accurate?" to "should the model be
-  deployed?". It is the most ethically loaded lesson in the course. Handle
-  the fairness section with care — learners may have strong opinions. Ground
-  everything in mathematics (the impossibility theorem) and engineering
-  (measure, report, mitigate). Avoid moral prescriptions.
+  The governance lesson. The model from 3.5 is accurate and calibrated
+  — today asks whether it should be deployed, and under what
+  conditions. Two halves: explanation (SHAP, LIME, ALE) and fairness
+  (disparate impact, equalised odds, the impossibility theorem). The
+  fairness numbers to use are the measured Exercise 6 ones: race 0.94
+  and gender 0.96 pass the four-fifths screen; the youngest age band
+  scores 0.02 and fails — and the correct response is escalation to a
+  human decision, not an automatic "fix".
 </p>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
   <h3>Interpretability and Fairness</h3>
-  <p>"We have spent five lessons building the best model we can. Today we ask two questions: can we explain it, and is it fair?"</p>
-  <div class="transition">→ "Why interpretability matters."</div>
+  <p>
+    Open with the deployment question: "3.5 ended with a calibrated
+    decision system. Today: explain it, audit it, and decide whether
+    it <em>should</em> go out the door. Outcome: explain and audit any
+    model."
+  </p>
+  <div class="transition">→ "Why this isn't optional."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Why it matters</span></div>
+  <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Why it matters</span></div>
   <h3>Why interpretability matters</h3>
-  <p>Walk the three reasons. The Singapore MAS reference is important for local context — financial institutions are required to explain credit decisions. "If your model denies someone a loan, you need to say why."</p>
-  <div class="transition">→ "SHAP."</div>
+  <p>
+    Walk the three drivers. Regulatory: MAS's FEAT principles —
+    non-binding guidance — ask firms to make AI-driven decisions such
+    as credit transparent and fair. Debugging: a model using postcode
+    as a proxy for race needs to be caught before deployment, not
+    after. Trust: stakeholders will not act on a prediction they don't
+    understand.
+  </p>
+  <p>
+    Read the blue box: "Interpretability is not a nice-to-have. It is
+    a deployment prerequisite."
+  </p>
+  <div class="transition">→ "SHAP — the gold standard."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slides 3-5</span><span>~10 min</span><span>SHAP</span></div>
-  <h3>SHAP: Shapley values</h3>
-  <p><strong>Slide 3:</strong> Walk the formula and the four axioms. "Efficiency is the key one — SHAP values sum to the prediction. That means the explanation is complete — nothing is left unexplained."</p>
-  <p><strong>Slide 4:</strong> Walk the waterfall diagram. "Base value is the average prediction. Each feature pushes it up or down. The final prediction is the sum." This is the visual learners will remember.</p>
-  <p><strong>Slide 5:</strong> Run the code. Show the summary plot and one waterfall.</p>
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>SHAP theory</span></div>
+  <h3>SHAP: Shapley values for ML</h3>
+  <p>
+    Walk the formula at a high level: each feature's value is its
+    average marginal contribution across every possible coalition of
+    the other features. "It's the only attribution method that
+    satisfies four fairness axioms borrowed from cooperative game
+    theory."
+  </p>
+  <p>
+    Walk the axiom table — these are what make SHAP trustworthy.
+    Efficiency: contributions sum exactly to the prediction. Symmetry:
+    equal contributions get equal values. Dummy: a useless feature
+    gets zero. Linearity: values add across model sums — which is why
+    SHAP works on ensembles.
+  </p>
+  <div class="transition">→ "See one prediction explained."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>SHAP waterfall</span></div>
+  <h3>SHAP waterfall</h3>
+  <p>
+    Walk the waterfall for this illustrative applicant. Start at the
+    base value — $E[f(x)] = -1.90$ log-odds. debt_to_income pushes up
+    +0.60 (red, raises default risk), num_late_payments +0.45,
+    income_sgd pulls down −0.35 (green). They sum exactly:
+    $f(x) = -1.20$ log-odds, which converts to $p(\text{default})
+    \approx 0.23$.
+  </p>
+  <p>
+    Read the caption carefully — it's a technical point students
+    trip on: "For a boosted model, TreeExplainer works in
+    <em>log-odds</em>: base plus contributions equals $f(x)$ exactly —
+    additivity holds in log-odds space, not probability space. Convert
+    to a probability only at the very end."
+  </p>
+  <div class="transition">→ "Run it."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>SHAP code</span></div>
+  <h3>SHAP in code</h3>
+  <p>
+    Walk the code. <code>TreeExplainer</code> on the fitted model,
+    evaluate on the test matrix — the result is an Explanation object
+    in log-odds; attach feature names for readable plots. Note the
+    comment: a binary random forest returns both classes, so slice
+    <code>[:, :, 1]</code> for the positive class.
+  </p>
+  <p>
+    Two plots, two scopes: <code>beeswarm</code> for global importance
+    across the whole test set, <code>waterfall</code> for one
+    prediction. "Global for the model audit; local for the customer
+    who asks 'why was I declined?'"
+  </p>
+  <div class="transition">→ "The model-agnostic alternative."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>LIME</span></div>
+  <h3>LIME: local explanations</h3>
+  <p>
+    Walk the recipe: perturb the input, fit a local linear model on
+    the perturbed neighbourhood, read its coefficients. The code shows
+    the tabular explainer — training data for the perturbation
+    distribution, then <code>explain_instance</code> on one row with
+    the model's <code>predict_proba</code>.
+  </p>
+  <p>
+    "LIME works on <em>any</em> model — it only needs a prediction
+    function. The price: no axioms. Two runs can give different
+    explanations for the same row."
+  </p>
+  <div class="transition">→ "SHAP vs LIME vs ALE."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Method comparison</span></div>
+  <h3>SHAP vs LIME vs ALE</h3>
+  <p>
+    Walk the table. SHAP: global and local, consistent by axiom, fast
+    on trees — the default for tree models. LIME: local only,
+    approximate, moderate speed — the fallback for any model. ALE:
+    global, and the one that handles <em>correlated</em> features
+    correctly by accumulating effects along the feature's own
+    conditional distribution.
+  </p>
+  <p>
+    "Correlated features are SHAP and LIME's shared soft spot —
+    credit data is full of them (income, debt, limits all move
+    together). When the correlations are strong, bring ALE."
+  </p>
+  <div class="transition">→ "From explaining to auditing: fairness."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>Disparate impact</span></div>
+  <h3>Fairness: disparate impact</h3>
+  <p>
+    Walk the formula: each group's approval rate divided by the best
+    group's — the four-fifths screen from US employment guidelines
+    requires DI ≥ 0.8. Walk the code: approval is the complement of
+    the default flag, compute per-group rates, normalise by the max,
+    print PASS or FAIL.
+  </p>
+  <p>
+    Now the measured Exercise 6.5 numbers — read the footer with
+    weight: "Race scores 0.94 and gender 0.96 — both pass. The
+    youngest age band scores <strong>0.02</strong> — a catastrophic
+    fail. And the response matters as much as the number: a gap that
+    large is routed to a human / risk-committee decision, not
+    auto-'fixed' by reweighing until the metric turns green. Metrics
+    inform judgment; they don't replace it."
+  </p>
   <div class="audience-cue beginner">
-    <strong>For beginners:</strong> "Don't worry about the formula. The waterfall is the key visual: each bar is one feature's contribution."
+    <strong>If students ask why not just fix the model:</strong>
+    "A 0.02 says the model behaves very differently for young
+    applicants. Whether that's justified — thin files, short credit
+    histories — or discrimination is a <em>business and legal</em>
+    question. The engineer's job is to surface it with evidence, not
+    bury it."
   </div>
+  <div class="transition">→ "A second fairness criterion."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>Equalised odds</span></div>
+  <h3>Fairness: equalised odds</h3>
+  <p>
+    Walk the formula: the true positive rate must be equal across
+    groups — and the false positive rate too. "Disparate impact asks
+    'do groups get approved at similar rates?' Equalised odds asks
+    the sharper question: 'is the model <em>equally accurate</em> for
+    each group?' A model can pass DI while making worse mistakes on
+    one group."
+  </p>
+  <p>
+    Walk the code: recall computed within each group's slice of the
+    test set. "Same recall formula from 3.5 — evaluated per group
+    instead of overall."
+  </p>
+  <div class="transition">→ "And the theorem that breaks hearts."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Impossibility theorem</span></div>
+  <h3>The impossibility theorem</h3>
+  <p>
+    Walk the triangle: demographic parity, equalised odds,
+    calibration. The centre text: with unequal base rates, any two
+    already clash — except for a perfect predictor. Chouldechova
+    2017, Kleinberg et al. 2016.
+  </p>
+  <p>
+    Read the red box: "Not a limitation of your model — a
+    mathematical fact. If two groups genuinely default at different
+    rates, you cannot have equal approval rates, equal error rates,
+    <em>and</em> equal calibration. You must choose which criterion to
+    prioritise — and say why, in writing, in the audit report."
+  </p>
   <div class="audience-cue expert">
-    <strong>For experts:</strong> "TreeSHAP is polynomial, not exponential. It exploits the tree structure to avoid enumerating all coalitions. KernelSHAP approximates with weighted regression."
+    <strong>For experts:</strong> this is why fairness audits are
+    governance documents, not unit tests. The choice among criteria
+    encodes values — it belongs to the risk committee, not the
+    training pipeline.
   </div>
-  <div class="transition">→ "A simpler alternative: LIME."</div>
-</div>
-
-<div class="slide-block">
-  <div class="meta"><span class="badge">Slides 6-7</span><span>~5 min</span><span>LIME + comparison</span></div>
-  <h3>LIME and the comparison table</h3>
-  <p><strong>Slide 6:</strong> Walk the LIME code. "LIME perturbs the input, gets predictions, fits a local linear model. The coefficients of that linear model are the explanation."</p>
-  <p><strong>Slide 7:</strong> Walk the comparison table. "Use SHAP for tree models (fast, consistent). Use LIME when you need a quick model-agnostic answer. Use ALE when features are correlated and PDP would be misleading."</p>
-  <div class="transition">→ "Fairness."</div>
-</div>
-
-<div class="slide-block">
-  <div class="meta"><span class="badge">Slides 8-10</span><span>~12 min</span><span>Fairness</span></div>
-  <h3>Fairness metrics and the impossibility theorem</h3>
-  <p><strong>Slide 8:</strong> Walk disparate impact. "The four-fifths rule: if you approve 80% of majority applicants, you must approve at least 64% of minority applicants. Below that ratio triggers investigation."</p>
-  <p><strong>Slide 9:</strong> Walk equalised odds. "Same true positive rate and false positive rate across groups. If your model catches 90% of actual defaults in group A, it should catch 90% in group B too."</p>
-  <p><strong>Slide 10:</strong> The impossibility theorem. This is the climactic moment. "When base rates differ — and they almost always do — you cannot have all three. This is not your model's fault. It is mathematics." Let this sink in. It is the most important conceptual takeaway.</p>
-  <div class="audience-cue beginner">
-    <strong>For beginners:</strong> "Think of it like this: if group A defaults 5% of the time and group B defaults 15%, a perfectly calibrated model will approve group A more often. That violates demographic parity. Fixing demographic parity breaks calibration."
-  </div>
-  <div class="transition">→ "Mistakes."</div>
+  <div class="transition">→ "Three mistakes."</div>
 </div>
 
 <div class="slide-block">
   <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Mistakes</span></div>
-  <h3>Three mistakes</h3>
-  <p>Mistake 2 (removing protected features) is the most common in practice. Give the postcode example: "Remove gender, the model uses postcode. Remove postcode, it uses school district. The signal finds a way."</p>
-  <div class="transition">→ "Reflection."</div>
+  <h3>Three mistakes to avoid</h3>
+  <p>
+    Walk the three red boxes. One: SHAP ≠ causation — SHAP shows what
+    the model <em>uses</em>, not what causes the outcome; a causal
+    claim needs 2.7's machinery, not an explainer. Two: removing
+    protected features ≠ fairness — postcode and school carry the same
+    signal as proxies; you must audit the outcome, not just the input
+    list. Three: optimising one fairness metric blindly — the
+    impossibility theorem guarantees fixing one can break another.
+  </p>
+  <div class="transition">→ "Recap and bridge."</div>
 </div>
 
 <div class="slide-block">
-  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Reflection</span></div>
+  <div class="meta"><span class="badge">Slide 12</span><span>~2 min</span><span>Recap</span></div>
   <h3>What you can now do</h3>
-  <p>Walk the bullets. Bridge to 3.7: "You can now build, evaluate, explain, and audit a model. The next two lessons are about industrialising this: workflow orchestration (3.7) and production deployment (3.8)."</p>
-  <div class="transition">→ End. Break.</div>
+  <p>
+    Walk the bullets: compute and interpret SHAP globally and locally,
+    apply LIME, measure disparate impact and equalised odds, explain
+    the impossibility theorem to stakeholders, and write a fairness
+    audit report. Tease 3.7: "You've been fitting models by hand.
+    Next lesson: the Kailash workflow — WorkflowBuilder, ModelRegistry,
+    and Bayesian hyperparameter search."
+  </p>
+  <div class="transition">→ End of Lesson 3.6. Ten-minute break.</div>
 </div>
 
 <nav class="lesson-nav">
-  <a href="../05/notes.html" class="prev"><span class="label">← Previous</span>3.5 Speaker Notes</a>
-  <a href="../07/notes.html" class="next"><span class="label">Next →</span>3.7 Speaker Notes</a>
+  <a href="../05/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    3.5 Speaker Notes
+  </a>
+  <a href="../07/notes.html" class="next">
+    <span class="label">Next →</span>
+    3.7 Speaker Notes
+  </a>
 </nav>
 
 </main>

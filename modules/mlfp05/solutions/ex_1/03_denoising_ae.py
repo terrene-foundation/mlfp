@@ -9,7 +9,7 @@
 #   - Build a denoising autoencoder (DAE) with noise injection training
 #   - Understand WHY noise acts as implicit regularisation
 #   - Visualise the 3-row grid: original -> noisy -> cleaned
-#   - Apply to SMRT MRT sensor signal cleaning
+#   - Apply to rail-network sensor signal cleaning
 #   - Quantify business impact: reduced false alerts, fewer missed faults
 #
 # PREREQUISITES: 02_undercomplete_ae.py
@@ -19,7 +19,7 @@
 #   1. Build DAE architecture (same as undercomplete, different training)
 #   2. Train with noise injection on Fashion-MNIST
 #   3. Visualise denoising with 3-row comparison grid
-#   4. Apply: SMRT sensor data cleaning with SNR improvement analysis
+#   4. Apply: rail sensor data cleaning with SNR improvement analysis
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -144,6 +144,7 @@ dae_losses = train_variant(
 # noise acts as implicit regularisation, keeping ReLUs "alive"
 # across the batch (dead-neuron % should drop vs 01/02).
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
 
 
 def _diag_loss(m, batch):
@@ -162,64 +163,15 @@ diag, findings = run_diagnostic_checkpoint(
     train_losses=dae_losses,
     show=False,
 )
+print_prescription_pad(findings, f"Denoising AE (sigma={NOISE_SIGMA})")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [!] Dead neurons  (WARNING): 'encoder.1' (relu): 18% dead
-#       neurons — much lower than the 59% seen in 01 because
-#       noise injection keeps gradients flowing across channels.
-#   [✓] Gradient flow (HEALTHY): min RMS = 3.8e-04 at
-#       'decoder.2.weight' (two orders of magnitude above the
-#       vanishing threshold). Noise forces the encoder to reuse
-#       every channel.
-#   [✓] Loss trend    (HEALTHY): Loss converging to a HIGHER
-#       floor than 01 (~0.024 vs ~0.007) — the desired signal.
-# ════════════════════════════════════════════════════════════════
-# Final train loss: ~0.024 after 10 epochs, sigma=0.3.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [STETHOSCOPE] The HIGHER loss floor is the SUCCESS signal
-#     for a denoising AE, not a failure. You are measuring
-#     reconstruction of CLEAN targets from NOISY inputs — the
-#     irreducible noise (sigma^2 per pixel) sets a floor below
-#     which no model can go. Slide 5G covers this: "the DAE's
-#     loss floor is a measurement of its robustness budget."
-#     >> Prescription: No fix needed. A loss that drops to ~0
-#        would mean the model is memorising noise patterns —
-#        worse than ours.
-#
-#  [X-RAY] 18% dead neurons at encoder.1 — far below the 59%
-#     observed in 01_standard_ae.py. Every batch shows the
-#     encoder a DIFFERENT noisy version of the same image, so
-#     dead-ReLU channels get re-activated by the next batch's
-#     noise pattern. Noise injection acts as an implicit
-#     activation regulariser.
-#     >> Prescription: No switch to GELU needed here — the
-#        noise is already doing the job. You'll see this
-#        contrast again in ex_2 CNN augmentation (same principle,
-#        different domain).
-#
-#  [BLOOD TEST] Gradient RMS ~3.8e-04 is healthy. Contrast with
-#     01's 9.46e-06 (three orders of magnitude worse). This is
-#     why DAEs are the default in fraud/anomaly pipelines: they
-#     self-regularise without needing architectural tricks.
-#     >> Prescription: If RMS drops below 1e-5, sigma is too
-#        large (SNR too low for the encoder to extract signal).
-#        Halve NOISE_SIGMA and retrain.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: noise IS the regulariser. A clean-
-#  input baseline would show the identity-risk of 01; injecting
-#  noise flips every red instrument to green while RAISING the
-#  loss. This forward-references 04_sparse (different regulariser,
-#  same clinical-reading skill: context determines pathology).
+# ══════ READING THE PRESCRIPTION PAD (key: see 01_standard_ae.py) ══════
+# The loss compares reconstructions of NOISY inputs with CLEAN targets,
+# so it cannot reach the copy-level losses of 01. Compare the
+# dead-neuron reading with 01/02: does input noise keep more ReLU units
+# active? The 3-row denoising grid below is the real test of whether
+# the model learned to remove noise.
 # ════════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — above block maps each finding to
-# the 5-instrument rubric (Slide 5A-5F) so you can replicate the
-# reading on any DAE you build.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -242,16 +194,16 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — SMRT MRT Sensor Signal Cleaning
+# APPLY — Rail Network Sensor Signal Cleaning
 # ════════════════════════════════════════════════════════════════════════
-# BUSINESS SCENARIO: You are an IoT engineer at SMRT (Singapore MRT).
+# BUSINESS SCENARIO: You are an IoT engineer at a Singapore rail operator.
 # Vibration and temperature sensors on MRT trains generate readings
 # every second. Sensor noise — electrical interference, sensor drift,
 # dust on contacts — corrupts the signal. Noisy signals trigger false
 # maintenance alerts (costly) or mask real faults (dangerous).
 
 print("\n" + "=" * 70)
-print("  APPLICATION: SMRT Sensor Data Cleaning")
+print("  APPLICATION: Rail Sensor Data Cleaning")
 print("=" * 70)
 
 # --- Generate realistic MRT sensor time-series data ---
@@ -312,8 +264,7 @@ test_clean = torch.tensor(
     clean_norm[n_train:].reshape(N_WINDOWS - n_train, -1), device=device
 )
 sensor_train_loader = DataLoader(
-    TensorDataset(train_noisy, train_clean), batch_size=128, shuffle=True
-)
+    TensorDataset(train_noisy, train_clean), batch_size=128, shuffle=True, num_workers=0)
 
 print(
     f"Generated {N_WINDOWS} sensor windows: {WINDOW_SIZE} timesteps x {N_SENSORS} sensors"
@@ -510,7 +461,7 @@ plt.savefig(
 plt.show()
 
 # --- Business Impact ---
-SMRT_TRAINS = 150
+FLEET_TRAINS = 150  # illustrative scenario figures
 SENSORS_PER_TRAIN = 40
 FALSE_ALERT_RATE_NOISY = 0.05
 FALSE_ALERT_RATE_CLEAN = 0.008
@@ -521,10 +472,10 @@ COST_PER_MISSED_FAULT = 200_000
 COST_PER_FALSE_ALERT = 5_000
 
 false_alerts_noisy_q = int(
-    SMRT_TRAINS * SENSORS_PER_TRAIN * 90 * FALSE_ALERT_RATE_NOISY
+    FLEET_TRAINS * SENSORS_PER_TRAIN * 90 * FALSE_ALERT_RATE_NOISY
 )
 false_alerts_clean_q = int(
-    SMRT_TRAINS * SENSORS_PER_TRAIN * 90 * FALSE_ALERT_RATE_CLEAN
+    FLEET_TRAINS * SENSORS_PER_TRAIN * 90 * FALSE_ALERT_RATE_CLEAN
 )
 missed_faults_noisy = int(REAL_FAULTS_PER_QUARTER * MISSED_FAULT_RATE_NOISY)
 missed_faults_clean = int(REAL_FAULTS_PER_QUARTER * MISSED_FAULT_RATE_CLEAN)
@@ -538,9 +489,9 @@ savings_missed_faults = (
 total_quarterly_savings = savings_false_alerts + savings_missed_faults
 
 print("\n" + "=" * 64)
-print("BUSINESS IMPACT SUMMARY — SMRT Predictive Maintenance")
+print("BUSINESS IMPACT SUMMARY — Rail Predictive Maintenance (illustrative)")
 print("=" * 64)
-print(f"\nSMRT fleet: {SMRT_TRAINS} trains x {SENSORS_PER_TRAIN} sensors")
+print(f"\nFleet: {FLEET_TRAINS} trains x {SENSORS_PER_TRAIN} sensors")
 print(f"DAE signal improvement: +{snr_improvement:.1f} dB average")
 print(f"\nFalse maintenance alerts per quarter:")
 print(f"  With noisy data:    {false_alerts_noisy_q:>10,}")
@@ -574,7 +525,7 @@ print(
   [x] Built a denoising autoencoder with Gaussian noise injection
   [x] Understood noise as implicit regularisation (can't memorise pixels)
   [x] Visualised the 3-row proof: original -> noisy -> cleaned
-  [x] Applied DAE to SMRT sensor data cleaning (10 sensor types)
+  [x] Applied DAE to rail sensor data cleaning (10 sensor types)
   [x] Measured SNR improvement per sensor
   [x] Quantified business impact: false alert reduction + missed fault prevention
 

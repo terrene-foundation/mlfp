@@ -386,13 +386,22 @@ class NormalisingDataset(torch.utils.data.Dataset):
 aug_loader = DataLoader(
     NormalisingDataset(train_set_aug),
     batch_size=BATCH_SIZE,
-    shuffle=True,
-)
+    shuffle=True, num_workers=0)
 noaug_loader = DataLoader(
     NormalisingDataset(train_set_noaug),
     batch_size=BATCH_SIZE,
-    shuffle=True,
-)
+    shuffle=True, num_workers=0)
+
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _ce_loss(m, batch):
+    """Cross-entropy on one (images, labels) batch, on the model's device."""
+    xb, yb = batch
+    dev = next(m.parameters()).device
+    return F.cross_entropy(m(xb.to(dev)), yb.to(dev))
+
 
 # Train with best LR from sweep
 aug_results: dict[str, dict] = {}
@@ -422,78 +431,27 @@ for aug_name, loader in [("no_augmentation", noaug_loader), ("flip_crop", aug_lo
         f"    {aug_name}: final_loss={losses[-1]:.4f}, "
         f"val_acc={accs[-1]:.3f}, time={elapsed:.1f}s"
     )
-    # Quick diagnostic check per HP configuration — surfaces whether
-    # a high-loss config is hurting the network's CLINICAL HEALTH
-    # (dead neurons, vanishing gradients) or merely its accuracy.
-    from kailash_ml import diagnose
-
+    # Quick diagnostic check per augmentation setting — does a weaker
+    # config fail for OPTIMISATION reasons (dead units, gradient trouble)
+    # or only in accuracy? Probes use this config's own training loader.
     print(f"  ── Diagnostic Report ({aug_name}) ──")
-    report = diagnose(model, kind="dl", data=val_loader, show=False)
-    # ══════ EXPECTED OUTPUT (synthesized reference across HP configs) ══════
-    # Typical Prescription-Pad patterns observed per augmentation config:
-    # ┌──────────────────────────┬──────────────────────────────────────────┐
-    # │ Config                   │ Typical Prescription Pad finding         │
-    # ├──────────────────────────┼──────────────────────────────────────────┤
-    # │ no_augmentation          │ [!] Overfitting: train-val gap ~18%.     │
-    # │                          │     Val loss starts rising after ep 5.   │
-    # │                          │     Dead neurons: 4% (healthy).          │
-    # │                          │     Val acc: ~0.55                        │
-    # ├──────────────────────────┼──────────────────────────────────────────┤
-    # │ flip_only                │ [✓] Mildly overfitting: gap ~12%.        │
-    # │                          │     Val acc: ~0.58                        │
-    # ├──────────────────────────┼──────────────────────────────────────────┤
-    # │ flip_crop (winner)       │ [✓] All HEALTHY. Gap ~6%. Val acc: ~0.62 │
-    # ├──────────────────────────┼──────────────────────────────────────────┤
-    # │ strong_augment           │ [!] Underfitting: train loss plateau.    │
-    # │                          │     Val acc: ~0.54 (below flip_crop)     │
-    # └──────────────────────────┴──────────────────────────────────────────┘
-    #
-    # STUDENT INTERPRETATION GUIDE — reading HP diagnostics:
-    #
-    #  [STETHOSCOPE — HP SIGNATURE READING] Each HP config
-    #     produces a DIFFERENT pathology pattern. no_augmentation
-    #     shows the classic overfitting U-curve in val loss (val
-    #     rising while train falls). strong_augment shows the
-    #     opposite: underfitting (train plateau because the data
-    #     looks different every batch and the model cannot
-    #     converge on a single distribution). flip_crop hits the
-    #     sweet spot — regularisation without underfitting.
-    #     Slide 5R covers the "augmentation strength dial": from
-    #     zero (overfit) → flip_crop (optimal) → strong (underfit).
-    #     >> Prescription: If every HP config is overfitting,
-    #        increase augmentation. If every config is
-    #        underfitting, decrease augmentation. Look for the
-    #        pattern ACROSS configs, not within one config.
-    #
-    #  [X-RAY — HP-INDUCED DEAD NEURONS] A too-aggressive LR or
-    #     too-strong augmentation can spike dead-neuron fractions
-    #     15-30% above baseline. If you see WARNING findings
-    #     only in the HIGH-LR configs, the gradient updates are
-    #     saturating ReLUs into permanent death. This is a
-    #     SEPARATE diagnostic from accuracy — a config can lose
-    #     accuracy for many reasons, but high dead% narrows the
-    #     cause to optimisation dynamics.
-    #     >> Prescription: Reduce LR to 3e-4, add warmup schedule
-    #        (0 → LR over first 500 steps) to avoid the early-
-    #        training dead-ReLU spike.
-    #
-    #  [BLOOD TEST — CROSS-CONFIG COMPARISON] Gradient RMS across
-    #     HP configs should stay within 10x of each other. If
-    #     one config has RMS <1e-5 while others are ~1e-3, that
-    #     config has broken optimisation (usually LR far too
-    #     small or gradient clipping too tight).
-    #     >> Prescription: Plot min RMS per config as a bar
-    #        chart. Outliers indicate hyperparameters breaking
-    #        the backward pass.
-    #
-    #  FIVE-INSTRUMENT TAKEAWAY: HP sweeps are FIVE parallel
-    #  diagnostic experiments. The Prescription Pad tells you
-    #  WHY a config failed — accuracy numbers alone tell you
-    #  only THAT it failed. This lifts HP tuning from pure trial-
-    #  and-error to clinical reasoning. You'll apply the same
-    #  discipline to LR schedule sweeps in ex_4 transformers and
-    #  to entropy-coefficient sweeps in ex_8 RL.
-    # ═════════════════════════════════════════════════════════════════════
+    diag, findings = run_diagnostic_checkpoint(
+        model,
+        loader,
+        _ce_loss,
+        title=f"ResNetSE ({aug_name})",
+        train_losses=losses,
+        show=False,
+    )
+    print_prescription_pad(findings, f"ResNetSE ({aug_name})")
+    aug_results[aug_name]["findings"] = findings
+    # READING ACROSS CONFIGS (key: see ex_1/01_standard_ae.py): compare
+    # the two pads side by side. Augmentation changes the DATA, not the
+    # network, so gradient and dead-unit readings usually look alike;
+    # the difference shows up in the train-loss trend and in validation
+    # accuracy. If one config alone shows CRITICAL gradients or a
+    # mostly-dead layer, its optimisation broke (often the learning
+    # rate) — that is a different failure from merely lower accuracy.
 
 # Print augmentation comparison
 print(f"\n  {'Augmentation':>20} {'Final Loss':>12} {'Val Acc':>10} {'Time (s)':>10}")
@@ -684,8 +642,9 @@ print("  PHASE 5 — APPLY: Compute Budget Allocation")
 print("=" * 70)
 
 # Calculate actual compute costs from our experiments
-# AWS p3.2xlarge (V100 GPU): $3.06/hr in ap-southeast-1 (Singapore)
-GPU_COST_PER_HOUR = 3.06
+# Illustrative on-demand rate for a single-V100-class cloud GPU instance in
+# Singapore (~US$4.2/hr at the time of writing — check your provider's price)
+GPU_COST_PER_HOUR = 4.20
 
 total_experiment_time = sum(r["time_sec"] for r in lr_results.values())
 total_experiment_time += sum(r["time_sec"] for r in aug_results.values())
@@ -813,29 +772,34 @@ asyncio.run(conn.close())
 
 
 # ════════════════════════════════════════════════════════════════════════
-# DESTINATION-FIRST CLOSE — km.diagnose
+# DESTINATION-FIRST CLOSE — one-call diagnostics
 # ════════════════════════════════════════════════════════════════════════
-# This lesson walked the journey of CNN hyperparameter tuning — learning
-# rate sweeps, augmentation studies, per-config diagnose_classifier
-# reports. The kailash-ml SDK ships a single-call diagnostic primitive
-# that closes the production loop: km.diagnose inspects a trained model
-# and emits an auto-dashboard (loss curves, gradient flow, dead neurons,
-# activation stats, weight distributions). One cell. Every diagnostic
-# students would otherwise hand-roll, ready to surface in a Plotly
-# dashboard.
+# This lesson ran learning-rate sweeps and an augmentation study, with a
+# diagnostic pad per configuration. kailash-ml's run_diagnostic_checkpoint
+# is the one call behind each pad: it hooks every layer, runs a few
+# probe batches (no weight updates), replays the loss history and
+# returns findings plus a DLDiagnostics session whose
+# plot_training_dashboard() draws the loss, gradient and activation
+# panels. (km.diagnose(model, kind="dl") on its own only builds an
+# un-instrumented session — no hooks, no probes — so it has nothing to
+# report.) It does not replace the sweep tables and cost curves above:
+# the instruments read optimisation health, not which config is worth
+# its compute.
 
-from kailash_ml import diagnose
-
-# The flip_crop run was the winning HP configuration. `kind='auto'`
-# dispatches by model type — DLDiagnostics for torch.nn.Module.
-# `data=` accepts any iterable yielding tensors; we reuse val_loader.
-winning_model = aug_results["flip_crop"]["model"]
-report = diagnose(winning_model, kind="auto", data=val_loader, show=False)
-report.plot_training_dashboard()
-print()
-print("km.diagnose: 1 line of code -> the same observability the lesson")
-print("body hand-rolled in 200+ lines. This is what 'destination-first'")
-print("means — when the journey is internalised, the SDK is one call.")
+# The winning augmentation setting is the one with the best final
+# validation accuracy in THIS run.
+winner = max(aug_results, key=lambda name: aug_results[name]["accs"][-1])
+winning_model = aug_results[winner]["model"]
+diag, findings = run_diagnostic_checkpoint(
+    winning_model,
+    aug_loader if winner == "flip_crop" else noaug_loader,
+    _ce_loss,
+    title=f"ResNetSE winner ({winner})",
+    train_losses=aug_results[winner]["losses"],
+    show=False,
+)
+print_prescription_pad(findings, f"ResNetSE winner ({winner})")
+dashboard = diag.plot_training_dashboard()  # Plotly figure: dashboard.show()
 
 
 # ════════════════════════════════════════════════════════════════════════

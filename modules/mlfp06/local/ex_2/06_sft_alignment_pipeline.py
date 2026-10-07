@@ -85,6 +85,13 @@ print("=" * 70)
 print("TASK 2: Build AlignmentConfig for SFT + LoRA r=16")
 print("=" * 70)
 
+# kailash-align 0.7.3 resumes unconditionally from any checkpoint found in
+# the experiment dir — a crashed earlier run leaves a completed-looking
+# checkpoint and every re-run "trains" zero steps. Retrain deterministically:
+import shutil
+
+shutil.rmtree(OUTPUT_DIR / "sft_output", ignore_errors=True)
+
 # TODO: Read the base model name from the environment via get_base_model_name()
 base_model = ____
 # TODO: Build an AlignmentConfig via build_sft_config(base_model=base_model,

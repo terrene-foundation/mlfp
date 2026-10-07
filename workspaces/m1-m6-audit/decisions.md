@@ -76,3 +76,13 @@ arguments: 'execution_time', 'node_count', 'skipped_nodes', 'execution_mode'`
 when a SwitchNode-pruned plan completes (seen in mlfp03 ex_7/05 output).
 Upstream logging-path bug; non-fatal but noise in every conditional
 workflow run.
+
+### P6 — kailash-align 0.7.3 unconditional resume (2026-10-08)
+
+`AlignmentPipeline` passes `resume_from_checkpoint=self._find_checkpoint(
+experiment_dir)` on every train call — a crashed run's stale checkpoint makes
+every later run "train" zero steps (measured: train_runtime 0.047s, loss 0.0,
+epoch 3.0 with 3616 steps/s; the same config trains for real — 259s, loss 2.86
+— with the dir cleared). Course handling: ex_2/06 clears its experiment dir
+before configuring (deterministic retraining; comment cites the behaviour).
+Upstream should gate resume on an explicit flag.

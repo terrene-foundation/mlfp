@@ -105,6 +105,15 @@ print("=" * 70)
 
 # Base model read from env (rules/env-models.md — no hardcoded models)
 base_model = get_base_model_name()
+# kailash-align 0.7.3 resumes unconditionally from any checkpoint found in
+# the experiment dir — a crashed earlier run leaves a completed-looking
+# checkpoint and every re-run "trains" zero steps (train_runtime ≈ 0.05s,
+# train_loss 0.0 — measured). A course exercise retrains deterministically:
+# clear the experiment dir first. (Upstream finding: audit P6.)
+import shutil
+
+shutil.rmtree(OUTPUT_DIR / "sft_output", ignore_errors=True)
+
 config = build_sft_config(
     base_model=base_model,
     lora_r=16,

@@ -13,7 +13,10 @@
 #   - Apply adapter-registry discipline to a Singapore e-commerce scenario
 #
 # PREREQUISITES: Exercises 2.1-2.5
-# ESTIMATED TIME: ~40 min (training dominates)
+# ESTIMATED TIME: ~40 min on GPU/MPS (training dominates). Measured
+# 2026-10-08: ~4 min on a 2×3090 host; on a CPU-only host the 3-epoch SFT
+# runs ~1.7 hours in fp32 (bf16 is CUDA-only — the config now follows the
+# device). On a CPU laptop, run the Colab notebook on a GPU runtime instead.
 #
 # FRAMEWORK-FIRST: kailash-align, NOT raw transformers.Trainer. The
 # pipeline wraps TRL SFTTrainer but adds a single typed config, adapter

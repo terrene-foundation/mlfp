@@ -108,7 +108,7 @@ for c_val in C_VALUES:
         l1_ratio=1.0,
         C=c_val,
         solver="saga",
-        max_iter=5000,
+        max_iter=20000,
         random_state=42,
     )
     lasso.fit(X_scaled, y_binary)
@@ -228,7 +228,7 @@ async def log_embedded() -> str:
             "penalty": "l1",
             "C": str(LASSO_C),
             "solver": "saga",
-            "max_iter": "5000",
+            "max_iter": "20000",
         },
         extra_metrics={
             "top_abs_coef": lasso_importance[0][1] if lasso_importance else 0.0,

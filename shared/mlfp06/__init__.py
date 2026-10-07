@@ -197,3 +197,14 @@ except Exception:  # kaizen absent or provider API changed — nothing to patch
 
 # Re-export the canonical factory (shared/kailash_helpers.py).
 from shared.kailash_helpers import create_visualizer
+
+# torch DataLoader nags "'pin_memory' argument is set as true but not
+# supported on MPS" inside kailash-align's SFT/DPO trainers on Apple Silicon —
+# a capability notice (MPS ignores pinned memory), fatal under the strict
+# gate. Message-matched; everything else still errors.
+import warnings as _warnings
+
+_warnings.filterwarnings(
+    "ignore", message=r".*pin_memory.*not supported on MPS.*", category=UserWarning
+)
+

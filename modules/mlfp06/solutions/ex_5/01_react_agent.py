@@ -172,14 +172,26 @@ Steps:
 }
 
 
-async def run_traced(label: str, task: str) -> dict:
-    """Run one task on a fresh agent and return measured trace statistics."""
+async def run_traced(label: str, task: str, *, _retried: bool = False) -> dict:
+    """Run one task on a fresh agent and return measured trace statistics.
+
+    Small local models occasionally answer without calling any tool. The
+    production mitigation is ONE retry with a firmer tool-use instruction —
+    not a silent pass, and not an infinite loop.
+    """
     agent = build_react_agent()
     t0 = time.perf_counter()
     trace = await obs.agent.capture_run(agent, task, run_id=f"react_{label}")
     latency_s = time.perf_counter() - t0
     require_llm_trace(trace)
     tool_sequence = [ev.tool for ev in trace.events if ev.kind == "tool_start"]
+    if not tool_sequence and not _retried:
+        print(f"  [{label}] no tool call on the first pass — one retry with a firmer instruction")
+        return await run_traced(
+            label,
+            task + "\n\nYou MUST call at least one tool before answering.",
+            _retried=True,
+        )
     answer = "".join(ev.content or "" for ev in trace.events if ev.kind == "token")
     return {
         "label": label,

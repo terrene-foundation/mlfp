@@ -150,6 +150,12 @@ def get_base_model_name() -> str:
     return os.environ.get("SFT_BASE_MODEL") or "Qwen/Qwen2.5-0.5B-Instruct"
 
 
+def _bf16_supported() -> bool:
+    """bf16 mixed precision is a CUDA (Ampere+) feature — False on CPU/MPS."""
+    import torch
+
+    return bool(torch.cuda.is_available())
+
 def build_sft_config(
     base_model: str | None = None,
     lora_r: int = 16,
@@ -185,6 +191,10 @@ def build_sft_config(
             learning_rate=2e-4,
             warmup_ratio=0.1,
             max_seq_length=512,
+            # bf16 is a CUDA (Ampere+) feature; kailash-align 0.7.3 defaults it
+            # True, which hard-fails on CPU/MPS hosts ("setup doesn't support
+            # bf16/gpu"). Follow the actual device.
+            bf16=_bf16_supported(),
         ),
         dpo=DPOConfig(),
         experiment_dir=str(OUTPUT_DIR / output_subdir),

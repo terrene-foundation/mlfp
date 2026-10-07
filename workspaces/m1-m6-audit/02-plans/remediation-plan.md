@@ -98,3 +98,19 @@ stack); #13–#21 closed with traceable references. Verification grid at open:
 M1 8/8, M2 41/41, M3 49/49 (47 fleet + 2 local), M4 38/38 (35 suite + 3 re-runs),
 M5 52/52, M6 13/13 non-LLM (26 LLM exercises need an Ollama host). 720 commits,
 1,313 files vs main.
+
+## M6 Ollama verification + owner decisions executed (2026-10-08)
+
+- **Owner approved all pending decisions.** Executed: P4 + P5 via PR #23; P1 + P2 via PR #24
+  (ICU tables admission-anchored — 996/1,000 admissions with first-24h vitals, was 4; ripple prose
+  honest about the fix; one shared storey cleaner); P3 stands sanctioned; P6 documented (D1
+  precedent: teach real, no upstream filing); P7 holds for loom "TEMPLATE DONE: py".
+- **Ollama activated by the owner.** Course models (llama3.2:3b, qwen2.5:0.5b, nomic-embed-text)
+  pulled on the GPU host (100.71.125.70) — the fleet reaches it; the local Mac Ollama stays as
+  rollback until one full green fleet suite, then idles (steward informed).
+- **M6 fixed during verification:** ex_1/06 JSON value-validation (null confidence crashed
+  float()); ex_6/03 tight_layout nag dropped (bbox_inches covers it); align 0.7.3 unconditional
+  resume trap — stale checkpoints made re-runs train zero steps (PR #26: clear experiment dir
+  first, recorded under P6); DPO output dir moved under OUTPUT_DIR convention.
+- **M6 40/40 verified** (LLM + non-LLM), PRs #25/#26/#27 landed; definitive full-suite re-run
+  via fleet + GPU host in flight.

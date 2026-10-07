@@ -474,3 +474,19 @@ _warnings.filterwarnings(
     "ignore", message=r".*non-interactive.*cannot be shown.*", category=UserWarning
 )
 
+def hdb_storey_range_expr(column: str = "storey_range"):
+    """Polars expression normalising HDB storey_range letter-O typos.
+
+    The raw HDB resale file has letter-O typos ("O4 TO 06", "1O TO 12",
+    "28 TO 3O"); read a letter O next to a digit as zero, leaving "TO"
+    alone. Single home for the rule (P2): M2 ex_8 and M3 ex_5/07 both
+    normalise at the use-site.
+    """
+    import polars as pl
+
+    return (
+        pl.col(column)
+        .str.replace_all(r"\bO(\d)", "0${1}")
+        .str.replace_all(r"(\d)O\b", "${1}0")
+    )
+

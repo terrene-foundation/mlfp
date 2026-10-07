@@ -26,7 +26,7 @@ import numpy as np
 import polars as pl
 
 from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
+from shared.kailash_helpers import setup_environment, hdb_storey_range_expr
 
 setup_environment()
 
@@ -168,13 +168,9 @@ def compute_v1_features(df: pl.DataFrame) -> pl.DataFrame:
     transaction_id (row index). These are the base features v2 extends.
     """
     # The raw file has letter-O typos in storey_range ("O4 TO 06", "1O TO 12",
-    # "28 TO 3O"); read a letter O next to a digit as zero, leaving "TO" alone,
-    # so the numeric extraction is not truncated to the first digit.
-    storey = (
-        pl.col("storey_range")
-        .str.replace_all(r"\bO(\d)", "0${1}")
-        .str.replace_all(r"(\d)O\b", "${1}0")
-    )
+    # "28 TO 3O"); the shared hdb_storey_range_expr() reads a letter O next to
+    # a digit as zero, leaving "TO" alone, so extraction is not truncated.
+    storey = hdb_storey_range_expr()
     return df.with_columns(
         (
             (

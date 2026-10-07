@@ -34,6 +34,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 
 from shared import MLFPDataLoader
+from shared.kailash_helpers import hdb_storey_range_expr
 from shared.mlfp03.ex_5 import OUTPUT_DIR
 
 # ── THEORY — the four regression metrics, and when each lies ────────────
@@ -66,11 +67,7 @@ hdb = loader.load("mlfp01", "hdb_resale.parquet").filter(
 # has letter-O typos in storey_range ("O4 TO 06", "28 TO 3O") — read a letter O
 # next to a digit as zero first (same normalisation as M2 ex_8). One pipeline
 # keeps features and target row-aligned.
-storey = (
-    pl.col("storey_range")
-    .str.replace_all(r"\bO(\d)", "0${1}")
-    .str.replace_all(r"(\d)O\b", "${1}0")
-)
+storey = hdb_storey_range_expr()
 hdb_m = (
     hdb.drop_nulls(["storey_range", "remaining_lease"])
     .with_columns(

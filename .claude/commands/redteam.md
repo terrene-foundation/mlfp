@@ -126,7 +126,7 @@ REVIEW
 5. WHEN REVIEW ENDS, at any round, every remaining finding of ANY severity goes into the repo's durable work LEDGER (tracked todos or issue tracker). None is dropped:
    a) A finding that leaves NO residual risk on a shipped path goes to the ledger as deferred, with its reason.
    b) A small defect that does not affect landing goes to the ledger. It does not block the landing.
-   c) A small KNOWN RISK on a shipped path may be PROVISIONALLY accepted by the agent, so the change can land. It goes to the ledger as OPEN, with the risk stated plainly, and STAYS OPEN until a human either accepts it (named acceptor) or asks for the fix. The agent's acceptance never closes it.
+   c) A small KNOWN RISK on a shipped path that is NOT security-critical (rule 1's class, including any trust boundary) and NOT HIGH/CRITICAL may be PROVISIONALLY accepted by the agent, so the change can land. It goes to the ledger as OPEN, with the risk stated plainly, and STAYS OPEN until a human either accepts it (named acceptor) or asks for the fix. The agent's acceptance never closes it. A security-critical or HIGH/CRITICAL residual risk is NEVER provisionally accepted: it follows (d), and needs the owner's acceptance BEFORE landing.
    d) Any other residual risk on a shipped path, whatever its severity, is fixed, or goes to the owner as an accepted risk with a named acceptor.
    Severity never decides fix-vs-defer.
 6. Never deferred at any severity: stubs/placeholders, silent error-swallowing, failing tests, warnings. Fix them; no extra review round.

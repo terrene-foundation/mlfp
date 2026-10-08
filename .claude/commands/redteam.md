@@ -124,7 +124,7 @@ REVIEW
 2. "Clean" = no CRITICAL/HIGH finding AND every reviewer genuinely ran. An errored, empty or timed-out review is NO evidence: re-run it, never count it.
 3. Round 1 clean = done. No second clean round.
 4. Round 1 not clean: fix, then Round 2 reviews ONLY the fixes plus their blast radius (callers of changed code, same-class sibling sites). Then STOP.
-5. After Round 2: remaining MEDIUM/LOW go to the deferred list, tracked with a reason. Remaining HIGH/CRITICAL go to the owner.
+5. After Round 2: remaining MEDIUM/LOW findings that leave NO residual risk on a shipped path go to the deferred list, tracked with a reason. Any finding that leaves residual risk on a shipped path, whatever its severity, is fixed, or goes to the owner as an accepted risk with a named acceptor. Severity never decides fix-vs-defer.
 6. Never deferred at any severity: stubs/placeholders, silent error-swallowing, failing tests, warnings. Fix them; no extra review round.
 
 CHECKS 7. While fixing: re-run only the failed check + the checks the fix's diff touches. Never the full set per fix. 8. The full set runs ONCE, on the final version, as sign-off. If it fails: fix, run rule 7, then ONE more full sign-off. A second failure stops the batch for re-planning. 9. Your local sign-off set must match CI's required set. A red that only CI caught is a gap in your local set; close it.

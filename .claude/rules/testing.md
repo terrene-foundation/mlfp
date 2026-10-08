@@ -20,9 +20,9 @@ See `.claude/guides/rule-extracts/testing.md` for full evidence, the kailash-ml 
 
 ## Test-Once Protocol (Implementation Mode)
 
-During `/implement`, tests run ONCE per code change, not once per phase. Full suite per todo, pre-commit Tier 1 safety net, CI full matrix as final gate. Re-run only on commit-hash mismatch, infra change, or specific test suspected wrong.
+Follows operator ruling D237 (2026-10-08), checks rules 7-9: while fixing, re-run ONLY the failed check + the checks the fix's diff touches — never the full set per fix. The full suite runs ONCE, on the final version, as sign-off; if it fails, fix, re-run the touched checks, then ONE more full sign-off — a second failure stops the batch for re-planning. The local sign-off set must match CI's required set; a red that only CI caught is a gap in the local set.
 
-**Why:** Running full suite every phase wastes 2-5 minutes per cycle.
+**Why:** Running the full suite every phase wastes 2-5 minutes per cycle; scoped re-runs keep the loop tight without losing the single full sign-off.
 
 ## Audit Mode (/redteam)
 

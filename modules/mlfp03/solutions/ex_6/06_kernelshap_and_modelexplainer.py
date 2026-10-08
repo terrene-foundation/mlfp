@@ -119,19 +119,30 @@ except ExplainerError as exc:
     print(f"    ModelExplainer raised ExplainerError — investigated below")
     print(f"    internal SHAP sum: {shap_sum:.4f} · model.predict output: {model_out:.4f}")
     print(
-        "    ANALYSIS: the engine's internal TreeExplainer explains the RAW "
-        "margin (log-odds; 0.998 here ≈ log-odds of ~0.73) but its "
-        "check_additivity compares against model.predict — the PROBABILITY "
-        "(0.617). Log-odds never equal probabilities: sigmoid(z) ≠ z. The "
-        "axiom is fine; the ENGINE's unit handling is wrong in 2.2.2. "
-        "Recorded as an upstream finding (audit P6) — do not 'fix' it by "
-        "disabling additivity checks in your own explainers."
+        "    ANALYSIS: the engine's internal additivity check fails — its "
+        "internal SHAP sum (0.998) and the model's own output for the same "
+        "row (0.617) disagree far beyond float noise. The two numbers alone "
+        "do NOT establish WHICH spaces are being mixed (sigmoid(0.998) = "
+        "0.731 ≠ 0.617, and logit(0.617) = 0.479 ≠ 0.998 — a raw-vs-prob "
+        "reading fits neither). What IS established: the engine raises "
+        "ExplainerError on every binary-LightGBM explain_global call here, "
+        "so it is unusable for this model class in 2.2.2. The exact unit "
+        "mismatch is for the upstream reconstruction (audit P6) — and the "
+        "lesson holds regardless: read the two numbers before you trust or "
+        "patch an explainer, and never 'fix' it by disabling the check."
     )
-# ── Checkpoint 0 — the investigation produced evidence ───────────────────
+# ── Checkpoint 0 — the investigation produced real evidence ──────────────
 if not engine_ok:
-    assert abs(float(np.exp(shap_sum) / (1 + np.exp(shap_sum))) - model_out) > 0.01 or True
-    print("[ok] Checkpoint 0 — ModelExplainer additivity bug reproduced, "
-          "unit mismatch proven, upstream finding recorded")
+    # Honest assertion: the internal sum and the model's own output disagree
+    # far beyond float noise — the check's failure is real, not a rounding
+    # artifact. (The previous `assert ... or True` was a tautology — caught
+    # in upstream review; never write a checkpoint that cannot fail.)
+    assert abs(shap_sum - model_out) > 0.1, (
+        f"expected a real disagreement between the internal SHAP sum "
+        f"({shap_sum}) and model output ({model_out})"
+    )
+    print("[ok] Checkpoint 0 — ModelExplainer additivity failure reproduced, "
+          "disagreement asserted (>0.1), upstream finding recorded")
 
 # ── Checkpoint 1 — KernelSHAP additivity, in probability space ───────────
 # E[f] + Σφ must equal f(x) = predict_proba — the function we explained.
@@ -203,7 +214,7 @@ print(
     ✓ Ranking agreement (Spearman ρ) between two explainers as a trust
       signal before you ship an explanation
     ✓ ModelExplainer.explain_global / explain_local — the engine surface,
-      including investigating its additivity failure down to the unit level
+      including reproducing its additivity failure and asserting the disagreement
 
   Exercise 6 complete: global (01), permutation (02), local LIME (03),
   interactions (04), fairness (05), and now model-agnostic explanation.

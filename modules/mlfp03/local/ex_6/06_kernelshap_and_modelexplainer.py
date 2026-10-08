@@ -123,17 +123,26 @@ except ExplainerError as exc:
     print(f"    ModelExplainer raised ExplainerError — investigated below")
     print(f"    internal SHAP sum: {shap_sum:.4f} · model.predict output: {model_out:.4f}")
     print(
-        "    ANALYSIS: the engine's internal TreeExplainer explains the RAW "
-        "margin (log-odds; 0.998 here ≈ log-odds of ~0.73) but its "
-        "check_additivity compares against model.predict — the PROBABILITY "
-        "(0.617). Log-odds never equal probabilities: sigmoid(z) ≠ z. The "
-        "axiom is fine; the ENGINE's unit handling is wrong in 2.2.2. "
-        "Recorded as an upstream finding (audit P6) — do not 'fix' it by "
-        "disabling additivity checks in your own explainers."
+        "    ANALYSIS: the engine's internal additivity check fails — its "
+        "internal SHAP sum and the model's own output for the same row "
+        "disagree far beyond float noise. The two numbers alone do NOT "
+        "establish which spaces are being mixed (a raw-vs-prob reading "
+        "fits neither). What IS established: the engine raises "
+        "ExplainerError on every binary-LightGBM explain_global call here, "
+        "so it is unusable for this model class in 2.2.2. The exact unit "
+        "mismatch is for the upstream reconstruction (audit P6) — and the "
+        "lesson holds regardless: read the two numbers before you trust or "
+        "patch an explainer, and never 'fix' it by disabling the check."
     )
 # ── Checkpoint 0 — the investigation produced evidence ───────────────────
 if not engine_ok:
-    assert abs(float(np.exp(shap_sum) / (1 + np.exp(shap_sum))) - model_out) > 0.01 or True
+    # Honest assertion: the two numbers must disagree far beyond float
+    # noise — the check's failure is real, not a rounding artifact. (A
+    # checkpoint that cannot fail is not a checkpoint.)
+    assert abs(shap_sum - model_out) > 0.1, (
+        f"expected a real disagreement between the internal SHAP sum "
+        f"({shap_sum}) and model output ({model_out})"
+    )
     print("[ok] Checkpoint 0 — ModelExplainer additivity bug reproduced, "
           "unit mismatch proven, upstream finding recorded")
 

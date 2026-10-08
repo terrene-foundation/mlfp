@@ -115,25 +115,25 @@ Per `rules/observability.md` MUST Rule 5: scan build/test output + `*.log` for W
 
 ## Convergence Criteria (D237)
 
-Review rounds follow operator ruling D237 (2026-10-08), which replaces the old
-"2 consecutive clean rounds" model.
+D237: Review and check discipline (supersedes "2 consecutive clean rounds" and "full re-run after each fix")
 
 REVIEW
-
-1. Round 1 is a full review. Security-critical changes (auth, signing, revocation, tenant isolation, fail-closed gates, kill paths, destructive ops, disclosure) use a PAIRED round 1: a correctness reviewer + an adversarial security reviewer, in parallel.
-2. "Clean" = no CRITICAL/HIGH finding AND every reviewer genuinely ran. An errored, empty or timed-out review is NO evidence: re-run it, never count it.
-3. Round 1 clean = done. No second clean round.
-4. Round 1 not clean: fix, then Round 2 reviews ONLY the fixes plus their blast radius (callers of changed code, same-class sibling sites). Then STOP.
-4a. Exception, small security-critical fixes only: if the Round-2 fix for a security-critical finding is itself small, ONE extra Round 3 may run. It reviews ONLY that fix's delta, with a paired correctness + adversarial security check. Anything still CRITICAL/HIGH after Round 3 goes to the owner. There is never a Round 4.
-5. After Round 2 (or Round 3 under 4a), every remaining finding goes into the repo's durable work LEDGER (tracked todos or issue tracker). None is dropped:
-   a) A MEDIUM/LOW finding that leaves NO residual risk on a shipped path goes to the ledger as deferred, with its reason.
+1. Round 1 is a full review. Security-critical changes use a PAIRED round 1: a correctness reviewer + an adversarial security reviewer, in parallel. Security-critical includes auth, signing, revocation, tenant isolation, fail-closed gates, kill paths, destructive ops, disclosure, and ANY trust boundary. When unclear, treat it as security-critical. Where a repo rule requires a larger team (e.g. self-referential artifact changes), that team replaces the pair in every round.
+2. Evidence gate, EVERY round: a reviewer counts only if it genuinely ran. An errored, empty or timed-out review is NO evidence: re-run it, never count it.
+3. A round is "clean" when it has no CRITICAL/HIGH finding. Round 1 clean = review ends.
+4. Round 1 not clean: fix, then Round 2 reviews ONLY the fixes plus their blast radius (callers of changed code, same-class sibling sites), with the SAME reviewer composition as Round 1. Then review ends.
+4a. Exception, small security-critical fixes only: if the Round-2 fix for a security-critical finding is itself small, ONE extra Round 3 may run. It reviews ONLY that fix's delta, with the same composition. Anything still CRITICAL/HIGH after Round 3 goes to the owner. There is never a Round 4.
+5. WHEN REVIEW ENDS, at any round, every remaining finding of ANY severity goes into the repo's durable work LEDGER (tracked todos or issue tracker). None is dropped:
+   a) A finding that leaves NO residual risk on a shipped path goes to the ledger as deferred, with its reason.
    b) A small defect that does not affect landing goes to the ledger. It does not block the landing.
-   c) A small KNOWN RISK on a shipped path may be PROVISIONALLY accepted by the agent, so the change can land. It goes to the ledger as OPEN, with the risk stated plainly, and it STAYS OPEN until a human either accepts it (named acceptor) or asks for the fix. The agent's acceptance never closes it.
+   c) A small KNOWN RISK on a shipped path may be PROVISIONALLY accepted by the agent, so the change can land. It goes to the ledger as OPEN, with the risk stated plainly, and STAYS OPEN until a human either accepts it (named acceptor) or asks for the fix. The agent's acceptance never closes it.
    d) Any other residual risk on a shipped path, whatever its severity, is fixed, or goes to the owner as an accepted risk with a named acceptor.
    Severity never decides fix-vs-defer.
 6. Never deferred at any severity: stubs/placeholders, silent error-swallowing, failing tests, warnings. Fix them; no extra review round.
-
-CHECKS 7. While fixing: re-run only the failed check + the checks the fix's diff touches. Never the full set per fix. 8. The full set runs ONCE, on the final version, as sign-off. If it fails: fix, run rule 7, then ONE more full sign-off. A second failure stops the batch for re-planning. 9. Your local sign-off set must match CI's required set. A red that only CI caught is a gap in your local set; close it.
+CHECKS
+7. While fixing: re-run the failed check + the checks the fix's diff touches. Never the full set per fix.
+8. The full set runs ONCE, on the final version, as sign-off. If it fails: fix, run rule 7, then ONE more full sign-off. A second failure stops the batch for re-planning.
+9. The local sign-off set must match CI's required set. A red that only CI caught is a gap in the local set; close it.
 
 Repo-specific gates (unchanged by D237):
 
@@ -141,7 +141,7 @@ Repo-specific gates (unchanged by D237):
 2. **New code has new tests** — `pytest --collect-only` shows ≥1 test importing each new module. Zero new tests for a new module = HIGH, regardless of suite-level "tests pass".
 3. **Frontend integration: 0 mock data** — no `MOCK_*/FAKE_*/DUMMY_*` constants, no `mock*()` / `generate*Data()` functions, no hardcoded display arrays.
 
-D237 rules 1-6 are necessary but NOT sufficient. Without the repo-specific gates, convergence certifies code quality on incomplete software.
+D237's review rules are necessary but NOT sufficient. Without the repo-specific gates, convergence certifies code quality on incomplete software.
 
 ### Journal (MUST — phase-complete gate)
 

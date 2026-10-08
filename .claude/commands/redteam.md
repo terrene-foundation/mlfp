@@ -124,6 +124,7 @@ REVIEW
 2. "Clean" = no CRITICAL/HIGH finding AND every reviewer genuinely ran. An errored, empty or timed-out review is NO evidence: re-run it, never count it.
 3. Round 1 clean = done. No second clean round.
 4. Round 1 not clean: fix, then Round 2 reviews ONLY the fixes plus their blast radius (callers of changed code, same-class sibling sites). Then STOP.
+4a. Exception, small security-critical fixes only: if the Round-2 fix for a security-critical finding is itself small, ONE extra Round 3 may run. It reviews ONLY that fix's delta, with a paired correctness + adversarial security check. Anything still CRITICAL/HIGH after Round 3 goes to the owner. There is never a Round 4.
 5. After Round 2: remaining MEDIUM/LOW findings that leave NO residual risk on a shipped path go to the deferred list, tracked with a reason. Any finding that leaves residual risk on a shipped path, whatever its severity, is fixed, or goes to the owner as an accepted risk with a named acceptor. Severity never decides fix-vs-defer.
 6. Never deferred at any severity: stubs/placeholders, silent error-swallowing, failing tests, warnings. Fix them; no extra review round.
 

@@ -125,7 +125,12 @@ REVIEW
 3. Round 1 clean = done. No second clean round.
 4. Round 1 not clean: fix, then Round 2 reviews ONLY the fixes plus their blast radius (callers of changed code, same-class sibling sites). Then STOP.
 4a. Exception, small security-critical fixes only: if the Round-2 fix for a security-critical finding is itself small, ONE extra Round 3 may run. It reviews ONLY that fix's delta, with a paired correctness + adversarial security check. Anything still CRITICAL/HIGH after Round 3 goes to the owner. There is never a Round 4.
-5. After Round 2: remaining MEDIUM/LOW findings that leave NO residual risk on a shipped path go to the deferred list, tracked with a reason. Any finding that leaves residual risk on a shipped path, whatever its severity, is fixed, or goes to the owner as an accepted risk with a named acceptor. Severity never decides fix-vs-defer.
+5. After Round 2 (or Round 3 under 4a), every remaining finding goes into the repo's durable work LEDGER (tracked todos or issue tracker). None is dropped:
+   a) A MEDIUM/LOW finding that leaves NO residual risk on a shipped path goes to the ledger as deferred, with its reason.
+   b) A small defect that does not affect landing goes to the ledger. It does not block the landing.
+   c) A small KNOWN RISK on a shipped path may be PROVISIONALLY accepted by the agent, so the change can land. It goes to the ledger as OPEN, with the risk stated plainly, and it STAYS OPEN until a human either accepts it (named acceptor) or asks for the fix. The agent's acceptance never closes it.
+   d) Any other residual risk on a shipped path, whatever its severity, is fixed, or goes to the owner as an accepted risk with a named acceptor.
+   Severity never decides fix-vs-defer.
 6. Never deferred at any severity: stubs/placeholders, silent error-swallowing, failing tests, warnings. Fix them; no extra review round.
 
 CHECKS 7. While fixing: re-run only the failed check + the checks the fix's diff touches. Never the full set per fix. 8. The full set runs ONCE, on the final version, as sign-off. If it fails: fix, run rule 7, then ONE more full sign-off. A second failure stops the batch for re-planning. 9. Your local sign-off set must match CI's required set. A red that only CI caught is a gap in your local set; close it.

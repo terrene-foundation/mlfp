@@ -84,7 +84,7 @@ module. Phase A (S1–S5 correctness) for all modules, then Phase B (S5 redesign
   FAIL. Handoff noted in merge body (6bcf3386 auto-commit misdescribes; real task_1 in d0a49ef2).
 - **Strict-gate hardening:** course-wide create_visualizer() factory sweep (94fa3398); RL exercises
   seeded + PPO re-budgeted (556928fc); Lightning nag filter + num_workers=0 (84a8f9a8); ex_0/00
-  exempted with documented spawn-inheritance cause (360433f9); auto-format hook now reports
+  exempted with documented strict-gate cause (360433f9); auto-format hook now reports
   on-disk rewrites (976c0550).
 - **M3 suite 47/49 on fleet (bbsl6g6ja) + ex_7 pair verified locally under -W error::UserWarning
   with 4-thread caps (b1gcq1vm6)** — the two fleet failures were host memory pressure (MemoryError

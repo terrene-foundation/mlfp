@@ -61,12 +61,19 @@ or compare against raw margins consistently.
    inside `MLEngine.compare` (measured: families failed with 'mps' errors inside
    a use_device('cpu') block). The engine tolerates partial family failure —
    on Macs the "model comparison" silently compares fewer families.
-2. `km.train` family workers are spawned processes: they inherit `-W` flags
-   but NOT in-process `warnings.filterwarnings` — under a warnings-as-errors
-   gate, Lightning's PossibleUserWarning ("GPU available but not used") kills
-   the sklearn family too (error text becomes the family failure). Course
-   handling: ex_0/00 exempted from the strict suite gate with the reason in
-   the file header; suite runner has STRICT_SKIP.
+2. `km.train` strict-gate failure mechanism (CORRECTED 2026-10-08 after
+   kailash-py's source read): there are NO spawned workers — `MLEngine.compare`
+   runs families sequentially (`await self.fit(...)`). Under `-W
+   error::UserWarning`, torch's PossibleUserWarning ("GPU available but not
+   used") raises at the warn site inside the sklearn family's
+   SklearnLightningAdapter Trainer construction (trainable.py:666), and
+   compare()'s broad `except Exception` converts the raised warning into the
+   family failure (warning text becomes the logged family error). Open
+   anomaly, handed to kailash-py for their source check: a caller-installed
+   module-level ignore filter matching that message did NOT win, though the
+   identical filter suppresses the identical Trainer construction outside the
+   engine path. Course handling: ex_0/00 exempted from the strict suite gate;
+   suite runner has STRICT_SKIP. Stands until the filter anomaly is resolved.
 
 ### P6 — one more (2026-10-07): LocalRuntime._record_execution_metrics arity
 

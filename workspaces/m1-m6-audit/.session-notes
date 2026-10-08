@@ -31,14 +31,14 @@ The M1–M6 audit remediation **landed** as single integration PR
    sweep emitted, caught by the M4/M1/M2 suites), canonical SDK-nag filters in
    kailash_helpers (Lightning, dynamo, umap), seeded RL exercises (PPO was a
    coin flip unseeded; seeded + LR 1e-3 + 240 iters now clears by +229),
-   num_workers=0 in all 59 M5 DataLoaders, ex_0/00 spawn-inheritance exemption.
+   num_workers=0 in all 59 M5 DataLoaders, ex_0/00 strict-gate exemption (mechanism corrected 2026-10-08: sequential loop + broad-except, no spawn).
 6. **Verification grid** — M1 8/8, M2 41/41, M3 49/49, M4 38/38, M5 52/52,
    M6 13/13 non-LLM. Fleet (trestle, thread-capped) for everything; local MPS
    only for the three-architecture transformer files that exceed 45 min on
    fleet CPU (steward informed; future such runs via `trestle run --os darwin`).
 7. **Upstream findings recorded** (decisions.md): P1 ICU vitals not
    admission-aligned; P6 ×4 (ModelExplainer unit mismatch, use_device not
-   threaded, spawn/-W inheritance, LocalRuntime arity); P7 template re-point
+   threaded, warning-filter anomaly (no spawn), LocalRuntime arity); P7 template re-point
    (loom retired kailash-coc-claude-*; hold until "TEMPLATE DONE: py").
 
 ## Numbers worth keeping

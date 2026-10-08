@@ -113,18 +113,29 @@ Per `rules/observability.md` MUST Rule 5: scan build/test output + `*.log` for W
 
 - **uiux-designer** — visual hierarchy, responsive, accessibility, AI interaction
 
-## Convergence Criteria
+## Convergence Criteria (D237)
 
-ALL must be true:
+Review rounds follow operator ruling D237 (2026-10-08), which replaces the old
+"2 consecutive clean rounds" model.
 
-1. **0 CRITICAL findings** across all agents
-2. **0 HIGH findings** across all agents
-3. **2 consecutive clean rounds** (no new findings)
-4. **Spec compliance: 100% AST/grep verified** — every spec section has an assertion table where every row shows a literal verification command (`grep …`, `ast.parse(…)`, `wc -l …`) and its actual output. Rows saying "exists: yes" are BLOCKED.
-5. **New code has new tests** — `pytest --collect-only` shows ≥1 test importing each new module. Zero new tests for a new module = HIGH, regardless of suite-level "tests pass".
-6. **Frontend integration: 0 mock data** — no `MOCK_*/FAKE_*/DUMMY_*` constants, no `mock*()` / `generate*Data()` functions, no hardcoded display arrays.
+REVIEW
 
-Criteria 1-3 are necessary but NOT sufficient. Without 4-6, convergence certifies code quality on incomplete software.
+1. Round 1 is a full review. Security-critical changes (auth, signing, revocation, tenant isolation, fail-closed gates, kill paths, destructive ops, disclosure) use a PAIRED round 1: a correctness reviewer + an adversarial security reviewer, in parallel.
+2. "Clean" = no CRITICAL/HIGH finding AND every reviewer genuinely ran. An errored, empty or timed-out review is NO evidence: re-run it, never count it.
+3. Round 1 clean = done. No second clean round.
+4. Round 1 not clean: fix, then Round 2 reviews ONLY the fixes plus their blast radius (callers of changed code, same-class sibling sites). Then STOP.
+5. After Round 2: remaining MEDIUM/LOW go to the deferred list, tracked with a reason. Remaining HIGH/CRITICAL go to the owner.
+6. Never deferred at any severity: stubs/placeholders, silent error-swallowing, failing tests, warnings. Fix them; no extra review round.
+
+CHECKS 7. While fixing: re-run only the failed check + the checks the fix's diff touches. Never the full set per fix. 8. The full set runs ONCE, on the final version, as sign-off. If it fails: fix, run rule 7, then ONE more full sign-off. A second failure stops the batch for re-planning. 9. Your local sign-off set must match CI's required set. A red that only CI caught is a gap in your local set; close it.
+
+Repo-specific gates (unchanged by D237):
+
+1. **Spec compliance: 100% AST/grep verified** — every spec section has an assertion table where every row shows a literal verification command (`grep …`, `ast.parse(…)`, `wc -l …`) and its actual output. Rows saying "exists: yes" are BLOCKED.
+2. **New code has new tests** — `pytest --collect-only` shows ≥1 test importing each new module. Zero new tests for a new module = HIGH, regardless of suite-level "tests pass".
+3. **Frontend integration: 0 mock data** — no `MOCK_*/FAKE_*/DUMMY_*` constants, no `mock*()` / `generate*Data()` functions, no hardcoded display arrays.
+
+D237 rules 1-6 are necessary but NOT sufficient. Without the repo-specific gates, convergence certifies code quality on incomplete software.
 
 ### Journal (MUST — phase-complete gate)
 
